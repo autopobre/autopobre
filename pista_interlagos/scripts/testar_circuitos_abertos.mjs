@@ -1,11 +1,12 @@
 // Cascavel, ECPA Piracicaba, Chapecó, Brasília and Goiânia, rebuilt from open data (scripts/circuitos/), and the
 // imaginary Chapada dos Sonhos on the real relief (gerar_chapada.py): geometry, relief, pit lane, scenery
-// clearances and a full AI race on each; on the Chapada also the rim with no guardrail and a fall off it.
-//   node scripts/testar_circuitos_abertos.mjs [cascavel|piracicaba|chapeco|brasilia|goiania|chapada]
+// clearances and a full AI race on each; on the Chapada also the rim with no guardrail and a fall off it; on the
+// Floripa street circuit (gerar_floripa.py) the walls by the asphalt and the bridge decks over the sea.
+//   node scripts/testar_circuitos_abertos.mjs [cascavel|piracicaba|chapeco|brasilia|goiania|chapada|floripa]
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {CIRCUITS} from '../teste/circuits.js';
-import {TestCar,recognitionInput,guardrailSections} from '../teste/physics.js';
+import {TestCar,recognitionInput,guardrailSections,guardrailClearance,onDeck} from '../teste/physics.js';
 import {RaceField,pitRoute} from '../teste/race-field.js';
 import {pitGeometry,locatePit,serviceSpot,garageBays,wallsNear} from '../teste/pit-lane.js';
 import {standLayout,fitGround,sceneryBands,bandClearance,gantryPosts,wallUnderPost,POST_CLEARANCE} from '../teste/track-clearance.js';
@@ -14,7 +15,7 @@ import {trackFall} from '../teste/cliff-fall.js';
 
 const only=process.argv[2];
 const report={};
-for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada']){
+for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa']){
  if(only&&only!==id)continue;
  const circuit=CIRCUITS[id],data=JSON.parse(readFileSync(new URL(`../dados/pista_${id}.json`,import.meta.url)));
  data.meta.id=id;data.meta.name=circuit.name;
@@ -33,7 +34,7 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  assert.equal(Math.sign(turn),data.meta.direction==='horario'?-1:1,`${id}: sense of travel`);
  if(id==='piracicaba')assert(Math.abs(L-circuit.length)<15,'ECPA shows its measured length');
  else assert(Math.abs(data.meta.reconstructed_3d_m-circuit.length)<.5,`${id} matches the published length`);
- assert.equal(circuit.length,{cascavel:3058,piracicaba:1930,chapeco:4004,brasilia:5384,goiania:3835,chapada:5153}[id]);
+ assert.equal(circuit.length,{cascavel:3058,piracicaba:1930,chapeco:4004,brasilia:5384,goiania:3835,chapada:5153,floripa:4455}[id]);
  // Chapecó (opened 08/2026): the earthworks profile is calibrated to the published 18.5 m, and the
  // sections carry the official numbering (12 curves, curve 7 the long constant-radius sweep).
  if(id==='chapeco'){
@@ -90,17 +91,35 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
   assert(probe.lapFell&&!probe.surface.abyss&&probe.surface.onRoad&&top<3,'Chapada: back at rest on the asphalt, the lap out of the records');
   out.rim={stations:near,gap:[+minGap.toFixed(1),+maxGap.toFixed(1)],fallBack:+back.toFixed(1)};
  }
+ // Floripa (imaginary street circuit on the real city): concrete walls a few decimetres off the asphalt on both sides
+ // (open only for the pit lane), the start on the Hercílio Luz deck, and on the decks the road plane reaching out to
+ // the walls 20 m and more above the sea; a car driven at the wall stays on the deck.
+ if(id==='floripa'){
+  assert.equal(data.meta.barrier,'street');assert.deepEqual(data.meta.rails['1'],[[0,L]],'Floripa: wall all the way on the left');
+  for(let i=0;i<n;i+=5)for(const side of [-1,1]){const g=guardrailClearance(data,a[i][0],side);assert(g>.3&&g<8.5,`Floripa: wall gap ${g} at s=${a[i][0]}`);}
+  assert(onDeck(data,0)&&onDeck(data,L-80),'Floripa: the line and the grid on the Hercílio Luz');
+  const probe=new TestCar(data);let deckStations=0,high=0,maxAbove=0;
+  for(let i=0;i<n;i++){const p=a[i];if(!onDeck(data,p[0]))continue;deckStations++;const d=p[4]/2+.2,x=p[1]+p[9]*d,y=p[2]+p[10]*d;probe.index=i;const s=probe.sample(x,y,i);assert(Math.abs(s.z-.055-(p[3]+p[5]*d))<.05,`Floripa: deck plane out to the wall at s=${p[0]}`);const above=p[3]-probe.terrain(p[1],p[2]);if(above>15)high++;maxAbove=Math.max(maxAbove,above);}
+  assert(deckStations*2>1900&&high*2>1000&&maxAbove>30,`Floripa: ${deckStations*2} m of decks, ${high*2} m of them 15 m or more over the ground or the sea bed (${maxAbove.toFixed(1)} m at most)`);
+  const k=Math.round(200/(L/n));probe.reset(k);probe.heading+=.6;probe.vx=25*Math.cos(probe.heading);probe.vy=25*Math.sin(probe.heading);probe.stepX=probe.x;probe.stepY=probe.y;
+  const z0=probe.z;for(let s=0;s<120*3;s++)probe.step({throttle:0,brake:0,left:0,right:0,reverse:0,handbrake:0},1/120);
+  assert(probe.z>z0-2&&probe.surface.onRoad!==undefined,`Floripa: the car stays on the deck (${z0.toFixed(1)} -> ${probe.z.toFixed(1)})`);
+  out.street={decks:deckStations*2,highDecks:high*2,maxAboveGround:+maxAbove.toFixed(1),zAfterWall:+(probe.z-z0).toFixed(2)};
+ }
  // --- Relief: real circuits, not a flat plate; grades a car can climb.
  const grades=a.map(p=>p[6]);out.grade=[Math.min(...grades),Math.max(...grades)].map(g=>+(g*100).toFixed(1));
  // The Chapada's profile is game earthworks on a plateau with valleys (up to 8%), not the relief under the line: no DEM check.
  assert(data.meta.elevation_range_m>10&&data.meta.elevation_range_m<(data.meta.imaginary?70:60),`${id}: relief range`);
- assert(Math.max(...grades.map(Math.abs))<(data.meta.imaginary?.081:.15),`${id}: grade under ${data.meta.imaginary?8:15}%`);
+ // (A street circuit takes the streets as they are: Floripa's Rua Hoepcke comes down the hill at 12%.)
+ const maxGrade=data.meta.street?.125:data.meta.imaginary?.081:.15;
+ assert(Math.max(...grades.map(Math.abs))<maxGrade,`${id}: grade under ${maxGrade*100}%`);
  if(!data.meta.imaginary)assert(Math.abs(data.meta.elevation_check.anadem_menos_copernicus_mediana_m)<1,'ANADEM and Copernicus agree along the track');
  // Terrain next to the asphalt meets the road plane (no step at the edge; between two
  // stretches of the lap that run side by side it becomes a bank).
  // (On a plateau's rim the plateau's ground: the grid itself drops past the line, 2 m or more beyond the edge.)
  const car=new TestCar(data);let edgeStep=0;
- for(let i=0;i<n;i+=2){const p=a[i];car.index=i;for(const side of [-1,1]){const d=side*(p[4]/2+1),x=p[1]+p[9]*d,y=p[2]+p[10]*d,road=p[3]+p[5]*d;edgeStep=Math.max(edgeStep,Math.abs(car.terrain(x,y,car.cliff?.plateauZ)-road));}}
+ // (Over a bridge deck the ground is the sea far below: no meeting there.)
+ for(let i=0;i<n;i+=2){const p=a[i];if(onDeck(data,p[0]))continue;car.index=i;for(const side of [-1,1]){const d=side*(p[4]/2+1),x=p[1]+p[9]*d,y=p[2]+p[10]*d,road=p[3]+p[5]*d;edgeStep=Math.max(edgeStep,Math.abs(car.terrain(x,y,car.cliff?.plateauZ)-road));}}
  assert(edgeStep<.5,`${id}: terrain meets the road (max step ${edgeStep})`);out.edgeStep=+edgeStep.toFixed(3);
  // --- Pit lane: surveyed format, Box 99, AI in-lap route.
  const geo=pitGeometry(data);assert(geo,'pit geometry');
@@ -132,9 +151,12 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  out.pit={length:Math.round(data.pit.length_m),entry:Math.round(data.pit.entry_main_s),exit:Math.round(data.pit.exit_main_s),garages:data.pit.garages,slots:route.slots.length};
  // No guardrail across the pit side while the lane runs along the track.
  const pitSide=data.pit.reversed?-1:1,railPit=guardrailSections(data,pitSide);
- assert(!railPit.some(([f,t])=>0>=f&&0<=t),'no rail on the pit side at the timing line');
+ // (Floripa's lane runs along the Av. Paulo Fontes, far from the line on the bridge: there the wall stays.)
+ const lineInPit=data.pit.entry_main_s>data.pit.exit_main_s;
+ if(lineInPit)assert(!railPit.some(([f,t])=>0>=f&&0<=t),'no rail on the pit side at the timing line');
+ assert(!railPit.some(([f,t])=>f<=data.pit.entry_main_s+30&&t>=data.pit.entry_main_s+30),'no rail across the pit lane');
  // --- Stands and buildings keep off the roads.
- const stands=standLayout(data);assert(stands.length>=3,'grandstand blocks');
+ const stands=standLayout(data);assert(stands.length>=(data.meta.street?0:3),'grandstand blocks');
  for(const b of stands){const [x,y]=[b.x+b.rx*b.front,b.y+b.ry*b.front];car.index=car.nearest(x,y,true).i;const s=car.sample(x,y);assert(Math.abs(s.d)>s.width/2+6,'stand front clear of the asphalt');}
  const bands=sceneryBands(data),cols=Object.fromEntries(data.scenery.buildings.columns.map((k,i)=>[k,i]));
  // Each footprint (an oriented rectangle: corners, edge midpoints, centre) stays off every band; a
@@ -146,6 +168,7 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  // Billboards: all sixteen placed, off every road (ECPA's side-by-side straights, the pit
  // entry) and apart from each other; none is left where its search failed.
  const boards=billboardSpots(data);assert.equal(boards.length,16,`${id}: sixteen billboards`);
+ // (On a street circuit no building stands where a board, a marshal post or a TV tower is set: podar_edificios.mjs.)
  for(const b of boards){const c=bandClearance(bands,b.x,b.y);assert(c.distance>BOARD_CLEARANCE,`${id}: billboard ${b.slot} ${c.distance.toFixed(1)} m from ${c.band}`);}
  assert(boards.every(b=>boards.every(o=>o===b||Math.hypot(o.x-b.x,o.y-b.y)>25)),`${id}: billboards apart`);
  out.billboards=+Math.min(...boards.map(b=>b.clearance)).toFixed(1);
@@ -154,7 +177,8 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  const posts=gantryPosts(data);
  for(const post of posts){
   car.index=car.nearest(post.x,post.y,true).i;const onTrack=car.sample(post.x,post.y),lane=locatePit(geo,post.x,post.y);
-  assert(Math.abs(onTrack.d)>onTrack.width/2+POST_CLEARANCE,`${id}: gantry post ${post.side} off the track`);
+  // (On a bridge deck the posts stand on the concrete walls, half a metre off the asphalt.)
+  assert(Math.abs(onTrack.d)>onTrack.width/2+(post.deck?.5:POST_CLEARANCE),`${id}: gantry post ${post.side} off the track`);
   assert(!lane||lane.d<lane.lo-POST_CLEARANCE||lane.d>lane.hi+POST_CLEARANCE,`${id}: gantry post ${post.side} on the pit lane (d ${lane?.d.toFixed(1)})`);
   // Clear of the pit walls, or (Chapecó, Brasília, Goiânia, Chapada: the line facing the garages) mounted on the pit wall's platform.
   if(post.onWall)assert(wallUnderPost(geo,post.x,post.y)&&['chapeco','brasilia','goiania','chapada'].includes(id),`${id}: gantry post ${post.side} on the pit wall top`);

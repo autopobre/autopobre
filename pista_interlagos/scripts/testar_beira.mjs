@@ -16,7 +16,7 @@ import {standLayout} from '../teste/track-clearance.js';
 import {guardrailPresent,guardrailClearance} from '../teste/physics.js';
 
 const only=process.argv[2],report={},seen=new Map();
-for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada']){
+for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa']){
  if(only&&only!==id)continue;
  const data=id==='curvelo'?createCurveloData():JSON.parse(readFileSync(new URL(`../dados/${id==='interlagos'?'pista':'pista_'+id}.json`,import.meta.url)));
  data.meta.id=id;data.meta.name=CIRCUITS[id].name;
@@ -94,7 +94,9 @@ for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasi
  // --- Marshal posts: about every 360 m, alternating sides, off the beat, never under a billboard where a spot allows.
  const marshals=marshalSpots(data),L=data.meta.reconstructed_xy_m;
  // (Sides alternate, but on a plateau's rim the posts keep to the ground: the abyss side has none.)
- for(let k=1;k<marshals.length;k++){const gap=((marshals[k].s-marshals[k-1].s)%L+L)%L;assert(gap>250&&gap<480,`${id}: post gap ${gap.toFixed(0)} m`);if(!data.scenery?.cliff)assert.notEqual(marshals[k].side,marshals[k-1].side);}
+ // (No post stands on a bridge deck, meta.decks: a gap that spans one counts without the deck.)
+ const overDeck=(a,b)=>(data.meta.decks??[]).reduce((sum,[f,e])=>{const parts=f<=e?[[f,e]]:[[f,L],[0,e]];return sum+parts.reduce((u,[p,q])=>{const g=b>=a?[[a,b]]:[[a,L],[0,b]];return u+g.reduce((w,[x,y])=>w+Math.max(0,Math.min(y,q)-Math.max(x,p)),0);},0);},0);
+ for(let k=1;k<marshals.length;k++){const gap=((marshals[k].s-marshals[k-1].s)%L+L)%L-overDeck(marshals[k-1].s,marshals[k].s);assert(gap>250&&gap<480+(data.meta.decks?260:0),`${id}: post gap ${gap.toFixed(0)} m`);if(!data.scenery?.cliff)assert.notEqual(marshals[k].side,marshals[k-1].side);}
  const gaps2=marshals.slice(1).map((m,k)=>m.s-marshals[k].s);if(gaps2.length>2)assert(Math.max(...gaps2)-Math.min(...gaps2)>15,`${id}: posts off a fixed beat`);
  const underBoard=marshals.filter(m=>spots.some(b=>Math.hypot(b.x-m.x,b.y-m.y)<25)).length;assert(underBoard<=1,`${id}: ${underBoard} marshal posts under a billboard`);
  report[id]={sponsors:sponsors.length,banners:banners.length,bannerSponsors:rows.size,loose:banners.filter(b=>b.hangs).length,torn:banners.filter(b=>b.rip).length,boardSizes:[...new Set(formats.map(f=>f.w))],designs:new Set(art.fronts).size,roof:roof.length,marshals:marshals.length};

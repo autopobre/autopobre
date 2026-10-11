@@ -119,13 +119,27 @@ const FULL_RAIL=[[0,Infinity]];
 // Circuits built from open data carry their own sections (meta.rails, by side).
 export function guardrailSections(data,side){const key=side<0?'-1':'1';return data.meta.rails?.[key]??(data.meta.id==='curvelo'?FULL_RAIL:INTERLAGOS_RAILS[key]);}
 export function guardrailPresent(data,s,side){const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L;return guardrailSections(data,side).some(([from,to])=>t>=from&&t<=to);}
+// A street circuit (Floripa) gives each station its own gap from the asphalt to the face of its concrete walls
+// (columns wall_right_m, wall_left_m): a few decimetres on the bridges, a sidewalk's width in the city.
+const wallColumns=new WeakMap();
+function wallGap(data,s,side){
+ if(!wallColumns.has(data))wallColumns.set(data,data.columns?.includes('wall_right_m')?{r:data.columns.indexOf('wall_right_m'),l:data.columns.indexOf('wall_left_m')}:null);
+ const cols=wallColumns.get(data);if(!cols)return null;
+ const a=data.samples,L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L,k=side<0?cols.r:cols.l;let lo=0,hi=a.length-1;
+ while(lo<hi){const m=(lo+hi+1)>>1;if(a[m][0]<=t)lo=m;else hi=m-1;}
+ const p=a[lo],q=a[(lo+1)%a.length],span=(lo===a.length-1?L:q[0])-p[0],u=span>0?clamp((t-p[0])/span,0,1):0;
+ return p[k]+(q[k]-p[k])*u;
+}
+// Stretches over a structure (meta.decks, [from, to] by lap distance, a bridge across the sea): the road plane
+// reaches out to the walls there, it never blends down into the terrain grid far below.
+export function onDeck(data,s){const d=data.meta.decks;if(!d)return false;const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L;return d.some(([from,to])=>from<=to?t>=from&&t<=to:t>=from||t<=to);}
 export function guardrailClearance(data,s,side){
  if(data.meta.id!=='curvelo'){
-  const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L,section=guardrailSections(data,side).find(([from,to])=>t>=from&&t<=to);
-  if(!section)return GUARDRAIL_CLEARANCE;
+  const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L,section=guardrailSections(data,side).find(([from,to])=>t>=from&&t<=to),gap=wallGap(data,t,side),base=gap??GUARDRAIL_CLEARANCE;
+  if(!section)return base;
   // Flare exposed ends away from the driving line; the timing-line seam stays joined.
   const edge=Math.min(section[0]<=0?Infinity:t-section[0],section[1]>=L-1e-6?Infinity:section[1]-t),u=clamp(edge/24,0,1);
-  return GUARDRAIL_CLEARANCE+5*(1-u*u*(3-2*u));
+  return base+5*(1-u*u*(3-2*u));
  }
  if(side>=0){const lane=pitLane(data,s);return lane?Math.max(5,lane.offset*1.8+lane.halfWidth+2-7):5;}
  const smooth=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
@@ -143,7 +157,7 @@ function bodyAxes(heading,pitch,roll,axes){
 }
 const renderAxes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};
 export class TestCar {
- constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.cliff=cliffEdge(data);this.edgeHit={};this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.reset();}
+ constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.cliff=cliffEdge(data);this.decks=!!data.meta?.decks?.length;this.edgeHit={};this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.reset();}
  // The body it meets the world with (OPALA_BODY, FUSCA_BODY), with its mechanics; the next reset or settle seats
  // it on its own shell.
  setBody(body){if(body!==this.body){this.body=body;this.shell=null;}return this;}
@@ -216,7 +230,8 @@ export class TestCar {
     if(pit)s=lane.mainS;
    }
   }
-  const blend=abyss?1:clamp(outside/3,0,1);
+  // On a bridge deck the road plane runs out to the parapet: the sea is 30 m below.
+  const blend=abyss?1:this.decks&&onDeck(this.data,s)?0:clamp(outside/3,0,1);
   // Off the asphalt the car sits on the LiDAR terrain, so it must also lean and roll with it.
   if(blend>0){const e=1.5,tx2=(this.terrain(x+e,y,ground)-this.terrain(x-e,y,ground))/(2*e),ty2=(this.terrain(x,y+e,ground)-this.terrain(x,y-e,ground))/(2*e);gx+=(tx2-gx)*blend;gy+=(ty2-gy)*blend;}
   const service=abyss?null:pitLane(this.data,s);

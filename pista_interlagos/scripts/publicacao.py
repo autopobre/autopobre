@@ -11,6 +11,7 @@ MODULES = (
     'car-condition.js', 'pit-lane.js', 'interlagos-pit.js', 'pit-building.js', 'pit-box99.js', 'pit-crew.js', 'pit-textures.js', 'on-foot.js', 'pitstop.js', 'pitstop.css',
     'circuits.js', 'curvelo-data.js', 'curvelo-scene.js', 'open-circuit.js', 'track-clearance.js', 'interlagos-stands.js',
     'cliff-edge.js', 'cliff-fall.js', 'cliff-scenery.js', 'far-terrain.js', 'explosion.js',
+    'sea-water.js', 'street-walls.js', 'floripa-bridges.js', 'floripa-landmarks.js',
     'race-results.js', 'race-results.css', 'lap-records.js', 'ghost-lap.js', 'ghost-car.js', 'championship.js', 'championship-board.js', 'pistas.css',
     'race-roster.js', 'car-select.js', 'car-garage.js', 'car-livery.js', 'fusca.js', 'fusca-cockpit.js', 'carros.css',
     'car-finish.js', 'car-reflections.js',
@@ -36,6 +37,8 @@ ASSETS = (
     'circuitos/goiania_solo.jpg',
     'circuitos/chapada_solo.jpg', 'circuitos/chapada_medio.jpg', 'circuitos/chapada_longe.jpg',
     'circuitos/chapada_medio_relevo.bin', 'circuitos/chapada_longe_relevo.bin',
+    'circuitos/floripa_solo.jpg', 'circuitos/floripa_medio.jpg', 'circuitos/floripa_longe.jpg',
+    'circuitos/floripa_medio_relevo.bin', 'circuitos/floripa_longe_relevo.bin',
     'opala99_assinaturas_omp.glb', 'opala99_seiva_danilo.glb', 'fusca_v2.glb',
     'abertura/desclassificado_v1.jpg', 'abertura/abertura_stevan_opala99.jpg', 'abertura/logo_auto_pobre_racing.webp',
     'piloto/capacete_publico.jpg', 'piloto/referencia_frente.jpg',
@@ -70,6 +73,7 @@ PUBLIC_FILES.update({
     'dados/pista_brasilia.json': 'pista_interlagos/dados/pista_brasilia.json',
     'dados/pista_goiania.json': 'pista_interlagos/dados/pista_goiania.json',
     'dados/pista_chapada.json': 'pista_interlagos/dados/pista_chapada.json',
+    'dados/pista_floripa.json': 'pista_interlagos/dados/pista_floripa.json',
     'exports/interlagos_pista.glb': 'pista_interlagos/exports/interlagos_pista.glb',
 })
 AUDIO_NAMES = ('intro.mp3', 'race.mp3', 'patrocinio.mp3', 'turbo.mp3', 'hojenaodeu.mp3', 'energia.mp3')

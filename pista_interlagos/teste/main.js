@@ -60,6 +60,9 @@ import {TreeField} from './tree-contact.js';
 import {TvCamera} from './tv-camera.js';
 import {trackFall,FallView,fallInSight} from './cliff-fall.js';
 import {createFarTerrain} from './far-terrain.js';
+import {createSea} from './sea-water.js';
+import {createFloripaBridges} from './floripa-bridges.js';
+import {createFloripaLandmarks} from './floripa-landmarks.js';
 import {Explosions} from './explosion.js';
 import {trackPoint as podiumPoint} from './immersive-visuals.js';
 import {CinematicIntro} from './intro-cinematic.js';
@@ -221,6 +224,8 @@ const isInside=()=>mode==='cockpit'||mode==='hood';
 const fallView=new FallView($('fallFade'),$('fallFlash'));let fallMode=null;
 // The fireballs at the foot of the wall (explosion.js), on a circuit with a rim.
 let explosions=null;
+// What a circuit adds to the world and moves every frame (the sea's chop, Floripa's bridges and landmarks).
+let circuitExtras=[];
 // Look-back (B or the touch button): driving from the cockpit only, not on foot, in the pit stop or menus.
 const lookBackAllowed=()=>mode==='cockpit'&&ready&&!paused&&!cockpitView&&!pitstop?.opened&&!immersive?.onFoot()&&!gridPreview()&&!$('settings').open;
 // Sky light comes mostly from the environment map (sky.js); the hemisphere lifts the shade a little more.
@@ -1075,7 +1080,7 @@ function runFrame(){const rawDt=clock.getDelta(),dt=Math.min(rawDt,.08);gamepad.
  const braking=driveCommand.engineOff?0:driveCommand.brake;brakeLamps.userData.set(model?.visible?braking:0);fuscaBody.brake(braking);
  carAudio.update(heard,rivalSound?.command??driveCommand,rivalSound?.skid??skid,paused||frozen,mode);
  carAudio.updateScene({...immersive?.audioScene(heard),speed:Math.hypot(heard.vx,heard.vy),onRoad:heard.surface.onRoad,...speedFx?.sound(heard===car?car:null),camera:mode},immersive?.state.takeSounds()??[],dt);
- sky.update(paused?0:dt);landscape?.update(paused?0:dt,camera);
+ sky.update(paused?0:dt);landscape?.update(paused?0:dt,camera);for(const extra of circuitExtras)extra.update?.(paused?0:dt,camera);
  // A watched rival is posed by immersive.update below: its camera follows after that.
  updateOpenings(paused?0:dt);updateCar(dt);if(!watchedRival())updateCamera(dt);const dash=cockpit.update(car,paused?0:dt,heard===car?carAudio.state:null),phoneArrived=dash.phoneArrived;if(phoneArrived)carAudio.notifyPhone();fuscaBody.update(dash.speed,dash.rpm,(immersive?.active?immersive.state.fuel:immersive?.freeFuel??12)/12);driver.update(car,paused?0:dt,{command:driveCommand,impact:frameImpact,phoneArrived});gamepad.bump(actionImpact);frameImpact=0;lapBanner(paused?0:dt);lastHud+=dt;if(lastHud>.07){hud();lastHud=0;}
  if(immersive?.visual)immersive.visual.renderAhead=renderAhead();immersive?.update(paused?0:dt,camera);if(watchedRival())updateCamera(dt);
@@ -1292,11 +1297,13 @@ window.interlagosGraficos={
 // changes the light live ({sun, sunColor, fill, fillColor, fillGround, environment, exposure}: a test, not saved); photo()
 // holds the camera at {from, at} metres in the car's frame (x ahead, y up), {fov}; null lets go.
 let lightPhoto=null;const lightPhotoAt=new THREE.Vector3();
-function holdLightPhoto(){if(!lightPhoto)return;carRoot.updateMatrixWorld();camera.position.set(...lightPhoto.from).applyMatrix4(carRoot.matrixWorld);camera.up.set(0,1,0);camera.lookAt(lightPhotoAt.set(...lightPhoto.at).applyMatrix4(carRoot.matrixWorld));camera.fov=lightPhoto.fov??40;camera.updateProjectionMatrix();}
+function holdLightPhoto(){if(!lightPhoto)return;carRoot.updateMatrixWorld();
+ // world: from and at in the track's frame (x east, y north, z up), for photos of the scenery away from the car.
+ if(lightPhoto.world){const [fx,fy,fz]=lightPhoto.from,[ax,ay,az]=lightPhoto.at;camera.position.set(fx,fz,-fy);camera.up.set(0,1,0);camera.lookAt(lightPhotoAt.set(ax,az,-ay));}else{camera.position.set(...lightPhoto.from).applyMatrix4(carRoot.matrixWorld);camera.up.set(0,1,0);camera.lookAt(lightPhotoAt.set(...lightPhoto.at).applyMatrix4(carRoot.matrixWorld));}camera.fov=lightPhoto.fov??40;camera.updateProjectionMatrix();}
 window.interlagosLuz={
  info:()=>({sun:{intensity:sun.intensity,color:'#'+sun.color.getHexString(),direction:SUN_DIRECTION.toArray()},fill:skyFill.intensity,fillColor:'#'+skyFill.color.getHexString(),fillGround:'#'+skyFill.groundColor.getHexString(),environment:scene.environmentIntensity,exposure:renderer?.toneMappingExposure??null,box:sunPlacement.info(),car:carShadow.info()}),
  set:({sun:i,sunColor,fill,fillColor,fillGround,environment,exposure,carShadow:look}={})=>{if(i!=null)sun.intensity=i;if(sunColor)sun.color.set(sunColor);if(fill!=null)skyFill.intensity=fill;if(fillColor)skyFill.color.set(fillColor);if(fillGround)skyFill.groundColor.set(fillGround);if(environment!=null)scene.environmentIntensity=environment;if(exposure!=null&&renderer)renderer.toneMappingExposure=exposure;if(look)carShadow.look(look);return window.interlagosLuz.info();},
- photo:pose=>{lightPhoto=pose?{from:pose.from,at:pose.at,fov:pose.fov}:null;if(!pose){followInitialized=false;camera.fov=baseFov(mode,camera.aspect);camera.updateProjectionMatrix();}return !!lightPhoto;}
+ photo:pose=>{lightPhoto=pose?{from:pose.from,at:pose.at,fov:pose.fov,world:!!pose.world}:null;if(!pose){followInitialized=false;camera.fov=baseFov(mode,camera.aspect);camera.updateProjectionMatrix();}return !!lightPhoto;}
 };
 // The cars' reflections in that info (source, map size, faces, captures, who lends the map now) and, in
 // a race, interlagos.carPaintInfo(): the finish in force and the paint of the player's car and a rival's.
@@ -1545,7 +1552,7 @@ $('settingsRestart').onclick=()=>{$('settings').close();beginRace(true);};
 $('tour').onclick=()=>{$('settings').close();beginRace(true,true,false);};$('menuButton').onclick=openSettings;$('camera').onchange=e=>setCameraMode(e.target.value,true);$('livery').onchange=async e=>{preferences.update({livery:e.target.value});if(!ready||!sessionStarted||raceCar!=='99'||raceModel==='fusca')return;try{await setLivery(e.target.value);}catch(err){status('Não foi possível carregar a pintura. Tente novamente.');console.error(err);}};
 // Keep the car and audio session; release the previous circuit before loading another.
 function clearCircuit(){
- explosions=null;fallView.stop(camera);
+ explosions=null;circuitExtras=[];fallView.stop(camera);
  action.reset();actionNotice.update(0,null,false);intro.stop();const retired=[];
  if(pitstop){pitstop.reset();pitstop.panel.remove();pitstop.hud.remove();pitstop.walkHud.remove();pitstop.markers.removeFromParent();retired.push(pitstop.markers);pitstop=null;}
  camera.clearViewOffset();
@@ -1599,9 +1606,18 @@ async function loadCircuit(){
   // The valley out to 22 km below a plateau circuit (Chapada dos Sonhos), from the same folder as its ground photo.
   const far=data.scenery.far?await createFarTerrain(data,circuit.ground.replace(/[^/]*$/,'')):null;if(far)scene.add(far.root);applyViewDistance();
   explosions=data.scenery.cliff?new Explosions(scene,{mobile:scenery.mobile}):null;
+  // A coastal street circuit (Floripa): the sea at its level, the bridges round the decks the road runs on and the
+  // city's landmarks, each with its own model.
+  const groundAt=(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y);
+  if(data.meta.sea_level_m!=null)circuitExtras.push(createSea(data,{mobile:scenery.mobile}));
+  if(data.scenery.bridges)circuitExtras.push(createFloripaBridges(data,{mobile:scenery.mobile,ground:groundAt}));
+  if(data.scenery.landmarks?.some(m=>m.kind==='rodoviaria'))circuitExtras.push(createFloripaLandmarks(data,{mobile:scenery.mobile,ground:groundAt}));
+  for(const extra of circuitExtras){scene.add(extra.root);if(extra.obstacles)cameraObstacles.push(...extra.obstacles);}
   landscape=createLandscape({data,field:landscapeField,ground:(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y),cover:data.scenery.cover,buildings:data.scenery.buildings,cityAngle:data.meta.city_angle??Math.PI/2,mobile:scenery.mobile,density:scenery.density,lod:scenery.lod,lean:sceneryLevel==='basico',style:'urban'});
+  // The trees the land cover put where a landmark's yard or apron is (floripa-landmarks.js) go.
+  for(const extra of circuitExtras)if(extra.clearings)landscape.clearAround(extra.clearings);
   const stands=createGrandstands(data,terrainTextures,(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y));scene.add(stands.root);cameraObstacles.push(...stands.obstacles);standTops=stands.rows;
-  Object.assign(landscape.stats,{ground:groundFit.stats,stands:stands.stats,circuit:open.stats,far:far?.stats});
+  Object.assign(landscape.stats,{ground:groundFit.stats,stands:stands.stats,circuit:open.stats,far:far?.stats,extras:Object.fromEntries(circuitExtras.map(e=>[e.root.name,e.stats]))});
  }else{
   const track=await loader.loadAsync('../exports/interlagos_pista.glb');let ortho=null;
   // The orthophoto stays as land-cover data and far-distance colour; close up it becomes grass, woods, paving and water.

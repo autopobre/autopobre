@@ -71,10 +71,17 @@ export const SPONSORS=Object.freeze({
  segurapeao:S('FREIOS SEGURA PEÃO','SEGURA PEÃO','#5a189a','#ffffff','#ffd60a','tyre','split','Para antes da beirada','mt'),
  ventania:S('BONÉS SEGURA-VENTANIA','VENTANIA','#0077b6','#ffffff','#ffd166','star','repeat','Não voa do mirante','mt'),
  mariaisabel:S('MARIA-ISABEL DO CUMPADI','CUMPADI','#ffb703','#3d2b1f','#9d0208','cup','script','Arroz com carne-seca na hora','mt'),
- suador:S('VENTILADOR SUADOR','SUADOR','#e85d04','#ffffff','#03045e','bolt','badge','Para o calor de 40 graus','mt')
+ suador:S('VENTILADOR SUADOR','SUADOR','#e85d04','#ffffff','#03045e','bolt','badge','Para o calor de 40 graus','mt'),
+ // The Island (Floripa's street circuit): the sea under the bridges, the south wind and the local talk.
+ tiradomar:S('GUINCHO TIRA-DO-MAR','TIRA-DO-MAR','#023e8a','#ffffff','#ffd60a','car','badge','Caiu da ponte? A gente pesca','ilha'),
+ ventosul:S('GUARDA-SÓIS VENTO SUL','VENTO SUL','#ffd60a','#023047','#e63946','star','stripe','Segura até o nordestão','ilha'),
+ tasvolo:S('CAFEZINHO TÁS TOLO?','TÁS TOLO?','#6f1d1b','#ffe6a7','#bb9457','cup','script','Ó-lhó-lhó, que cafezinho!','ilha'),
+ tainhavoadora:S('PEIXARIA TAINHA VOADORA','TAINHA','#0a9396','#ffffff','#ee9b00','leaf','split','Pula da rede pro prato','ilha'),
+ abrefacil:S('OSTRAS ABRE-FÁCIL','ABRE-FÁCIL','#e9d8a6','#005f73','#ae2012','drop','badge','Sem faca e sem susto','ilha'),
+ derretenaponte:S('SORVETES DERRETE-NA-PONTE','DERRETE','#f72585','#ffffff','#4cc9f0','star','repeat','Gelado até chegar na ilha','ilha')
 });
 // Each circuit's region (its local sponsors).
-const REGIONS={interlagos:'sp',piracicaba:'sp',cascavel:'pr',chapeco:'sc',brasilia:'df',goiania:'go',curvelo:'mg',chapada:'mt'};
+const REGIONS={interlagos:'sp',piracicaba:'sp',cascavel:'pr',chapeco:'sc',brasilia:'df',goiania:'go',curvelo:'mg',chapada:'mt',floripa:'ilha'};
 const NATIONAL=['autopobre','oldstock','posto99','tia','retifica','blazer'],EXTRA=['pulapula','pegaprimeira','oleovo','semtranco'];
 export const regionOf=id=>REGIONS[id]??'sp';
 // A circuit's own seed: the same banners and boards at every load of it, different from the others'.

@@ -29,7 +29,13 @@ export const CIRCUITS=Object.freeze({
  // are game design (scripts/circuitos/gerar_chapada.py). Clockwise, the abyss on the left; whoever goes over falls
  // (cliff-fall.js). altitude: the track file's base, so the HUD shows the height above the sea.
  chapada:{id:'chapada',podium:[0,-70],name:'Chapada dos Sonhos',label:'AUTÓDROMO DA CHAPADA DOS SONHOS · CHAPADA DOS GUIMARÃES, MT',length:5153,description:'5.153 m · 8 curvas · horário · imaginário · Chapada dos Guimarães, MT',intro:'Um autódromo que não existe, no alto do paredão da Chapada: sem guard-rail, a 2 a 6 m de um precipício de mais de 100 m. A reta de 2 km termina de frente para o abismo; depois, o Bico e o S do Mirante. Quem sai da pista, cai.',source:'Traçado imaginário sobre o relevo real · ANADEM (ANA/UFRGS) e Copernicus GLO-30 · cobertura ESA WorldCover e Sentinel-2 de out/2026.',fuel:'Uma volta na Chapada costuma gastar 4–5 L.',altitude:290,
-  data:'pista_chapada.json',ground:'./assets/circuitos/chapada_solo.jpg',track:'CHAPADA',boxTitle:'Cuida do Opala, cumpadi!',weather:'Chapada dos Guimarães · 16h40 · 29 °C · pista seca',venue:'Autódromo da Chapada dos Sonhos'}
+  data:'pista_chapada.json',ground:'./assets/circuitos/chapada_solo.jpg',track:'CHAPADA',boxTitle:'Cuida do Opala, cumpadi!',weather:'Chapada dos Guimarães · 16h40 · 29 °C · pista seca',venue:'Autódromo da Chapada dos Sonhos'},
+ // Imaginary street circuit (the team's request, 10-11): the real streets, bridges, relief, sea and buildings of
+ // Florianópolis (OSM and the city's GeoFloripa, scripts/circuitos/gerar_floripa.py); the walls, the closed lap and
+ // the boxes in front of the bus station are game design. The start is on the Ponte Hercílio Luz towards the island
+ // (meta.decks: the road runs on the bridge decks out to the parapets). Clockwise, the boxes on the cars' right.
+ floripa:{id:'floripa',podium:[1385,-30],name:'Autódromo Floripa',label:'AUTÓDROMO FLORIPA · FLORIANÓPOLIS, SC',length:4455,description:'4.455 m · 11 curvas · horário · circuito de rua imaginário · Florianópolis, SC',intro:'Largada sobre a Ponte Hercílio Luz rumo à ilha. Desce a Rua Hoepcke até o aterro, passa a Rodoviária pela Paulo Fontes, volta ao continente pela Ponte Colombo Salles e sobe o Estreito. Muro dos dois lados e mar embaixo.',source:'Ruas do OpenStreetMap · relevo de 1 m, meios-fios, edificações e batimetria do GeoFloripa (Prefeitura de Florianópolis) · Sentinel-2 de set/2026.',fuel:'Uma volta em Floripa costuma gastar 3–4 L.',altitude:0,
+  data:'pista_floripa.json',ground:'./assets/circuitos/floripa_solo.jpg',track:'FLORIPA',boxTitle:'Cuida do Opala, ó-lhó-lhó!',weather:'Florianópolis · 16h40 · 24 °C · pista seca',venue:'Autódromo Floripa'}
 });
 export const circuitId=value=>typeof value==='string'&&Object.hasOwn(CIRCUITS,value)?value:'interlagos';
 export function selectedCircuit(saved,search=''){

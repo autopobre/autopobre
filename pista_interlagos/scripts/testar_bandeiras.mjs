@@ -8,7 +8,7 @@ import {readFileSync} from 'node:fs';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
 import {CIRCUITS} from '../teste/circuits.js';
 import {createCurveloData} from '../teste/curvelo-data.js';
-import {guardrailPresent} from '../teste/physics.js';
+import {guardrailPresent,guardrailClearance} from '../teste/physics.js';
 import {sceneryBands,bandClearance} from '../teste/track-clearance.js';
 import {billboardSpots} from '../teste/track-surface.js';
 import {marshalSpots,towerSpots,bend} from '../teste/trackside.js';
@@ -23,7 +23,7 @@ for(const level of ['baixo','medio','alto','ultra'])assert(FLAG_LEVELS[GRAPHICS_
 assert(!FLAG_LEVELS.media.shadow&&!FLAG_LEVELS.media.fine&&FLAG_LEVELS.media.reach<FLAG_LEVELS.completa.reach,'Médio (phones): coarse cloth, no shadows, shorter reach');
 
 const only=process.argv[2],report={};
-for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada']){
+for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa']){
  if(only&&only!==id)continue;
  const data=id==='curvelo'?createCurveloData():JSON.parse(readFileSync(new URL(`../dados/${id==='interlagos'?'pista':'pista_'+id}.json`,import.meta.url)));
  data.meta.id=id;data.meta.name=CIRCUITS[id].name;
@@ -57,7 +57,8 @@ for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasi
    assert(!geo||!wallsNear(geo,t.x,t.y,1.5).length,`${id}: pennant clear of pit walls`);
    for(const [name,list] of [['billboards',billboards],['TV towers',towers],['marshal posts',marshals],['low TV cameras',cams]])assert(nearest(t,list)>=20,`${id}: pennant at ${t.s.toFixed(0)} 20 m from ${name}`);
    assert(Math.abs(bend(data,t.s))<1/250||guardrailPresent(data,t.s,Math.sign(t.d)),`${id}: a corner-exit pennant stands behind a rail, not in a run-off`);
-   const w=data.samples.reduce((b,q)=>Math.abs(q[0]-t.s)<Math.abs(b[0]-t.s)?q:b)[4];assert(Math.abs(t.d)>w/2+4,`${id}: pennant behind the rail line`);
+   // (Behind the rail line: 4 m past the asphalt, or on a street circuit just behind its concrete wall.)
+   const w=data.samples.reduce((b,q)=>Math.abs(q[0]-t.s)<Math.abs(b[0]-t.s)?q:b)[4];assert(Math.abs(t.d)>w/2+(data.meta.barrier==='street'?guardrailClearance(data,t.s,Math.sign(t.d))+.4:4),`${id}: pennant behind the rail line`);
   }
   if(t.kind==='rod'){
    assert(bandClearance(roads,t.x,t.y).distance>=1.2,`${id}: rod at ${t.s.toFixed(0)} just off the asphalt`);

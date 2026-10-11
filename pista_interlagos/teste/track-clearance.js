@@ -1,4 +1,4 @@
-import {TestCar} from './physics.js';
+import {TestCar,onDeck,guardrailClearance} from './physics.js';
 import {pitGeometry,locatePit,wallsNear} from './pit-lane.js';
 import {cliffEdge} from './cliff-edge.js';
 
@@ -79,12 +79,28 @@ export function sceneryBands(data){
  }
  for(const b of standLayout(data))
   bands.push({name:'arquibancada',margin:12,points:[-b.length/2,b.length/2].map(a=>[...standPoint(b,a,0),-b.rx,-b.ry,-b.roof.to,-b.apron])});
+ // Bridge decks (meta.decks, Floripa): nothing stands beside them, over the water or on the shore far below: no trees,
+ // posts, towers, flags or boards. One band per deck, its stations in lap order (the Hercílio Luz runs across the line).
+ // Where the deck runs low over the shore (the abutments) only its own footprint is kept clear.
+ const under=(x,y)=>{const g=data.terrain,fx=Math.max(0,Math.min(g.nx-1.001,(x-g.x0)/g.step)),fy=Math.max(0,Math.min(g.ny-1.001,(y-g.y0)/g.step)),i=Math.floor(fx),j=Math.floor(fy),u=fx-i,v=fy-j,k=j*g.nx+i;return (g.z[k]*(1-u)+g.z[k+1]*u)*(1-v)+(g.z[k+g.nx]*(1-u)+g.z[k+g.nx+1]*u)*v;};
+ for(const run of deckRuns(data))bands.push({name:'ponte',margin:0,points:run.map(p=>{const side=p[3]-under(p[1],p[2])>DECK_HIGH?DECK_SIDE:4;return [p[1],p[2],p[9],p[10],-p[4]/2-side,p[4]/2+side];})});
  // A plateau's rim (cliff-edge.js): nothing stands past it nor within RIM_KEEP of the lip. No points: the track field
  // (landscape.js) has no use for it, and the trees down the slope stay.
  const rim=cliffEdge(data);if(rim)bands.push({name:'abismo',margin:0,points:[],rim});
  return bands;
 }
 export const RIM_KEEP=3;
+// A station on a bridge deck standing more than 3 m over the surveyed ground (the sea bed, the shore far below): not
+// the deck's ends, which land on the shore at the ground's height.
+export function highDeck(data,probe,i){const p=data.samples[i];return onDeck(data,p[0])&&p[3]-probe.terrain(p[1],p[2])>3;}
+// How far beside a bridge deck the scenery keeps away (m past each edge of the asphalt).
+const DECK_SIDE=36,DECK_HIGH=6;
+function deckRuns(data){
+ const a=data.samples,n=a.length,on=a.map(p=>onDeck(data,p[0])),runs=[];if(!on.some(Boolean))return runs;
+ const start=on.findIndex((v,i)=>v&&!on[(i-1+n)%n]);if(start<0)return [a];
+ let run=null;for(let k=0;k<n;k++){const i=(start+k)%n;if(on[i]){(run??=[]).push(a[i]);}else if(run){runs.push(run);run=null;}}
+ if(run)runs.push(run);return runs;
+}
 // Distance from (x,y) to the nearest band, less that band's margin (negative inside).
 export function bandClearance(bands,x,y){
  let best=Infinity,name=null;
@@ -115,7 +131,10 @@ export function wallUnderPost(geo,x,y){
  return null;
 }
 export function gantryPosts(data){
- const p=data.samples[0],base=p[4]/2+2.2,bands=sceneryBands(data).map(b=>({...b,margin:0})),geo=pitGeometry(data);
+ const p=data.samples[0];
+ // On a bridge deck (Floripa's line on the Hercílio Luz) the posts stand on the concrete walls by the asphalt.
+ if(onDeck(data,p[0]))return [1,-1].map(side=>{const d=p[4]/2+guardrailClearance(data,p[0],side)+.38;return {side,d,x:p[1]+p[9]*side*d,y:p[2]+p[10]*side*d,onWall:false,deck:true};});
+ const base=p[4]/2+2.2,bands=sceneryBands(data).map(b=>({...b,margin:0})),geo=pitGeometry(data);
  return [1,-1].map(side=>{
   const at=d=>[p[1]+p[9]*side*d,p[2]+p[10]*side*d];
   const blocked=d=>{const [x,y]=at(d);return bandClearance(bands,x,y).distance<POST_CLEARANCE||!!geo&&wallsNear(geo,x,y,POST_CLEARANCE).length>0;};
@@ -159,8 +178,11 @@ export function groundLimits(data){
  const A=data.samples,N=A.length,probe=new TestCar(data),C=GROUND_CLEARANCE;
  // Track asphalt, and the painted kerbs laid on the ground beside it (13 right, 14 left).
  for(let i=0;i<N;i++){
-  const p=A[i],q=A[(i+1)%N],j=(i+1)%N,at=(r,d)=>[r[1]+r[9]*d,r[2]+r[10]*d,r[3]+r[5]*d-C];
-  quad(at(p,-p[4]/2),at(q,-q[4]/2),at(q,q[4]/2),at(p,p[4]/2));
+  // Under a bridge deck (meta.decks) the ground keeps clear of its girders, 2.5 m below the road, out to the parapets;
+  // at its ends, where it lands on the shore, the ground meets the road as anywhere else.
+  const deck=highDeck(data,probe,i),drop=deck?2.5:C,reach=deck?1.5:0;
+  const p=A[i],q=A[(i+1)%N],j=(i+1)%N,at=(r,d)=>[r[1]+r[9]*d,r[2]+r[10]*d,r[3]+r[5]*d-drop];
+  quad(at(p,-p[4]/2-reach),at(q,-q[4]/2-reach),at(q,q[4]/2+reach),at(p,p[4]/2+reach));
   for(const [side,flag] of [[-1,13],[1,14]]){
    if(!(p.length>flag&&p[flag]&&q[flag]))continue;
    const kerb=(r,k,w)=>{const d=side*(r[4]/2+w),x=r[1]+r[9]*d,y=r[2]+r[10]*d;probe.index=k;return [x,y,Math.min(r[3]+r[5]*d,probe.sample(x,y,k).z-.055)-C];};
@@ -228,7 +250,8 @@ export function fitGround(data,limits=groundLimits(data)){
  }
  const geo=pitGeometry(data);let driven=0;
  for(let j=0;j<ny;j++)for(let k=0;k<nx;k++){
-  const g=j*nx+k,x=x0+k*step,y=y0+j*step,nearMain=hint[g]>=0&&Math.sqrt(best[g])-A[hint[g]][4]/2<reach;
+  // Beside and under a bridge deck the ground stays where the survey has it (the sea, the shore far below).
+  const g=j*nx+k,x=x0+k*step,y=y0+j*step,nearMain=hint[g]>=0&&Math.sqrt(best[g])-A[hint[g]][4]/2<reach&&!highDeck(data,probe,hint[g]);
   const lane=!nearMain&&geo?locatePit(geo,x,y):null;
   if(!nearMain&&!(lane&&Math.max(lane.lo-lane.d,lane.d-lane.hi)<reach))continue;
   h[g]=probe.sample(x,y,nearMain?hint[g]:probe.nearest(x,y,true).i).z-.055;driven++;

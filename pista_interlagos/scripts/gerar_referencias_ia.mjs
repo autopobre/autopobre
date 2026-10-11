@@ -6,7 +6,7 @@ import {RaceField} from '../teste/race-field.js';
 const rows=[];
 // Cascavel, ECPA, Chapecó, Brasília and Goiânia come from the open-data track files (scripts/circuitos/), the
 // imaginary Chapada dos Sonhos from gerar_chapada.py.
-for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada']){
+for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa']){
  const data=id==='curvelo'?createCurveloData():JSON.parse(readFileSync(new URL(id==='interlagos'?'../dados/pista.json':`../dados/pista_${id}.json`,import.meta.url)));data.meta.id=id;
  // Both modes race the standard distance (LAPS.standard in player-preferences.js): 3 laps.
  for(const [mode,laps] of [['normal',3],['immersive',3]]){

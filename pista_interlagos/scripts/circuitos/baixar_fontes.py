@@ -342,6 +342,63 @@ def fontes_goiania(c, pasta):
     return info
 
 
+GEOFLORIPA = 'https://geofloripa.pmf.sc.gov.br/geoserver'
+
+
+def fontes_geofloripa(c, pasta):
+    """Dados abertos da Prefeitura de Florianopolis (GeoFloripa, GeoServer sem login; GetCapabilities: Fees NONE,
+    AccessConstraints NONE; credito PMF/SMPIU), em SIRGAS 2000 / UTM 22S:
+    - MDT e MDS de 1 m do aerolevantamento do Estado (SDS, 2010-2012) pelo WCS: o terreno (sem as pontes; o mar a 0)
+      e a superficie, cuja diferenca da a altura de cada edificacao;
+    - pegadas das edificacoes do cadastro (2020), meios-fios (as bordas reais das vias, tambem nas pontes), batimetria
+      da Marinha em faixas, parques e pracas, vegetacao e as curvas de nivel de 1 m (so para conferencia)."""
+    from projecao import Transformer
+    T = Transformer.from_crs(4326, 31982, always_xy=True)
+    w, s, e, n = caixa(c)
+    xs, ys = T.transform(np.array([w, e, w, e]), np.array([s, s, n, n]))
+    x0, y0, x1, y1 = (round(v) for v in (min(xs), min(ys), max(xs), max(ys)))
+    info = {'servico': GEOFLORIPA, 'baixado_em': date.today().isoformat(), 'caixa_utm': [x0, y0, x1, y1],
+            'credito': 'Prefeitura Municipal de Florianópolis (PMF/SMPIU), GeoFloripa'}
+    for cob, destino in (('Geoportal__MDT_SDS', 'mdt_floripa.tif'), ('Geoportal__MDS_SDS', 'mds_floripa.tif')):
+        url = (f'{GEOFLORIPA}/ows?service=WCS&request=GetCoverage&version=2.0.1&CoverageId={cob}'
+               f'&subset=E({x0},{x1})&subset=N({y0},{y1})&format=image/tiff')
+        for tentativa in range(4):
+            try:
+                r = requests.get(url, headers=AGENTE, timeout=600)
+                r.raise_for_status()
+                if not r.content.startswith((b'II*', b'MM\x00*')):
+                    raise ValueError(r.text[:300])
+                break
+            except (requests.RequestException, ValueError):
+                if tentativa == 3:
+                    raise
+                time.sleep(5 + 5 * tentativa)
+        (pasta / destino).write_bytes(r.content)
+        g = geo_io.ler(pasta / destino)
+        print(f'GeoFloripa {cob}: {g.a.shape[2]}x{g.a.shape[1]} px -> {destino}')
+        info[cob] = {'arquivo': destino, 'px': [int(g.a.shape[2]), int(g.a.shape[1])]}
+    for camada, destino in (('cad_edificacao', 'geofloripa_edificacoes.geojson'), ('cad_meiofio', 'geofloripa_meiofio.geojson'),
+                            ('batimetria_marinha', 'geofloripa_batimetria.geojson'), ('parques_pracas', 'geofloripa_parques.geojson'),
+                            ('vegetacao', 'geofloripa_vegetacao.geojson'), ('alt_cn', 'geofloripa_curvas_1m.geojson')):
+        url = (f'{GEOFLORIPA}/Geoportal/ows?service=WFS&version=2.0.0&request=GetFeature&typeNames=Geoportal:{camada}'
+               f'&outputFormat=application/json&bbox={x0},{y0},{x1},{y1},urn:ogc:def:crs:EPSG::31982')
+        for tentativa in range(4):
+            try:
+                r = requests.get(url, headers=AGENTE, timeout=600)
+                r.raise_for_status()
+                dados = json.loads(r.content)
+                break
+            except (requests.RequestException, ValueError):
+                if tentativa == 3:
+                    raise
+                time.sleep(5 + 5 * tentativa)
+        (pasta / destino).write_text(json.dumps(dados, ensure_ascii=False), encoding='utf-8')
+        print(f'GeoFloripa {camada}: {len(dados["features"])} feicoes -> {destino}')
+        info[camada] = len(dados['features'])
+    (pasta / 'geofloripa.json').write_text(json.dumps(info, indent=1, ensure_ascii=False), encoding='utf-8')
+    return info
+
+
 def pegadas_das_torres(c, pasta, torres):
     """Pegadas da Microsoft que contem um edificio em altura do cadastro de Goiania (o horizonte), e as
     demais ate `horizonte_casas_m` do centro (os bairros em volta do autodromo, alem da grade)."""
@@ -541,6 +598,12 @@ def main():
         prov['goiania'] = fontes_goiania(c, pasta)
         (pasta / 'proveniencia.json').write_text(json.dumps(prov, indent=1, ensure_ascii=False), encoding='utf-8')
         return
+    if '--geofloripa' in sys.argv:
+        # So os dados da Prefeitura de Florianopolis, gravados tambem na proveniencia ja baixada.
+        prov = json.loads((pasta / 'proveniencia.json').read_text(encoding='utf-8'))
+        prov['geofloripa'] = fontes_geofloripa(c, pasta)
+        (pasta / 'proveniencia.json').write_text(json.dumps(prov, indent=1, ensure_ascii=False), encoding='utf-8')
+        return
     if '--so-referencia' not in sys.argv:
         proveniencia = {'circuito': nome, 'baixado_em': date.today().isoformat(), 'caixa_lonlat': caixa(c)}
         proveniencia['osm_base'] = overpass(c, pasta / 'osm.json')
@@ -557,6 +620,8 @@ def main():
             proveniencia['idedf'] = fontes_idedf(c, pasta)
         if c.get('relevo_local') == 'goiania_curvas_5m':
             proveniencia['goiania'] = fontes_goiania(c, pasta)
+        if c.get('relevo_local') == 'geofloripa_mdt_1m':
+            proveniencia['geofloripa'] = fontes_geofloripa(c, pasta)
         (pasta / 'proveniencia.json').write_text(json.dumps(proveniencia, indent=1, ensure_ascii=False), encoding='utf-8')
     if '--referencia' in sys.argv or '--so-referencia' in sys.argv:
         esri_referencia(c, pasta)

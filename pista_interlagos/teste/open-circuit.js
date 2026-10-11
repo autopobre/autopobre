@@ -16,9 +16,12 @@ import {cliffShownHeights,createCliff} from './cliff-scenery.js';
 
 // Land cover grid -> RGBA texture: R woods, G paved/built, B exposed soil.
 const COVER_RGB={'0':[0,0,0],'1':[255,0,0],'2':[150,0,30],'3':[0,0,90],'4':[0,140,40],'5':[0,0,255],'6':[0,0,0],'7':[0,255,0]};
-export function coverTexture(cover){
- const {nx,ny,classes}=cover,rgba=new Uint8Array(nx*ny*4);
- for(let i=0;i<nx*ny;i++){const c=COVER_RGB[classes[i]]??COVER_RGB['0'];rgba[i*4]=c[0];rgba[i*4+1]=c[1];rgba[i*4+2]=c[2];rgba[i*4+3]=255;}
+// In a city (a street circuit, Floripa) what the land cover calls built-up is paved: sidewalks, squares, yards and
+// car parks, not the dusty ground between a rural circuit's sheds.
+const CITY_RGB={...COVER_RGB,'4':[0,235,0],'5':[0,170,50]};
+export function coverTexture(cover,{city=false}={}){
+ const {nx,ny,classes}=cover,rgba=new Uint8Array(nx*ny*4),table=city?CITY_RGB:COVER_RGB;
+ for(let i=0;i<nx*ny;i++){const c=table[classes[i]]??table['0'];rgba[i*4]=c[0];rgba[i*4+1]=c[1];rgba[i*4+2]=c[2];rgba[i*4+3]=255;}
  const texture=new THREE.DataTexture(rgba,nx,ny,THREE.RGBAFormat);
  texture.magFilter=THREE.LinearFilter;texture.minFilter=THREE.LinearMipmapLinearFilter;texture.generateMipmaps=true;texture.wrapS=texture.wrapT=THREE.ClampToEdgeWrapping;texture.needsUpdate=true;
  return texture;
@@ -39,7 +42,7 @@ export function terrainMesh(data,heights,material){
 export async function createOpenCircuit(data,roadSurface,{heights,textures,field,groundUrl,label,mobile=false}){
  const root=new THREE.Group();root.name='Circuito_'+data.meta.id;
  const loader=new THREE.TextureLoader(),ground=await loader.loadAsync(groundUrl);ground.colorSpace=THREE.SRGBColorSpace;ground.anisotropy=4;
- const cover=coverTexture(data.scenery.cover),groundMaterial=terrainMaterial(textures,field,{ortho:ground,cover,mobile,steep:!!data.scenery.cliff});groundMaterial.userData.terrain=true;
+ const cover=coverTexture(data.scenery.cover,{city:!!data.meta.street}),groundMaterial=terrainMaterial(textures,field,{ortho:ground,cover,mobile,steep:!!data.scenery.cliff});groundMaterial.userData.terrain=true;
  // Kept on the material too, so clearing the circuit (main.js) disposes it with the map.
  groundMaterial.coverMap=cover;
  // On a plateau's rim (Chapada dos Sonhos, cliff-scenery.js) no grid triangle leans across the lip: the wall and the
@@ -86,9 +89,9 @@ export async function createOpenCircuit(data,roadSurface,{heights,textures,field
  const steel=new THREE.MeshStandardMaterial({name:'Portico_metal',color:0x2b3034,metalness:.5,roughness:.5});
  const gantry=new THREE.Group();gantry.name='Portico_largada';gantry.position.set(p0[1],road(p0[1],p0[2],0),-p0[2]);gantry.rotation.y=Math.atan2(p0[8],p0[7]);root.add(gantry);
  const span=w0/2+2.2,[left,right]=gantryPosts(data);
- for(const {side,d,x,y} of [left,right]){
-  // Down into the ground where it falls away from the road (behind ECPA's pit wall).
-  const foot=Math.min(0,(groundHeight(data.terrain,heights,x,y)??gantry.position.y)-gantry.position.y)-.3;
+ for(const {side,d,x,y,deck} of [left,right]){
+  // Down into the ground where it falls away from the road (behind ECPA's pit wall); on a bridge deck, from the wall top.
+  const foot=deck?.5:Math.min(0,(groundHeight(data.terrain,heights,x,y)??gantry.position.y)-gantry.position.y)-.3;
   const post=new THREE.Mesh(new THREE.BoxGeometry(.35,7.4-foot,.35),steel);post.position.set(0,(7.4+foot)/2,-side*d);post.castShadow=true;post.name='Portico_poste';gantry.add(post);
  }
  const beam=new THREE.Mesh(new THREE.BoxGeometry(.5,1.5,left.d+right.d+.4),steel);beam.position.set(0,7.2,(right.d-left.d)/2);beam.castShadow=true;beam.name='Portico_viga';gantry.add(beam);

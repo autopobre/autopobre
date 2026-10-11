@@ -332,3 +332,48 @@ são os reais; o traçado, o perfil da pista, os boxes e a beirada são desenho 
 
 **Aproximações declaradas:** o circuito inteiro (não existe); a altura e a forma do paredão (o relevo de 30 m não o
 resolve); a beirada a poucos metros do asfalto; o perfil da pista; boxes, arquibancadas e pórtico.
+
+## Autódromo Floripa (circuito de rua imaginário, Florianópolis, SC) — fontes baixadas em 11/10/2026
+
+Pedido da equipe, com o traçado desenhado no Google Maps. Não existe: as ruas, as pontes, o relevo, o mar e os prédios
+são os reais de Florianópolis; fechar a volta com muros, o pit lane e as arquibancadas são desenho de jogo. Gerado
+por `scripts/circuitos/gerar_floripa.py` (depois de `baixar_fontes.py floripa --referencia`, que também baixa os
+dados da Prefeitura; `--geofloripa` baixa só eles).
+
+- **Traçado**: as vias do OpenStreetMap em sequência (`CADEIA` no gerador): Ponte Hercílio Luz rumo à ilha, Alameda
+  Adolfo Konder, Rua Hoepcke, Rua Claudino Bento da Silva e a alça para a Av. Paulo Fontes, a Paulo Fontes diante da
+  Rodoviária Rita Maria, o laço da Rua Pedro Bittencourt, a Ponte Colombo Salles (no sentido real dela, ilha →
+  continente), a alça da Via Expressa, a Rua 14 de Julho e a Av. Gov. Ivo Silveira de volta à cabeceira continental.
+  Esquinas arredondadas (13 m nas de mais de 50°, 24 m nas outras, limitadas pelos lados) e rumo suavizado; o eixo
+  vai para o meio do leito entre os meios-fios (até 3,5 m). 4.452 m em planta, 4.455 m em 3D, sentido horário.
+- **Larguras**: o leito entre os meios-fios do cadastro (medido em 83% das estações), com o mínimo de corrida de
+  9,5 m e o máximo de 15 m; na Hercílio Luz, os 9,2 m do leito entre as treliças (as calçadas correm por fora delas)
+  viram 9,5 m.
+- **Relevo**: MDT de 1 m do aerolevantamento do Estado (SDS, 2010–2012) pelo GeoFloripa, com o ANADEM fora da caixa
+  dele. A Rua Hoepcke desce do morro a 12% (limite do gerador).
+- **Pontes**: o tabuleiro sai do MDS de 1 m onde ele passa sobre terra (o MDS não mede nada sobre a água). Hercílio
+  Luz: 822 m de estrutura medida (821 m publicados), uma parábola ajustada aos 198 pontos medidos das duas cabeceiras
+  (resíduo 0,36 m) dá o vão abaulado a 30,4 m (30,86 m publicados); torres pelos vãos oficiais (222,5 m de viaduto
+  continental, 339,47 m de vão pênsil). Colombo Salles: as rampas medidas nas margens (3,5% da ilha, 2,2% do
+  continente) e o topo a 22 m no vão de navegação (gabarito de 17,5 m do OpenSeaMap mais a viga), duas Hermite
+  monótonas. Ali a pista anda no tabuleiro até o muro (`meta.decks`) e o terreno fica no mar.
+- **Mar**: a água do MDT (cota 0) na caixa dele e a linha de costa do OSM fora; o fundo da batimetria da Marinha
+  (GeoFloripa, faixas de 0–2 a 20–30 m), suavizado.
+- **Edificações**: as 13.936 pegadas do cadastro da Prefeitura (2020), cada uma com a altura do MDS menos o MDT
+  (percentil 75 dentro dela; os andares do OSM quando o MDS de 2010–2012 não mostra o prédio). Na grade de 5 m as que
+  ficam fora da pista e dos muros (as calçadas ficam), dos boxes e das arquibancadas; além dela, o horizonte da cidade.
+  A Rodoviária, o TICEN, o Mercado Público, a Casa da Alfândega, a Catedral e o Forte de Santana têm modelo próprio
+  (`floripa-landmarks.js`), como as pontes (`floripa-bridges.js`) e as antenas do Morro da Cruz.
+- **No jogo**: muros de concreto com alambrado dos dois lados (`street-walls.js`, folga por estação nas colunas
+  `wall_right_m`/`wall_left_m`), o mar (`sea-water.js`), anéis de relevo e cor até 22 km (`far-terrain.js`).
+
+| Dado | Fonte | Uso |
+|---|---|---|
+| Vias, costa, marcos, prédios com andares | OpenStreetMap (Overpass, base 11/10/2026) | eixo, mar fora da caixa, marcos |
+| MDT e MDS 1 m (SDS 2010–2012), cadastro de edificações (2020), meios-fios, batimetria, parques | GeoFloripa, Prefeitura de Florianópolis (PMF/SMPIU), WCS/WFS sem login | relevo, pontes, prédios, larguras, fundo do mar |
+| Relevo 30 m, superfície 30 m, cobertura 10 m, cor 10 m | ANADEM, Copernicus GLO-30, ESA WorldCover, Sentinel-2 S2C_22JGQ_20260925 | fora da caixa da Prefeitura, cor do chão e do horizonte |
+| Dimensões das pontes e dos marcos | Wikipédia, Teixeira Duarte (restauro 2019), ABCEM, SciELO, OpenSeaMap | modelos |
+
+**Aproximações declaradas:** o circuito inteiro; larguras mínimas de corrida; o greide das pontes sobre o mar; os
+muros; os boxes diante da rodoviária (a ponte, onde fica a largada, não tem espaço para um pit lane); as
+arquibancadas na Paulo Fontes; alturas de prédios construídos depois de 2012.

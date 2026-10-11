@@ -1395,6 +1395,9 @@ function createHorizon(data,field,rand,{mobile,urban,rural=false,cityAngle=Math.
  const t=data.terrain,root=new THREE.Group();root.name='Horizonte';
  // Over a plateau's rim the real valley is the horizon (far-terrain.js): no rings of made-up hills.
  if(data.meta?.horizon==='chapada')return {root,buildings:0};
+ // A coastal city with its real relief out to the horizon (Floripa, far-terrain.js): no made-up ground either, only
+ // the city's own buildings beyond the grid (data.scenery.skyline, each with its ground height z).
+ const realFar=!!data.scenery?.far;
  const border=[],x1=t.x0+(t.nx-1)*t.step,y1=t.y0+(t.ny-1)*t.step,cx=(t.x0+x1)/2,cy=(t.y0+y1)/2;
  for(let i=0;i<t.nx-1;i++)border.push([t.x0+i*t.step,t.y0,0,-1]);
  for(let j=0;j<t.ny-1;j++)border.push([x1,t.y0+j*t.step,1,0]);
@@ -1414,7 +1417,7 @@ function createHorizon(data,field,rand,{mobile,urban,rural=false,cityAngle=Math.
  const R=rings.length,N=border.length;
  for(let i=0;i<N;i++){const j=(i+1)%N;for(let k=0;k<R-1;k++){const a=i*R+k,b=j*R+k;indices.push(a,a+1,b,b,a+1,b+1);}}
  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geometry.setIndex(indices);geometry.computeVertexNormals();
- const ground=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({name:'Horizonte_solo',vertexColors:true,roughness:1}));ground.name='Horizonte_solo';ground.receiveShadow=false;root.add(ground);
+ const ground=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({name:'Horizonte_solo',vertexColors:true,roughness:1}));ground.name='Horizonte_solo';ground.receiveShadow=false;if(!realFar)root.add(ground);
  let buildings=0;
  // The horizon ground's height at (x, y), as the rings are built: from the nearest edge point outwards.
  const groundAt=(x,y)=>{let best=Infinity,b=border[0];for(let i=0;i<N;i+=2){const q=border[i],d=(q[0]-x)**2+(q[1]-y)**2;if(d<best){best=d;b=q;}}
@@ -1425,11 +1428,13 @@ function createHorizon(data,field,rand,{mobile,urban,rural=false,cityAngle=Math.
   // superquadras, the Setor Noroeste, the Eixo Monumental; Goiânia: the city's registered towers and the
   // houses of the neighbourhoods around the circuit) instead of generic rooftops and towers.
   const cols=Object.fromEntries(skyline.columns.map((k,i)=>[k,i])),blocks=[],drums=[],homes=[];
+  // A skyline item may carry its own ground height (cols.z: Floripa, from the city's 1 m terrain model).
+  const at=(b,x,y)=>cols.z!==undefined?b[cols.z]:groundAt(x,y);
   for(const b of skyline.items){
    const x=b[cols.x],y=b[cols.y],kind=b[cols.kind];
    // Real house footprints get tiled roofs like the generic rooftops; a phone keeps half of them.
-   if(kind==='casa'){if(mobile&&rand()<.5)continue;homes.push({x,y,z:groundAt(x,y)-1.2,w:b[cols.w],d:b[cols.d],h:b[cols.h],turn:b[cols.heading],color:[.42+rand()*.14,.12+rand()*.05,.05]});continue;}
-   const g=.5+rand()*.12,item={x,y,z:groundAt(x,y)-2.5,w:b[cols.w],d:b[cols.d],h:b[cols.h]+2.5,turn:b[cols.heading],color:kind==='predio'?[g+.08,g+.06,g+.02]:[g,g+.01,g+.02]};
+   if(kind==='casa'){if(mobile&&rand()<.5)continue;homes.push({x,y,z:at(b,x,y)-1.2,w:b[cols.w],d:b[cols.d],h:b[cols.h],turn:b[cols.heading],color:[.42+rand()*.14,.12+rand()*.05,.05]});continue;}
+   const g=.5+rand()*.12,item={x,y,z:at(b,x,y)-2.5,w:b[cols.w],d:b[cols.d],h:b[cols.h]+2.5,turn:b[cols.heading],color:kind==='predio'?[g+.08,g+.06,g+.02]:[g,g+.01,g+.02]};
    (kind==='redondo'?drums:blocks).push(item);
   }
   const material=sceneryMaterial('house'),compose=(item,matrix,color)=>{matrix.compose(new THREE.Vector3(item.x,item.z,-item.y),new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),item.turn),new THREE.Vector3(item.w,item.h,item.d));color.setRGB(...item.color);};
@@ -1438,7 +1443,7 @@ function createHorizon(data,field,rand,{mobile,urban,rural=false,cityAngle=Math.
   if(homes.length)root.add(chunked('Horizonte_casas',houseGeometry(false),material,homes,compose,{size:1100,shadows:false}));
   buildings=blocks.length+drums.length+homes.length;
   for(const mark of data.scenery.landmarks??[])if(mark.kind==='torre_tv'){const tower=tvTower(mark.h);tower.position.set(mark.x,groundAt(mark.x,mark.y)-.5,-mark.y);tower.name=mark.name;root.add(tower);buildings++;}
- }else if(urban){
+ }else if(urban&&!realFar){
   // Neighbourhood rooftops and, farther out, taller towers toward the city centre (north at Interlagos).
   const items=[],towers=[],count=mobile?1400:3600;
   for(let i=0;i<count;i++){

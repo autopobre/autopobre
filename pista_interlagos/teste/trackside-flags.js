@@ -161,7 +161,8 @@ function buildPlan(data){
   for(let s=side<0?2:2+POLE_GAP/2;s<L-2;s+=2){
    // Corner exits only behind a rail: an open run-off is where a car runs wide.
    if(s-last<gap||inCorner(s)||!(straight(s)||exiting(s,side)&&guardrailPresent(data,s,side)))continue;
-   const {p}=trackPoint(data,s),off=side*(p[4]/2+guardrailClearance(data,s,side)+POLE_BEHIND+rand()*.6),x=p[1]-p[8]*off,y=p[2]+p[7]*off;
+   // Behind a street circuit's concrete wall the poles stand back on the sidewalk, clear of the catch fence.
+   const {p}=trackPoint(data,s),off=side*(p[4]/2+guardrailClearance(data,s,side)+(data.meta.barrier==='street'?2.2:POLE_BEHIND)+rand()*.6),x=p[1]-p[8]*off,y=p[2]+p[7]*off;
    if(bandClearance(bands,x,y).distance<2.5||geo&&wallsNear(geo,x,y,1.5).length||pitBlocked(data,s,off))continue;
    if(!far(x,y,billboards,POLE_CLEAR)||!far(x,y,towers,POLE_CLEAR)||!far(x,y,marshals,POLE_CLEAR)||!far(x,y,cams,POLE_CLEAR)||!far(x,y,gantry,12)||!far(x,y,boards,8)||!far(x,y,poles,12))continue;
    last=s;gap=POLE_GAP*(.7+.6*rand());const main=mainStraight(s),n=k++,team=TEAMS[Math.floor(rand()*TEAMS.length)],roll=rand(),size=.85+.3*rand();

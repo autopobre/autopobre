@@ -172,6 +172,31 @@ CIRCUITOS = {
         'imaginario': True,
         'horizonte': 'chapada',
     },
+    'floripa': {
+        # Circuito de rua imaginario (pedido da equipe, 11/10/2026): as ruas, as pontes e o mar sao os reais de
+        # Florianopolis; fechar a volta com muros e boxes e desenho de jogo (gerar_floripa.py). Largada na Ponte
+        # Hercilio Luz rumo a ilha; Alameda Adolfo Konder, Rua Hoepcke, Rua Claudino Bento da Silva, Av. Paulo
+        # Fontes, Rua Pedro Bittencourt, Ponte Colombo Salles, Rua 14 de Julho no Estreito e de volta a ponte.
+        'nome': 'Autódromo Floripa',
+        'cidade': 'Florianópolis, SC',
+        # Meio do caminho entre a cabeceira continental da Hercilio Luz e a rodoviaria.
+        'centro': (-27.5958, -48.5640),
+        'raio_m': 2100,
+        'epsg': 31982,                 # SIRGAS 2000 / UTM 22S
+        'anadem': '22J',
+        'copernicus': 'Copernicus_DSM_COG_10_S28_00_W049_00_DEM',
+        'worldcover': 'S30W051',
+        'extensao_m': 5000,            # desenho; gerar_floripa.py grava o medido
+        'centro_cidade': (-27.5967, -48.5492),   # Praca XV de Novembro, centro de Florianopolis
+        'largura_m': 11,
+        'sentido': 'horario',
+        'imaginario': True,
+        'rua': True,
+        # Relevo de 1 m (MDT e MDS do aerolevantamento do Estado, 2010-2012), edificacoes do cadastro (2020),
+        # meios-fios e batimetria do GeoFloripa (Prefeitura de Florianopolis).
+        'relevo_local': 'geofloripa_mdt_1m',
+        'edificios_locais': 'geofloripa',
+    },
 }
 
 

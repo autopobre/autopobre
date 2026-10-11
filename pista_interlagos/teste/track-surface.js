@@ -7,6 +7,7 @@ import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {canvasTexture} from './pit-textures.js';
 import {CIRCUITS} from './circuits.js';
 import {circuitSponsors,circuitSeed,seeded,paintBoard,paintWelcome} from './sponsors.js';
+import {createStreetWalls} from './street-walls.js';
 
 // Compile away the expensive near-surface detail on modest GPUs. The same road and
 // collision surface are used by every preset; changing this does not reload the lap.
@@ -28,12 +29,14 @@ export const BOARD_CLEARANCE=6.5;
 // (billboardFormat: the 14.4 m one, or any on a bend) would reach over a rail toward the cars.
 export function billboardSpots(data){
  const length=data.meta.reconstructed_xy_m,bands=sceneryBands(data),spots=[],shifts=[0];
- for(let d=12;d<=150;d+=12)shifts.push(d,-d);
+ // A street circuit (Floripa) looks further: its line is on a bridge, and the city leaves few gaps behind the walls.
+ for(let d=12;d<=(data.meta.street?600:150);d+=12)shifts.push(d,-d);
  for(let slot=0;slot<16;slot++){
   const start=slot===0?length-30:slot===1?70:230+(slot-2)*(length-480)/14,f=billboardFormat(data,{slot});
   search:for(const shift of shifts)for(const side of [slot%2?1:-1,slot%2?-1:1]){
    const s=((start+shift)%length+length)%length,index=Math.max(0,data.samples.findIndex(q=>q[0]>=s)),p=data.samples[index];
-   const near=p[4]/2+guardrailClearance(data,p[0],side)+5,reach=boardReach(data,index,side,f,near);if(!(reach<BOARD_REACH))continue;
+   // Behind a street circuit's wall the sidewalk is narrow: the board stands a little further back, in the city.
+   const near=p[4]/2+guardrailClearance(data,p[0],side)+(data.meta.street?6.4:5),reach=boardReach(data,index,side,f,near);if(!(reach<BOARD_REACH))continue;
    const offset=side*(near+reach),x=p[1]-p[8]*offset,y=p[2]+p[7]*offset;
    const clearance=bandClearance(bands,x,y).distance;
    if(clearance>BOARD_CLEARANCE&&spots.every(b=>Math.hypot(b.x-x,b.y-y)>25)){spots.push({slot,index,p,side,x,y,clearance});break search;}
@@ -305,6 +308,8 @@ export function createCurbs(data,{quality='alto'}={}){
 
 // Each rendered strip is independent: no faces or posts bridge the run-off gaps.
 export function createGuardrails(data,{quality='alto'}={}){
+ // A street circuit (Floripa) is closed by concrete blocks and catch fences instead of steel rails.
+ if(data.meta.barrier==='street')return createStreetWalls(data,{quality});
  const root=new THREE.Group(),closed=data.meta.id==='curvelo';root.name=closed?'Guardrail_circuito_completo':'Guardrails_trechos_Interlagos';
  const probe=new TestCar(data),nodes=data.samples.filter((_,i)=>i%2===0),positions=[],uvs=[],indices=[],postPoints=[],reflectorPoints=[],a=data.samples,L=data.meta.reconstructed_xy_m;
  const profile=[[.34,0],[.44,.10],[.56,0],[.68,.10],[.8,0],[.91,.06]];
