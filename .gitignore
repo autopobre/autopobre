@@ -65,6 +65,8 @@ desktop.ini
 # Photos of other people taken by others stay local: Kléber Eletric's (reference for pit-crew.js and
 # story-scene.js; one carries a photographer's credit).
 /carro/kleber_eletric_*
+# Reference photos the players send (e.g. the Chapada's walls, Central de Projetos #5): their authors are unknown.
+/fotos_referencia/
 # Research write-ups (e.g. "Netcode em jogos de corrida") stay local: not part of the game.
 /reports/
 /research_notes/
