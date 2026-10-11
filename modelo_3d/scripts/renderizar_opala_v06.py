@@ -116,6 +116,16 @@ def to_jpg(png,jpg):
   img=bpy.data.images.load(str(png));img.file_format='JPEG'
   sc=bpy.context.scene;sc.render.image_settings.file_format='JPEG';sc.render.image_settings.quality=90
   img.save_render(str(jpg),scene=sc);sc.render.image_settings.file_format='PNG';bpy.data.images.remove(img)
+  strip_jpg(jpg)
+
+def strip_jpg(jpg):
+ # Blender's JPEG writer keeps the render's metadata in comment segments, the blend's full path among it: dropped.
+ d=jpg.read_bytes();i=2;out=[d[:2]]
+ while d[i]==0xFF and d[i+1]!=0xDA:
+  n=int.from_bytes(d[i+2:i+4],'big')
+  if d[i+1] not in (0xFE,0xE1):out.append(d[i:i+2+n])
+  i+=2+n
+ jpg.write_bytes(b''.join(out)+d[i:])
 
 def main():
  gpu();OUT.mkdir(parents=True,exist_ok=True);tmp=Path(tempfile.mkdtemp(prefix='opala_v06_render_'))

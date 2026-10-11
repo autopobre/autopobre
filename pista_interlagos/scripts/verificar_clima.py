@@ -115,6 +115,39 @@ with sync_playwright() as p:
     page.wait_for_timeout(1500)
     story = info(page)
     check('story_starts_with_lamps_off', story['time'] == 'noite' and story['lamps']['installed'] and not story['lamps']['lit'], story['lamps'])
+    page.close()
+    # The Seiva livery carries the auxiliary lamps too (since 2026-10-11): they light its road at night.
+    seiva_prefs = {'timeOfDay': 'noite', 'rain': 'seco', 'livery': 'seiva_danilo', 'carModel': 'opala'}
+    page = browser.new_page(viewport={'width': 1280, 'height': 720})
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    page.add_init_script("""(p=>{try{const k='opala99-preferences-v1',v=JSON.parse(localStorage.getItem(k)||'{}');Object.assign(v,p);localStorage.setItem(k,JSON.stringify(v));}catch(e){}})(%s)""" % json.dumps(seiva_prefs))
+    open_menu(page, URL + ('&' if '?' in URL else '?') + 'circuito=interlagos')
+    race_options(page, camera='chase', livery='seiva_danilo')
+    enter_track(page, 'Piloto Seiva')
+    wait_race_start(page)
+    page.wait_for_timeout(800)
+    seiva = info(page)['lamps']
+    check('seiva_lights_its_auxiliary_lamps', seiva['set'] == 'milha' and seiva['lit'] and seiva['intensity'] > 0, seiva)
+    page.close()
+    # The Fusca in the rain: its own two blades sweep its windscreen, drops on the glass from its cockpit.
+    page = browser.new_page(viewport={'width': 1280, 'height': 720})
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    page.add_init_script("""(p=>{try{const k='opala99-preferences-v1',v=JSON.parse(localStorage.getItem(k)||'{}');Object.assign(v,p);localStorage.setItem(k,JSON.stringify(v));}catch(e){}})(%s)""" % json.dumps({'timeOfDay': 'dia', 'rain': 'chuva', 'carModel': 'fusca'}))
+    open_menu(page, URL + ('&' if '?' in URL else '?') + 'circuito=interlagos')
+    race_options(page, camera='cockpit')
+    enter_track(page, 'Piloto Fusca')
+    wait_race_start(page)
+    wait_js(page, '!window.interlagosClima.info().compiling', timeout=90000)
+    page.wait_for_timeout(800)
+    fusca = info(page)['fuscaWipers']
+    turns = sorted(p['turn'] for p in fusca['pivots'] or [])
+    check('fusca_wipers_cut_out', fusca['ready'] and fusca['blades'] == 2 and turns == [-1, 1] and all(p['tris'] > 20 for p in fusca['pivots']), fusca)
+    check('fusca_drops_from_its_cockpit', fusca['on'] and fusca['visible'], fusca)
+    sweeping = [info(page)['fuscaWipers']['angles'][0] for _ in range(4) if not page.wait_for_timeout(180)]
+    check('fusca_blades_sweep', max(sweeping) - min(sweeping) > .2, sweeping)
+    page.keyboard.press('KeyJ')
+    page.wait_for_timeout(1600)
+    check('j_parks_the_fusca_wipers', info(page)['fuscaWipers']['angles'] == [0, 0], info(page)['fuscaWipers'])
     browser.close()
 
 check('no_page_errors', not errors, errors[:5])

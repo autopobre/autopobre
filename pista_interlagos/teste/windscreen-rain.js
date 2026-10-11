@@ -1,17 +1,26 @@
 import * as THREE from 'three';
 import {EFFECT_LIGHT} from './weather.js';
 
-// Rain on the Opala's windscreen and its wipers (weather.js rain; the cockpit's LIMP switch, J).
-// The V06 GLB bakes the two parked wipers into the body's Metal_escuro mesh (exportar_glb_jogo.py joins meshes by
-// material), so prepareWipers cuts them out of the template as it loads: the small parts at the windscreen's foot
-// (cap, arm, blade, two holders each) go on two pivots that turn in the glass's plane, nothing drawn twice. The
-// drops are a skin just outside the glass's outer face (a copy of it), drawn from the cockpit only: beads and drops
-// that gather where the blades last passed some seconds ago, all over where they never pass, creeping up the glass
-// at speed. The blades and the drops share one clock (wiperAngle), so the swept arc is clear behind each blade.
+// Rain on the windscreen and its wipers (weather.js rain; the Opala cockpit's LIMP switch, J), for the Opala and the Fusca.
+// Their GLBs bake the parked wipers into a body mesh (exportar_glb_jogo.py and the Fusca's exporter join meshes by
+// material), so prepareWipers cuts them out of the template as it loads: the small parts at the windscreen's foot go
+// on two pivots that turn in the glass's plane, nothing drawn twice. The drops are a skin just outside the glass's
+// outer face (a copy of it), drawn from the cockpit only: beads and drops that gather where the blades last passed
+// some seconds ago, all over where they never pass, creeping up the glass at speed. The blades and the drops share
+// one clock (wiperAngle), so the swept arc is clear behind each blade.
 // Car frame: +X forward, +Y up, +Z right (passenger side).
-const WIPER_BOX=Object.freeze({min:[.85,.88,-.7],max:[.97,.97,.15]});
-// Sweep (radians from parked, up the glass), period (s) and the blades' reach from their pivots (m).
-export const WIPERS=Object.freeze({sweep:[1.66,1.78],period:1.15,reach:[.04,.47]});
+// WIPER_PROFILES: the mesh holding the wipers and the glass's, the box the wiper parts lie in, the windscreen's
+// rough normal (hint), how the pivots are found ('caps': the Opala's pivot caps, cap/arm/blade/holders per wiper;
+// 'outer': the Fusca's bare blades, turning about their outer ends), sweep (radians from parked, up the glass) and the
+// blades' reach from their pivots (m).
+export const WIPER_PROFILES=Object.freeze({
+ opala:Object.freeze({wipers:'GLB_OPALA_99_ROOT_Metal_escuro',glass:'GLB_OPALA_99_ROOT_Policarbonato_fume',box:{min:[.85,.88,-.7],max:[.97,.97,.15]},maxTris:700,hint:[.64,.77,0],frontX:.3,
+  pivots:'caps',sweep:[1.66,1.78],reach:[.04,.47]}),
+ fusca:Object.freeze({wipers:'GLB_FUSCA_ROOT_Borracha',glass:'GLB_FUSCA_ROOT_Vidro_fusca',box:{min:[.72,.86,-.5],max:[.86,.98,.5]},maxTris:300,hint:[.8,.6,0],frontX:-.2,
+  pivots:'outer',sweep:[1.32,1.32],reach:[.03,.43]})
+});
+// The period (s) of a stroke; WIPERS keeps the Opala's numbers for the checks.
+export const WIPERS=Object.freeze({sweep:WIPER_PROFILES.opala.sweep,period:1.15,reach:WIPER_PROFILES.opala.reach});
 const PI2=Math.PI*2;
 
 // Triangles grouped by the parts they make (vertices at the same place join), with their boxes.
@@ -34,22 +43,34 @@ function extract(geometry,index,tris,origin){
  // Indexed like the body's meshes, so a rival cloned from the template merges them into its batches (car-finish rivals).
  out.setIndex(Array.from({length:n},(_,i)=>i));out.translate(-origin.x,-origin.y,-origin.z);return out;
 }
-// The template's wipers on pivots (once per template, before any rival is cloned from it) and the outer face of its
-// windscreen for the drops. model.userData.wipers: {pivots, axis, glass (outer face geometry, model frame), basis} or null.
-export function prepareWipers(model){
- if(model.userData.wipers!==undefined)return model.userData.wipers;
- model.userData.wipers=null;
- const metal=model.getObjectByName('GLB_OPALA_99_ROOT_Metal_escuro'),glassMesh=model.getObjectByName('GLB_OPALA_99_ROOT_Policarbonato_fume');
+// The point of some triangles furthest from p (a blade's or an arm's far end).
+function farthest(geometry,index,tris,p){
+ const pos=geometry.attributes.position,q=new THREE.Vector3(),best=new THREE.Vector3();let far=-1;
+ for(const t of tris)for(let j=0;j<3;j++){q.fromBufferAttribute(pos,index[t+j]);const d=q.distanceTo(p);if(d>far){far=d;best.copy(q);}}
+ return best;
+}
+// What prepareWipers found, per template: {profile, pivots, axis, skin, side, up} or null. Not in userData: three.js
+// copies userData through JSON on every clone (each rival would serialise the drops' geometry).
+const WIPER_DATA=new WeakMap();
+export const wipersOf=model=>model?WIPER_DATA.get(model)??null:null;
+// The template's wipers on pivots (once per template, before any car is cloned from it) and the outer face of its
+// windscreen for the drops.
+export function prepareWipers(model,profile=WIPER_PROFILES.opala){
+ if(WIPER_DATA.has(model))return WIPER_DATA.get(model);
+ WIPER_DATA.set(model,null);
+ const metal=model.getObjectByName(profile.wipers),glassMesh=model.getObjectByName(profile.glass);
  if(!metal?.isMesh||!glassMesh?.isMesh||!metal.geometry.index)return null;
- // The windscreen: the biggest part of the glass ahead of the cabin; its plane's normal (outward and up).
- const glass=parts(glassMesh.geometry),front=glass.groups.filter(g=>g.min[0]>.3).sort((a,b)=>b.tris.length-a.tris.length)[0];
+ // The windscreen: the biggest part of the glass ahead of the cabin; its plane's normal (outward and up), from the faces
+ // that look roughly the hint's way (not the quarter windows a part may carry along).
+ const hint=new THREE.Vector3(...profile.hint).normalize(),glass=parts(glassMesh.geometry),front=glass.groups.filter(g=>g.min[0]>profile.frontX).sort((a,b)=>b.tris.length-a.tris.length)[0];
  if(!front)return null;
- const gp=glassMesh.geometry.attributes.position,A=new THREE.Vector3(),B=new THREE.Vector3(),C=new THREE.Vector3(),f=new THREE.Vector3(),axis=new THREE.Vector3(),hint=new THREE.Vector3(.64,.77,0);
- for(const t of front.tris){A.fromBufferAttribute(gp,glass.index[t]);B.fromBufferAttribute(gp,glass.index[t+1]);C.fromBufferAttribute(gp,glass.index[t+2]);f.subVectors(B,A).cross(C.clone().sub(A));if(f.dot(hint)<0)f.negate();axis.add(f);}
+ const gp=glassMesh.geometry.attributes.position,A=new THREE.Vector3(),B=new THREE.Vector3(),C=new THREE.Vector3(),f=new THREE.Vector3(),axis=new THREE.Vector3();
+ const normal=t=>{A.fromBufferAttribute(gp,glass.index[t]);B.fromBufferAttribute(gp,glass.index[t+1]);C.fromBufferAttribute(gp,glass.index[t+2]);return f.subVectors(B,A).cross(C.clone().sub(A));};
+ for(const t of front.tris){const n=normal(t),l=n.length();if(l>0&&Math.abs(n.dot(hint))/l>.5)axis.addScaledVector(n,Math.sign(n.dot(hint)));}
  axis.normalize();
  // Outer face only (its normals point the axis's way), a couple of millimetres off the glass.
- const outer=front.tris.filter(t=>{A.fromBufferAttribute(gp,glass.index[t]);B.fromBufferAttribute(gp,glass.index[t+1]);C.fromBufferAttribute(gp,glass.index[t+2]);return f.subVectors(B,A).cross(C.clone().sub(A)).normalize().dot(axis)>.3;});
- const skin=extract(glassMesh.geometry,glass.index,outer.length>front.tris.length*.25?outer:front.tris,new THREE.Vector3());
+ const outer=front.tris.filter(t=>normal(t).normalize().dot(axis)>.5);
+ const skin=extract(glassMesh.geometry,glass.index,outer.length>front.tris.length*.15?outer:front.tris,new THREE.Vector3());
  skin.deleteAttribute('uv');skin.deleteAttribute('tangent');
  // The glass's own 2D frame: across the car (z) and up its slope.
  const side=new THREE.Vector3(0,0,1),up=new THREE.Vector3().crossVectors(side,axis).normalize();
@@ -57,19 +78,24 @@ export function prepareWipers(model){
  for(let i=0;i<sp.count;i++){A.fromBufferAttribute(sp,i).addScaledVector(axis,.0025);sp.setXYZ(i,A.x,A.y,A.z);coords[i*2]=A.dot(side);coords[i*2+1]=A.dot(up);}
  skin.setAttribute('glass',new THREE.BufferAttribute(coords,2));skin.computeBoundingSphere();
  // The wipers: small parts inside the box at the windscreen's foot.
- const metalParts=parts(metal.geometry),inBox=g=>g.tris.length<=700&&g.min.every((v,a)=>v>=WIPER_BOX.min[a])&&g.max.every((v,a)=>v<=WIPER_BOX.max[a]);
- const small=metalParts.groups.filter(inBox);if(small.length<6)return null;
- const size=g=>Math.max(...g.max.map((v,a)=>v-g.min[a]));
- const caps=small.filter(g=>g.tris.length>=30&&g.tris.length<=120&&size(g)<.06).sort((a,b)=>a.centre[2]-b.centre[2]);
- const arms=[...small].sort((a,b)=>b.tris.length-a.tris.length).slice(0,2);
- if(caps.length!==2||arms.some(a=>caps.includes(a)))return null;
- const pivots=caps.map((cap,i)=>{
-  const p=new THREE.Vector3(...cap.centre),arm=arms.reduce((best,a)=>{const d=Math.min(...[a.min[2],a.max[2]].map(z=>Math.abs(z-p.z)));return d<best.d?{a,d}:best;},{a:null,d:Infinity}).a;
-  // The arm's far end: its point furthest from the pivot.
-  const mp=metal.geometry.attributes.position,tip=new THREE.Vector3(),q=new THREE.Vector3();let far=0;
-  for(const t of arm.tris)for(let j=0;j<3;j++){q.fromBufferAttribute(mp,metalParts.index[t+j]);const d=q.distanceTo(p);if(d>far){far=d;tip.copy(q);}}
-  return {name:i===0?'Limpador_motorista_PIVO':'Limpador_passageiro_PIVO',pivot:p,tip,tris:[]};
- });
+ const box=profile.box,metalParts=parts(metal.geometry),inBox=g=>g.tris.length<=profile.maxTris&&g.min.every((v,a)=>v>=box.min[a])&&g.max.every((v,a)=>v<=box.max[a]);
+ const small=metalParts.groups.filter(inBox),names=['Limpador_motorista_PIVO','Limpador_passageiro_PIVO'];let pivots;
+ if(profile.pivots==='caps'){
+  if(small.length<6)return null;
+  const size=g=>Math.max(...g.max.map((v,a)=>v-g.min[a]));
+  const caps=small.filter(g=>g.tris.length>=30&&g.tris.length<=120&&size(g)<.06).sort((a,b)=>a.centre[2]-b.centre[2]);
+  const arms=[...small].sort((a,b)=>b.tris.length-a.tris.length).slice(0,2);
+  if(caps.length!==2||arms.some(a=>caps.includes(a)))return null;
+  pivots=caps.map((cap,i)=>{
+   const p=new THREE.Vector3(...cap.centre),arm=arms.reduce((best,a)=>{const d=Math.min(...[a.min[2],a.max[2]].map(z=>Math.abs(z-p.z)));return d<best.d?{a,d}:best;},{a:null,d:Infinity}).a;
+   return {name:names[i],pivot:p,tip:farthest(metal.geometry,metalParts.index,arm.tris,p),tris:[]};
+  });
+ }else{
+  // Bare blades: each turns about its outer end (the one further from the car's middle).
+  const blades=[...small].sort((a,b)=>b.tris.length-a.tris.length).slice(0,2).sort((a,b)=>a.centre[2]-b.centre[2]);
+  if(blades.length!==2)return null;
+  pivots=blades.map((g,i)=>{const end=farthest(metal.geometry,metalParts.index,g.tris,new THREE.Vector3(g.centre[0],g.centre[1],0));return {name:names[i],pivot:end,tip:farthest(metal.geometry,metalParts.index,g.tris,end),tris:[]};});
+ }
  // Each part to the wiper whose pivot-to-tip line passes nearest.
  const line=new THREE.Line3(),c=new THREE.Vector3(),onLine=new THREE.Vector3();
  for(const g of small){
@@ -82,12 +108,13 @@ export function prepareWipers(model){
  for(const w of pivots){
   const group=new THREE.Group();group.name=w.name;group.position.copy(w.pivot).applyMatrix4(metal.matrix);metal.parent.add(group);
   const mesh=new THREE.Mesh(extract(metal.geometry,metalParts.index,w.tris,w.pivot),metal.material);mesh.name=w.name.replace('_PIVO','');mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
-  w.object=group;w.rest=group.quaternion.clone();
-  // In the glass's 2D frame: the pivot, and the parked blade's direction there.
-  w.pivot2=new THREE.Vector2(w.pivot.dot(side),w.pivot.dot(up));const tipDir=new THREE.Vector2(w.tip.dot(side),w.tip.dot(up)).sub(w.pivot2);w.park=Math.atan2(tipDir.y,tipDir.x);
+  w.rest=group.quaternion.clone();
+  // In the glass's 2D frame: the pivot and the parked blade's direction; turn: which way is up the glass (+1 a blade
+  // parked pointing to the driver's side, as the Opala's; -1 to the passenger's, the Fusca's driver-side blade).
+  w.pivot2=new THREE.Vector2(w.pivot.dot(side),w.pivot.dot(up));const tipDir=new THREE.Vector2(w.tip.dot(side),w.tip.dot(up)).sub(w.pivot2);w.park=Math.atan2(tipDir.y,tipDir.x);w.turn=tipDir.x<0?1:-1;
  }
  metal.geometry.setIndex(keep);
- return model.userData.wipers={pivots,axis,skin,side,up};
+ const data={profile,pivots,axis,skin,side,up};WIPER_DATA.set(model,data);return data;
 }
 
 // The wipers' angle at a time: from parked up the glass and back, over one period.
@@ -97,14 +124,15 @@ const vertexShader=`attribute vec2 glass;varying vec2 vGlass;
 void main(){vGlass=glass;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`;
 const fragmentShader=`
 uniform float time,amount,fill,light,creep,wipeOn,wipeStart,wipeOff,period;
-uniform vec4 wiperA,wiperB;uniform vec2 sweep;
+uniform vec4 wiperA,wiperB;uniform vec2 sweep,reach;
 varying vec2 vGlass;
 float h1(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 vec2 h2(vec2 p){return fract(sin(vec2(dot(p,vec2(269.5,183.3)),dot(p,vec2(113.5,271.9))))*43758.5453);}
-// Seconds since a wiper's blade last passed g (1e4: it never passes there).
+// Seconds since a wiper's blade last passed g (1e4: it never passes there). w: pivot (xy), parked angle (z) and the
+// way up the glass (w: +1 or -1).
 float since(vec2 g,vec4 w,float tmax){
- vec2 v=g-w.xy;float r=length(v);if(r<${WIPERS.reach[0].toFixed(3)}||r>${WIPERS.reach[1].toFixed(3)})return 1e4;
- float phi=w.z-atan(v.y,v.x);phi=phi-6.2831853*floor((phi+3.14159265)/6.2831853);
+ vec2 v=g-w.xy;float r=length(v);if(r<reach.x||r>reach.y)return 1e4;
+ float phi=w.w*(w.z-atan(v.y,v.x));phi=phi-6.2831853*floor((phi+3.14159265)/6.2831853);
  if(phi<0.0||phi>tmax)return 1e4;
  if(wipeOn<.5)return time-wipeOff;
  float el=time-wipeStart,s=acos(clamp(1.0-2.0*phi/tmax,-1.0,1.0))/6.2831853,p=fract(el/period);
@@ -141,22 +169,26 @@ void main(){
  gl_FragColor=vec4(col,alpha);
 }`;
 
+const turnBy=new THREE.Quaternion();
 export class WindscreenRain{
  constructor(){
   this.uniforms={time:{value:0},amount:{value:0},fill:{value:2.5},light:{value:1},creep:{value:0},wipeOn:{value:0},wipeStart:{value:0},wipeOff:{value:-100},period:{value:WIPERS.period},
-   wiperA:{value:new THREE.Vector4()},wiperB:{value:new THREE.Vector4()},sweep:{value:new THREE.Vector2(...WIPERS.sweep)}};
+   wiperA:{value:new THREE.Vector4()},wiperB:{value:new THREE.Vector4()},sweep:{value:new THREE.Vector2(...WIPERS.sweep)},reach:{value:new THREE.Vector2(...WIPERS.reach)}};
   // Both sides: the skin's faces look out of the car, the driver sees them from behind.
   this.material=new THREE.ShaderMaterial({name:'Gotas_parabrisa',vertexShader,fragmentShader,uniforms:this.uniforms,transparent:true,depthWrite:false,fog:false,side:THREE.DoubleSide,
    blending:THREE.CustomBlending,blendSrc:THREE.SrcAlphaFactor,blendDst:THREE.OneMinusSrcAlphaFactor,blendSrcAlpha:THREE.ZeroFactor,blendDstAlpha:THREE.OneFactor});
-  this.mesh=null;this.model=null;this.on=false;this.stopping=false;this.time=0;this.wipeStart=0;this.angles=[0,0];
+  this.mesh=null;this.model=null;this.wipers=null;this.blades=[];this.sweep=WIPERS.sweep;this.on=false;this.stopping=false;this.time=0;this.wipeStart=0;this.angles=[0,0];
  }
- // The player's car as loaded (its template after prepareWipers); holder: the group the body sits in, in the same
- // frame (the drops are not part of the template: rivals cloned from it carry none).
- attach(model,holder){
-  this.mesh?.removeFromParent();this.mesh=null;this.model=model;const w=model?.userData.wipers;if(!w)return;
-  this.mesh=new THREE.Mesh(w.skin,this.material);this.mesh.name='Gotas_no_parabrisa';this.mesh.renderOrder=5;this.mesh.frustumCulled=false;this.mesh.visible=false;
+ // The player's car (the Opala's template as loaded, or a Fusca cloned from its template after prepareWipers); its
+ // pivots are found by name in it. holder: where the drops go, in the car's own frame (the Opala's shell: the
+ // template stays clean for the rivals cloned from it; a clone itself).
+ attach(model,holder,wipers=wipersOf(model)){
+  this.mesh?.removeFromParent();this.mesh=null;this.model=model;this.wipers=wipers??null;this.blades=[];if(!wipers)return;
+  this.blades=wipers.pivots.map(p=>model.getObjectByName(p.name)).filter(Boolean);
+  this.sweep=wipers.profile.sweep;this.uniforms.sweep.value.set(...this.sweep);this.uniforms.reach.value.set(...wipers.profile.reach);
+  this.mesh=new THREE.Mesh(wipers.skin,this.material);this.mesh.name='Gotas_no_parabrisa';this.mesh.renderOrder=5;this.mesh.frustumCulled=false;this.mesh.visible=false;
   holder.add(this.mesh);
-  const [a,b]=w.pivots;this.uniforms.wiperA.value.set(a.pivot2.x,a.pivot2.y,a.park,0);this.uniforms.wiperB.value.set(b.pivot2.x,b.pivot2.y,b.park,0);
+  const [a,b]=wipers.pivots;this.uniforms.wiperA.value.set(a.pivot2.x,a.pivot2.y,a.park,a.turn);this.uniforms.wiperB.value.set(b.pivot2.x,b.pivot2.y,b.park,b.turn);
   this.place();
  }
  // On (true) the blades start from parked; off, they finish their stroke and park.
@@ -168,8 +200,8 @@ export class WindscreenRain{
  }
  get wiping(){return this.on&&!this.stopping;}
  place(){
-  const w=this.model?.userData.wipers;if(!w)return;
-  w.pivots.forEach((p,i)=>{p.object.quaternion.copy(p.rest).premultiply(new THREE.Quaternion().setFromAxisAngle(w.axis,this.angles[i]));});
+  const w=this.wipers;if(!w)return;
+  this.blades.forEach((o,i)=>{const p=w.pivots[i];o.quaternion.copy(p.rest).premultiply(turnBy.setFromAxisAngle(w.axis,this.angles[i]*p.turn));});
  }
  // dt: seconds (0 paused); rain: the weather's drops share (0 dry); fill: seconds for the glass to fill again behind a
  // blade; speed: m/s; inside: the cockpit view (the drops draw only there).
@@ -179,7 +211,7 @@ export class WindscreenRain{
    const el=this.time-this.wipeStart,cycle=Math.floor(el/WIPERS.period);
    // A stop waits for the stroke to end (both blades parked).
    if(this.stopping&&cycle>=(this.stopCycle??=cycle)+1){this.on=false;this.stopping=false;this.stopCycle=undefined;this.angles=[0,0];u.wipeOff.value=this.time;}
-   else this.angles=WIPERS.sweep.map(s=>wiperAngle(el,s));
+   else this.angles=this.sweep.map(s=>wiperAngle(el,s));
   }
   if(!this.stopping)this.stopCycle=undefined;
   this.place();
@@ -191,5 +223,5 @@ export class WindscreenRain{
  info(){
   const m=this.mesh;let skin=null;
   if(m){const box=new THREE.Box3().setFromObject(m),chain=[];for(let o=m;o;o=o.parent)chain.push(`${o.name||o.type}:${o.visible?1:0}`);skin={verts:m.geometry.attributes.position.count,box:[box.min.toArray(),box.max.toArray()].map(v=>v.map(x=>+x.toFixed(2))),chain:chain.join('<')};}
-  return {skin,ready:!!this.mesh,on:this.on,stopping:this.stopping,angles:this.angles.map(a=>+a.toFixed(3)),visible:!!this.mesh?.visible,pivots:this.model?.userData.wipers?.pivots.map(p=>({name:p.name,tris:p.tris.length,at:p.pivot.toArray().map(v=>+v.toFixed(3))}))??null};}
+  return {skin,ready:!!this.mesh,on:this.on,stopping:this.stopping,angles:this.angles.map(a=>+a.toFixed(3)),visible:!!this.mesh?.visible,blades:this.blades.length,pivots:this.wipers?.pivots.map(p=>({name:p.name,tris:p.tris.length,turn:p.turn,at:p.pivot.toArray().map(v=>+v.toFixed(3))}))??null};}
 }

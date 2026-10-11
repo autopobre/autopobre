@@ -2,22 +2,27 @@ name: Publicar Auto-Pobre Racing
 
 # Publishing is manual: pushes to main no longer replace the live game.
 # Actions -> Publicar Auto-Pobre Racing -> Run workflow, choosing what to publish.
-# The main link shows `versao` (the announced release, apr-2.1), /apr_v1/ keeps `versao_v1`
-# (the first release, apr-1.0) online for history, and /dev/ shows `versao_dev` (the one in
-# progress, main). Each is built from its own checkout, tested and packed into one Pages
-# site. An empty versao_v1 or versao_dev leaves that address out. The multiplayer test room
-# is published only under /dev/; the run fails if the main link or /apr_v1/ would carry it.
+# The main link shows `versao` (the announced release, apr-3.0-rc2), /apr_v1/ and /apr_v2/ keep
+# `versao_v1` (the first release, apr-1.0) and `versao_v2` (the last 2.x, apr-2.1) online as
+# legacy, and /dev/ shows `versao_dev` (the one in progress, main). Each is built from its own
+# checkout, tested and packed into one Pages site. An empty versao_v1, versao_v2 or versao_dev
+# leaves that address out. The multiplayer test room is published only under /dev/; the run
+# fails if the main link, /apr_v1/ or /apr_v2/ would carry it.
 on:
   workflow_dispatch:
     inputs:
       versao:
-        description: 'Link principal (inteligenciamilgrau.github.io/autopobre/): qual versão do jogo vai ali. Tag (apr-2.1), branch (main) ou commit.'
+        description: 'Link principal (inteligenciamilgrau.github.io/autopobre/): qual versão do jogo vai ali. Tag (apr-3.0-rc2), branch (main) ou commit.'
         required: true
-        default: apr-2.1
+        default: apr-3.0-rc2
       versao_v1:
-        description: 'Endereço .../autopobre/apr_v1/ (versão antiga, histórico): qual versão vai ali. Se apagar este campo, o /apr_v1/ sai do ar.'
+        description: 'Endereço .../autopobre/apr_v1/ (versão legada 1.0): qual versão vai ali. Se apagar este campo, o /apr_v1/ sai do ar.'
         required: false
         default: apr-1.0
+      versao_v2:
+        description: 'Endereço .../autopobre/apr_v2/ (versão legada 2.1): qual versão vai ali. Se apagar este campo, o /apr_v2/ sai do ar.'
+        required: false
+        default: apr-2.1
       versao_dev:
         description: 'Endereço .../autopobre/dev/ (versão em teste, a única com multiplayer): qual versão vai ali. Se apagar este campo, o /dev/ sai do ar.'
         required: false
@@ -51,6 +56,13 @@ jobs:
           ref: ${{ inputs.versao_v1 }}
           path: apr_v1
           persist-credentials: false
+      - name: Baixar a versao de /apr_v2/
+        if: ${{ inputs.versao_v2 != '' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.versao_v2 }}
+          path: apr_v2
+          persist-credentials: false
       - name: Baixar a versao de /dev/
         if: ${{ inputs.versao_dev != '' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -70,17 +82,17 @@ jobs:
           python-version: '3.12'
       - name: Instalar a dependencia fixada no lock
         run: |
-          for pasta in principal apr_v1 dev; do
+          for pasta in principal apr_v1 apr_v2 dev; do
             [ -d "$pasta" ] || continue
             npm ci --prefix "$pasta/pista_interlagos/teste" --ignore-scripts --no-audit --no-fund
           done
       - name: Verificar cada versao (preferencias, audio, contatos, corrida, boxes)
         run: |
-          for pasta in principal apr_v1 dev; do
+          for pasta in principal apr_v1 apr_v2 dev; do
             [ -d "$pasta" ] || continue
             echo "::group::Testes de $pasta"
             for teste in testar_preferencias testar_audio testar_eventos_audio testar_colisoes testar_saldo testar_imersivo testar_voltas testar_derrapadas testar_terreno_rivais testar_aderencia testar_direcao testar_bandeirada testar_recordes testar_pilotos_largada testar_curvelo testar_pitstop testar_controle testar_retorno_camera testar_volante testar_freio_re testar_graficos testar_luz testar_fantasma testar_camera testar_colisao_fusca testar_mecanica_fusca testar_multiplayer testar_estados_sala testar_zebras testar_particulas testar_bandeiras testar_beira testar_contato testar_pintura testar_grid_fusca testar_clima; do
-              # A release from before a test was written (apr-2.0 and apr-1.0 have no testar_controle, testar_volante, testar_graficos, testar_fantasma, testar_colisao_fusca or testar_mecanica_fusca)
+              # A release from before a test was written (apr-1.0 and apr-2.1 lack the newer ones, e.g. testar_controle, testar_volante, testar_graficos, testar_fantasma, testar_clima)
               # skips it; /dev/ must have every one.
               if [ "$pasta" != dev ] && [ ! -f "$pasta/pista_interlagos/scripts/$teste.mjs" ]; then
                 echo "::notice::$pasta nao tem $teste (versao anterior ao teste): pulado."
@@ -90,15 +102,16 @@ jobs:
             done
             echo "::endgroup::"
           done
-      # The multiplayer test room goes only to /dev/: the main link and /apr_v1/ are built without it.
-      - name: Gerar somente os arquivos publicos (/apr_v1/ e /dev/ em subpastas)
+      # The multiplayer test room goes only to /dev/: the main link, /apr_v1/ and /apr_v2/ are built without it.
+      - name: Gerar somente os arquivos publicos (/apr_v1/, /apr_v2/ e /dev/ em subpastas)
         run: |
           (cd principal && python pista_interlagos/scripts/preparar_publicacao.py)
           [ ! -d apr_v1 ] || (cd apr_v1 && python pista_interlagos/scripts/preparar_publicacao.py)
+          [ ! -d apr_v2 ] || (cd apr_v2 && python pista_interlagos/scripts/preparar_publicacao.py)
           [ ! -d dev ] || (cd dev && python pista_interlagos/scripts/preparar_publicacao.py --multiplayer)
           mkdir site
           cp -a principal/dist/. site/
-          for pasta in apr_v1 dev; do
+          for pasta in apr_v1 apr_v2 dev; do
             [ -d "$pasta" ] || continue
             mkdir "site/$pasta"
             cp -a "$pasta/dist/." "site/$pasta/"
@@ -106,7 +119,7 @@ jobs:
       # A commit from before the build knew --multiplayer always packs it: that one cannot go to these addresses.
       - name: Conferir que o multiplayer ficou so em /dev/
         run: |
-          for pasta in principal apr_v1; do
+          for pasta in principal apr_v1 apr_v2; do
             [ -d "$pasta" ] || continue
             for arquivo in multiplayer.js multiplayer.css net-room.js net-cars.js net-link.js net-verify.js; do
               if [ -e "$pasta/dist/$arquivo" ]; then

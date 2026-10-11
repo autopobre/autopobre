@@ -6,7 +6,7 @@ import {SUN_DIRECTION} from '../teste/sky.js';
 import {LOOK} from '../teste/cinematic.js';
 import {beamShape,BEAM_LOW,BEAM_HIGH,LAMP_SETS,ROAD_LAMPS,ROAD_LAMPS_MAX,updateRoadLamps,lampPatch,PlayerHeadlights} from '../teste/headlights.js';
 import {Rain,RAIN_DROPS,SPLASH} from '../teste/rain.js';
-import {wiperAngle,WIPERS} from '../teste/windscreen-rain.js';
+import {wiperAngle,WIPERS,WIPER_PROFILES} from '../teste/windscreen-rain.js';
 import {createFloodlights,FLOOD} from '../teste/floodlights.js';
 import {TestCar} from '../teste/physics.js';
 import {RaceField} from '../teste/race-field.js';
@@ -100,6 +100,10 @@ for(const sweep of WIPERS.sweep){
  assert.ok(Math.abs(wiperAngle(WIPERS.period*.3,sweep)-wiperAngle(WIPERS.period*.7,sweep))<1e-9,'the way back mirrors the way up');
 }
 assert.ok(WIPERS.sweep.every(s=>s>1.4&&s<1.9)&&WIPERS.reach[1]<.5,'about a quarter turn, blades under half a metre');
+// The Fusca's own: its bare blades on the windscreen's foot, a shorter sweep, the same clock.
+const fw=WIPER_PROFILES.fusca;
+assert.equal(fw.pivots,'outer');assert.ok(fw.sweep.every(s=>s>1&&s<1.6)&&fw.reach[1]<.5&&fw.box.max[0]<WIPER_PROFILES.opala.box.max[0]);
+for(const sweep of fw.sweep)assert.ok(Math.abs(wiperAngle(WIPERS.period/2,sweep)-sweep)<1e-9);
 assert.ok(SPLASH.count>0&&SPLASH.box<20,'splashes only round the eye');
 // The floodlight masts along Interlagos's pit wall: lit only when asked, pointing down.
 {const pista=JSON.parse(fs.readFileSync(new URL('../dados/pista.json',import.meta.url))),fl=createFloodlights(pista);

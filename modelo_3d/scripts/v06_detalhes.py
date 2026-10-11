@@ -221,10 +221,10 @@ def sticker_stripe_bands():
   A[yellow,3]=0.;im.pixels[:]=A.ravel();im.pack()
 
 def aux_lamps(mats):
- """OMP livery only (carro_23 in the pits, carro_15 at night): four round auxiliary lamps, 0.11 m, standing on
- brackets from the bumper in front of the headlamps' lower edge and the grille's outer corners, white LED lenses.
- They hang from the front skirt's damage pivot with the bumper."""
- if 'assinaturas_omp' not in bpy.path.basename(bpy.data.filepath):return
+ """Both liveries (carro_23 in the pits, carro_15 at night; the Seiva since 2026-10-11, the user's call: the race car's
+ headlamps are stickers, these light the road): four round auxiliary lamps, 0.11 m, standing on brackets from the
+ bumper in front of the headlamps' lower edge and the grille's outer corners, white LED lenses. They hang from the
+ front skirt's damage pivot with the bumper."""
  O=bpy.data.objects;lens=material('Lente_auxiliar_LED',(226,230,234),rough=.22,coat=.6)
  P=Part('Farol_auxiliar','04_Farois_Lanternas_Detalhes',O['Saia_dianteira_PIVO'],smooth=30)
  for s in (-1,1):

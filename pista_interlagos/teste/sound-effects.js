@@ -1,3 +1,4 @@
+import {engineLevel,firstGearRevs,SHIFT_UP} from './engine-loops.js';
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,Number.isFinite(n)?n:a));
 
 // Small, bounded Web Audio instrument rack shared by effects and original music.
@@ -35,6 +36,15 @@ export class SoundEffects {
    const level=ctx.createGain(),pan=ctx.createStereoPanner();level.gain.value=0;source.connect(filter);filter.connect(level);level.connect(pan);pan.connect(world);source.start();
    this.loops[name]={source,filter,level,pan};this.levels[name]=0;
   }
+ }
+ // Rival engines from recordings (engine-loops.js voices 1 and 2): each through a low-pass that closes with
+ // distance (air and the other cars' bodies take the highs) and a panner; the synthesized rival loops stay
+ // for when the recordings cannot play.
+ useRecordedRivals(engines,tuning){
+  for(const v of this.rivalVoices??[]){v.filter.disconnect();v.pan.disconnect();}
+  this.engines=engines;this.tuning=tuning;this.rivalVoices=[];
+  if(!engines)return;
+  this.rivalVoices=[1,2].map(i=>{const filter=this.ctx.createBiquadFilter(),pan=this.ctx.createStereoPanner();filter.type='lowpass';filter.Q.value=.5;engines.outputs[i].connect(filter);filter.connect(pan);pan.connect(this.output);return {filter,pan,ref:null,distance:0,at:0,radial:0};});
  }
  loadSample(name,url){fetch(url).then(r=>{if(!r.ok)throw Error(url);return r.arrayBuffer();}).then(data=>this.ctx.decodeAudioData(data)).then(buffer=>{this.samples[name]={buffer,source:null,level:null};}).catch(()=>{});}
  // A recorded loop that sounds while its gain is above zero (from the top on each start).
@@ -147,7 +157,21 @@ export class SoundEffects {
   level('spray',(scene.wet??0)*(scene.onRoad===false?.4:1)*Math.min(.09,speed*.0018));
   level('scrape',scene.tankDetached?Math.min(.15,speed*.012):0);
   level('leak',scene.tankDetached&&scene.fuel>0?.025:0);
-  for(let i=0;i<2;i++){const r=scene.rivals?.[i];level('rival'+i,r?Math.max(0,1-r.distance/95)**2*.23:0,r?65+r.speed*4:65,r?.pan||0);}
+  for(let i=0;i<2;i++){
+  const r=scene.rivals?.[i];
+  if(!this.engines?.ready){level('rival'+i,r?Math.max(0,1-r.distance/95)**2*.23:0,r?65+r.speed*4:65,r?.pan||0);continue;}
+  level('rival'+i,0);
+  const v=this.rivalVoices[i];
+  if(!r||!audible){this.engines.set(i+1,950,0,0);v.ref=null;continue;}
+  // Doppler: the car's speed towards the listener, from its change of distance since the last frame.
+  if(v.ref===r.ref&&t>v.at){const radial=clamp((v.distance-r.distance)/(t-v.at),-90,90);v.radial+=(radial-v.radial)*.3;}else v.radial=0;
+  Object.assign(v,{ref:r.ref,distance:r.distance,at:t});
+  // A rival pulling away in first sounds as the car heard does (car-audio.js).
+  const car=r.ref,first=car?.mechanics?.gears?.[1]??110,kmh=r.speed*3.6,pulling=car?.gear===1&&(r.throttle??0)>.2&&kmh*first<SHIFT_UP;
+  const rpm=pulling?firstGearRevs(kmh,first,this.tuning?.firstFrom??.5):r.rpm??1000+r.speed*90,load=clamp(r.throttle??.35,0,1);
+  this.engines.set(i+1,rpm*clamp(343/(343-v.radial),.8,1.3),load,engineLevel(rpm,load)*Math.max(0,1-r.distance/140)**2*.75*factor);
+  v.filter.frequency.setTargetAtTime(900+9000*Math.max(0,1-r.distance/90)**1.5,t,.1);v.pan.pan.setTargetAtTime(r.pan||0,t,.07);
+ }
   if(!audible)return;
   const braking=scene.phase==='tow'&&(scene.truckSpeed||0)<2;
   if(braking&&!this.wasBraking)this.play('towBrake');this.wasBraking=braking;

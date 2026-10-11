@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bancada de som</title>
+<link rel="icon" href="favicon.svg">
+<style>
+:root{--bg:#14161a;--panel:#1d2026;--line:#2c3038;--text:#e8e9ec;--muted:#9aa0aa;--accent:#f2b134;--accent2:#e2553f;--good:#5cc28a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,Segoe UI,Roboto,sans-serif}
+header{padding:16px 22px;border-bottom:1px solid var(--line);display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+header h1{margin:0;font-size:20px}
+header p{margin:0;color:var(--muted)}
+main{display:grid;grid-template-columns:300px 1fr 360px;gap:16px;padding:16px 22px;align-items:start}
+@media (max-width:1100px){main{grid-template-columns:1fr}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.engine{display:block;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
+.engine:hover{border-color:#444a55}
+.engine.on{border-color:var(--accent);background:#2a2618}
+.engine b{display:block}
+.engine span{color:var(--muted);font-size:13px;display:block}
+.engine small{color:#767c86;font-size:11px}
+.engine kbd{float:right}
+kbd{background:#2b2f37;border:1px solid #3a3f49;border-bottom-width:2px;border-radius:4px;padding:0 5px;font:12px ui-monospace,monospace;color:var(--text)}
+.gauge{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap}
+.big{font:700 54px/1 ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
+.unit{color:var(--muted);font-size:13px}
+.bar{height:14px;background:#2b2f37;border-radius:7px;overflow:hidden;margin:12px 0 4px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--good),var(--accent) 70%,var(--accent2));transition:width .05s}
+.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+button{background:#2b2f37;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:12px 8px;font:600 14px system-ui;cursor:pointer;user-select:none;touch-action:none}
+button:hover{border-color:#555b66}
+button.held,button.on{background:var(--accent);color:#1a1a1a;border-color:var(--accent)}
+button.wide{grid-column:span 3}
+.status{color:var(--muted);font-size:13px;margin-top:10px;min-height:20px}
+.demo{margin-top:12px}
+.demo .bar i{background:var(--accent)}
+.row{margin-bottom:12px}
+.row label{display:flex;justify-content:space-between;gap:8px;font-size:13px}
+.row output{font:12px ui-monospace,monospace;color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.meters{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:13px;color:var(--muted);margin-top:12px}
+.meters b{color:var(--text);font-weight:600}
+.help{font-size:13px;color:var(--muted)}
+.help li{margin-bottom:4px}
+.start{position:fixed;inset:0;background:rgba(10,11,13,.86);display:flex;align-items:center;justify-content:center}
+.start button{font-size:20px;padding:18px 34px;background:var(--accent);color:#1a1a1a;border:none}
+</style>
+</head>
+<body>
+<header><h1>Bancada de som · Auto Pobre Racing</h1><p>Escolha um motor, acelere e compare. Nada aqui mexe no jogo.</p></header>
+<main>
+ <section>
+  <h2>Motor</h2>
+  <div id="engines"></div>
+  <h2 style="margin-top:16px">Teclas</h2>
+  <ul class="help">
+   <li><kbd>W</kbd> ou <kbd>↑</kbd> acelerar · <kbd>S</kbd> ou <kbd>↓</kbd> frear</li>
+   <li><kbd>Espaço</kbd> freio de mão (derrapar) · <kbd>A</kbd> curva no limite</li>
+   <li><kbd>N</kbd> ponto morto · <kbd>C</kbd> câmera dentro/fora</li>
+   <li><kbd>1</kbd>–<kbd>3</kbd> trocar de motor · <kbd>D</kbd> demonstração</li>
+  </ul>
+ </section>
+ <section>
+  <h2>Carro</h2>
+  <div class="gauge">
+   <div><div class="big" id="rpm">0</div><div class="unit">rpm</div></div>
+   <div><div class="big" id="gear">N</div><div class="unit">marcha</div></div>
+   <div><div class="big" id="kmh">0</div><div class="unit">km/h</div></div>
+  </div>
+  <div class="bar"><i id="rpmBar"></i></div>
+  <div class="controls">
+   <button id="gas">Acelerar</button>
+   <button id="brake">Frear</button>
+   <button id="hand">Freio de mão</button>
+   <button id="corner">Curva no limite</button>
+   <button id="neutral">Ponto morto</button>
+   <button id="camera">Câmera: fora</button>
+   <button id="demo" class="wide">▶ Volta de demonstração (34 s, igual para todos os motores)</button>
+  </div>
+  <div class="demo" id="demoBox" hidden><div class="bar"><i id="demoBar"></i></div><div class="status" id="demoStep"></div></div>
+  <div class="meters">
+   <div>Pé no acelerador <b id="mLoad">0</b></div><div>Volume na saída <b id="mRms">0</b></div>
+   <div>Pneu cantando <b id="mSing">0</b></div><div>Pneu arrastando <b id="mScreech">0</b></div>
+   <div>Estouros <b id="mPops">0</b></div><div>Tocando <b id="mReady">…</b></div>
+  </div>
+  <div class="status" id="status"></div>
+ </section>
+ <section>
+  <h2>Ajustes</h2>
+  <div id="sliders"></div>
+  <div class="controls" style="grid-template-columns:1fr 1fr">
+   <button id="reset">Voltar ao padrão</button>
+   <button id="copy">Copiar ajustes</button>
+  </div>
+  <div class="status" id="copied"></div>
+ </section>
+</main>
+<div class="start" id="start"><button id="startButton">Ligar o som</button></div>
+<script type="module" src="./bancada-som.js"></script>
+</body>
+</html>
