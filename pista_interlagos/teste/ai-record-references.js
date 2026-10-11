@@ -1572,392 +1572,392 @@ export const AI_REFERENCE_TIMES=[
   "circuit": "floripa",
   "mode": "normal",
   "number": "73",
-  "bestLap": 112.058,
-  "bestRace": 342.75
+  "bestLap": 112.275,
+  "bestRace": 342.775
  },
  {
   "circuit": "floripa",
   "mode": "normal",
   "number": "00",
-  "bestLap": 116.975,
-  "bestRace": 357.458
+  "bestLap": 116.208,
+  "bestRace": 360.45
  },
  {
   "circuit": "floripa",
   "mode": "normal",
   "number": "7",
-  "bestLap": 114.75,
-  "bestRace": 352.05
+  "bestLap": 114.033,
+  "bestRace": 351.067
  },
  {
   "circuit": "floripa",
   "mode": "normal",
   "number": "64",
-  "bestLap": 116.442,
-  "bestRace": 363.067
+  "bestLap": 117.35,
+  "bestRace": 385.15
  },
  {
   "circuit": "floripa",
   "mode": "normal",
   "number": "2",
-  "bestLap": 112.233,
-  "bestRace": 350.692
+  "bestLap": 110.075,
+  "bestRace": 351.992
  },
  {
   "circuit": "floripa",
   "mode": "normal",
   "number": "19",
-  "bestLap": 116.842,
-  "bestRace": 366.9
+  "bestLap": 114.108,
+  "bestRace": 381.417
  },
  {
   "circuit": "floripa",
   "mode": "normal",
   "number": "51",
-  "bestLap": 115.742,
-  "bestRace": 361.342
+  "bestLap": 117.467,
+  "bestRace": 368.675
  },
  {
   "circuit": "floripa",
   "mode": "normal",
   "number": "93",
-  "bestLap": 114.1,
-  "bestRace": 358.242
+  "bestLap": 112.992,
+  "bestRace": 358.05
  },
  {
   "circuit": "floripa",
   "mode": "normal",
   "number": "312",
-  "bestLap": 118.55,
-  "bestRace": 373.383
+  "bestLap": 119.125,
+  "bestRace": 372.108
  },
  {
   "circuit": "floripa",
   "mode": "normal",
   "number": "70",
-  "bestLap": 115.592,
-  "bestRace": 358.6
+  "bestLap": 116.45,
+  "bestRace": 361.883
  },
  {
   "circuit": "floripa",
   "mode": "normal",
   "number": "9",
-  "bestLap": 123.05,
-  "bestRace": 379.617
- },
- {
-  "circuit": "floripa",
-  "mode": "normal",
-  "number": "74",
-  "bestLap": 117.942,
-  "bestRace": 373.917
- },
- {
-  "circuit": "floripa",
-  "mode": "normal",
-  "number": "88",
-  "bestLap": 119.217,
+  "bestLap": 119.758,
   "bestRace": 375.5
  },
  {
   "circuit": "floripa",
   "mode": "normal",
+  "number": "74",
+  "bestLap": 119.183,
+  "bestRace": 372.625
+ },
+ {
+  "circuit": "floripa",
+  "mode": "normal",
+  "number": "88",
+  "bestLap": 119.05,
+  "bestRace": 387.333
+ },
+ {
+  "circuit": "floripa",
+  "mode": "normal",
   "number": "42",
-  "bestLap": 119.717,
-  "bestRace": 376.558
+  "bestLap": 118.375,
+  "bestRace": 373.942
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
   "number": "73",
-  "bestLap": 112.058,
-  "bestRace": 342.75
+  "bestLap": 112.275,
+  "bestRace": 342.775
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
   "number": "00",
-  "bestLap": 116.975,
-  "bestRace": 357.458
+  "bestLap": 116.208,
+  "bestRace": 360.45
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
   "number": "7",
-  "bestLap": 114.75,
-  "bestRace": 352.05
+  "bestLap": 114.033,
+  "bestRace": 351.067
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
   "number": "64",
-  "bestLap": 116.442,
-  "bestRace": 363.067
+  "bestLap": 117.35,
+  "bestRace": 385.15
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
   "number": "2",
-  "bestLap": 112.233,
-  "bestRace": 350.692
+  "bestLap": 110.075,
+  "bestRace": 351.992
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
   "number": "19",
-  "bestLap": 116.842,
-  "bestRace": 366.9
+  "bestLap": 114.108,
+  "bestRace": 381.417
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
   "number": "51",
-  "bestLap": 115.742,
-  "bestRace": 361.342
+  "bestLap": 117.467,
+  "bestRace": 368.675
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
   "number": "93",
-  "bestLap": 114.1,
-  "bestRace": 358.242
+  "bestLap": 112.992,
+  "bestRace": 358.05
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
   "number": "312",
-  "bestLap": 118.55,
-  "bestRace": 373.383
+  "bestLap": 119.125,
+  "bestRace": 372.108
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
   "number": "70",
-  "bestLap": 115.592,
-  "bestRace": 358.6
+  "bestLap": 116.45,
+  "bestRace": 361.883
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
   "number": "9",
-  "bestLap": 123.05,
-  "bestRace": 379.617
- },
- {
-  "circuit": "floripa",
-  "mode": "immersive",
-  "number": "74",
-  "bestLap": 117.942,
-  "bestRace": 373.917
- },
- {
-  "circuit": "floripa",
-  "mode": "immersive",
-  "number": "88",
-  "bestLap": 119.217,
+  "bestLap": 119.758,
   "bestRace": 375.5
  },
  {
   "circuit": "floripa",
   "mode": "immersive",
+  "number": "74",
+  "bestLap": 119.183,
+  "bestRace": 372.625
+ },
+ {
+  "circuit": "floripa",
+  "mode": "immersive",
+  "number": "88",
+  "bestLap": 119.05,
+  "bestRace": 387.333
+ },
+ {
+  "circuit": "floripa",
+  "mode": "immersive",
   "number": "42",
-  "bestLap": 119.717,
-  "bestRace": 376.558
+  "bestLap": 118.375,
+  "bestRace": 373.942
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "73",
-  "bestLap": 135.967,
-  "bestRace": 419.125
+  "bestLap": 135.883,
+  "bestRace": 413.833
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "00",
-  "bestLap": 137.217,
-  "bestRace": 430.358
+  "bestLap": 136.333,
+  "bestRace": 420.008
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "7",
-  "bestLap": 146.025,
-  "bestRace": 455.75
+  "bestLap": 145.733,
+  "bestRace": 451.925
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "64",
-  "bestLap": 139.492,
-  "bestRace": 451.117
+  "bestLap": 135.825,
+  "bestRace": 434.217
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "2",
-  "bestLap": 132.892,
-  "bestRace": 421.35
+  "bestLap": 135.983,
+  "bestRace": 429.208
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "19",
-  "bestLap": 145.225,
-  "bestRace": 439.7
+  "bestLap": 134.117,
+  "bestRace": 430.708
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "51",
-  "bestLap": 136.758,
-  "bestRace": 421.65
+  "bestLap": 136.85,
+  "bestRace": 429.633
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "93",
-  "bestLap": 131.05,
-  "bestRace": 430.7
+  "bestLap": 134.342,
+  "bestRace": 420.308
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "312",
-  "bestLap": 139.175,
-  "bestRace": 448.8
+  "bestLap": 137.867,
+  "bestRace": 441.675
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "70",
-  "bestLap": 143.95,
-  "bestRace": 452.025
+  "bestLap": 143.533,
+  "bestRace": 452.942
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "9",
-  "bestLap": 138.1,
-  "bestRace": 438.133
+  "bestLap": 140.933,
+  "bestRace": 446.6
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "74",
-  "bestLap": 144.367,
-  "bestRace": 459.292
+  "bestLap": 139.492,
+  "bestRace": 444.308
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "88",
-  "bestLap": 137.558,
-  "bestRace": 428.708
+  "bestLap": 146.767,
+  "bestRace": 456.592
  },
  {
   "circuit": "minhocao",
   "mode": "normal",
   "number": "42",
-  "bestLap": 137.6,
-  "bestRace": 429.225
+  "bestLap": 135.817,
+  "bestRace": 427.975
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "73",
-  "bestLap": 135.967,
-  "bestRace": 419.125
+  "bestLap": 135.883,
+  "bestRace": 413.833
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "00",
-  "bestLap": 137.217,
-  "bestRace": 430.358
+  "bestLap": 136.333,
+  "bestRace": 420.008
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "7",
-  "bestLap": 146.025,
-  "bestRace": 455.75
+  "bestLap": 145.733,
+  "bestRace": 451.925
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "64",
-  "bestLap": 139.492,
-  "bestRace": 451.117
+  "bestLap": 135.825,
+  "bestRace": 434.217
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "2",
-  "bestLap": 132.892,
-  "bestRace": 421.35
+  "bestLap": 135.983,
+  "bestRace": 429.208
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "19",
-  "bestLap": 145.225,
-  "bestRace": 439.7
+  "bestLap": 134.117,
+  "bestRace": 430.708
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "51",
-  "bestLap": 136.758,
-  "bestRace": 421.65
+  "bestLap": 136.85,
+  "bestRace": 429.633
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "93",
-  "bestLap": 131.05,
-  "bestRace": 430.7
+  "bestLap": 134.342,
+  "bestRace": 420.308
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "312",
-  "bestLap": 139.175,
-  "bestRace": 448.8
+  "bestLap": 137.867,
+  "bestRace": 441.675
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "70",
-  "bestLap": 143.95,
-  "bestRace": 452.025
+  "bestLap": 143.533,
+  "bestRace": 452.942
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "9",
-  "bestLap": 138.1,
-  "bestRace": 438.133
+  "bestLap": 140.933,
+  "bestRace": 446.6
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "74",
-  "bestLap": 144.367,
-  "bestRace": 459.292
+  "bestLap": 139.492,
+  "bestRace": 444.308
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "88",
-  "bestLap": 137.558,
-  "bestRace": 428.708
+  "bestLap": 146.767,
+  "bestRace": 456.592
  },
  {
   "circuit": "minhocao",
   "mode": "immersive",
   "number": "42",
-  "bestLap": 137.6,
-  "bestRace": 429.225
+  "bestLap": 135.817,
+  "bestRace": 427.975
  }
 ];

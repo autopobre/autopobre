@@ -107,6 +107,14 @@ export function engineTorque(rpm,curve=TORQUE_CURVE){
  return 0;
 }
 export const GUARDRAIL_CLEARANCE=5;
+// How far past a barrier's line the body's plan reaches: a rail's W-beam stands 0.10 m out of its line toward the
+// road, so the body stops 0.12 m short of the line; a street circuit's Jersey wall (street-walls.js) leans back from
+// its foot (0.12 m out at 0.2 m high, 0.18 m at 0.3 m, a sill's height), so there the body goes 0.08 m past the foot.
+export const RAIL_REACH=-.12,WALL_REACH=.08;
+// The points of the body's plan tried against the barriers, [along, across] in half lengths and half widths from the
+// middle of its box: nine along each long side (60 cm apart on the Opala: a wall bending round a 3 m radius between two
+// of them reaches 1.5 cm past them) and three more across each end.
+const BODY_POINTS=[-1,-.75,-.5,-.25,0,.25,.5,.75,1].flatMap(u=>[[u,-1],[u,1]]).concat([-.5,0,.5].flatMap(w=>[[1,w],[-1,w]]));
 // Game-art selection from the GeoSampa overview, not a surveyed barrier inventory.
 // Open the run-offs and infield; retain selected straight and boundary sections.
 // On the left, the pit wall takes over from the pit entry after the Cafe
@@ -422,19 +430,37 @@ export class TestCar {
   // Forces felt by the chassis, for suspension and camera motion.
   if(count){this.longAccel/=dt;this.latAccel/=dt;}
   this.surface=this.sample(this.x,this.y);this.index=this.surface.i;
-  // Visible sections and collision share the same openings and shoulder clearance.
-  const r=this.surface,side=Math.sign(r.d),angle=wrap(this.heading-Math.atan2(r.ty,r.tx));
-  // How far the body's plan reaches toward the rail beside the centre of mass (its box sits wallAhead forward).
-  const b=this.body,extent=b.halfWidth*Math.abs(Math.cos(angle))+b.halfLength*Math.abs(Math.sin(angle))+side*b.wallAhead*Math.sin(angle);
-  const wall=r.width/2+guardrailClearance(this.data,r.s,side)-.12-extent;
-  const crossed=Math.abs(p.d)<=p.width/2+guardrailClearance(this.data,p.s,side)-.12-extent;
-  if(guardrailPresent(this.data,r.s,side)&&Math.abs(r.d)>wall&&(crossed||Math.abs(r.d)<wall+5)){
-   const correction=r.d-side*wall;this.x-=r.lx*correction;this.y-=r.ly*correction;
-   const outward=(this.vx*r.lx+this.vy*r.ly)*side,tangent=this.vx*r.tx+this.vy*r.ty;
+  // Visible sections and collision share the same openings and shoulder clearance. The body's plan meets the
+  // barrier's line (street-walls.js barrierLines draws on it) point by point: its outline (BODY_POINTS; the box sits
+  // wallAhead forward), each point against the barrier at its own station. On the inside of a tight bend the wall
+  // curves away from the ends of a car yawed into it and meets the middle of its side; one box measured across the
+  // centre of mass's normal, as if every wall were straight, stopped that car up to 0.8 m short of the wall (an
+  // invisible wall in Floripa's and the Minhocão's hairpins).
+  const b=this.body,reach=this.data.meta.barrier==='street'?WALL_REACH:RAIL_REACH,far=Math.hypot(b.halfLength+Math.abs(b.wallAhead),b.halfWidth);
+  for(let pass=0;pass<2;pass++){
+   const r=this.surface,side=Math.sign(r.d)||1;
+   // Far from both barriers no point of the body reaches one.
+   if(r.width/2+Math.min(guardrailClearance(this.data,r.s,-1),guardrailClearance(this.data,r.s,1))+reach-Math.abs(r.d)-far>1.5)break;
+   // A car out past a wall's end is not pulled back through it: a point more than 5 m into a barrier counts only
+   // when the centre of mass crossed into it this step.
+   const angle=wrap(this.heading-Math.atan2(r.ty,r.tx)),extent=b.halfWidth*Math.abs(Math.cos(angle))+b.halfLength*Math.abs(Math.sin(angle))+side*b.wallAhead*Math.sin(angle);
+   const crossed=Math.abs(p.d)<=p.width/2+guardrailClearance(this.data,p.s,side)+reach-extent;
+   const ch=Math.cos(this.heading),sh=Math.sin(this.heading);let hit=null;
+   for(const [u,w] of BODY_POINTS){
+    const fx=b.wallAhead+u*b.halfLength,fy=w*b.halfWidth,q=this.sample(this.x+ch*fx-sh*fy,this.y+sh*fx+ch*fy,this.index),qs=Math.sign(q.d)||1;
+    if(!guardrailPresent(this.data,q.s,qs))continue;
+    // (sample's normal is two stations' mixed, short of unit length in a bend: its d, 6 cm short at 9 m off a
+    // tight one, is made a distance again, as the drawn line's.)
+    const n=Math.hypot(q.lx,q.ly)||1,depth=Math.abs(q.d)/n-(q.width/2+guardrailClearance(this.data,q.s,qs)+reach);
+    if(depth>0&&(depth<5||crossed&&qs===side)&&!(hit?.depth>=depth))hit={depth,side:qs,lx:q.lx/n,ly:q.ly/n,tx:q.tx/n,ty:q.ty/n};
+   }
+   if(!hit)break;
+   const {depth,lx,ly,tx,ty}=hit,hs=hit.side;this.x-=lx*hs*depth;this.y-=ly*hs*depth;
+   const outward=(this.vx*lx+this.vy*ly)*hs,tangent=this.vx*tx+this.vy*ty;
    if(outward>0){
-    this.wallImpactSpeed=outward;
+    this.wallImpactSpeed=Math.max(this.wallImpactSpeed,outward);
     const rebound=-outward*.22,slide=tangent*(1-Math.min(.18,outward*.006));
-    this.vx=r.tx*slide+r.lx*side*rebound;this.vy=r.ty*slide+r.ly*side*rebound;
+    this.vx=tx*slide+lx*hs*rebound;this.vy=ty*slide+ly*hs*rebound;
     this.yaw*=.65;
    }
    this.surface=this.sample(this.x,this.y);
