@@ -4,6 +4,8 @@ import {pitLane,inPitBox} from './pit-lane.js';
 import {trackPoint} from './immersive-visuals.js';
 import {footState,stepOnFoot,footGround,clearView,placeFootCamera,turnFootView,zoomFootView,footJump} from './on-foot.js';
 import {OPENINGS,carSpot,SPOT_OPENING} from './car-openings.js';
+import {dressPerson,STEVAN_OUTFITS} from './pit-crew.js';
+import {outfitOf} from './story-career.js';
 const money=n=>'R$ '+n.toFixed(2).replace('.',','),pct=n=>Math.round(n*100)+'%';
 const idle={throttle:0,brake:1,left:0,right:0,reverse:0,handbrake:0},still={throttle:0,brake:0,left:0,right:0};
 export const CAFE_MENU=Object.freeze([{id:'cafe',name:'Café',price:4,bites:3,verb:'beber',portion:'gole'},{id:'pao',name:'Pão de queijo',price:6,bites:2,verb:'comer',portion:'mordida'},{id:'doce',name:'Doce de leite',price:5,bites:3,verb:'comer',portion:'colherada'}]);
@@ -89,7 +91,7 @@ export class PitStop {
   this.bank=450;this.opened=false;this.coffee=null;this.stationary=0;this.departing=false;
   this.service=new PitService({condition:this.condition,getFuel:()=>this.fuel,setFuel:v=>{if(mode.active)mode.state.fuel=v;else mode.freeFuel=v;},pay:cost=>this.spend(cost,true)?{...this.payment}:false,refund:(cost,job)=>this.refund(cost,job.payment)});
   this.root=new THREE.Group();this.root.name='Pitstop_e_Lanchonete_da_Tia';scene.add(this.root);this.buildScene();
-  this.hud=document.createElement('aside');this.hud.id='conditionHud';this.hud.hidden=true;this.hud.innerHTML='<b>OPALA · <span id="conditionPower"></span></b><div class="condition-bars">'+CAR_PARTS.map(p=>`<label>${p.name}<meter data-health="${p.id}" min="0" max="1" low=".4" high=".8" optimum="1" value="1"></meter></label>`).join('')+'</div><small id="pitHint"></small>';document.body.append(this.hud);
+  this.hud=document.createElement('aside');this.hud.id='conditionHud';this.hud.hidden=true;this.hud.innerHTML='<b>OPALA · <span id="conditionPower"></span></b><div class="condition-bars">'+CAR_PARTS.map(p=>`<label>${p.name}<b data-health-pct="${p.id}">100%</b><meter data-health="${p.id}" min="0" max="1" low=".4" high=".8" optimum="1" value="1"></meter></label>`).join('')+'</div><small id="pitHint"></small>';document.body.append(this.hud);
   this.panel=document.createElement('section');this.panel.id='pitPanel';this.panel.hidden=true;this.panel.setAttribute('aria-label',layout?.name??'Pitstop de Curvelo');
   this.panel.innerHTML=`<header class="pit-heading"><div><small>${this.label}</small><h2 id="pitTitle">${this.title}</h2></div><button id="pitSettings" aria-label="Pausar e abrir configurações">⚙</button></header><p class="pit-budget"><span id="pitWallet"></span><b id="pitFuel"></b></p><small id="pitViewHint"></small><p class="pit-message" id="pitMessage" role="status"></p><div id="pitJob" hidden><b id="pitJobLabel"></b><div id="pitActive"></div><div id="pitQueue"></div></div><div class="pit-scroll"><div id="pitGarage"><div class="pit-refuel"><button id="pitFill2">Abastecer 2 L</button><button id="pitFillAll">Completar tanque</button></div><p class="pit-explain">Clique em quantas peças quiser: cada serviço é pago e entra na fila. Peças em lugares diferentes do carro são consertadas ao mesmo tempo; no mesmo lugar, uma depois da outra (três mecânicos e um frentista). Resolver pra valer: 100%. Gambiarra: reparo parcial, até 78%.</p><div class="pit-parts">${CAR_PARTS.map((p,i)=>`<article><div class="pit-part-title"><b>${i+1}. ${p.name}</b><strong data-quality="${p.id}"></strong></div><small>${p.effect}</small><meter data-quality-bar="${p.id}" min="0" max="1" low=".4" high=".8" optimum="1" value="1"></meter><div class="pit-repair-options"><button data-repair="${p.id}" data-kind="proper"></button><button data-repair="${p.id}" data-kind="patch"></button></div></article>`).join('')}</div></div><div id="pitCafe" hidden><small>CARDÁPIO DA TIA</small><h3>Uma prosa é de graça.</h3><p>O cafezinho e os quitutes são por sua conta, uai!</p><div class="pit-food-options">${CAFE_MENU.map(item=>`<button data-snack="${item.id}"><span>${item.name}</span><b>${money(item.price)}</b></button>`).join('')}</div><p id="pitCafeStatus" role="status"></p><button id="pitCloseCafe">Continuar o passeio</button></div></div><footer class="pit-actions"><button id="pitCoffee">Passear / Café da Tia · grátis</button><button id="pitLeave">Voltar à pista →</button></footer>`;
   document.body.append(this.panel);const $=id=>this.panel.querySelector('#'+id);
@@ -141,7 +143,10 @@ export class PitStop {
  toggleOpening(which){const o=this.openings,name=OPENINGS[which];if(!this.opened||!o?.has(name))return false;o.toggle(name);this.render();return true;}
  get touch(){return document.body.classList.contains('touch-device');}
  // Out of the car: the camera starts behind the driver, looking where he faces.
- visitCafe(){if(!this.opened||this.coffee)return;this.openings?.pulse(OPENINGS.driverDoor,1.6);const yaw=this.layout?.heroHeading??this.station.rotation.y+Math.PI/2;this.coffee=footState(yaw,snackState({elapsed:0,menu:false,repairs:!this.touch,floor:this.heroStart().y}));this.hero.visible=true;this.hero.position.copy(this.heroStart());this.hero.rotation.y=yaw;this.message='Passeio grátis. Chegue perto da Tia para ver o cardápio.';this.onClose?.();this.captureMouse();this.render();}
+ visitCafe(){if(!this.opened||this.coffee)return;
+  // In the story he walks out in the overalls of his stage (Kléber's loaned ones until he buys his own).
+  {const kind=this.mode.active?outfitOf(this.mode.state.profile.career):'proprio';if(this.hero.userData.outfit!==STEVAN_OUTFITS[kind])dressPerson(this.hero,STEVAN_OUTFITS[kind]);}
+ this.openings?.pulse(OPENINGS.driverDoor,1.6);const yaw=this.layout?.heroHeading??this.station.rotation.y+Math.PI/2;this.coffee=footState(yaw,snackState({elapsed:0,menu:false,repairs:!this.touch,floor:this.heroStart().y}));this.hero.visible=true;this.hero.position.copy(this.heroStart());this.hero.rotation.y=yaw;this.message='Passeio grátis. Chegue perto da Tia para ver o cardápio.';this.onClose?.();this.captureMouse();this.render();}
  captureMouse(){const view=document.getElementById('view');if(this.touch||!view?.requestPointerLock||document.pointerLockElement===view)return;try{view.requestPointerLock()?.catch?.(()=>{});}catch{}}
  releaseMouse(){if(document.pointerLockElement)document.exitPointerLock();}
  turnView(dx,dy){if(this.coffee)turnFootView(this.coffee,dx,dy);}
@@ -246,7 +251,8 @@ export class PitStop {
   if(this.viewShifted&&(!visible||this.panel.hidden)){camera.clearViewOffset();this.viewShifted=false;}
   if(this.savedFov!==undefined&&(!visible||!walking)){camera.fov=this.savedFov;camera.updateProjectionMatrix();this.savedFov=undefined;}
   this.hud.querySelector('#conditionPower').textContent='CONDIÇÃO '+pct(this.condition.health)+' · POTÊNCIA '+pct(this.condition.factors.power);
-  for(const p of CAR_PARTS)this.hud.querySelector(`[data-health="${p.id}"]`).value=this.condition.quality[p.id];
+  // Each part's bar with its percentage, red below 40%, yellow below 80%.
+  for(const p of CAR_PARTS){const q=this.condition.quality[p.id],label=this.hud.querySelector(`[data-health-pct="${p.id}"]`);this.hud.querySelector(`[data-health="${p.id}"]`).value=q;label.textContent=pct(q);label.dataset.level=q<.4?'low':q<.8?'mid':'ok';}
   this.hud.querySelector('#pitHint').textContent=this.car.surface.pit?'BOX 99 · pare no retângulo amarelo':'P no mapa · pitstop na reta principal';
   this.markers.visible=this.opened&&!walking;this.cafePrompt.visible=visible&&walking&&!menu&&this.interaction()!=='cafe';this.markers.children.forEach((m,i)=>m.material.color.setHSL(this.condition.quality[CAR_PARTS[i].id]*.32,.85,.52));
   if(!this.opened)return;this.render();this.driver.root.visible=!walking;showSnacks(this.hands,this.hero,this.coffee);

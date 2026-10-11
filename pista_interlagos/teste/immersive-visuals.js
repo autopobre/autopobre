@@ -2,7 +2,10 @@ import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {FANS,strapPath} from './immersive-state.js';
 import {RIVAL_ROSTER,OPALA_99_RIVAL,FUSCA_ROSTER,FUSCA_99_RIVAL} from './race-roster.js';
-import {createPeople,setPose,POSES,OUTFITS,Idler} from './pit-crew.js';
+import {createPeople,setPose,POSES,OUTFITS,Idler,STEVAN_OUTFITS,dressPerson} from './pit-crew.js';
+import {StoryScene} from './story-scene.js';
+import {CIRCUITS,circuitId} from './circuits.js';
+import {outfitOf} from './story-career.js';
 import {curveloPitFrame,serviceSpot,garageBays,pitPoint} from './pit-lane.js';
 import {footState,stepOnFoot,placeFootCamera,turnFootView,zoomFootView,footJump} from './on-foot.js';
 import {shutOpenings,CarOpenings,carSpot,SPOT_OPENING} from './car-openings.js';
@@ -124,9 +127,12 @@ export function trackPoint(data,s,offset=0){
 }
 export class ImmersiveVisuals {
  constructor(scene,carRoot,data,driver,car,rivalTemplate){
-  this.scene=scene;this.carRoot=carRoot;this.data=data;this.root=new THREE.Group();this.root.visible=false;scene.add(this.root);
+  this.scene=scene;this.driver=driver;this.carRoot=carRoot;this.data=data;this.root=new THREE.Group();this.root.visible=false;scene.add(this.root);
   this.materials={};this.time=0;
-  this.stage=new THREE.Group();this.root.add(this.stage);const anchor=trackPoint(data,35,-32);
+  // The podium's stage: a clear, level spot near the line, off the track (circuits.js podium: metres along the
+  // track and across it), else 35 m past the line and 32 m to the side.
+  const [podiumS,podiumD]=CIRCUITS[circuitId(data.meta.id)]?.podium??[35,-32];
+  this.stage=new THREE.Group();this.root.add(this.stage);const anchor=trackPoint(data,podiumS,podiumD);
   anchor.y=Math.max(...[-13,13].flatMap(x=>[-11,11].map(z=>car.sample(anchor.x+x,-anchor.z-z).z)))+.2;this.stage.position.set(anchor.x,anchor.y,anchor.z);
   this.podium=new THREE.Group();this.stage.add(this.podium);
   this.box(this.stage,[0,-1.5,0],[26,3,23],0x353d3d);
@@ -176,6 +182,14 @@ export class ImmersiveVisuals {
    person.position.copy(pos);person.rotation.y=yaw;setPose(person,POSES.stand);this.crowd.add(person);
    const cup=this.people.carry('cup',person.userData.rig.limbs[1].hand);
    this.leo={pos,person,cup,yaw,label:this.tag(this.crowd,'Leonardo Martins · #19',[pos.x,pos.y+2.1,pos.z],2.6,.3),idler:new Idler(person,'counter',{props:{cup},seed:.57})};}
+  // Kléber Eletric's box (story-scene.js): at the door of his team's garage, or along the paddock without one.
+  {const k=RIVAL_ROSTER.findIndex(r=>r.number==='70'),entry=RIVAL_ROSTER[k];let at=null;
+   if(pit&&entry){const {bay,team}=garageBays(pit,RIVAL_ROSTER.length),b=[...team].find(([,i])=>i===k)?.[0];
+    if(b!==undefined){const sv=pit.garages[0]+(b+.5)*bay,front=pitPoint(pit,sv).hi+.35;at=(a,o)=>{const p=pitPoint(pit,sv+a,front-o);return new THREE.Vector3(p.x,p.y,p.z);};}}
+   if(!at){const front=pit?.box99?.front??L.spotD+3;at=(a,o)=>L.point(-16+a,front-o).add(this.crowd.position);}
+   const logo=new THREE.MeshStandardMaterial({name:'Marca_Eletric',map:new THREE.TextureLoader().load('./assets/branding/patrocinio_eletric_v1.webp',t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;}),transparent:true,roughness:.55,polygonOffset:true,polygonOffsetFactor:-1});
+   const car=entry?this.rivalCar(rivalTemplate,entry.color,entry.number,entry.shortName,{stripe:entry.stripe,finish:entry.finish,dirt:true}):null;
+   this.storyScene=new StoryScene({people:this.people,parent:this.root,at,car,groundAt:(x,y)=>this.groundAt?.(x,y),logo});}
   this.banner(this.crowd,'PADDOCK · VAQUINHA ANTES DA LARGADA',L.point(12,L.bounds.d1-.1,6.3),L.heading,9,.55,'#f5d279','#1a292b');
   this.truck=this.truckModel();this.root.add(this.truck);
   this.strap=this.strapMesh();this.root.add(this.strap);
@@ -588,15 +602,19 @@ export class ImmersiveVisuals {
  }
  // focus: the car the cameras watch (main.js, recon lap), else the player's: name tags show round it.
  // A short field (solo practice, 1x1) races some of the cars: each rival drives its roster place's car.
- updateFree(rivals,dt){this.time+=dt;this.leoDoor?.scale.setScalar(1);this.root.visible=true;this.damage.visible=false;this.carRoot.visible=true;for(const child of this.root.children)child.visible=this.rivals.includes(child);const focus=this.focus??this.carRoot.position,short=rivals.length<this.rivals.length;this.rivals.forEach((obj,i)=>{const r=short?rivals.find(r=>r.rosterIndex===i):rivals[i];if(!r){obj.visible=false;return;}const c=r.car;if(obj.userData.nameLabel)obj.userData.nameLabel.visible=Math.hypot(c.x-focus.x,c.y+focus.z)<45;this.setCarPose(obj,c);this.lean(obj,c);this.detailLevel(obj);obj.userData.brake?.(r.input?.brake??0);obj.userData.driver?.update(c,dt,obj.userData.detail.visible);for(const w of obj.userData.wheels||[])w.obj.quaternion.copy(w.base).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-c.spin));this.groundContact(obj,c);});}
+ updateFree(rivals,dt){this.time+=dt;this.dress('proprio');this.leoDoor?.scale.setScalar(1);this.root.visible=true;this.damage.visible=false;this.carRoot.visible=true;for(const child of this.root.children)child.visible=this.rivals.includes(child);const focus=this.focus??this.carRoot.position,short=rivals.length<this.rivals.length;this.rivals.forEach((obj,i)=>{const r=short?rivals.find(r=>r.rosterIndex===i):rivals[i];if(!r){obj.visible=false;return;}const c=r.car;if(obj.userData.nameLabel)obj.userData.nameLabel.visible=Math.hypot(c.x-focus.x,c.y+focus.z)<45;this.setCarPose(obj,c);this.lean(obj,c);this.detailLevel(obj);obj.userData.brake?.(r.input?.brake??0);obj.userData.driver?.update(c,dt,obj.userData.detail.visible);for(const w of obj.userData.wheels||[])w.obj.quaternion.copy(w.base).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-c.spin));this.groundContact(obj,c);});}
  // Its contact shadow on both levels of detail, its wheels' blur close up (contact-shadows.js).
  groundContact(obj,c){carContact.car(obj,c,obj.userData.fusca?'fusca':'opala',obj.userData.detail?.visible?obj.userData.wheels:null);}
  update(state,car,dt,rivals,projectile,towOrigin){
-  this.time+=dt;this.root.visible=this.damage.visible=state.active;if(!state.active)return;this.ownOpenings?.update(dt);showTrunkInside(this.own?.userData.trunkInside,this.ownOpenings);
+  this.time+=dt;this.root.visible=this.damage.visible=state.active;if(!state.active)return;this.ownOpenings?.update(dt);
+  // The pilot's clothes follow the story (story-career.js outfitOf); in Kléber's box the stage has its own
+  // Stevan, so the paddock's waits out of sight (not while the opening shots play).
+  this.dress(outfitOf(state.profile.career));this.storyScene?.update(dt);
+  const cutscene=this.cutscene();if(cutscene&&this.hero.visible){this.hero.visible=false;this.heroCut=true;}else if(!cutscene&&this.heroCut){this.hero.visible=!this.inCar;this.heroCut=false;}showTrunkInside(this.own?.userData.trunkInside,this.ownOpenings);
   const staged=['crowd','podium'].includes(state.phase);this.stage.visible=state.phase==='podium';this.crowd.visible=state.phase==='crowd';this.podium.visible=state.phase==='podium';this.carRoot.visible=!staged||!!this.inCar;if(this.own)this.own.visible=!this.inCar;if(this.inCar)this.hero.visible=false;
   this.rivals.forEach((obj,i)=>{obj.visible=['starting','grid','race'].includes(state.phase);if(obj.visible){const c=rivals[i].car;if(obj.userData.nameLabel)obj.userData.nameLabel.visible=Math.hypot(c.x-this.carRoot.position.x,c.y+this.carRoot.position.z)<45;this.setCarPose(obj,c);this.lean(obj,c);this.detailLevel(obj);obj.userData.brake?.(state.phase==='race'?rivals[i].input?.brake??0:0);obj.userData.driver?.update(c,dt,obj.userData.detail.visible);for(const w of obj.userData.wheels||[])w.obj.quaternion.copy(w.base).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-rivals[i].progress/.31595));this.groundContact(obj,c);}});
   // The sign (seen through walls) fades out as the camera comes within a few metres of it.
-  if(this.deskMarker){const m=this.deskMarker,show=state.phase==='crowd'&&!this.inCar&&!state.desk,pulse=.5+.5*Math.sin(this.time*3.2);m.marker.visible=m.sign.visible=show;
+  if(this.deskMarker){const m=this.deskMarker,show=state.phase==='crowd'&&!this.inCar&&!state.desk&&!cutscene,pulse=.5+.5*Math.sin(this.time*3.2);m.marker.visible=m.sign.visible=show;
    if(show){m.beam.material.opacity=.36+.24*pulse;m.ring.material.opacity=.7+.3*pulse;m.arrow.position.y=2.2+.1*Math.sin(this.time*2.4);m.arrow.rotation.y=this.time*1.6;
     const far=this.viewCamera?this.viewCamera.position.distanceTo(m.sign.getWorldPosition(this.signPosition??=new THREE.Vector3())):99;m.sign.material.opacity=THREE.MathUtils.clamp((far-5)/4,0,1);m.sign.visible=far>5;}}
   const selected=state.fan??this.nearSocial;this.socialMarker.visible=state.phase==='crowd'&&Number.isInteger(selected)&&!!this.fans[selected];if(this.socialMarker.visible){this.socialMarker.position.copy(this.fans[selected].pos).add(new THREE.Vector3(.4,2.85,0));this.socialMarker.rotation.y=this.time*1.5;}
@@ -607,7 +625,7 @@ export class ImmersiveVisuals {
    if(this.crowd.visible)l.idler.update(dt,'stand',{calm:!!state.leo});l.cup.visible=true;}
   this.leoDoor?.scale.setScalar(state.phase==='crowd'?1e-4:1);
   // The café's sign shows the way while the pilot walks the paddock, fading as the camera comes near.
-  if(this.cafe){const sign=this.cafe.sign,show=state.phase==='crowd'&&!this.inCar&&!state.cafe&&!this.nearCafe();sign.visible=show;
+  if(this.cafe){const sign=this.cafe.sign,show=state.phase==='crowd'&&!this.inCar&&!state.cafe&&!this.nearCafe()&&!cutscene;sign.visible=show;
    if(show){const far=this.viewCamera?this.viewCamera.position.distanceTo(sign.getWorldPosition(this.signPosition??=new THREE.Vector3())):99;sign.material.opacity=THREE.MathUtils.clamp((far-5)/4,0,1);sign.visible=far>5;}}
   // The fuel cell only shows here once its mount gives way and it drags behind: fitted, it is the model's own, in the
   // trunk (car-livery.js trunkInside); this stand-in under the bumper read as a pale crate from the grid's low camera.
@@ -631,9 +649,16 @@ export class ImmersiveVisuals {
   this.garageDoor.position.y=state.profile.released?4.2:1.3;this.blazer.position.x=state.profile.released?-3.9:-6.8;
   if(state.phase==='podium')this.podiumHero.userData.limbs?.forEach((limb,i)=>{if(i%2)limb.rotation.z=2.7+Math.sin(this.time*3)*.12;});
  }
+ // Stevan dressed for the stage of the story he is at: on foot in the paddock, on the podium and at the wheel
+ // (driver.js suit: only the loaned overalls differ from his own red ones).
+ dress(kind){if(kind===this.outfit)return;this.outfit=kind;dressPerson(this.hero,STEVAN_OUTFITS[kind]);dressPerson(this.podiumHero,STEVAN_OUTFITS[kind]);this.driver?.suit?.(kind);}
+ cutscene(){return !!this.storyScene?.active&&!document.body.classList.contains('cine-intro-on');}
  unshift(camera=this.cameraRef){if(this.viewShifted){camera?.clearViewOffset();this.viewShifted=false;}}
  restoreCamera(){this.unshift();if(this.cameraRef&&this.savedFov!==undefined){this.cameraRef.fov=this.savedFov;if(this.savedNear!==undefined)this.cameraRef.near=this.savedNear;this.cameraRef.updateProjectionMatrix();this.savedFov=this.savedNear=undefined;}}
- camera(camera,state,dt=1/60){if(state.active&&['crowd','podium'].includes(state.phase)&&!this.inCar){if(this.savedFov===undefined){this.savedFov=camera.fov;this.savedNear=camera.near;this.cameraRef=camera;}camera.fov=58;camera.near=this.savedNear;camera.updateProjectionMatrix();if(state.phase==='crowd'){this.unshift(camera);
+ camera(camera,state,dt=1/60){
+  // Kléber's box: the scene's own shots, after the opening shots (intro-cinematic.js) have played.
+  if(state.active&&this.cutscene()){if(this.savedFov===undefined){this.savedFov=camera.fov;this.savedNear=camera.near;this.cameraRef=camera;}this.unshift(camera);camera.near=this.savedNear;this.followPosition=null;this.storyScene.camera(camera);return;}
+  if(state.active&&['crowd','podium'].includes(state.phase)&&!this.inCar){if(this.savedFov===undefined){this.savedFov=camera.fov;this.savedNear=camera.near;this.cameraRef=camera;}camera.fov=58;camera.near=this.savedNear;camera.updateProjectionMatrix();if(state.phase==='crowd'){this.unshift(camera);
    // Third person behind the pilot, turned by the mouse (ImmersiveMode); the view widens
    // while he runs, and a wall between them brings the camera in front of it.
    // The lens zoom (wheel past the pilot's eyes) sets the field of view; running widens it only at the normal lens.

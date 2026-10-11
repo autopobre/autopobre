@@ -7,9 +7,9 @@ eight dated rounds; waiting for Brasília while that track is not in the game), 
 Modo Corrida: all Todas as pistas rounds in a row, points on the result sheet, the next round from
 there, resuming after a reload and the final standings. Each round is finished on the spot (the
 player's lap count is set to the race distance), so the player wins every round.
-Modo História: its own championship; a round finished at the flag scores on the result sheet,
-the box before the judge's inspection disqualifies (0 points) and the next vaquinha is the next
-round; a round towed in scores nothing. Screenshots go to renders/campeonato_*.png.
+Modo História: only the Old Stock 2026 season, its own save; a round finished at the flag scores on
+the result sheet, the box before the judge's inspection disqualifies (0 points) and, after the race's
+report (story-career.js), the next vaquinha is the next round; a round towed in scores nothing. Screenshots go to renders/campeonato_*.png.
 """
 import json
 import sys
@@ -25,7 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # Todas as pistas runs every circuit of circuits.js (championship.js): read from the page.
 ROUNDS = []
 NAMES = {}
-STORY_KEY = 'opala99-championship-historia-v1'
+# Modo História races only the Old Stock 2026 season (championship.js OLD_STOCK_2026), read from the page.
+STORY_ROUNDS = []
+STORY_KEY = 'opala99-championship-historia-oldstock2026-v1'
 FIXTURE = """async()=>{const {ImmersiveMode}=await import('./immersive-mode.js');const old=ImmersiveMode.prototype.info;
  ImmersiveMode.prototype.info=function(){window.fixture=this;return old.call(this)};interlagos.immersiveInfo();}"""
 errors = []
@@ -55,6 +57,7 @@ def story_round(page, circuit):
     wait_js(page, f"interlagos.ready&&interlagos.circuit==='{circuit}'&&!interlagos.state.paused", timeout=240000)
     page.evaluate(FIXTURE)
     wait_js(page, "fixture.active&&fixture.state.phase==='crowd'")
+    page.evaluate('window.interlagosHistoria.skipCards()')
     page.evaluate("()=>{const m=fixture;m.state.cash=300;m.state.fuel=6;m.state.phase='race';m.sync();}")
 
 
@@ -72,6 +75,7 @@ with sync_playwright() as p:
     page.goto(URL + '?intro=0', wait_until='domcontentloaded')
     wait_js(page, "window.interlagos&&!document.querySelector('#start').disabled")
     ROUNDS[:] = page.evaluate("import('./championship.js').then(m=>[...m.CHAMPIONSHIP_ROUNDS])")
+    STORY_ROUNDS[:] = page.evaluate("import('./championship.js').then(m=>m.OLD_STOCK_2026.map(r=>r.circuit))")
     NAMES.update(page.evaluate("import('./circuits.js').then(m=>Object.fromEntries(Object.values(m.CIRCUITS).map(c=>[c.id,c.name])))"))
     brasilia = 'brasilia' in NAMES
     page.fill('#pilotName', 'Piloto campeonato')
@@ -146,12 +150,12 @@ with sync_playwright() as p:
     assert page.inner_text('#championshipStart').startswith('Começar campeonato'), page.inner_text('#championshipStart')
     page.screenshot(path=str(ROOT / 'renders/campeonato_historia_pistas.png'))
     page.click('#championshipStart')
-    # Round 1 finished at the flag: points on the sheet, then the podium.
-    story_round(page, 'interlagos')
+    # Round 1 (Brasília) finished at the flag: points on the sheet, then the podium.
+    story_round(page, STORY_ROUNDS[0])
     page.evaluate('interlagos.car.laps=fixture.storyLaps')
     wait_js(page, "fixture.state.phase==='podium'&&!document.querySelector('#raceResults').hidden", timeout=60000)
     line = page.inner_text('#resultsChampionshipLine')
-    assert 'CAMPEONATO' in line and 'pts' in line and f'HISTÓRIA · CAMPEONATO · ETAPA 1 DE {len(ROUNDS)}' in page.inner_text('#resultsMode'), line
+    assert 'CAMPEONATO' in line and 'pts' in line and f'HISTÓRIA · OLD STOCK 2026 · ETAPA 1 DE {len(STORY_ROUNDS)}' in page.inner_text('#resultsMode'), line
     assert page.locator('#raceResults tbody td.results-points').count() == 15
     assert page.inner_text('#resultsContinue') == 'Continuar para o pódio →'
     scored = story_saved(page)['results'][0]['rows']
@@ -159,14 +163,18 @@ with sync_playwright() as p:
     report['historia_1'] = {'line': line, 'position': mine['position'], 'points': mine['points']}
     page.screenshot(path=str(ROOT / 'renders/campeonato_historia_resultado.png'))
     page.click('#resultsContinue')
-    # The box before the judge: disqualified, the round's points go, and the next vaquinha is round 2.
+    # The box before the judge: disqualified, the round's points go; after the race's report (story-career.js)
+    # the next vaquinha is round 2.
     page.evaluate("fixture.action('afterPodium')")
     wait_js(page, "fixture.state.phase==='inspection'")
     page.evaluate("fixture.action('box')")
     wait_js(page, "fixture.state.phase==='disqualified'")
     wait_js(page, f"(()=>{{const r=JSON.parse(localStorage.getItem('{STORY_KEY}')).results[0].rows.find(r=>r.player);return r.dsq&&r.points===0}})()")
-    story_round(page, 'cascavel')
-    assert f'ETAPA 2/{len(ROUNDS)}' in page.inner_text('header .session') or page.evaluate('fixture.active')
+    wait_js(page, "fixture.state.phase==='complete'&&fixture.state.scene?.kind==='report'", timeout=20000)
+    page.evaluate('window.interlagosHistoria.skipCards()')
+    page.click('[data-action="again"]')
+    story_round(page, STORY_ROUNDS[1])
+    assert f'ETAPA 2/{len(STORY_ROUNDS)}' in page.inner_text('header .session') or page.evaluate('fixture.active')
     # Round 2 towed in: no points, the player last.
     page.evaluate("()=>{const m=fixture;m.state.fail('Pane de teste');m.state.podium();m.sync();}")
     wait_js(page, f"JSON.parse(localStorage.getItem('{STORY_KEY}')).results.length===2")

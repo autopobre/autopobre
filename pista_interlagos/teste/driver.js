@@ -25,6 +25,13 @@ export async function createDriver(cockpit){
  const black=new THREE.MeshStandardMaterial({color:0x15181a,roughness:.95});
  const sole=new THREE.MeshStandardMaterial({color:0x2a2d30,roughness:.8});
  const silver=new THREE.MeshStandardMaterial({color:0x74797c,metalness:.65,roughness:.42});
+ // Modo História: the black overalls Kléber Eletric lends (story-career.js outfitOf 'emprestado') cover the
+ // red suit of the photo; 'proprio' (his own) brings it back.
+ const own={red:{map:red.map,bumpMap:red.bumpMap,color:red.color.getHex()},front:{map:front.map,color:front.color.getHex()}};let suitKind='proprio';
+ function suit(kind){
+  const loan=kind==='emprestado';if(loan===(suitKind==='emprestado'))return;suitKind=kind;
+  for(const [m,o] of [[red,own.red],[front,own.front]]){m.map=loan?null:o.map;if('bumpMap' in o)m.bumpMap=loan?null:o.bumpMap;m.color.setHex(loan?0x1d1f22:o.color);m.needsUpdate=true;}
+ }
  function mesh(g,m,p,parent=root){const o=new THREE.Mesh(g,m);o.position.set(...p);parent.add(o);o.castShadow=true;o.receiveShadow=true;return o;}
  const sphere=(p,s,m,parent=root)=>{const o=mesh(new THREE.SphereGeometry(1,20,12),m,p,parent);o.scale.set(...s);return o;};
  function segment(a,b,r1,r2,m,parent=root){const av=new THREE.Vector3(...a),bv=new THREE.Vector3(...b);const o=mesh(new THREE.CylinderGeometry(r2,r1,1,16,5),m,[0,0,0],parent);fit(o,av,bv);return o;}
@@ -175,5 +182,5 @@ export async function createDriver(cockpit){
   }
  }
  function reset(){motion.reset();choreography.reset(1);handState.id=-1;handState.from=null;handState.away=0;}
- return {root,update,reset,info:()=>({reference:'geracoes_piloto/v01_omp_oli',...pose,arms:errors,legs:legErrors,controls:{...controlPose},visible:root.visible,helmet:helmet.info(),headHeight:1.105+.161})};
+ return {root,update,reset,suit,info:()=>({reference:'geracoes_piloto/v01_omp_oli',suit:suitKind,...pose,arms:errors,legs:legErrors,controls:{...controlPose},visible:root.visible,helmet:helmet.info(),headHeight:1.105+.161})};
 }

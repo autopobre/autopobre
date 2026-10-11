@@ -1,4 +1,5 @@
 import {GRID_SIZE} from './race-roster.js';
+import {loadCareer,newCareer,applyRace,reviseRace,moraleCards,challengeCards,answerExpense,overReason,lineCard,prizeFor,giftScale,expenseScale,SNAG_COST,INTRO_LINES,CHALLENGES,BLAZER_GOAL} from './story-career.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const FANS=[
  {name:'Dona Cida',taste:'família',hint:'Vim com os netos. Adoro uma história de família.',gift:42},
@@ -13,11 +14,12 @@ export const JOKES=[
  {topic:'oficina',text:'Minha Blazer está há tanto tempo na oficina que o mecânico já colocou ela como dependente.'},
  {topic:'corrida',text:'Meu carro faz de zero a cem em três segundos. Zero de dinheiro a cem de preocupação.'}
 ];
-export const BLAZER_COST=900;
-// What a start costs: the entry, the litre of fuel, the windscreen film, and the least that
-// opens the fuel purchase on the grid (the entry and four litres).
-export const COSTS=Object.freeze({entry:100,litre:6.5,film:30,minimum:126});
-export const startCost=(litres,film)=>COSTS.entry+litres*COSTS.litre+(film?COSTS.film:0);
+export const BLAZER_COST=BLAZER_GOAL;
+// What a start costs: the entry (Interlagos'; elsewhere story-career.js entryFor, state.entry), the
+// litre of fuel, the windscreen film, and the least that opens the fuel purchase on the grid (the
+// entry and four litres).
+export const COSTS=Object.freeze({entry:100,litre:6.5,film:30,minimum:126,leastLitres:4});
+export const startCost=(litres,film,entry=COSTS.entry)=>entry+litres*COSTS.litre+(film?COSTS.film:0);
 // Engine start: the throttle band where it catches (low to high), how long it must crank
 // there (longer with wet plugs), the throttle above which it floods, and the battery's
 // cranking time, which does not come back between tries. wet: how the plugs get soaked
@@ -26,53 +28,104 @@ export const startCost=(litres,film)=>COSTS.entry+litres*COSTS.litre+(film?COSTS
 // cranking in or under the band clears them and they dry slowly otherwise.
 export const START=Object.freeze({low:.22,high:.65,flood:.8,catchTime:.72,battery:4,wet:Object.freeze({pump:.3,rich:1.5,high:.25,clear:.2,dry:.02})});
 export class ImmersiveState {
- constructor(profile={}){profile=profile&&typeof profile==='object'?profile:{};const counter=v=>Number.isFinite(v)&&v>=0?Math.min(v,Number.MAX_SAFE_INTEGER):0;this.profile={fund:counter(profile.fund),released:profile.released===true,races:Math.floor(counter(profile.races))};this.active=false;this.phase='off';this.revision=0;this.sounds=[];}
+ // profile: the wallet (fund), the Blazer (released), the races run and the career (story-career.js).
+ // A profile from before the career keeps its race count; its savings and Blazer start over with it.
+ constructor(profile={}){profile=profile&&typeof profile==='object'?profile:{};const counter=v=>Number.isFinite(v)&&v>=0?Math.min(v,Number.MAX_SAFE_INTEGER):0,career=!!profile.career;this.profile={fund:career?counter(profile.fund):0,released:career&&profile.released===true,races:Math.floor(counter(profile.races)),career:loadCareer(profile.career)};this.entry=COSTS.entry;this.scene=null;this.active=false;this.phase='off';this.revision=0;this.sounds=[];}
  emitSound(name,options={}){if(this.sounds.length<64)this.sounds.push({name,options});}
  takeSounds(){return this.sounds.splice(0);}
  touch(){this.revision++;}
  start(){
   this.sounds=[];this.emitSound('crowdWelcome');
   Object.assign(this,{active:true,phase:'crowd',cash:0,donors:[],fan:null,desk:false,leo:null,coffee:false,cafe:false,feedback:'',fuel:0,tankDetached:false,tankWear:0,health:1,glass:0,film:false,
-   pressure:0,crank:0,flood:0,battery:1,ignitionGood:0,starter:false,ignOn:false,raceTime:0,position:GRID_SIZE,result:null,reason:'',towSnags:0,inspection:0,judging:false,inspected:false,paid:false,prize:0,savedCash:0,podiumPlace:null,disqualifiedTime:0,alert:'',alertTime:0});this.touch();
+   pressure:0,crank:0,flood:0,battery:1,ignitionGood:0,starter:false,ignOn:false,raceTime:0,position:GRID_SIZE,result:null,reason:'',towSnags:0,snagCost:0,inspection:0,judging:false,inspected:false,paid:false,prize:0,savedCash:0,podiumPlace:null,disqualifiedTime:0,alert:'',alertTime:0,scene:null});
+  // Before the paddock: the last race's report not seen yet, Kléber's welcome, or the end of the story.
+  const cards=this.careerCards();if(cards)this.openScene(cards.kind,cards.cards);else this.checkMoney();this.touch();
  }
- disable(){this.sounds=[];this.active=false;this.phase='off';this.touch();}
- talk(index){if(this.phase!=='crowd'||this.desk||this.leo||this.cafe||!FANS[index])return;this.emitSound('talk');this.fan=index;this.feedback='';this.touch();}
+ disable(){this.sounds=[];this.active=false;this.phase='off';this.scene=null;this.touch();}
+ // The least that opens the registration here, and what each supporter gives (by their morale).
+ get minimum(){return this.entry+COSTS.leastLitres*COSTS.litre;}
+ gift(index){return Math.round(FANS[index].gift*giftScale(this.profile.career.morale.torcida));}
+ // How much harder a knock hits the car, by the team's morale (1 at 50%).
+ damageScale(){return expenseScale(this.profile.career.morale.equipe);}
+ // Career scenes (story-career.js): cards shown one at a time in the paddock before walking, or
+ // after the race. kind: 'intro' (Kléber lends his overalls, the first challenge), 'report' (the
+ // three morale cards, then the challenge) or 'over' (the end of the story).
+ careerCards(){
+  const c=this.profile.career;
+  if(c.over)return {kind:'over',cards:[{type:'over',reason:c.over}]};
+  if(c.report)return {kind:'report',cards:this.reportCards()};
+  if(!c.intro)return {kind:'intro',cards:[...INTRO_LINES.map((line,i)=>lineCard(line,'intro','intro',i)),{type:'challenge',challenge:CHALLENGES[0].id,fund:this.profile.fund,left:CHALLENGES[0].races,fresh:true}]};
+  return null;
+ }
+ // The report's cards (a report waiting for the wife's answer shows just her request again); the
+ // challenge is applied here, then the end of the story if a bar reached zero.
+ reportCards(){
+  const c=this.profile.career,r=c.report,cards=r.awaiting?[]:moraleCards(c);let over=overReason(c);
+  if(!over){r.awaiting=null;cards.push(...challengeCards(c,this.profile));over=r.awaiting?null:overReason(c);}
+  if(!r.awaiting)c.report=null;if(over){c.over=over;cards.push({type:'over',reason:over});}
+  return cards;
+ }
+ openScene(kind,cards){this.scene={kind,cards,at:0};this.fan=null;this.desk=false;this.leo=null;this.cafe=false;this.feedback='';this.touch();}
+ sceneCard(){return this.scene?.cards[this.scene.at]??null;}
+ // Avançar: the next card; the wife's request waits for an answer and the end for a new story.
+ // skip: Kléber's lines straight to the challenge.
+ advanceScene(skip=false){
+  const s=this.scene,card=this.sceneCard();if(!card||['expense','over'].includes(card.type))return false;
+  if(skip){const next=s.cards.findIndex((c,i)=>i>s.at&&c.type!=='line');s.at=next<0?s.cards.length:next;}else s.at++;
+  this.emitSound(s.cards[s.at]?.type==='line'?'talk':'paper');if(s.at>=s.cards.length)this.closeScene();this.touch();return true;
+ }
+ answerScene(pay){
+  const s=this.scene,c=this.profile.career;if(this.sceneCard()?.type!=='expense')return false;
+  const cards=answerExpense(c,this.profile,pay);if(!cards)return false;c.report=null;
+  const over=overReason(c);if(over){c.over=over;cards.push({type:'over',reason:over});}
+  s.cards.splice(s.at+1,0,...cards);s.at++;this.emitSound(pay?'paper':'denied');this.touch();return true;
+ }
+ closeScene(){const s=this.scene;if(!s)return;if(s.kind==='intro')this.profile.career.intro=true;this.scene=null;if(this.phase==='crowd')this.checkMoney();this.touch();}
+ // In the paddock: when not even every supporter's gift would pay the registration, the story ends.
+ reachable(){return this.cash+this.profile.fund+FANS.reduce((sum,fan,i)=>sum+(this.donors.includes(i)?0:this.gift(i)),0);}
+ checkMoney(){const c=this.profile.career;if(this.phase!=='crowd'||c.over||this.reachable()>=this.minimum)return false;c.over='dinheiro';this.openScene('over',[{type:'over',reason:'dinheiro'}]);return true;}
+ // A new story after the end: an empty wallet, the bars at 50%, the overalls on loan again.
+ restartCareer(){this.profile.fund=0;this.profile.released=false;this.profile.career=newCareer();this.scene=null;this.touch();}
+ // After the disqualification's photo: the report (or the end) of the race, on the paddock's panel.
+ afterDisqualified(){if(this.phase!=='disqualified')return false;const cards=this.careerCards();if(!cards||cards.kind==='intro')return false;this.phase='complete';this.openScene(cards.kind,cards.cards);return true;}
+ talk(index){if(this.phase!=='crowd'||this.scene||this.desk||this.leo||this.cafe||!FANS[index])return;this.emitSound('talk');this.fan=index;this.feedback='';this.touch();}
  // The registration is made with the team at the computers of its stand on the pit wall:
  // they show the kitty against the costs, and the pilot goes back for more or to the track.
- openDesk(){if(this.phase!=='crowd'||this.desk||this.leo||this.cafe)return false;this.emitSound('talk');this.desk=true;this.fan=null;this.feedback='';this.touch();return true;}
+ openDesk(){if(this.phase!=='crowd'||this.scene||this.desk||this.leo||this.cafe)return false;this.emitSound('talk');this.desk=true;this.fan=null;this.feedback='';this.touch();return true;}
  closeDesk(){if(!this.desk)return false;this.desk=false;this.touch();return true;}
  // Leonardo Martins, of the #19, comes over in the paddock and offers a coffee (the Tia's, next
  // door). leo: 'ask' (the question), 'yes' or 'no' (his answer to the pilot's), 'chat' (asked
  // again after one); coffee: the pilot has his cup.
- offerCoffee(){if(this.phase!=='crowd'||this.desk||this.fan!==null||this.leo||this.cafe)return false;this.emitSound('talk');this.leo=this.coffee?'chat':'ask';this.touch();return true;}
+ offerCoffee(){if(this.phase!=='crowd'||this.scene||this.desk||this.fan!==null||this.leo||this.cafe)return false;this.emitSound('talk');this.leo=this.coffee?'chat':'ask';this.touch();return true;}
  answerCoffee(yes){if(this.leo!=='ask')return false;this.leo=yes?'yes':'no';if(yes){this.coffee=true;this.emitSound('pitCoffee');}else this.emitSound('talk');this.touch();return true;}
  closeCoffee(){if(!this.leo)return false;this.leo=null;this.touch();return true;}
  // The Tia's menu at her café counter, as during a pit stop (pitstop.js snacks): one more
  // conversation, so it waits for the others and they wait for it.
- openCafe(){if(this.phase!=='crowd'||this.desk||this.fan!==null||this.leo||this.cafe)return false;this.emitSound('paper');this.cafe=true;this.touch();return true;}
+ openCafe(){if(this.phase!=='crowd'||this.scene||this.desk||this.fan!==null||this.leo||this.cafe)return false;this.emitSound('paper');this.cafe=true;this.touch();return true;}
  closeCafe(){if(!this.cafe)return false;this.cafe=false;this.touch();return true;}
- // The kitty a snack may spend: never what the registration's minimum still needs, counting the
- // gifts of the supporters who have not given yet (each gives once, whenever they laugh).
- spareCash(){const coming=FANS.reduce((sum,fan,i)=>sum+(this.donors.includes(i)?0:fan.gift),0);return clamp(this.cash+coming-COSTS.minimum,0,this.cash);}
- // A snack in the paddock is paid as at the pit stop: from the kitty first (what it can spare),
- // then from the savings.
- pay(cost){const spare=this.spareCash();if(!Number.isFinite(cost)||cost<0||cost>spare+this.profile.fund+.001)return false;const cash=Math.min(spare,cost);this.cash-=cash;this.profile.fund=Math.max(0,this.profile.fund-(cost-cash));this.touch();return true;}
+ // What the kitty and the wallet may spend on a snack: before the registration, never what its
+ // minimum still needs, counting the gifts of the supporters who have not given yet (each gives
+ // once, whenever they laugh).
+ spareCash(){const coming=FANS.reduce((sum,fan,i)=>sum+(this.donors.includes(i)?0:this.gift(i)),0),reserve=this.phase==='crowd'?Math.max(0,this.minimum-coming):0;return clamp(this.cash+this.profile.fund-reserve,0,this.cash+this.profile.fund);}
+ // A snack in the paddock is paid as at the pit stop: from the kitty first, then from the wallet.
+ pay(cost){if(!Number.isFinite(cost)||cost<0||cost>this.spareCash()+.001)return false;const cash=Math.min(this.cash,cost);this.cash-=cash;this.profile.fund=Math.max(0,this.profile.fund-(cost-cash));this.touch();return true;}
  joke(index){
   if(this.phase!=='crowd'||this.fan===null||!JOKES[index])return false;
   const fan=FANS[this.fan],laughed=fan.taste===JOKES[index].topic;
   this.emitSound(this.donors.includes(this.fan)?'noDonation':laughed?'donation':'badJoke');
   if(this.donors.includes(this.fan))this.feedback=`${fan.name}: “Essa eu já patrocinei! Vai falar com o pessoal ali.”`;
-  else if(laughed){this.cash+=fan.gift;this.donors.push(this.fan);this.feedback=`${fan.name} caiu na risada! + R$ ${fan.gift} para a vaquinha.`;}
+  else if(laughed){const gift=this.gift(this.fan);this.cash+=gift;this.donors.push(this.fan);this.feedback=`${fan.name} caiu na risada! + R$ ${gift} para a vaquinha.`;}
   else this.feedback=`${fan.name}: “Essa não me pegou... tenta outra!”`;
   this.touch();return laughed;
  }
- // At the team's desk the entry, the fuel and the optional windscreen film are paid, and
- // the pilot goes straight to the engine start on the grid (from the kitty's minimum up).
+ // At the team's desk the entry, the fuel and the optional windscreen film are paid (the kitty
+ // first, then the wallet), and the pilot goes straight to the engine start on the grid (from the
+ // registration's minimum up).
  buy(litres,film){
   if(this.phase!=='crowd'||!this.desk)return false;
-  litres=clamp(Math.round(Number(litres)||0),2,12);const cost=startCost(litres,film);
-  if(this.cash<COSTS.minimum||cost>this.cash){this.emitSound('denied');this.feedback=this.cash<COSTS.minimum?'Ainda não fecha a inscrição: volta lá e pede mais um dindin!':'Não cabe tudo isso na vaquinha: tira uns litros ou a proteção.';this.touch();return false;}
-  this.emitSound('paper');this.cash-=cost;this.fuel=litres;this.film=!!film;this.desk=false;this.feedback='';this.phase='starting';this.emitSound('fuelFill');this.touch();return true;
+  litres=clamp(Math.round(Number(litres)||0),2,12);const cost=startCost(litres,film,this.entry),money=this.cash+this.profile.fund;
+  if(money<this.minimum||cost>money){this.emitSound('denied');this.feedback=money<this.minimum?'Ainda não fecha a inscrição: volta lá e pede mais um dindin!':'Não cabe tudo isso no dinheiro: tira uns litros ou a proteção.';this.touch();return false;}
+  const cash=Math.min(this.cash,cost);this.emitSound('paper');this.cash-=cash;this.profile.fund=Math.max(0,this.profile.fund-(cost-cash));this.fuel=litres;this.film=!!film;this.desk=false;this.feedback='';this.phase='starting';this.emitSound('fuelFill');this.touch();return true;
  }
  // The IGN switch on the overhead bank: without it the starter turns the engine, which never fires.
  switchIgnition(){if(this.phase!=='starting')return false;this.ignOn=!this.ignOn;this.emitSound('click');this.touch();return true;}
@@ -95,7 +148,7 @@ export class ImmersiveState {
  startRace(){if(this.phase!=='grid')return;this.emitSound('raceGo');this.phase='race';this.raceTime=0;this.touch();}
  warn(text){this.alert=text;this.alertTime=4;}
  hitDebris(){if(this.phase!=='race')return;this.glass=clamp(this.glass+(this.film?.23:.42),0,1);this.emitSound(this.glass>=1?'glassBreak':'glassHit');this.warn('Impacto no para-brisa! Saia de trás do carro da frente.');if(this.glass>=1)this.fail('Para-brisa estilhaçado');}
- hitCar(strength=1){if(this.phase!=='race')return;strength=clamp(strength,.1,1.5);this.emitSound('collision',{strength});this.health=this.condition?this.condition.health:Math.max(0,this.health-.23*strength);this.warn('Batida! O motor e os suportes sentiram o impacto.');if(this.health<=0)this.fail('O carro quebrou depois da batida');}
+ hitCar(strength=1){if(this.phase!=='race')return;strength=clamp(strength,.1,1.5);this.emitSound('collision',{strength});this.health=this.condition?this.condition.health:Math.max(0,this.health-.23*strength*this.damageScale());this.warn('Batida! O motor e os suportes sentiram o impacto.');if(this.health<=0)this.fail('O carro quebrou depois da batida');}
  raceStep(sensor,dt){
   if(this.phase!=='race')return;
   this.raceTime+=dt;this.alertTime=Math.max(0,this.alertTime-dt);
@@ -131,16 +184,19 @@ export class ImmersiveState {
  finish(position,announce=true){if(this.phase!=='race')return;if(announce)this.emitSound('finish');this.result={position:clamp(position,1,GRID_SIZE),status:'Terminou'};this.podium();}
  leavePodium(){if(this.phase!=='podium')return;this.phase='inspection';this.judging=false;this.touch();}
  requestInspection(){if(this.phase==='inspection'&&!this.judging){this.emitSound('judgeStart');this.judging=true;this.inspection=0;this.touch();}}
- inspectionStep(dt){if(this.phase!=='inspection'||!this.judging)return;const tick=Math.floor(this.inspection/1.4);this.inspection+=dt;if(Math.floor(this.inspection/1.4)>tick)this.emitSound('judgeCheck');if(this.inspection>=8){this.emitSound('judgeApprove');this.inspected=true;this.phase='complete';this.touch();}}
- goToBox(){if(this.phase!=='inspection'||this.inspected)return;this.emitSound('disqualified');this.result={...this.result,status:'Desclassificado'};this.reason='Levou o carro ao box antes da vistoria do juiz';this.profile.fund=Math.max(0,this.profile.fund-this.prize);this.prize=0;this.phase='disqualified';this.disqualifiedTime=6;this.touch();}
+ inspectionStep(dt){if(this.phase!=='inspection'||!this.judging)return;const tick=Math.floor(this.inspection/1.4);this.inspection+=dt;if(Math.floor(this.inspection/1.4)>tick)this.emitSound('judgeCheck');if(this.inspection>=8){this.emitSound('judgeApprove');this.inspected=true;this.phase='complete';const cards=this.careerCards();if(cards&&cards.kind!=='intro')this.openScene(cards.kind,cards.cards);this.touch();}}
+ goToBox(){if(this.phase!=='inspection'||this.inspected)return;this.emitSound('disqualified');this.result={...this.result,status:'Desclassificado'};this.reason='Levou o carro ao box antes da vistoria do juiz';this.profile.fund=Math.max(0,this.profile.fund-this.prize);this.prize=0;reviseRace(this.profile.career,this.result);this.phase='disqualified';this.disqualifiedTime=6;this.touch();}
  podium(){
-  if(this.paid)return;
-  const reward=this.result?.status==='Desclassificado'?0:this.result?.position?([600,450,300,220,170,120][this.result.position-1]??Math.max(40,120-(this.result.position-6)*10)):40;
-  this.prize=Math.max(0,reward-this.towSnags*25);this.savedCash=Math.max(0,Number.isFinite(this.cash)?this.cash:0);this.profile.fund+=this.prize+this.savedCash;this.cash=0;this.profile.races++;this.emitSound(this.result?.position===1&&this.result?.status!=='Desclassificado'?'podiumWin':'podiumLoss');this.paid=true;this.phase='podium';this.podiumPlace=6;this.touch();
+  if(this.paid)return;this.scene=null;
+  // The prize by position (story-career.js), what is left in the kitty and the strap untangled: into
+  // the wallet. The race moves the career's morale; its report shows after the inspection.
+  this.prize=this.result?.status==='Desclassificado'?0:prizeFor(this.result?.position);this.snagCost=this.towSnags*SNAG_COST;this.savedCash=Math.max(0,Number.isFinite(this.cash)?this.cash:0);
+  this.profile.fund=Math.max(0,this.profile.fund+this.prize+this.savedCash-this.snagCost);this.cash=0;this.profile.races++;applyRace(this.profile.career,this.result);this.emitSound(this.result?.position===1&&this.result?.status!=='Desclassificado'?'podiumWin':'podiumLoss');this.paid=true;this.phase='podium';this.podiumPlace=6;this.touch();
  }
- releaseBlazer(){if(this.phase==='complete'&&!this.profile.released&&this.profile.fund>=BLAZER_COST){this.emitSound('blazer');this.profile.fund-=BLAZER_COST;this.profile.released=true;this.touch();return true;}return false;}
+ releaseBlazer(){if(this.phase==='complete'&&!this.scene&&!this.profile.released&&this.profile.career.challenge>=CHALLENGES.length&&this.profile.fund>=BLAZER_COST){this.emitSound('blazer');this.profile.fund-=BLAZER_COST;this.profile.released=true;this.touch();return true;}return false;}
  info(){return {active:this.active,phase:this.phase,cash:this.cash,desk:!!this.desk,fuel:this.fuel,health:this.health,glass:this.glass,tankDetached:this.tankDetached,pressure:this.pressure,ignOn:!!this.ignOn,flood:this.flood,battery:this.battery,
-  leo:this.leo,coffee:!!this.coffee,cafe:!!this.cafe,position:this.position,result:this.result,reason:this.reason,towGap:this.towGap,towSnags:this.towSnags,inspected:this.inspected,podiumPlace:this.podiumPlace,prize:this.prize,savedCash:this.savedCash,profile:{...this.profile}};}
+  leo:this.leo,coffee:!!this.coffee,cafe:!!this.cafe,position:this.position,result:this.result,reason:this.reason,towGap:this.towGap,towSnags:this.towSnags,snagCost:this.snagCost,inspected:this.inspected,podiumPlace:this.podiumPlace,prize:this.prize,savedCash:this.savedCash,entry:this.entry,minimum:this.minimum,profile:{...this.profile},
+  career:JSON.parse(JSON.stringify(this.profile.career)),scene:this.scene?{kind:this.scene.kind,at:this.scene.at,cards:this.scene.cards.map(c=>c.type),card:this.sceneCard()}:null};}
 }
 
 // Flat tow strap with a fixed five-metre length; slack bows sideways on the ground.

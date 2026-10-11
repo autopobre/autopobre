@@ -17,7 +17,7 @@ MODULES = (
     'main.js', 'player-preferences.js', 'physics.js', 'camera-return.js', 'car-audio.js', 'car-openings.js', 'cockpit.js', 'cockpit-materials.js', 'cockpit-instruments.js', 'cockpit-rear.js', 'cockpit-equipment.js',
     'driver.js', 'driver-rig.js', 'driver-controls.js', 'driver-helmet.js', 'rival-driver.js', 'family-phone.js',
     'camera-rig.js',
-    'immersive-mode.js', 'immersive-state.js', 'immersive-visuals.js',
+    'immersive-mode.js', 'immersive-state.js', 'immersive-visuals.js', 'story-career.js', 'story-scene.js',
     'sun-light.js', 'car-shadow.js',
     'contact-shadows.js', 'car-wheels.js',
     'race-action.js', 'verge-vegetation.js', 'skid-marks.js', 'track-surface.js', 'tyre-smoke.js', 'speed-particles.js', 'kerb-contact.js', 'side-mirrors.js', 'brake-lights.js', 'sky.js', 'cinematic.js', 'sponsors.js', 'trackside.js', 'trackside-flags.js', 'tv-camera.js', 'intro-cinematic.js', 'landscape.js', 'lake-contact.js', 'lake-waves.js', 'tree-contact.js',

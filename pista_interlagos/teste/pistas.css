@@ -46,6 +46,17 @@
 /* Modo Corrida's other single races: a solo practice and the 1x1 against a chosen rival. */
 .race-extras{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 #tracks[data-mode=historia] .race-extras{display:none}
+/* Modo História races only the Old Stock 2026 season: no single race, its career beside the calendar. */
+#tracks[data-mode=historia] .tracks-modes{display:none}
+/* The season picks the track: no circuit cards, the career beside the calendar. */
+#tracks[data-mode=historia] .tracks-pick{display:none}
+#tracks[data-mode=historia] .tracks-body{grid-template-columns:minmax(0,960px);justify-content:center}
+#tracks[data-mode=historia] .tracks-side{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1fr);align-items:start}
+#tracks[data-mode=historia] .tracks-side-head{grid-column:1/-1}
+@media(max-width:700px) and (orientation:portrait){#tracks[data-mode=historia] .tracks-side{grid-template-columns:1fr}}
+.championship-tabs[hidden]{display:none}
+.story-career{padding:12px 16px;border-radius:9px;border:1px solid #d9b93c80;background:#152d29eb}.story-career[hidden]{display:none}
+.story-career p{margin:8px 0 0;font-size:12px;line-height:1.45;color:#dfe8de}.story-career-over{color:#ffb3a8!important}
 #tracks .race-extras button{height:100%;padding:12px 13px;font-size:14px;background:#152d29eb;color:#f4ce39;border:1px solid #d9b93c99}
 #tracks .race-extras button:hover:not(:disabled){background:#21443ceb;color:#ffe574}
 .duel-card{display:flex;flex-direction:column;min-width:0;border:1px solid #d9b93c99;border-radius:8px;overflow:hidden;background:#152d29eb}

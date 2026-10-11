@@ -61,7 +61,9 @@ export function createPitBuildings({pit,c,lerp,at,root,obstacles,textures,labels
    // #19's door always has one (Leonardo takes his place in the story paddock, immersive-visuals.js leoDoor);
    // the draw stays, so the other bays keep theirs.
    if(team){
-    const n=Math.max(team.number==='19'?1:0,pick([0,1,1,1,2,2,3])),tyreSide=rnd()<.5?1:-1,stack=rnd()<.45,parked=teams.get(b)<4,placed=[];let first=null;
+    // #70's crew and tyres keep to one side of the door: the story's scenes with Kléber Eletric are played on
+    // the other, beside his car (story-scene.js); the draws are made all the same.
+    const kleber=team.number==='70',n=Math.max(team.number==='19'?1:0,pick([0,1,1,1,2,2,3])),tyreSide=rnd()<.5&&!kleber?1:-1,stack=rnd()<.45,parked=teams.get(b)<4||kleber,placed=[];let first=null;
     // Along the bay: off the tyre stack, inside the bay, and (the four teams nearest Box 99 park a car nose in at
     // the door in the story, immersive-visuals.js) clear of its flanks; never in another crewman's place.
     const fit=a=>{if(stack&&Math.abs(a-tyreSide*3.6)<1)a-=tyreSide*1.2;a=Math.max(-(bay/2-.9),Math.min(bay/2-.9,a));return parked&&Math.abs(a)<1.5?(a<0?-1.5:1.5):a;};
@@ -69,7 +71,7 @@ export function createPitBuildings({pit,c,lerp,at,root,obstacles,textures,labels
     for(let k=0;k<n;k++){
      // A second or third one keeps the first company, turned toward them; pushed onto someone by the rules above,
      // he takes the first one's other side, or stays inside (his draw still made, so the next bays keep theirs).
-     const raw=first===null?(rnd()<.5?-1:1)*(1.2+rnd()*3):first+(rnd()<.5?-1:1)*(.8+rnd()*.5);let along=fit(raw);if(crowded(along))along=fit(2*first-raw);
+     const raw=first===null?(rnd()<.5?-1:1)*(1.2+rnd()*3):first+(rnd()<.5?-1:1)*(.8+rnd()*.5);let along=fit(raw);if(crowded(along))along=fit(2*first-raw);if(kleber)along=-Math.abs(along);
      const w=at(p,front-.45-rnd()*1.3),yaw=first===null?hd-Math.PI/2+(rnd()-.5)*1.1:hd+(along>first?Math.PI:0)+(rnd()-.5)*.6;
      const hat=rnd(),polo=rnd()<.3;
      const person={...(k===0?{name:'Porta_equipe_'+team.number}:{}),outfit:{top:polo?0xf4f1ea:team.color,bottom:pick(polo?bottoms:[0x2d3338,0x2d3338,team.color]),trim:polo?team.color:0xf4f1ea,hands:rnd()<.6?0x1b1d20:null,sleeves:polo?'short':'long',hat:hat<.55?'cap':hat<.68?'headset':null,hatColor:team.color,...look()},pose:pick(['folded','stand','ready','rest','folded']),x:w.x+p[c.tx]*along,y:w.y+.05,z:w.z-p[c.ty]*along,yaw};

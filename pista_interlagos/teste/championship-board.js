@@ -20,6 +20,8 @@ export function renderChampionshipPanel(root,championship){
  const tabs=$('championshipTabs');tabs.replaceChildren(...calendarsFor(championship.mode).map(id=>CHAMPIONSHIP_CALENDARS[id]).map(c=>{
   const on=c.id===championship.calendar,tab=el('button',{type:'button',role:'tab',id:`championshipTab-${c.id}`,textContent:c.name,tabIndex:on?0:-1});
   tab.dataset.championshipCalendar=c.id;tab.setAttribute('aria-selected',String(on));tab.setAttribute('aria-controls','championshipCalendar');return tab;}));
+ // A single calendar (Modo História's Old Stock season) needs no tabs.
+ tabs.hidden=tabs.children.length<2;
  $('championshipTitle').textContent=info.title;
  const calendar=$('championshipCalendar'),schedule=championship.schedule;calendar.replaceChildren();
  calendar.classList.toggle('dated',schedule.some(r=>r.date));calendar.classList.toggle('long',schedule.length>6);calendar.setAttribute('aria-labelledby','championshipTab-'+championship.calendar);

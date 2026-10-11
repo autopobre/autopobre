@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {ImmersiveState,FANS,JOKES,COSTS,strapPath} from '../teste/immersive-state.js';
+import {CHALLENGES} from '../teste/story-career.js';
 import {snackState,buySnack,giveSnack,useSnack,stepSnack} from '../teste/pitstop.js';
 const checks={},check=(name,value)=>{checks[name]=!!value;assert(value,name);};
-const fresh=()=>{const s=new ImmersiveState();s.start();return s;};
+// A career whose welcome in Kléber's box was already seen (story-career.js; testar_carreira.mjs covers it).
+const fresh=()=>{const s=new ImmersiveState({career:{version:1,intro:true}});s.start();return s;};
 const fund=s=>{for(let i=0;i<FANS.length;i++){s.talk(i);s.joke(JOKES.findIndex(j=>j.topic===FANS[i].taste));}};
 const s=fresh();check('optional_off_by_default',!new ImmersiveState().active);
 s.talk(0);s.joke(1);check('no_laugh_no_money',s.cash===0);s.joke(0);const cash=s.cash;s.joke(0);check('laugh_donates_once',cash>0&&s.cash===cash);
@@ -39,12 +41,14 @@ const glass=fresh();glass.phase='race';glass.fuel=8;glass.hitDebris();check('gla
 const goodTow=fresh();goodTow.beginTow();for(let i=0;i<12000&&goodTow.phase==='tow';i++)goodTow.towStep({brake:1},1/120);check('braking_keeps_tow_strap_safe',goodTow.phase==='podium'&&goodTow.towSnags===0);
 const badTow=fresh();badTow.beginTow();for(let i=0;i<3000&&badTow.phase==='tow';i++)badTow.towStep({brake:0},1/120);check('coasting_runs_over_strap',badTow.phase==='snag'&&badTow.towGap<2.2);badTow.untangle();check('snag_recoverable',badTow.phase==='tow'&&badTow.towGap===5);
 for(const gap of [.5,1,2,3,4,5]){const pts=strapPath([0,.2,0],[gap,.2,0]);const len=pts.slice(1).reduce((sum,p,i)=>sum+Math.hypot(...p.map((v,j)=>v-pts[i][j])),0);check('strap_fixed_length_'+gap,Math.abs(len-5)<.001);check('strap_attached_'+gap,Math.hypot(...pts[0].map((v,j)=>v-[0,.2,0][j]))<1e-8&&Math.hypot(...pts.at(-1).map((v,j)=>v-[gap,.2,0][j]))<1e-8);}
-const winner=fresh();winner.phase='race';winner.finish(1);winner.leavePodium();winner.requestInspection();winner.inspectionStep(8);check('winner_still_sixth_on_podium',winner.inspected&&winner.podiumPlace===6&&winner.result.position===1&&winner.prize===600);
+const winner=fresh();winner.phase='race';winner.finish(1);winner.leavePodium();winner.requestInspection();winner.inspectionStep(8);check('winner_still_sixth_on_podium',winner.inspected&&winner.podiumPlace===6&&winner.result.position===1&&winner.prize===800);
 const angled=strapPath([10,5,30],[11.5,5.1,33.8]);const angledLength=angled.slice(1).reduce((sum,p,i)=>sum+Math.hypot(...p.map((v,j)=>v-angled[i][j])),0);
 check('strap_follows_world_space_anchors',Math.hypot(...angled[0].map((v,j)=>v-[10,5,30][j]))<1e-8&&Math.hypot(...angled.at(-1).map((v,j)=>v-[11.5,5.1,33.8][j]))<1e-8&&Math.abs(angledLength-5)<.001);
 const balance=winner.profile.fund;winner.podium();check('prize_not_paid_twice',winner.profile.fund===balance);
 const dq=fresh();dq.phase='race';dq.finish(1);dq.leavePodium();dq.goToBox();check('box_before_judge_disqualifies_winner',dq.result.status==='Desclassificado'&&dq.prize===0&&dq.podiumPlace===6);
 for(const reason of ['Motor afogado na partida','Acabou a gasolina','Para-brisa estilhaçado','Carro quebrou']){const d=fresh();d.phase='race';d.fail(reason);d.beginTow();while(d.phase==='tow')d.towStep({brake:1},.05);d.leavePodium();d.requestInspection();d.inspectionStep(8);check('dnf_sixth_'+reason,d.podiumPlace===6&&d.result.status==='Não terminou');}
-winner.start();winner.phase='race';winner.finish(1);winner.leavePodium();winner.requestInspection();winner.inspectionStep(8);check('blazer_goal_can_be_completed',winner.releaseBlazer()&&winner.profile.released&&winner.profile.fund===300);check('mechanic_paid_once',!winner.releaseBlazer());
+winner.start();winner.phase='race';winner.finish(1);winner.leavePodium();winner.requestInspection();winner.inspectionStep(8);check('blazer_waits_for_the_equipment',!winner.releaseBlazer()&&winner.sceneCard()?.type==='morale');
+// The Blazer is the final dream: once the four pieces of equipment are bought.
+winner.scene=null;Object.assign(winner.profile.career,{challenge:CHALLENGES.length,report:null});winner.profile.fund=1200;check('blazer_goal_can_be_completed',winner.releaseBlazer()&&winner.profile.released&&winner.profile.fund===300);check('mechanic_paid_once',!winner.releaseBlazer());
 const saved=new ImmersiveState(JSON.parse(JSON.stringify(winner.profile)));check('profile_survives_reload',saved.profile.released&&saved.profile.races===2);saved.disable();check('normal_mode_isolated',!saved.active&&saved.phase==='off');
 const report={passed:true,checks};fs.writeFileSync(new URL('../dados/validacao_imersivo.json',import.meta.url),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));

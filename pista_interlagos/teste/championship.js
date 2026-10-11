@@ -25,12 +25,13 @@ export const COPA_FUSCA_2026=Object.freeze([
  ['chapeco','Chapecó - SC','21 e 22 NOV'],['interlagos','Interlagos - SP','19 e 20 DEZ']].map(([circuit,place,date])=>Object.freeze({circuit,place,date})));
 export const CHAMPIONSHIP_MODES=Object.freeze(['corrida','historia']);
 export const CHAMPIONSHIP_CALENDARS=Object.freeze({
- todas:Object.freeze({id:'todas',name:'Todas as pistas',title:'Todas as pistas, somando pontos',label:'CAMPEONATO',modes:CHAMPIONSHIP_MODES,rounds:Object.freeze(CHAMPIONSHIP_ROUNDS.map(circuit=>Object.freeze({circuit})))}),
+ todas:Object.freeze({id:'todas',name:'Todas as pistas',title:'Todas as pistas, somando pontos',label:'CAMPEONATO',modes:Object.freeze(['corrida']),rounds:Object.freeze(CHAMPIONSHIP_ROUNDS.map(circuit=>Object.freeze({circuit})))}),
  oldstock2026:Object.freeze({id:'oldstock2026',name:'Old Stock 2026',title:'Temporada 2026, nas datas da Old Stock',label:'OLD STOCK 2026',modes:CHAMPIONSHIP_MODES,rounds:OLD_STOCK_2026}),
  copafusca2026:Object.freeze({id:'copafusca2026',name:'Copa Fusca 2026',title:'Temporada 2026, nas datas da Copa Fusca Seineca',label:'COPA FUSCA 2026',modes:Object.freeze(['corrida']),model:'fusca',kind:'de Fusca',rounds:COPA_FUSCA_2026})});
-// The calendars a mode offers (its tabs, in order); one it does not offer falls back to Todas as pistas.
+// The calendars a mode offers (its tabs, in order): Modo Corrida all three, Modo História only the
+// Old Stock 2026 season (its career runs on it). One a mode does not offer falls back to its first.
 export const calendarsFor=mode=>Object.keys(CHAMPIONSHIP_CALENDARS).filter(id=>CHAMPIONSHIP_CALENDARS[id].modes.includes(mode));
-export const championshipCalendar=(id,mode)=>Object.hasOwn(CHAMPIONSHIP_CALENDARS,id)&&(!mode||CHAMPIONSHIP_CALENDARS[id].modes.includes(mode))?id:'todas';
+export const championshipCalendar=(id,mode)=>Object.hasOwn(CHAMPIONSHIP_CALENDARS,id)&&(!mode||CHAMPIONSHIP_CALENDARS[id].modes.includes(mode))?id:mode?calendarsFor(mode)[0]??'todas':'todas';
 // Every finishing position scores, so a comeback from the back still counts.
 export const CHAMPIONSHIP_POINTS=Object.freeze([25,20,16,13,11,10,9,8,7,6,5,4,3,2,1]);
 export const CHAMPIONSHIP_KEY='opala99-championship-v1';

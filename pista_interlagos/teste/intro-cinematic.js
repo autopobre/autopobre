@@ -34,7 +34,8 @@ export class CinematicIntro{
   this.root=document.createElement('div');this.root.id='cineIntro';this.root.setAttribute('aria-hidden','true');
   this.root.innerHTML='<div class="cine-bar top"></div><div class="cine-bar bottom"></div><div class="cine-title"><span class="cine-eyebrow"></span><h2></h2><p></p></div><div class="cine-skip">Qualquer tecla pula a abertura</div>';
   document.body.append(this.root);this.title=this.root.querySelector('.cine-title');
-  const skip=e=>{if(!this.active||this.time<.35)return;if(e.type==='keydown'&&['Escape','KeyP','KeyM','Tab'].includes(e.code))return;this.stop();};
+  // A key pressed while it plays is only for the opening (introKey: main.js gives it to nothing else).
+  const skip=e=>{if(!this.active)return;if(e.type==='keydown'&&!['Escape','KeyP','KeyM','Tab'].includes(e.code))e.introKey=true;if(this.time<.35)return;if(e.type==='keydown'&&['Escape','KeyP','KeyM','Tab'].includes(e.code))return;this.stop();};
   addEventListener('keydown',skip,true);addEventListener('pointerdown',skip,true);
  }
  // kind 'race' | 'story'; context() is read when the intro starts running.

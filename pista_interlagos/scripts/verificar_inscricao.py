@@ -60,7 +60,9 @@ def run(page, circuit):
     check('stepping_in_opens_team_panel' + tag, page.is_visible('#immersivePanel.social-dialogue') and 'Equipe 99' in page.inner_text('#immersivePanel'))
     check('pilot_stands_on_the_deck' + tag, abs(hero()[1] - page.evaluate('fixtureMode.visual.desk.spot.y')) < .15)
     text = page.inner_text('#immersivePanel')
-    check('panel_shows_kitty_and_costs' + tag, all(s in text for s in ['Na vaquinha', 'R$ 0,00', 'Inscrição', 'R$ 100,00', 'Gasolina', 'Faltam', 'R$ 126,00']))
+    # The entry is R$ 100 at Interlagos and R$ 150 away (story-career.js); the start needs it and 4 litres.
+    entry = 100 if circuit == 'interlagos' else 150; reais = lambda n: f'R$ {n:.2f}'.replace('.', ',')
+    check('panel_shows_kitty_and_costs' + tag, all(s in text for s in ['Na vaquinha', 'Na carteira', 'R$ 0,00', 'Inscrição', reais(entry), 'Gasolina', 'Faltam', reais(entry + 26)]))
     check('poor_kitty_cannot_go_to_track' + tag, page.is_disabled('[data-action="buy"]'))
     frames(10); shot('sem_dinheiro')
     page.keyboard.press('Enter'); check('enter_without_money_stays' + tag, page.evaluate("fixtureMode.state.phase==='crowd'&&fixtureMode.state.desk"))
@@ -71,13 +73,14 @@ def run(page, circuit):
     page.evaluate('''async()=>{const {FANS,JOKES}=await import('./immersive-state.js');const s=fixtureMode.state;for(let i=0;i<FANS.length;i++){s.fan=null;s.talk(i);s.joke(JOKES.findIndex(j=>j.topic===FANS[i].taste));}s.fan=null;s.touch();}''')
     page.keyboard.press('KeyE'); wait_js(page, 'fixtureMode.state.desk')
     text = page.inner_text('#immersivePanel')
-    check('funded_panel_shows_leftover' + tag, 'R$ 246,00' in text and 'Sobra' in text and page.inner_text('#deskLeft') == 'R$ 107,00' and not page.is_disabled('[data-action="buy"]'))
-    # Fuel and the optional R$ 30 windscreen film are chosen right at the desk.
-    page.check('#immFilm'); page.locator('#immLitres').fill('12')
-    check('fuel_and_film_chosen_at_desk' + tag, page.inner_text('#deskTotal') == 'R$ 208,00' and page.inner_text('#deskLeft') == 'R$ 38,00')
+    check('funded_panel_shows_leftover' + tag, 'R$ 246,00' in text and 'Sobra' in text and page.inner_text('#deskLeft') == reais(246 - entry - 39) and not page.is_disabled('[data-action="buy"]'))
+    # Fuel and the optional R$ 30 windscreen film are chosen right at the desk (away, less fuel fits).
+    litres = 12 if entry == 100 else 8
+    page.check('#immFilm'); page.locator('#immLitres').fill(str(litres))
+    check('fuel_and_film_chosen_at_desk' + tag, page.inner_text('#deskTotal') == reais(entry + litres * 6.5 + 30) and page.inner_text('#deskLeft') == reais(246 - entry - litres * 6.5 - 30))
     frames(10); shot('com_dinheiro')
     page.keyboard.press('Enter')
-    check('desk_goes_straight_to_engine_start' + tag, page.evaluate("fixtureMode.state.phase==='starting'&&fixtureMode.state.fuel===12&&fixtureMode.state.film&&fixtureMode.state.cash===38"))
+    check('desk_goes_straight_to_engine_start' + tag, page.evaluate(f"fixtureMode.state.phase==='starting'&&fixtureMode.state.fuel==={litres}&&fixtureMode.state.film&&fixtureMode.state.cash==={246 - entry - litres * 6.5 - 30}"))
 
 
 with sync_playwright() as p:

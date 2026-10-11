@@ -35,6 +35,8 @@ import {createDriver} from './driver.js?v=20260923-controls';
 import {SkidMarks} from './skid-marks.js?v=20260923-capotagem';
 import {TyreSmoke} from './tyre-smoke.js?v=20261005-poeira-folhas';
 import {ImmersiveMode} from './immersive-mode.js';
+import {ImmersiveState} from './immersive-state.js';
+import {CHALLENGES,MORALE,MORALE_NAMES,GAME_OVER,BLAZER_GOAL,STORY_PROFILE_KEY} from './story-career.js';
 import {MobileControls} from './mobile-controls.js';
 import {GamepadControls} from './gamepad-controls.js';
 import {WheelControls} from './wheel-controls.js';
@@ -98,7 +100,12 @@ let projectMap;
 $('livery').value=preferences.values.livery;
 $('camera').value=preferences.values.camera;
 $('carDamage').checked=preferences.values.damage;
-$('carDamage').onchange=()=>{preferences.update({damage:$('carDamage').checked});pitstop?.setDamage(preferences.values.damage);};
+// Damage and wear: Modo Corrida's setting; always on in Modo História, whose career counts on it (the team's
+// morale makes the knocks harder or softer, story-career.js), with the car's condition on screen (pitstop.js).
+// Applied when what it should be changes (the mode, the setting) or a circuit's pit stop is built (force).
+const damageOn=()=>preferences.values.damage||!!immersive?.active;let damageApplied=null;
+function syncDamage(force=false){const want=damageOn();if(!pitstop||want===damageApplied&&!force)return;damageApplied=want;pitstop.setDamage(want);}
+$('carDamage').onchange=()=>{preferences.update({damage:$('carDamage').checked});syncDamage();};
 // The grid list in the race settings; Koyzinho is marked while he races as the ace. Fácil shows the
 // standings pace, the harder levels the pilots' table.
 // The player's car is the 99 or, in Modo Corrida, the car screen's choice, whose driver then sits out
@@ -1053,7 +1060,7 @@ function runFrame(){const rawDt=clock.getDelta(),dt=Math.min(rawDt,.08);gamepad.
  // A watched rival is posed by immersive.update below: its camera follows after that.
  updateOpenings(paused?0:dt);updateCar(dt);if(!watchedRival())updateCamera(dt);const dash=cockpit.update(car,paused?0:dt,heard===car?carAudio.state:null),phoneArrived=dash.phoneArrived;if(phoneArrived)carAudio.notifyPhone();fuscaBody.update(dash.speed,dash.rpm,(immersive?.active?immersive.state.fuel:immersive?.freeFuel??12)/12);driver.update(car,paused?0:dt,{command:driveCommand,impact:frameImpact,phoneArrived});gamepad.bump(actionImpact);frameImpact=0;lapBanner(paused?0:dt);lastHud+=dt;if(lastHud>.07){hud();lastHud=0;}
  if(immersive?.visual)immersive.visual.renderAhead=renderAhead();immersive?.update(paused?0:dt,camera);if(watchedRival())updateCamera(dt);
- pitstop?.update(paused?0:dt,camera,sessionStarted&&!paused);updateGhost(dt);
+ syncDamage();pitstop?.update(paused?0:dt,camera,sessionStarted&&!paused);updateGhost(dt);
  // Specks in the air, the rivals' dust and the pushed verge grass; the pad buzzes on the kerbs.
  speedFx?.update(paused||frozen?0:dt,camera,{cars:[car,...(immersive?.rivals??[]).map(r=>r.car)],landscape,inside:isInside(),viewport:[renderer.domElement.width,renderer.domElement.height]});gamepad.kerb(paused||frozen?0:car.kerbRide);
  // Marshals, cameramen, crews, the terrace and the café idle; passing cars catch their eye.
@@ -1145,7 +1152,7 @@ function updateMenuLabels(){
  $('restartRace').hidden=!(resume||finished&&!scored&&!multiplayer?.guest());$('restartRace').textContent=finished?'Correr novamente →':immersive?.practice?'Recomeçar treino':'Recomeçar corrida';
  // The track screen races in the mode chosen at the opening.
  const story=menuMode==='historia',laps=preferences.values.laps;
- $('tracks').dataset.mode=menuMode;$('tracksMode').textContent=story?'MODO HISTÓRIA · AUTO-POBRE RACING':menuModel()==='fusca'?'MODO CORRIDA · COPA FUSCA':'MODO CORRIDA · OLD STOCK RACE';
+ $('tracks').dataset.mode=menuMode;$('tracksTitle').textContent=story?'Sua temporada na Old Stock.':'Onde vamos acelerar hoje?';document.querySelector('.tracks-side-head .tracks-kicker').textContent=story?'SUA TEMPORADA':'NA PISTA ESCOLHIDA';if(!$('championshipReset').dataset.armed)$('championshipReset').textContent=story?'Recomeçar história':'Recomeçar campeonato';$('tracksMode').textContent=story?'MODO HISTÓRIA · AUTO-POBRE RACING':menuModel()==='fusca'?'MODO CORRIDA · COPA FUSCA':'MODO CORRIDA · OLD STOCK RACE';
  $('singleRace').querySelector('.mode-label').textContent=loading&&pendingMode==='single'?'Carregando circuito…':'Corrida única →';
  $('singleRaceDetail').textContent=`Só esta pista · ${laps} volta${laps>1?'s':''}${story?' · vaquinha, boxes e o sonho da Blazer':' contra 14 adversários'}`;
  // Modo Corrida's solo practice and 1x1 (the story's track screen hides them: pistas.css).
@@ -1225,7 +1232,25 @@ function renderTracks(){
   const lap=trackRecords(pilotStorage(),slot.dataset.best,'normal',pilot,8).lap,mine=lap.find(r=>r.me);
   slot.textContent=mine?`Seu recorde · ${mine.time}`:lap[0]?`Recorde · ${lap[0].time}`:'';
  }
- renderChampionshipPanel($('tracks'),championshipFor());
+ renderChampionshipPanel($('tracks'),championshipFor());renderStoryCareer();
+}
+// Modo História's career (story-career.js) as this browser keeps it: read for the track screen, and
+// started over with the season ("Recomeçar história").
+function storyProfile(){let profile={};try{profile=JSON.parse(localStorage.getItem(STORY_PROFILE_KEY))||{};}catch{}return new ImmersiveState(profile).profile;}
+function resetStoryCareer(){
+ const state=new ImmersiveState(storyProfile());state.restartCareer();try{localStorage.setItem(STORY_PROFILE_KEY,JSON.stringify(state.profile));}catch{}
+ immersive?.state.restartCareer();
+}
+// Beside the season on the story's track screen: the wallet, the three bars and the challenge (or the end).
+function renderStoryCareer(){
+ const box=$('storyCareer');box.hidden=menuMode!=='historia';if(box.hidden)return;
+ const p=storyProfile(),c=p.career,challenge=CHALLENGES[c.challenge],money=n=>`R$ ${n.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+,)/g,'.')}`;
+ const left=challenge?Math.max(0,challenge.races-(c.races-c.since)):0;
+ const goal=c.over?`<p class="story-career-over"><b>Fim de jogo.</b> ${GAME_OVER[c.over]} Entre na próxima etapa para recomeçar a história do zero.</p>`
+  :challenge?`<p>Desafio ${challenge.number}: ${challenge.title.toLowerCase()} · ${money(Math.min(p.fund,challenge.goal))} de ${money(challenge.goal)} · prazo: ${left} corrida${left===1?'':'s'}</p>`
+  :`<p>${p.released?'A Blazer saiu da oficina!':`Sonho final: tirar a Blazer da oficina · ${money(Math.min(p.fund,BLAZER_GOAL))} de ${money(BLAZER_GOAL)}`}</p>`;
+ box.innerHTML=`<span class="tracks-kicker">SUA CARREIRA · ${c.races} corrida${c.races===1?'':'s'}</span><div class="career-wallet"><span>Carteira</span><b>${money(p.fund)}</b></div>`
+  +MORALE.map(k=>`<div class="career-bar" data-key="${k}" data-low="${c.morale[k]<=20}"><span>${MORALE_NAMES[k]}</span><i><b style="width:${c.morale[k]}%"></b></i><em>${c.morale[k]}%</em></div>`).join('')+goal;
 }
 // The Gráficos tab's pixel sizes follow the window: refreshed whenever the settings open.
 const openSettings=setupSettings(()=>{menu(true);showRoster();graphicsPanel.show(preferences.values.graphics);},returnToMainMenu);
@@ -1333,6 +1358,8 @@ document.addEventListener('keydown',e=>{
  if(!sessionStarted&&['Escape','KeyP'].includes(e.code)){if(e.code==='Escape'&&screen!=='opening'&&!loading)showScreen(screen==='tracks'&&carScreen()?'cars':'opening');return;}
  if(['INPUT','SELECT'].includes(e.target.tagName)&&!['Escape','KeyP'].includes(e.code))return;
  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();if(e.code!=='Space')keys.add(e.code);if(e.repeat||!ready)return;
+ // The key that skips the opening (intro-cinematic.js) does nothing else: not the story's first card, not the handbrake.
+ if(e.introKey)return;
  if(!paused&&immersive?.handleKey(e.code)){e.preventDefault();return;}
  // Câmbio manual: X shifts up, Z down.
  if(e.code==='KeyX'||e.code==='KeyZ')shiftGear(e.code==='KeyX'?1:-1);
@@ -1382,6 +1409,8 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  immersive.lineup=preferences.values.immersive||raceKind==='grid'?null:raceKind==='solo'?[]:[duelRivalFor(raceCar,chosenDuel(raceModel),raceModel)];
  seatCar();
  document.querySelector('.session').childNodes[1].textContent=championshipRace?` ${championshipRace.championship.info.label} · ETAPA ${championshipRace.round+1}/${championshipRace.championship.total} `:immersive.lineup?.length===0?' TREINO SOLO ':immersive.lineup?` 1x1 · #${immersive.lineup[0]} `:' PISTA LIVRE ';
+ // The story's paddock names the round ahead under its map (immersive.css .story-paddock): season, round, place and dates.
+ {const r=championshipRace,row=r?.championship.schedule[r.round];$('mapRound').hidden=!r;if(r)$('mapRound').innerHTML=`<b>${r.championship.info.label} · ETAPA ${r.round+1} DE ${r.championship.total}</b>${[row?.place??circuit.name,row?.date].filter(Boolean).join(' · ')}`;}
  pitstop?.reset();automatic=false;watched=0;
  if(preferences.values.immersive){immersive.start();}
  else{if(immersive.active)immersive.disable();reset();setCameraMode(preferences.values.camera);updateCar(1);updateCamera(1);}
@@ -1458,7 +1487,13 @@ $('start').onclick=()=>chooseMode('corrida');
 $('storyStart').onclick=()=>chooseMode('historia');
 $('pilotName').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('start').disabled){e.preventDefault();$(menuMode==='historia'?'storyStart':'start').click();}});
 $('tracksBack').onclick=()=>{if(!loading)showScreen(carScreen()?'cars':'opening');};
-$('singleRace').onclick=()=>{if(sessionStarted)return;championshipRace=null;pendingMode='single';beginRace(false,false,menuMode==='historia');};
+// For the browser checks: a Modo História race on the chosen circuit outside the season (players race
+// only the Old Stock championship in the story), and the career's cards read through (the wife paid).
+window.interlagosHistoria={
+ race:()=>{if(sessionStarted||loading)return false;menuMode='historia';championshipRace=null;pendingMode='single';beginRace(false,false,true);return true;},
+ skipCards:()=>{const s=immersive?.state;for(let i=0;i<60&&s?.scene;i++){const card=s.sceneCard().type;if(card==='over')break;if(card==='expense')immersive.action('scene:pay');else immersive.action(i?'scene:next':'scene:skip');}return !s?.scene;}
+};
+$('singleRace').onclick=()=>{if(sessionStarted||menuMode==='historia')return;championshipRace=null;pendingMode='single';beginRace(false,false,menuMode==='historia');};
 $('soloRace').onclick=()=>{if(sessionStarted)return;championshipRace=null;pendingMode='solo';beginRace(false,false,false);};
 $('duelRace').onclick=()=>{if(sessionStarted)return;championshipRace=null;pendingMode='duel';beginRace(false,false,false);};
 $('resume').onclick=resumeRace;
@@ -1476,7 +1511,8 @@ $('championshipTabs').onkeydown=e=>{
  if(go===undefined)return;e.preventDefault();e.stopPropagation();showChampionshipCalendar(ids[(go+ids.length)%ids.length],true);
 };
 // Erasing a championship under way takes a second click.
-$('championshipReset').onclick=()=>{const b=$('championshipReset');if(b.dataset.armed){championshipFor().reset();delete b.dataset.armed;renderTracks();return;}b.dataset.armed='1';b.textContent='Apagar pontos? Clique de novo';setTimeout(()=>{delete b.dataset.armed;b.textContent='Recomeçar campeonato';},4000);};
+// In Modo História it starts the whole story over: the season and the career (wallet, bars, challenges).
+$('championshipReset').onclick=()=>{const b=$('championshipReset'),story=menuMode==='historia';if(b.dataset.armed){championshipFor().reset();if(story)resetStoryCareer();delete b.dataset.armed;renderTracks();return;}b.dataset.armed='1';b.textContent=story?'Apagar a carreira e os pontos? Clique de novo':'Apagar pontos? Clique de novo';setTimeout(()=>{delete b.dataset.armed;b.textContent=menuMode==='historia'?'Recomeçar história':'Recomeçar campeonato';},4000);};
 $('restartRace').onclick=()=>beginRace(true);
 $('settingsRestart').onclick=()=>{$('settings').close();beginRace(true);};
 $('tour').onclick=()=>{$('settings').close();beginRace(true,true,false);};$('menuButton').onclick=openSettings;$('camera').onchange=e=>setCameraMode(e.target.value,true);$('livery').onchange=async e=>{preferences.update({livery:e.target.value});if(!ready||!sessionStarted||raceCar!=='99'||raceModel==='fusca')return;try{await setLivery(e.target.value);}catch(err){status('Não foi possível carregar a pintura. Tente novamente.');console.error(err);}};
@@ -1581,6 +1617,8 @@ async function loadCircuit(){
   // story paddock pulled it, and the car would sit there at the green light.
   onGo:()=>mobile?.setHandbrake(false)});
  immersive.onMainMenu=returnToMainMenu;
+ // The end of the story (story-career.js): a new one starts the Old Stock season again from round 1.
+ immersive.onNewStory=()=>{championshipFor('historia').reset();storyRound=null;returnToMainMenu();startChampionshipRound('historia');};
  // The ghost's shell is the same for every paint and car colour: built once, from the first model (at
  // rest, as the rivals were just cloned), with the distant rivals' profile beyond 45 m.
  if(!ghostCar.has('opala'))ghostCar.build(model,immersive.visual.farProxy(0xffffff).geometry,'opala');
@@ -1594,7 +1632,7 @@ async function loadCircuit(){
  multiplayer?.attach(immersive);
  // Box 99: Curvelo's service lane, or the surveyed garage at Interlagos.
  if(circuit.id==='curvelo'||pitLayout)pitstop=new PitStop({scene,car,carRoot,driver,mode:immersive,data,roadSurface,layout:pitLayout,obstacles:cameraObstacles,openings,onOpen:()=>{automatic=false;keys.clear();wheelSet=0;mobile?.clear();mobile?.setHandbrake(false);setCameraMode('chase');if(document.pointerLockElement)document.exitPointerLock();},onClose:()=>{keys.clear();wheelSet=0;mobile?.clear();followInitialized=false;},onSettings:openSettings});
- pitstop?.setDamage(preferences.values.damage);
+ syncDamage(true);
  landscape.setRealisticWater(graphics.values.water==='realista');
  const kleber=immersive.visual.rivals.find(o=>o.userData.entry.number==='70');
  // Car 70's Old Stock ads sit on its doors, bent onto the body.

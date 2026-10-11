@@ -20,15 +20,27 @@ const merge=parts=>{const g=mergeGeometries(parts,false);parts.forEach(p=>p.disp
 const ball=(r,w=12,h=9)=>new THREE.SphereGeometry(r,w,h),capsule=(r,len)=>new THREE.CapsuleGeometry(r,len,3,10),tube=(a,b,h,s=12)=>new THREE.CylinderGeometry(a,b,h,s),block=(x,y,z)=>new THREE.BoxGeometry(x,y,z);
 const darker=(color,k)=>new THREE.Color(color).multiplyScalar(k);
 
-const BASE={skin:0xc68e6a,hair:0x2b1f17,hairStyle:'short',top:0x5a6a78,bottom:0x2d3a4a,belt:0x1b1d20,shoes:0x1b1d20,hands:null,trim:null,sleeves:'long',hat:null,hatColor:0xc81d25,apron:null,skirt:null,legs:null,glasses:false,mustache:false,belly:0,back:false};
+const BASE={skin:0xc68e6a,hair:0x2b1f17,hairStyle:'short',top:0x5a6a78,bottom:0x2d3a4a,belt:0x1b1d20,shoes:0x1b1d20,hands:null,trim:null,sleeves:'long',hat:null,hatColor:0xc81d25,apron:null,skirt:null,legs:null,glasses:false,mustache:false,beard:false,belly:0,back:false};
 const CREW={top:0xc81d25,bottom:0xc81d25,trim:0xf4f1ea,hands:0x1b1d20,shoes:0x1b1d20,back:true};
 export const OUTFITS={
  crew:CREW,
  // Out of the car the driver swaps the helmet for a cap, to eat and drink.
- driver:{...CREW,top:0xd82125,bottom:0xd82125,hat:'cap',hatColor:0x1b1d20,skin:0xc98f68},
+ // Stevan (carro/piloto_rosto_1.jpg): long wavy dark hair, moustache and a short beard.
+ driver:{...CREW,top:0xd82125,bottom:0xd82125,hat:'cap',hatColor:0x1b1d20,skin:0xc98f68,hair:0x3b2a1a,hairStyle:'long',mustache:true,beard:true},
  tia:{skin:0xd8a27e,hair:0xbab4ab,hairStyle:'bun',top:0xe690a8,sleeves:'short',skirt:0x3f5f8f,bottom:0x3f5f8f,apron:0xf7f1e3,legs:0xd09a76,shoes:0x6b3f25,glasses:true,belly:.8},
  engineer:{top:0xc81d25,sleeves:'short',bottom:0x2b2f33,trim:0xf4f1ea,hat:'headset'},
+ // Modo História (story-career.js outfitOf): Stevan before he has overalls (jeans and a T-shirt), and in the
+ // overalls Kléber Eletric lends him (black and yellow like his own, no 99 on the back).
+ stevanCivil:{skin:0xc98f68,hair:0x3b2a1a,hairStyle:'long',mustache:true,beard:true,top:0xe9e5da,sleeves:'short',bottom:0x41618f,belt:0x5a3a22,shoes:0xeeeeea},
+ stevanLoan:{...CREW,top:0x1b1d20,bottom:0x1b1d20,trim:0xf2c418,back:false,hat:'cap',hatColor:0x1b1d20,skin:0xc98f68,hair:0x3b2a1a,hairStyle:'long',mustache:true,beard:true},
+ // Kléber Eletric (carro/kleber_eletric_0*.jpg: tanned, short black hair, clean shaven), always in the black
+ // cap of his brand (Eletric, its logo added by story-scene.js), black and yellow: as a pilot in his racing
+ // overalls, and as the businessman of his brand in its black T-shirt (photo 4, the user's pick for his look).
+ kleber:{...CREW,top:0x17191c,bottom:0x17191c,trim:0xf2c418,back:false,hands:null,skin:0xb47b5a,hair:0x16120f,hat:'cap',hatColor:0x121315,belly:.25},
+ kleberBusiness:{top:0x17191c,sleeves:'short',bottom:0x2b3240,belt:0x1b1d20,shoes:0x1b1d20,skin:0xb47b5a,hair:0x16120f,hat:'cap',hatColor:0x121315,belly:.25},
 };
+// The pilot's outfit for each stage of the story (story-career.js outfitOf).
+export const STEVAN_OUTFITS={civil:OUTFITS.stevanCivil,emprestado:OUTFITS.stevanLoan,proprio:OUTFITS.driver};
 
 // Head, centre 0.1 m above the neck joint: face, ears, hair and headwear.
 function headGeometry(o){
@@ -37,10 +49,14 @@ function headGeometry(o){
  for(const z of [-1,1])p.push(piece(ball(.02,8,6),0xf2eee6,[.086,.118,z*.037],[0,0,0],[.6,1,1]),piece(ball(.011,6,5),0x2a1c12,[.099,.118,z*.037]),piece(block(.012,.011,.04),hair,[.1,.148,z*.038],[z*.15,0,0]),piece(ball(.028,8,6),skin,[-.002,.1,z*.1],[0,0,0],[.55,1,.45]));
  p.push(piece(block(.012,.011,.042),0x8a4637,[.1,.042,0]));
  if(o.mustache)p.push(piece(block(.02,.016,.07),hair,[.104,.063,0]));
+ // A short beard round the chin and along the jaw, under the mouth.
+ if(o.beard)p.push(piece(ball(.07,10,8),hair,[.062,0,0],[0,0,0],[.85,.62,1.2]),...[-1,1].map(z=>piece(block(.075,.06,.022),hair,[.05,.065,z*.094])));
  // Skull caps tilt back so hair and caps clear the brow but cover the nape.
  const shell=(r,color,cut=.55)=>piece(new THREE.SphereGeometry(r,16,8,0,Math.PI*2,0,Math.PI*cut),color,[-.006,.1,0],[0,0,.6],[1.06,1.2,1]);
  if(o.hairStyle==='bun')p.push(shell(.111,hair),piece(ball(.056,10,8),hair,[-.1,.2,0]));
  else if(o.hairStyle==='curly')p.push(shell(.113,hair),...[0,1,2,3,4,5,6].map(k=>piece(ball(.045,8,6),hair,[-.07+Math.cos(k*.9)*.05,.2+Math.sin(k*1.7)*.02,Math.sin(k*.9)*.07])));
+ // Long hair: a fuller cap of hair, the mass down to the nape and a lock over each ear.
+ else if(o.hairStyle==='long')p.push(shell(.118,hair,.6),piece(ball(.1,10,8),hair,[-.075,.02,0],[0,0,0],[.7,1.35,1.08]),...[-1,1].map(z=>piece(ball(.05,8,6),hair,[-.025,0,z*.098],[0,0,0],[.85,1.7,.6])));
  else if(o.hairStyle!=='bald')p.push(shell(.111,hair));
  if(o.hat==='cap')p.push(shell(.119,o.hatColor,.5),piece(block(.13,.014,.18),o.hatColor,[.12,.16,0],[0,0,-.18]),piece(ball(.013,6,4),o.hatColor,[-.03,.24,0]));
  if(o.hat==='helmet')p.push(piece(new THREE.SphereGeometry(.14,16,8,0,Math.PI*2,0,Math.PI/2),o.hatColor,[0,.11,0],[0,0,.15],[1.05,1.1,1]),piece(new THREE.SphereGeometry(.14,16,5,Math.PI+.95,Math.PI*2-1.9,Math.PI/2,Math.PI*.2),o.hatColor,[0,.11,0],[0,0,.15],[1.05,1.1,1]),piece(block(.3,.03,.03),0xc81d25,[-.01,.26,0],[0,0,.15]));
@@ -235,6 +251,21 @@ export class Idler{
 }
 
 // Bones of a figure in its rest pose, with the part geometries that ride on each.
+// The body of a person() at rest, every vertex on its single bone.
+function skinnedGeometry(bones,parts){
+ bones[0].updateMatrixWorld(true);
+ return merge(parts.map(([g,b])=>{g.applyMatrix4(b.matrixWorld);const n=g.attributes.position.count,index=new Uint16Array(n*4),weight=new Float32Array(n*4),k=bones.indexOf(b);for(let i=0;i<n;i++){index[i*4]=k;weight[i*4]=1;}
+  g.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(index,4));g.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weight,4));return g;}));
+}
+// Another outfit on a person() (the story's pilot changing clothes): the bones never move with the
+// outfit, so the new body binds to the same skeleton, in whatever pose it holds. The 99 on the back
+// shows only on overalls that carry it (back).
+export function dressPerson(root,outfit){
+ const body=root.children.find(c=>c.isSkinnedMesh);if(!body)return false;const o={...BASE,...outfit},{bones,parts,head}=skeletonFor(o);
+ body.geometry.dispose();body.geometry=skinnedGeometry(bones,parts);root.userData.head.geometry.dispose();root.userData.head.geometry=head;
+ const decal=root.userData.rig.torso.getObjectByName('Macacao_costas_99');if(decal)decal.visible=!!o.back;
+ root.userData.outfit=outfit;return true;
+}
 function skeletonFor(o){
  const bones=[],bone=(name,parent,x,y,z)=>{const b=new THREE.Bone();b.name=name;b.position.set(x,y,z);parent?.add(b);bones.push(b);return b;};
  const hips=bone('Quadril',null,0,.93,0),torso=bone('Tronco',hips,0,0,0),head=bone('Cabeca',torso,0,.6,0),lids=bone('Palpebras',head,0,.142,0),limbs={},parts=[[hipsGeometry(o),hips],[torsoGeometry(o),torso],[lidsGeometry(o),lids]],upper=upperGeometry(o),fore=foreGeometry(o);
@@ -265,13 +296,12 @@ export function createPeople(){
  // One skinned mesh per body (every vertex follows a single bone) plus the head, so
  // the head can give way to the driver's helmet.
  function person(outfit,{shadows=true}={}){
-  const o={...BASE,...outfit},{bones,parts,rig,head}=skeletonFor(o),root=new THREE.Group();root.name='Pessoa_boxes';rig.hips.updateMatrixWorld(true);
-  const geometry=merge(parts.map(([g,b])=>{g.applyMatrix4(b.matrixWorld);const n=g.attributes.position.count,index=new Uint16Array(n*4),weight=new Float32Array(n*4),k=bones.indexOf(b);for(let i=0;i<n;i++){index[i*4]=k;weight[i*4]=1;}
-   g.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(index,4));g.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weight,4));return g;}));
+  const o={...BASE,...outfit},{bones,parts,rig,head}=skeletonFor(o),root=new THREE.Group();root.name='Pessoa_boxes';
+  const geometry=skinnedGeometry(bones,parts);
   const body=new THREE.SkinnedMesh(geometry,material);body.name='Corpo';body.castShadow=shadows;body.add(rig.hips);root.add(body);body.bind(new THREE.Skeleton(bones));
   const face=new THREE.Mesh(head,material);face.name='Cabeca';face.castShadow=shadows;rig.head.add(face);
   // The 99 on the back sits below the white band round the chest (.34-.40 m).
-  if(o.back){backMaterial??=new THREE.MeshStandardMaterial({name:'Macacao_costas_99',map:crewBack(),transparent:true,roughness:.7,polygonOffset:true,polygonOffsetFactor:-1});const decal=new THREE.Mesh(new THREE.PlaneGeometry(.22,.22),backMaterial);decal.position.set(-.114-.03*o.belly,.215,0);decal.rotation.y=-Math.PI/2;rig.torso.add(decal);}
+  if(o.back){backMaterial??=new THREE.MeshStandardMaterial({name:'Macacao_costas_99',map:crewBack(),transparent:true,roughness:.7,polygonOffset:true,polygonOffsetFactor:-1});const decal=new THREE.Mesh(new THREE.PlaneGeometry(.22,.22),backMaterial);decal.name='Macacao_costas_99';decal.position.set(-.114-.03*o.belly,.215,0);decal.rotation.y=-Math.PI/2;rig.torso.add(decal);}
   root.userData={head:face,rig,pose:clonePose(POSES.stand)};applyPose(rig,root.userData.pose);return root;
  }
  // Props carried by the crew, in the same vertex-coloured material.

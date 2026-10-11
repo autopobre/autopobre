@@ -127,7 +127,13 @@ def choose_race(page, story=False, championship=False, tap=False):
         press('#storyStart' if story else '#start')
     if page.is_visible('#cars'):
         press('#carsNext')
-    press('#championshipStart' if championship else '#singleRace')
+    if story and not championship:
+        # Modo História offers only the Old Stock season; a check's story race on the chosen circuit
+        # goes through the page's hook (main.js interlagosHistoria).
+        wait_js(page, "!document.querySelector('#championshipStart').disabled")
+        page.evaluate('window.interlagosHistoria.race()')
+    else:
+        press('#championshipStart' if championship else '#singleRace')
 
 
 def enter_track(page, pilot='Piloto teste', timeout=120000, tap=False, story=False, championship=False):
@@ -142,6 +148,9 @@ def enter_track(page, pilot='Piloto teste', timeout=120000, tap=False, story=Fal
             page.fill('#pilotName', pilot)
         choose_race(page, story=story, championship=championship, tap=tap)
     wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused', timeout=timeout)
+    if story:
+        # The career's cards (Kléber's welcome, the last race's report) come before the paddock.
+        page.evaluate('window.interlagosHistoria.skipCards()')
 
 
 def pause_race(page, tap=False):

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {ImmersiveState} from '../teste/immersive-state.js';
 import {CarAudio} from '../teste/car-audio.js';
-const s=new ImmersiveState(),names=()=>s.takeSounds().map(e=>e.name);
+// A career past Kléber's welcome (story-career.js), so the paddock opens on the supporters.
+const s=new ImmersiveState({career:{version:1,intro:true}}),names=()=>s.takeSounds().map(e=>e.name);
 s.start();assert.deepEqual(names(),['crowdWelcome']);assert.deepEqual(names(),[]);
 s.hitCar();s.requestInspection();s.untangle();assert.deepEqual(names(),[]);
 s.talk(0);s.joke(0);s.joke(0);assert.deepEqual(names(),['talk','donation','noDonation']);

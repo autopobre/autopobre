@@ -87,18 +87,18 @@ assert.equal(championshipKey('corrida','oldstock2026'),'opala99-championship-old
  s.setItem(championshipKey('corrida','oldstock2026'),JSON.stringify({version:1,mode:'corrida',pilot:'Ana',laps:3,rounds:[...CHAMPIONSHIP_ROUNDS],results:[]}));
  assert.equal(new Championship(s,'corrida','oldstock2026').state,null);}
 // Copa Fusca 2026: eleven dated rounds raced in Fuscas, six at Interlagos, Goiânia in September;
-// Modo Corrida only (Modo História falls back to Todas as pistas).
+// Modo Corrida only (Modo História races only the Old Stock 2026 season).
 assert.deepEqual(COPA_FUSCA_2026.map(r=>r.circuit),['interlagos','brasilia','interlagos','interlagos','interlagos','cascavel','interlagos','goiania','cascavel','chapeco','interlagos']);
 assert.deepEqual(COPA_FUSCA_2026.map(r=>r.date),['21 e 22 FEV','21 e 22 MAR','18 e 19 ABR','16 e 17 MAI','06 e 07 JUN','11 e 12 JUL','01 e 02 AGO','19 e 20 SET','17 e 18 OUT','21 e 22 NOV','19 e 20 DEZ']);
 assert.equal(COPA_FUSCA_2026[7].place,'Goiânia - GO');
 {const cup=CHAMPIONSHIP_CALENDARS.copafusca2026;assert(cup.rounds===COPA_FUSCA_2026&&cup.model==='fusca'&&cup.label==='COPA FUSCA 2026'&&cup.name==='Copa Fusca 2026');
  assert(!CHAMPIONSHIP_CALENDARS.todas.model&&!CHAMPIONSHIP_CALENDARS.oldstock2026.model,"the other calendars race the car screen's model");}
-assert.deepEqual(calendarsFor('corrida'),['todas','oldstock2026','copafusca2026']);assert.deepEqual(calendarsFor('historia'),['todas','oldstock2026']);
-assert.equal(championshipCalendar('copafusca2026','corrida'),'copafusca2026');assert.equal(championshipCalendar('copafusca2026','historia'),'todas');
+assert.deepEqual(calendarsFor('corrida'),['todas','oldstock2026','copafusca2026']);assert.deepEqual(calendarsFor('historia'),['oldstock2026']);
+assert.equal(championshipCalendar('copafusca2026','corrida'),'copafusca2026');assert.equal(championshipCalendar('copafusca2026','historia'),'oldstock2026');assert.equal(championshipCalendar('todas','historia'),'oldstock2026');
 assert.equal(championshipCalendar('copafusca2026'),'copafusca2026','the remembered tab');assert.equal(championshipCalendar('nada'),'todas');
 assert.equal(championshipKey('corrida','copafusca2026'),'opala99-championship-copafusca2026-v1');
 {const s=memory(),cup=new Championship(s,'corrida','copafusca2026');
- assert.equal(new Championship(s,'historia','copafusca2026').calendar,'todas','no Copa Fusca in Modo História');
+ assert.equal(new Championship(s,'historia','copafusca2026').calendar,'oldstock2026','no Copa Fusca in Modo História');
  assert(!cup.started&&cup.total===11&&cup.schedule[0].date==='21 e 22 FEV'&&cup.schedule[7].place==='Goiânia - GO'&&cup.info.model==='fusca');
  if(!Object.hasOwn(CIRCUITS,'goiania')){
   // Goiânia still being built: the cup waits for it.
@@ -120,17 +120,17 @@ const tie=championshipStandings({pilot:'X',results:[
 assert.equal(tie[0].points,30);assert.equal(tie[1].points,30);assert.equal(tie[0].number,'73','same points: more wins first');
 // Modo História keeps its own championship beside the Modo Corrida one.
 assert.equal(championshipKey('corrida'),CHAMPIONSHIP_KEY);assert.notEqual(championshipKey('historia'),CHAMPIONSHIP_KEY);
-const story=new Championship(storage,'historia');
+const story=new Championship(storage,'historia');assert.equal(story.calendar,'oldstock2026','the story races the Old Stock season');
 assert(!story.started&&again.finished,'the story championship starts empty; the race one is untouched');
 story.start('Ana',2);assert(new Championship(storage,'historia').active&&new Championship(storage).finished);
-{const s=memory();s.setItem(championshipKey('historia'),storage.getItem(CHAMPIONSHIP_KEY));assert.equal(new Championship(s,'historia').state,null,'a race save is not a story save');}
+{const s=memory();s.setItem(championshipKey('historia','oldstock2026'),storage.getItem(CHAMPIONSHIP_KEY));assert.equal(new Championship(s,'historia').state,null,'a race save is not a story save');}
 // Towed in (dnf): last, no points, no finish for the tie-breaks.
 const retired=order(15);retired[14]={...retired[14],finished:false,dnf:true};
-const r1=story.record(0,'interlagos',retired,'Ana');
+const r1=story.record(0,story.rounds[0],retired,'Ana');
 assert.equal(r1.points.get('99'),0);assert.equal(r1.player.points,0);assert(r1.rows.at(-1).dnf&&r1.rows.at(-1).player);
 assert.equal(r1.player.best,Infinity,'a retirement is not a finish');assert(r1.player.rounds[0].dnf);
 // Disqualified after a win: the round's points go, once; the win and podium do not count.
-story.record(1,'cascavel',order(1),'Ana');assert.equal(story.summary(1).player.points,25);
+story.record(1,story.rounds[1],order(1),'Ana');assert.equal(story.summary(1).player.points,25);
 assert(story.disqualify(1));assert(!story.disqualify(1),'once');assert(!story.disqualify(2),'only a scored round');
 const dsq=new Championship(storage,'historia').standings().find(d=>d.player);
 assert.equal(dsq.points,0);assert.equal(dsq.wins,0);assert.equal(dsq.podiums,0);assert(dsq.rounds[1].dsq&&dsq.rounds[1].position===1);

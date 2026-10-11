@@ -15,8 +15,9 @@ export class CarCondition {
  get health(){return CAR_PARTS.reduce((n,p)=>n+this.quality[p.id],0)/6;}
  get factors(){const q=this.quality;return {power:(.4+.6*q.motor)*(.55+.45*q.cambio),brakes:.3+.7*q.freios,grip:(.72+.28*q.pneus)*(.82+.18*q.suspensao),steering:.72+.28*q.suspensao,stability:.5+.5*q.suspensao,leak:(1-q.tanque)**2*.065};}
  damage(id,amount){if(!this.enabled||!Object.hasOwn(this.quality,id))return;const before=this.quality[id];this.quality[id]=clamp(before-Math.max(0,amount));if(before!==this.quality[id])this.revision++;}
- impact(speed,forward=1,side=0){
-  const force=clamp((speed-2)/28,0,.75);if(!force)return;
+ // scale: how hard the knock hits (Modo História: the team's morale, story-career.js).
+ impact(speed,forward=1,side=0,scale=1){
+  const force=clamp((speed-2)/28,0,.75)*Math.max(0,scale);if(!force)return;
   const front=forward>.5,rear=forward<-.5,lateral=Math.abs(side)>.5;
   const weights={motor:front?1:.12,cambio:rear?.65:.23,freios:lateral?.7:.27,suspensao:front||lateral?.8:.2,pneus:lateral?.8:.3,tanque:rear?1:.08};
   for(const p of CAR_PARTS)this.damage(p.id,force*weights[p.id]);

@@ -11,3 +11,6 @@ body.pit-open #mapcard{display:none!important}
 #pitViewHint{display:block;margin:-4px 0 8px;color:#c0d3bd;font-size:10px}#pitViewHint:empty{display:none}#pitPanel.walking .pit-actions{display:none}#pitRepairs{width:100%;padding:6px;margin-top:8px;font-size:10px;background:#1d4a3f;color:#f6efdb;border:1px solid #dabf63}body.pit-repairs #pitWalkHud{left:calc(50% - min(440px,48vw)/2 - 10px)}
 /* One bar per job at work: jobs in different places of the car run together. */
 #pitActive{display:grid;gap:3px;margin-top:4px}#pitActive div{display:grid;grid-template-columns:1fr 42%;align-items:center;gap:6px;font-size:10px;color:#e8eee4}#pitActive progress{width:100%;height:8px;margin:0}
+/* Each part's percentage under its name (pitstop.js): green, yellow below 80%, red below 40%. */
+.condition-bars label b{display:block;margin-top:2px;font-size:12px;color:#a6e39a}.condition-bars label b[data-level=mid]{color:#f3d46a}.condition-bars label b[data-level=low]{color:#ff8a7a}
+@media(max-height:520px){.condition-bars label b{font-size:9px;margin-top:1px}}
