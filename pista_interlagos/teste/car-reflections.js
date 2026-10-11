@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {REFLECTION_LEVELS} from './graphics-settings.js';
-import {setCarEnvironment,setCarFinish,setCarSamples,carEnvironment,carFinishInfo,paintOf} from './car-finish.js';
+import {setCarEnvironment,setCarFinish,setCarSamples,carEnvironment,carFinishInfo,paintOf,CAR_LIGHT_MAX} from './car-finish.js';
 import {compileInSlices} from './cinematic.js';
 // Where the cars' paint, glass and chrome get their surroundings (the Gráficos tab's "Reflexos dos
 // carros", REFLECTION_LEVELS): the sky's map for the cars (sky.js carEnvironment, with its horizon band), the circuit seen
@@ -14,6 +14,18 @@ const BAKE_DELAY=3;   // race frames before the grid's picture is taken: the tra
 // 800 thousand triangles drawn whole in every cube face, a few coloured pixels in the reflection; the
 // stands stay), skid marks, the lake's splashes, falling leaves and the verge's grass tufts.
 const CAPTURE_SKIP=new Set(['Torcida','Marcas_de_derrapagem','Respingos_do_lago','Folhas_caindo','Vegetacao_das_margens','Chuva']);
+// The prefilter of a capture (the probe's, the bake's), its texels capped at the cars' own light (CAR_LIGHT_MAX) as
+// three.js copies the cube into its own layout, before any blur. The world's smooth glass is not capped: the sun's
+// glint on a window at a grazing angle (the Minhocão landmarks' panes, roughness .1) passed half float's 65504 in a
+// face, and the blur spread that infinity over the whole map: every car white in a halo for a probe cycle, again
+// and again down the Major Sertório. The copy is three's (r183) private material, made by its public compile call.
+const CAPPED_COPY=/gl_FragColor\s*=\s*(textureCube\([^;]*\));/;
+export function cappedPmrem(renderer){
+ const pmrem=new THREE.PMREMGenerator(renderer);pmrem.compileCubemapShader();const m=pmrem._cubemapMaterial;
+ if(m&&CAPPED_COPY.test(m.fragmentShader)){m.fragmentShader=m.fragmentShader.replace(CAPPED_COPY,`gl_FragColor=min($1,vec4(${CAR_LIGHT_MAX.toFixed(1)}));`);m.needsUpdate=true;pmrem.capped=true;}
+ else console.warn('car-reflections: the prefilter copy is not capped (three.js changed)');
+ return pmrem;
+}
 export class CarReflections {
  // cinematic: the film look (cinematic.js), whose multisampling sets how smooth the coat may be.
  constructor(renderer,sky,cinematic=null){
@@ -56,7 +68,7 @@ export class CarReflections {
   // A target that keeps its faces cleared until the first capture, and a prefilter of its own size
   // (a PMREMGenerator's work targets are sized by the last map it allocated).
   const previous=this.renderer.getRenderTarget();for(let f=0;f<6;f++){this.renderer.setRenderTarget(this.cube,f);this.renderer.clear();}this.renderer.setRenderTarget(previous);
-  this.probePmrem=new THREE.PMREMGenerator(this.renderer);this.probeTarget=this.probePmrem.fromCubemap(this.cube.texture);
+  this.probePmrem=cappedPmrem(this.renderer);this.probeTarget=this.probePmrem.fromCubemap(this.cube.texture);
   this.face=0;this.fresh=true;
  }
  setFar(far){if(!this.cubeCamera)return;for(const c of this.cubeCamera.children)if(c.far!==far){c.far=far;c.updateProjectionMatrix();}}
@@ -94,7 +106,7 @@ export class CarReflections {
  // faces, prefiltered as the probe's.
  bake(scene,data,{hide=[],rivals=[]}={}){
   this.bakeWanted=0;if(this.level.source!=='bake')return;
-  const r=this.renderer,t0=performance.now(),pmrem=new THREE.PMREMGenerator(r),previous=r.getRenderTarget(),shadows=r.shadowMap.autoUpdate;
+  const r=this.renderer,t0=performance.now(),pmrem=cappedPmrem(r),previous=r.getRenderTarget(),shadows=r.shadowMap.autoUpdate;
   const cube=new THREE.WebGLCubeRenderTarget(this.level.bake,{type:THREE.HalfFloatType,generateMipmaps:false}),camera=new THREE.CubeCamera(.3,this.level.far??600,cube);
   camera.coordinateSystem=r.coordinateSystem;camera.updateCoordinateSystem();camera.position.copy(CarReflections.gridPoint(data));camera.updateMatrixWorld(true);
   this.conceal(scene,hide,rivals,false);r.shadowMap.autoUpdate=false;
@@ -159,7 +171,7 @@ export class CarReflections {
  }
  info(){
   const env=carEnvironment(),source=env&&env===this.probeTarget?.texture?'probe':env&&env===this.bakeTarget?.texture?'bake':env===this.sky.carEnvironment?'sky':env?'outro':'nenhum';
-  return {level:this.key,source:this.level.source,envSource:source,owner:carFinishInfo().owner,size:this.level.source==='probe'?this.level.probe:this.level.source==='bake'?this.level.bake:256,faces:this.level.faces??0,far:this.level.far??null,...this.stats};
+  return {level:this.key,source:this.level.source,envSource:source,owner:carFinishInfo().owner,size:this.level.source==='probe'?this.level.probe:this.level.source==='bake'?this.level.bake:256,faces:this.level.faces??0,far:this.level.far??null,capped:this.probePmrem?this.probePmrem.capped===true:null,...this.stats};
  }
  // interlagos.carPaintInfo: the finish in force, the paint of the player's car and of a rival in
  // the race (not the 99 Stevan races), and the distant model's.

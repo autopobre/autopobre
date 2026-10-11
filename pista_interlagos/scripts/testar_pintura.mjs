@@ -124,6 +124,14 @@ assert.match(source('immersive-visuals.js'),/finishMaterial\(new THREE\.MeshPhys
 assert.match(source('main.js'),/finishMesh\(o\)/,'the loaded Opala');
 const published=fs.readFileSync(new URL('./publicacao.py',import.meta.url),'utf8');
 for(const file of ['car-finish.js','car-reflections.js'])assert.ok(published.includes(`'${file}'`),`${file} is published`);
+// The captures' prefilter stops at the cars' light: a sun glint on the Minhocão's window glass past half float turned
+// every car white for a probe cycle. Fails if three.js's private copy material changes shape.
+{
+ const {cappedPmrem}=await import('../teste/car-reflections.js'),{CAR_LIGHT_MAX}=await import('../teste/car-finish.js');
+ const pmrem=cappedPmrem({compile(){}}),shader=pmrem._cubemapMaterial?.fragmentShader??'';
+ assert.equal(pmrem.capped,true,'the prefilter copy is capped');assert.ok(shader.includes(`min(textureCube`)&&shader.includes(`vec4(${CAR_LIGHT_MAX.toFixed(1)})`),'capped at CAR_LIGHT_MAX');
+ assert.equal((source('car-reflections.js').match(/new THREE\.PMREMGenerator/g)??[]).length,1,'the probe and the bake use cappedPmrem');
+}
 
 // The rivals' liveries (car-livery.js): every car of the field has sponsors on the shared canvas, sponsors and slots
 // that exist, car 70's doors left to the Old Stock ads; the stripes cut before the sponsors that lie over them.
