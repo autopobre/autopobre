@@ -3,6 +3,7 @@
 // Nao e simulacao homologada de pneus/suspensao do Old Stock.
 import {GRID_START_BACK} from './race-roster.js';
 import {pitLane,pitGeometry,locatePit,pitLimit,wallContact} from './pit-lane.js';
+import {cliffEdge} from './cliff-edge.js';
 export const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 export const wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
 export const MAX_STEER=.72;
@@ -142,14 +143,14 @@ function bodyAxes(heading,pitch,roll,axes){
 }
 const renderAxes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};
 export class TestCar {
- constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.reset();}
+ constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.cliff=cliffEdge(data);this.edgeHit={};this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.reset();}
  // The body it meets the world with (OPALA_BODY, FUSCA_BODY), with its mechanics; the next reset or settle seats
  // it on its own shell.
  setBody(body){if(body!==this.body){this.body=body;this.shell=null;}return this;}
  get mechanics(){return this.body.mechanics??OPALA_MECHANICS;}
  // The grid spot: back metres before the line, lane metres across (race-roster.js playerGridSlot).
  resetGrid({back=GRID_START_BACK,lane=0}={}){const target=this.data.meta.reconstructed_xy_m-back;this.reset(Math.max(0,this.a.findIndex(p=>p[0]>=target)));if(lane){this.x+=this.surface.lx*lane;this.y+=this.surface.ly*lane;this.settle();}this.awaitingStart=true;}
- reset(index=0){this.awaitingStart=false;this.distance=0;this.clock=0;this.lapStart=0;this.laps=0;this.best=null;this.lastLap=null;this.checkpoints=new Set();this.nextCheckpoint=1;this.lapValid=true;this.lastLapValid=null;this.excursion=null;this.spin=0;this.rearSpin=0;this.shifts=0;this.rightings=0;this.rightedAt=null;this.invalidReason=null;this.lastInvalidReason=null;this.pitPenalty=null;this.beforeCross=null;this.recover(index);}
+ reset(index=0){this.awaitingStart=false;this.distance=0;this.clock=0;this.lapStart=0;this.laps=0;this.best=null;this.lastLap=null;this.checkpoints=new Set();this.nextCheckpoint=1;this.lapValid=true;this.lastLapValid=null;this.excursion=null;this.spin=0;this.rearSpin=0;this.shifts=0;this.rightings=0;this.rightedAt=null;this.invalidReason=null;this.lastInvalidReason=null;this.pitPenalty=null;this.beforeCross=null;this.lapFell=false;this.lastLapFell=false;this.fall=null;this.falls=0;this.backAt=null;this.recover(index);}
  // Put the car back at rest on the centre line, keeping its clock, laps and race progress.
  recover(index=this.index){const p=this.a[index%this.n];this.x=p[1];this.y=p[2];this.heading=Math.atan2(p[8],p[7]);this.vx=0;this.vy=0;this.yaw=0;this.steer=0;this.index=index;this.burnout=0;this.rearSlipSpeed=0;this.rearWheelSpeed=undefined;this.steerInput=0;this.steerVisual=0;this.gear=1;this.manualGear=false;this.rpm=IDLE_RPM;this.shiftTimer=0;this.longAccel=0;this.latAccel=0;this.crashImpactSpeed=0;this.settle();}
  // Seat the body on its wheels at the current position and heading: level with
@@ -186,8 +187,9 @@ export class TestCar {
   if(best>10000&&!global&&hint===null)return this.nearest(x,y,true);
   return out;
  }
- terrain(x,y){const t=this.data.terrain,fx=clamp((x-t.x0)/t.step,0,t.nx-1.001),fy=clamp((y-t.y0)/t.step,0,t.ny-1.001),ix=Math.floor(fx),iy=Math.floor(fy),u=fx-ix,v=fy-iy,k=iy*t.nx+ix;
-  return (t.z[k]*(1-u)+t.z[k+1]*u)*(1-v)+(t.z[k+t.nx]*(1-u)+t.z[k+t.nx+1]*u)*v;
+ // ground: the heights to read (a plateau circuit's two copies, cliff-edge.js); the track file's grid by default.
+ terrain(x,y,ground=this.data.terrain.z){const t=this.data.terrain,z=ground,fx=clamp((x-t.x0)/t.step,0,t.nx-1.001),fy=clamp((y-t.y0)/t.step,0,t.ny-1.001),ix=Math.floor(fx),iy=Math.floor(fy),u=fx-ix,v=fy-iy,k=iy*t.nx+ix;
+  return (z[k]*(1-u)+z[k+1]*u)*(1-v)+(z[k+t.nx]*(1-u)+z[k+t.nx+1]*u)*v;
  }
  sample(x,y,hint=null){
   // Fraction along the segment from the stations' normal lines (0 on a's, 1 on b's). The foot
@@ -199,8 +201,10 @@ export class TestCar {
   const tx=mix(7),ty=mix(8),lx=-ty,ly=tx,d=q.ex*lx+q.ey*ly,width=mix(4),L=this.data.meta.reconstructed_xy_m;
   let bank=mix(5),grade=mix(6),gx=tx*grade+lx*bank,gy=ty*grade+ly*bank,roadz=mix(3)+bank*d,outside=Math.abs(d)-width/2;
   let s=(a[0]+w*Math.hypot(b[1]-a[1],b[2]-a[2]))%L,pit=false,pitS=null,pitD=null;
+  // Past a plateau circuit's rim (cliff-edge.js) the ground is the foot of the wall: no road blends into it.
+  const edge=this.cliff?.query(x,y,this.edgeHit),abyss=!!edge&&(edge.d>0||!!this.fall&&edge.d>-12),ground=edge?(abyss?this.cliff.abyssZ:this.cliff.plateauZ):undefined;
   // The surveyed pit lane has its own profile; off both roads the nearer one blends into the terrain.
-  const lane=this.pitGeo?locatePit(this.pitGeo,x,y):null;
+  const lane=this.pitGeo&&!abyss?locatePit(this.pitGeo,x,y):null;
   if(lane){
    // Where the lanes overlap (entry, final merge) the painted pit lane is the pit's;
    // both profiles are joined there, so the switch has no step.
@@ -212,13 +216,13 @@ export class TestCar {
     if(pit)s=lane.mainS;
    }
   }
-  const blend=clamp(outside/3,0,1);
+  const blend=abyss?1:clamp(outside/3,0,1);
   // Off the asphalt the car sits on the LiDAR terrain, so it must also lean and roll with it.
-  if(blend>0){const e=1.5,tx2=(this.terrain(x+e,y)-this.terrain(x-e,y))/(2*e),ty2=(this.terrain(x,y+e)-this.terrain(x,y-e))/(2*e);gx+=(tx2-gx)*blend;gy+=(ty2-gy)*blend;}
-  const service=pitLane(this.data,s);
+  if(blend>0){const e=1.5,tx2=(this.terrain(x+e,y,ground)-this.terrain(x-e,y,ground))/(2*e),ty2=(this.terrain(x,y+e,ground)-this.terrain(x,y-e,ground))/(2*e);gx+=(tx2-gx)*blend;gy+=(ty2-gy)*blend;}
+  const service=abyss?null:pitLane(this.data,s);
   if(service&&d>=service.offset-service.halfWidth&&d<=service.reach&&d>width/2){pit=true;bank=grade=gx=gy=0;}
-  const z=service&&pit?3.055:roadz*(1-blend)+this.terrain(x,y)*blend+.055;
-  return {i:q.i,u:w,s:s>L-.01?0:s,d,z,width,bank,grade,gx,gy,tx,ty,lx,ly,pit,pitS,pitD,onRoad:pit||Math.abs(d)<width/2};
+  const z=service&&pit?3.055:roadz*(1-blend)+this.terrain(x,y,ground)*blend+.055;
+  return {i:q.i,u:w,s:s>L-.01?0:s,d,z,width,bank,grade,gx,gy,tx,ty,lx,ly,pit,pitS,pitD,abyss,onRoad:!abyss&&(pit||Math.abs(d)<width/2)};
  }
  // Ground height and slope under one contact point near the car.
  ground(x,y){return this.sample(x,y,this.index);}
@@ -256,6 +260,8 @@ export class TestCar {
   this.wallImpactSpeed=0;this.crashImpactSpeed=0;
   // Scripts and other systems may place the car directly: seat it on the ground there.
   if(!(Math.hypot(this.x-this.stepX,this.y-this.stepY)<.5))this.settle();
+  // Going down a plateau's wall (cliff-fall.js), the car stays out of the rock: the face pushes it back out.
+  if(this.fall&&this.cliff){const q=this.cliff.query(this.x,this.y,this.edgeHit);if(q.near&&q.d<.6){const push=.6-q.d,vn=this.vx*q.nx+this.vy*q.ny;this.x+=q.nx*push;this.y+=q.ny*push;this.stepX=this.x;this.stepY=this.y;if(vn<0){this.vx-=1.3*vn*q.nx;this.vy-=1.3*vn*q.ny;}}}
   const p=this.surface,oldX=this.x,oldY=this.y;
   const c=Math.cos(this.heading),s=Math.sin(this.heading),v=this.vx*c+this.vy*s,lat=-this.vx*s+this.vy*c,speed=Math.hypot(this.vx,this.vy);
   const condition=this.condition?.factors,grounded=this.wheelsDown>0,m=this.mechanics;
@@ -550,13 +556,15 @@ export class TestCar {
   if(this.awaitingStart){this.awaitingStart=false;this.checkpoints=new Set([0]);this.nextCheckpoint=1;this.excursion=null;return;}
   this.lastLapValid=this.lapValid&&this.nextCheckpoint===20;
   this.lastLap=this.clock-this.lapStart;
-  if(this.lastLapValid){this.laps++;if(this.best===null||this.lastLap<this.best)this.best=this.lastLap;}
+  // A lap with a fall into the abyss (cliff-fall.js) counts in the race but never as the best lap.
+  this.lastLapFell=!!this.lapFell;this.lapFell=false;
+  if(this.lastLapValid){this.laps++;if(!this.lastLapFell&&(this.best===null||this.lastLap<this.best))this.best=this.lastLap;}
   this.lastInvalidReason=this.lastLapValid?null:this.invalidReason??'cut';
   this.lapStart=this.clock;this.lapValid=true;this.invalidReason=null;this.checkpoints=new Set([0]);this.nextCheckpoint=1;
  }
  // Everything crossLine changes: the laps that count, the lap under way and the one before, the best.
  lapBooks(){return {awaitingStart:this.awaitingStart,laps:this.laps,lapStart:this.lapStart,lapValid:this.lapValid,invalidReason:this.invalidReason,best:this.best,lastLap:this.lastLap,
-  lastLapValid:this.lastLapValid,lastInvalidReason:this.lastInvalidReason,checkpoints:new Set(this.checkpoints),nextCheckpoint:this.nextCheckpoint};}
+  lastLapValid:this.lastLapValid,lastInvalidReason:this.lastInvalidReason,lapFell:this.lapFell,lastLapFell:this.lastLapFell,checkpoints:new Set(this.checkpoints),nextCheckpoint:this.nextCheckpoint};}
  // The last crossing taken back, as if the car had never reached the line: its lap goes on, timed
  // from where it began. Only one: false when there is none to take back.
  uncrossLine(){

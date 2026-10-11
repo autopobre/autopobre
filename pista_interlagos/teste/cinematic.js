@@ -311,9 +311,10 @@ void main(){
 // use (uniform lookup, the driver's log) and the textures waiting for an upload (a new anisotropy
 // re-uploads the asphalt's 2048 px maps) go the same way, so the first frame after it does not pay for
 // them all at once. target(): the render target the programs are for, asked again at every slice (null:
-// the screen).
+// the screen); look(): sets the renderer as the pictures are drawn (tone mapping, output colours; for the
+// screen's programs) and gives back what undoes it, around every slice.
 const SLICE_MATERIALS=3,SLICE_MS=24;
-export async function compileInSlices(renderer,scene,camera,target=()=>null){
+export async function compileInSlices(renderer,scene,camera,target=()=>null,look=()=>()=>{}){
  const drawn=o=>o.isMesh||o.isPoints||o.isLine||o.isSprite,units=[],wait=ms=>new Promise(done=>setTimeout(done,ms));
  // compile() counts the lights below the subtree it is given on top of the scene's: a slice holds none
  // (a drawn object with a light under it is left to a last whole-scene pass).
@@ -328,11 +329,11 @@ export async function compileInSlices(renderer,scene,camera,target=()=>null){
  // from that walk for the task and shown again before it ends (compile() takes every material, shown or not).
  let t=performance.now();const pace=async()=>{if(performance.now()-t>SLICE_MS){await wait(0);t=performance.now();}};
  for(let i=0;i<units.length;){
-  const previous=renderer.getRenderTarget(),hidden=scene.children.filter(c=>c.visible&&!holdsLight(c));renderer.setRenderTarget(target());for(const c of hidden)c.visible=false;
-  try{do renderer.compile(units[i++],camera,scene);while(i<units.length&&performance.now()-t<SLICE_MS);}finally{for(const c of hidden)c.visible=true;renderer.setRenderTarget(previous);}
+  const previous=renderer.getRenderTarget(),hidden=scene.children.filter(c=>c.visible&&!holdsLight(c)),undo=look();renderer.setRenderTarget(target());for(const c of hidden)c.visible=false;
+  try{do renderer.compile(units[i++],camera,scene);while(i<units.length&&performance.now()-t<SLICE_MS);}finally{for(const c of hidden)c.visible=true;renderer.setRenderTarget(previous);undo();}
   await pace();
  }
- if(whole){const previous=renderer.getRenderTarget();renderer.setRenderTarget(target());try{renderer.compile(scene,camera);}finally{renderer.setRenderTarget(previous);}}
+ if(whole){const previous=renderer.getRenderTarget(),undo=look();renderer.setRenderTarget(target());try{renderer.compile(scene,camera);}finally{renderer.setRenderTarget(previous);undo();}}
  // Linked by the GPU in parallel meanwhile; a lost context never answers, so not waited for forever.
  const programs=renderer.info.programs;for(const until=performance.now()+20000;programs.some(p=>!p.isReady())&&performance.now()<until;)await wait(10);
  t=performance.now();

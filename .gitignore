@@ -53,6 +53,7 @@ desktop.ini
 !/pista_interlagos/dados/pista_chapeco.json
 !/pista_interlagos/dados/pista_brasilia.json
 !/pista_interlagos/dados/pista_goiania.json
+!/pista_interlagos/dados/pista_chapada.json
 /pista_interlagos/fontes/
 /pista_interlagos/*.blend
 /pista_interlagos/exports/*

@@ -20,7 +20,7 @@ export class Synth {
  stop(tag=null,fade=.025){const t=this.ctx.currentTime;for(const v of this.voices){if(tag&&v.tag!==tag)continue;v.level.gain.cancelScheduledValues(t);v.level.gain.setTargetAtTime(0,t,fade/3);try{v.source.stop(t+fade);}catch{}}}
 }
 
-export const EFFECT_NAMES=Object.freeze(['pitRepair','pitCoffee','click','paint','crowdWelcome','talk','donation','badJoke','noDonation','paper','fuelFill','denied','ignition','engineCatch','countdown','raceGo','flooded','batteryDead','fuelEmpty','breakdown','collision','debrisFly','debrisMiss','glassHit','glassBreak','tankDrop','towArrive','towBrake','strapSnag','strapFree','towWarning','finish','judgeStart','judgeCheck','judgeApprove','disqualified','podiumWin','podiumLoss','blazer','footstep','reserve','sip','bite','splash','wade','bonk','boing','passBy']);
+export const EFFECT_NAMES=Object.freeze(['pitRepair','pitCoffee','click','paint','crowdWelcome','talk','donation','badJoke','noDonation','paper','fuelFill','denied','ignition','engineCatch','countdown','raceGo','flooded','batteryDead','fuelEmpty','breakdown','collision','debrisFly','debrisMiss','glassHit','glassBreak','tankDrop','towArrive','towBrake','strapSnag','strapFree','towWarning','finish','judgeStart','judgeCheck','judgeApprove','disqualified','podiumWin','podiumLoss','blazer','footstep','reserve','sip','bite','splash','wade','bonk','boing','passBy','explosion']);
 
 export class SoundEffects {
  constructor(ctx,world,ui,noise){
@@ -87,6 +87,8 @@ export class SoundEffects {
    case 'batteryDead':for(let i=0;i<4;i++)note(600-i*90,.05,.06,'square',i*.22,130,800);break;
    case 'fuelEmpty':for(let i=0;i<3;i++)noise(.16,.09,280,i*.18);chime([440,330,220],.04,.2);break;
    case 'collision':metal(.4);noise(.42,.25,350);break;
+   // A car going up at the foot of a plateau's wall (explosion.js): the boom, its low roll, the crackle of the fire and metal.
+   case 'explosion':noise(1.8,.55,160);noise(1.1,.4,520,.02);note(52,1.6,.45,'sine',0,24,260);note(80,.7,.25,'triangle',.03,35,400);for(let i=0;i<9;i++)noise(.1,.14,2200+i*230,.18+i*.13,(i%3-1)*.5);metal(.22);noise(2.6,.12,900,.4);break;
    case 'debrisFly':noise(.35,.09,1900,0,-.6);noise(.45,.1,3100,.3,.2);noise(.25,.07,4100,.65,.7);note(600,.65,.015,'sine',0,1600);break;
    case 'debrisMiss':noise(.25,.11,2900);noise(.08,.045,1800,.25);break;
    case 'glassHit':note(2700,.12,.095,'triangle',0,1100);noise(.22,.17,3800);metal(.08);break;

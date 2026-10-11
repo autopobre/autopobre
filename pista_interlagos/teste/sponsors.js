@@ -64,10 +64,17 @@ export const SPONSORS=Object.freeze({
  uaiso:S('TRANSPORTES UAI SÔ','UAI SÔ','#14213d','#fca311','#ffffff','car','stripe','Do sertão pro Brasil','mg'),
  tiao:S('FERRO-VELHO DO TIÃO','TIÃO','#9d0208','#ffffff','#ffba08','wrench','repeat','Tem peça de tudo que é carro','mg'),
  brilhabrilha:S('CRISTAIS BRILHA-BRILHA','CRISTAL','#4cc9f0','#03045e','#ffffff','star','badge','Lapidação artesanal','mg'),
- soumpoquim:S('DOCE DE LEITE SÓ UM POQUIM','POQUIM','#3c096c','#ffffff','#ff9e00','cup','badge','Ninguém come um só','mg')
+ soumpoquim:S('DOCE DE LEITE SÓ UM POQUIM','POQUIM','#3c096c','#ffffff','#ff9e00','cup','badge','Ninguém come um só','mg'),
+ // Mato Grosso (Chapada dos Sonhos): the abyss beside the track is the joke of half of them.
+ descela:S('GUINCHO DESCE-LÁ-EMBAIXO','DESCE-LÁ','#1b4332','#ffd60a','#ffffff','car','badge','Busca carro no fundo do vale','mt'),
+ voltapracima:S('CORDAS VOLTA-PRA-CIMA','VOLTA','#bc6c25','#fefae0','#283618','spring','stripe','Caiu? A gente puxa','mt'),
+ segurapeao:S('FREIOS SEGURA PEÃO','SEGURA PEÃO','#5a189a','#ffffff','#ffd60a','tyre','split','Para antes da beirada','mt'),
+ ventania:S('BONÉS SEGURA-VENTANIA','VENTANIA','#0077b6','#ffffff','#ffd166','star','repeat','Não voa do mirante','mt'),
+ mariaisabel:S('MARIA-ISABEL DO CUMPADI','CUMPADI','#ffb703','#3d2b1f','#9d0208','cup','script','Arroz com carne-seca na hora','mt'),
+ suador:S('VENTILADOR SUADOR','SUADOR','#e85d04','#ffffff','#03045e','bolt','badge','Para o calor de 40 graus','mt')
 });
 // Each circuit's region (its local sponsors).
-const REGIONS={interlagos:'sp',piracicaba:'sp',cascavel:'pr',chapeco:'sc',brasilia:'df',goiania:'go',curvelo:'mg'};
+const REGIONS={interlagos:'sp',piracicaba:'sp',cascavel:'pr',chapeco:'sc',brasilia:'df',goiania:'go',curvelo:'mg',chapada:'mt'};
 const NATIONAL=['autopobre','oldstock','posto99','tia','retifica','blazer'],EXTRA=['pulapula','pegaprimeira','oleovo','semtranco'];
 export const regionOf=id=>REGIONS[id]??'sp';
 // A circuit's own seed: the same banners and boards at every load of it, different from the others'.

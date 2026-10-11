@@ -1,5 +1,6 @@
 import {TestCar} from './physics.js';
 import {pitGeometry,locatePit,wallsNear} from './pit-lane.js';
+import {cliffEdge} from './cliff-edge.js';
 
 // What has to stay clear on the surveyed circuit: the ground below everything
 // paved or built, and the scenery off the roads, garages and grandstands.
@@ -78,12 +79,17 @@ export function sceneryBands(data){
  }
  for(const b of standLayout(data))
   bands.push({name:'arquibancada',margin:12,points:[-b.length/2,b.length/2].map(a=>[...standPoint(b,a,0),-b.rx,-b.ry,-b.roof.to,-b.apron])});
+ // A plateau's rim (cliff-edge.js): nothing stands past it nor within RIM_KEEP of the lip. No points: the track field
+ // (landscape.js) has no use for it, and the trees down the slope stay.
+ const rim=cliffEdge(data);if(rim)bands.push({name:'abismo',margin:0,points:[],rim});
  return bands;
 }
+export const RIM_KEEP=3;
 // Distance from (x,y) to the nearest band, less that band's margin (negative inside).
 export function bandClearance(bands,x,y){
  let best=Infinity,name=null;
  for(const band of bands){
+  if(band.rim){const e=-band.rim.query(x,y).d-RIM_KEEP-band.margin;if(e<best){best=e;name=band.name;}continue;}
   const a=band.points,n=a.length,last=band.closed?n:n-1;
   for(let i=0;i<last;i++){
    const p=a[i],q=a[(i+1)%n],pc=(p[4]+p[5])/2,qc=(q[4]+q[5])/2,ax=p[0]+p[2]*pc,ay=p[1]+p[3]*pc,dx=q[0]+q[2]*qc-ax,dy=q[1]+q[3]*qc-ay;

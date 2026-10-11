@@ -15,7 +15,7 @@ import json, os, sys
 ROOT = Path(__file__).resolve().parents[1]
 URL = os.environ.get('INTERLAGOS_URL', GAME_URL)
 SHOTS = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'renders' / 'podios'
-CIRCUITS = sys.argv[2:] or ['interlagos', 'brasilia', 'cascavel', 'chapeco', 'goiania', 'piracicaba', 'curvelo']
+CIRCUITS = sys.argv[2:] or ['interlagos', 'brasilia', 'cascavel', 'chapeco', 'goiania', 'piracicaba', 'curvelo', 'chapada']
 SHOTS.mkdir(parents=True, exist_ok=True)
 report = {'errors': [], 'checks': {}, 'podiums': {}}
 HOOK = '''async()=>{const {ImmersiveMode}=await import('./immersive-mode.js');const original=ImmersiveMode.prototype.info;ImmersiveMode.prototype.info=function(){window.fixtureMode=this;return original.call(this)};interlagos.immersiveInfo();return true;}'''

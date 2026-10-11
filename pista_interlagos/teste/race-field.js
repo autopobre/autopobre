@@ -1,6 +1,7 @@
 import {TestCar,clamp,wrap,steerLimit,WHEELBASE,OPALA_BODY} from './physics.js?v=20260923-capotagem';
 import {RIVAL_ROSTER,ACE_NUMBER,AI_LEVELS,gridSlot,playerGridSlot} from './race-roster.js';
 import {pitGeometry,wallContact,pitLane,curveloPitFrame,CURVELO_PIT} from './pit-lane.js';
+import {trackFall} from './cliff-fall.js';
 // Contacts between cars: each car's plan is its body's box (physics.js OPALA_BODY, FUSCA_BODY; a remote
 // car without one is an Opala). Mass and inertia are the Opala's for every body; engine and tyres are the body's
 // (physics.js OPALA_MECHANICS, FUSCA_MECHANICS): the drivers plan their corners and brakes on the car's grip.
@@ -286,12 +287,12 @@ export class RaceField {
   }
   // One physics step for a rival, then its race distance and the flag. A car with nobody at the
   // wheel that gets there has run its race without its driver: AB for good (reclaim).
-  const drive=(r,input)=>{const c=r.car;r.tow=c.draft;c.step(input,dt);commands.push(input);r.progress+=lapTravel(r.lastS,c.surface.s,L);r.lastS=c.surface.s;if(totalLaps&&!r.finished&&r.progress>=L*totalLaps+this.gridLeadIn){if(!r.retired){r.finished=true;r.finishTime=this.time;}else if(r.stop)r.stop.flagged=true;}};
+  const drive=(r,input)=>{const c=r.car;r.tow=c.draft;c.step(input,dt);commands.push(input);if(c.cliff&&trackFall(c,dt)==='back'){r.recover=0;r.blocked=0;}r.progress+=lapTravel(r.lastS,c.surface.s,L);r.lastS=c.surface.s;if(totalLaps&&!r.finished&&r.progress>=L*totalLaps+this.gridLeadIn){if(!r.retired){r.finished=true;r.finishTime=this.time;}else if(r.stop)r.stop.flagged=true;}};
   // A seat raced over the network (r.puppet, multiplayer.js) is placed, not driven: it returns the
   // pedals. The driverless cars on the road (caution) as they stand before the step (almost always
   // none: no list built then).
   this.cautions=this.rivals.some(r=>r.stop)?this.rivals.filter(r=>inTheWay(r.stop,r.car)):NO_CAUTIONS;
-  for(const r of this.rivals){if(r.puppet){commands.push(r.puppet(r,dt));continue;}drive(r,r.stop?this.stopInput(r,dt):r.pit?this.pitInput(r,bodies,dt):this.decide(r,bodies,driverOf,player,dt,totalLaps));}
+  for(const r of this.rivals){if(r.puppet){commands.push(r.puppet(r,dt));continue;}drive(r,r.car.fall?{...FAINTED}:r.stop?this.stopInput(r,dt):r.pit?this.pitInput(r,bodies,dt):this.decide(r,bodies,driverOf,player,dt,totalLaps));}
   // Split times: when each car first reached each of the race's sectors (classification).
   const me=this.playerRun;me.lastS??=player.surface.s;me.progress+=lapTravel(me.lastS,player.surface.s,L);me.lastS=player.surface.s;
   if(totalLaps&&Number.isFinite(totalLaps)){const split=L/SPLITS,last=totalLaps*SPLITS;for(const r of [me,...this.rivals]){const k=Math.min(last,Math.floor((r.progress-this.gridLeadIn)/split));while(r.splits.length<=k)r.splits.push(t);}}
@@ -661,6 +662,8 @@ export class RaceField {
  grassAt(c,i,side,j){
   const a=this.data.samples,n=a.length,geo=this.geo??=pitGeometry(this.data),k=(i+Math.round(j/this.line.ds))%n,p=a[k],heading=Math.atan2(p[8],p[7]),at=o=>[p[1]+p[9]*side*o,p[2]+p[10]*side*o];
   const [x,y]=at(p[4]/2+PARK_OFF),q=j>60?c.sample(x,y,c.nearest(x,y,true).i):c.sample(x,y),apart=Math.abs(q.i-k),same=Math.min(apart,n-apart)<25;
+  // Never at a plateau's rim (cliff-edge.js): the spot keeps 6 m of ground before the lip.
+  if(c.cliff&&c.cliff.query(x,y).d>-6)return false;
   return !q.onRoad&&!q.pit&&same&&![p[4]/2+.5,p[4]/2+PARK_OFF/2,p[4]/2+PARK_OFF].some(o=>wallContact(geo,...at(o),heading));
  }
  // Pit lane after the flag: pure pursuit along the fast lane, over to the working lane for the

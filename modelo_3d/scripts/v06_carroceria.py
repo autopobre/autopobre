@@ -402,7 +402,35 @@ def build_hood(mats):
   cut=prism('CUT_pin',ellipse(c[0],c[1],.012,.012,16),'Z',.6,1.1)
   for n in ('Capo_painel','Capo_estrutura_interna','Base_trava'+sfx):boolean(O[n],cut,'DIFFERENCE')
   remove(cut)
+ lift_hood_rear(piv)
  return piv
+
+# Race set-up (carro_3): the hood's rear edge stands proud of the cowl, as these cars run it to let the bay breathe,
+# the front held down by its latches. The tilt about the hood's front edge is baked into the hood's meshes, so the
+# hinge empty stays unrotated (car-openings.js and shutOpenings take its rest as the identity); the hinge axis rises
+# with the hood, as on spacers, and the body leaves stretch up to it from their feet on the apron shelves.
+# Flush, the rear edge dived under the cowl's lip as the hood opened; raised, it meets the lip on the way down, moving
+# back up to 8 mm between 12 and 30 degrees: the lip steps back COWL_STEP_BACK (the seam seen from above: 13 mm).
+HOOD_REAR_LIFT,COWL_STEP_BACK=.020,.009
+def lift_hood_rear(piv):
+ O=bpy.data.objects;W=world_verts(O['Capo_painel']);zf=float(W[W[:,0]>HOOD_X1-.02][:,2].max())
+ th=math.atan2(HOOD_REAR_LIFT,HOOD_X1-HOOD_X0)
+ R=Matrix.Translation((HOOD_X1,0,zf))@Matrix.Rotation(th,4,'Y')@Matrix.Translation((-HOOD_X1,0,-zf));Rn=np.array(R)
+ hood=[o for o in piv.children_recursive if o.type=='MESH'];before={o.name:world_verts(o) for o in hood}
+ a0=piv.matrix_world.translation.copy();d=R@a0-a0
+ piv.matrix_world=Matrix.Translation(R@a0);bpy.context.view_layer.update()
+ for o in hood:set_world_verts(o,before[o.name]@Rn[:3,:3].T+Rn[:3,3])
+ for o in [o for o in O if o.type=='MESH' and o.name.startswith('Capo_dobradicas_suporte')]:
+  W=world_verts(o);k=np.zeros(len(W))
+  for m in (W[:,1]>0,W[:,1]<=0):                                       # each side from its own foot
+   if m.any():z0=W[m,2].min();k[m]=np.clip((W[m,2]-z0)/max(a0.z-.03-z0,.01),0,1)    # rigid within 3 cm of the pin
+  set_world_verts(o,W+np.outer(k,d))
+ # the lip's front face all along the crown, fading out round the hood's rear corners (the fender tops meet the cowl
+ # beyond them)
+ o=O['Torpedo_ventilacao'];W=world_verts(o);yb=np.round(W[:,1]/.01).astype(int);lip=np.zeros(len(W),bool)
+ for b in np.unique(yb):m=yb==b;lip|=m&(W[:,0]>W[m,0].max()-.0025)
+ W[lip,0]-=COWL_STEP_BACK*np.clip((HOOD_W0-.02-np.abs(W[lip,1]))/.02,0,1);set_world_verts(o,W)
+ print(f'V06 hood rear edge up {HOOD_REAR_LIFT*1000:.0f} mm ({math.degrees(th):.2f} degrees), hinge axis up {d.z*1000:.1f} mm',flush=True)
 
 # Nose (carro_1, carro_4, carro_23): the black band between the hood seam and the grille is about as tall as a
 # headlight, the grille's top is level with the headlights' tops and the hood's front edge runs straight across. V05

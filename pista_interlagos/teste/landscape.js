@@ -496,9 +496,13 @@ function realisticLakes(field,bodies,shore,waves,{mobile=false}={}){
 const terrainShore={shoreMap:{value:null},shoreBounds:{value:new THREE.Vector4(0,0,1,1)},shoreOn:{value:0}};
 // cover: land-cover texture (R woods, G paved/built, B bare soil) of circuits built from
 // open data; it replaces reading those classes from the colours of an aerial photograph.
-export function terrainMaterial(textures,field,{ortho=null,cover=null,mobile=false}={}){
+// steep: the ground has steep slopes (a plateau's talus and gorges, Chapada dos Sonhos): there the photograph, draped
+// from above, smears into streaks and the grass tiles stretch; it is read from a coarser mip and the grass laid from
+// the side (LAND_STEEP). The other circuits build without it.
+export function terrainMaterial(textures,field,{ortho=null,cover=null,mobile=false,steep=false}={}){
  // Pushed back in depth: far away, roads and kerbs a few centimetres above it still win.
  const material=new THREE.MeshStandardMaterial({name:'Terreno_paisagem_v2',map:ortho,roughness:.95,metalness:0,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:2});
+ if(steep)material.defines={...material.defines,LAND_STEEP:''};
  material.onBeforeCompile=shader=>{
   Object.assign(shader.uniforms,terrainShore,{coverMap:{value:cover},grassMap:{value:textures.grass},wildMap:{value:textures.wild},concreteMap:{value:textures.concrete},gravelMap:{value:textures.gravel},grassNormalMap:{value:textures.grassNormal},
    trackField:{value:field.texture},fieldBounds:{value:new THREE.Vector4(field.x0,field.y0,field.width,field.height)}});
@@ -514,9 +518,15 @@ mat2 landTurn(vec2 h){vec2 r=normalize(h-.5+1e-4);return mat2(r.x,r.y,-r.y,r.x);
 vec4 field=texture2D(trackField,vec2((vLandWorld.x-fieldBounds.x)/fieldBounds.z,(-vLandWorld.z-fieldBounds.y)/fieldBounds.w));
 float edgeDist=field.r,lateral=field.g,waterBed=field.b,viewDist=length(vLandWorld-cameraPosition);
 vec2 w=vLandWorld.xz;
+#ifdef LAND_STEEP
+vec3 landN=normalize(cross(dFdx(vLandWorld),dFdy(vLandWorld)));float landSteep=smoothstep(.1,.35,1.0-abs(landN.y));
+#endif
 float macroFar=landNoise(w*.011),macroNear=landNoise(w*.043),macro=macroFar*.6+macroNear*.4;
 #ifdef USE_MAP
  vec3 ortho=texture2D(map,vMapUv,1.0).rgb,cs=pow(max(texture2D(map,vMapUv,2.2).rgb,vec3(0.0)),vec3(1.0/2.2));
+ #ifdef LAND_STEEP
+ ortho=mix(ortho,texture2D(map,vMapUv,4.5).rgb,landSteep);
+ #endif
  float lum=dot(cs,vec3(.299,.587,.114)),mx=max(cs.r,max(cs.g,cs.b)),sat=(mx-min(cs.r,min(cs.g,cs.b)))/max(mx,.001);
  float treeM=smoothstep(0.0,.05,cs.g-cs.b)*smoothstep(-.06,-.01,cs.g-cs.r)*(1.0-smoothstep(.3,.42,lum));
  float roofM=smoothstep(.07,.14,cs.r-cs.g)*smoothstep(.03,.1,cs.g-cs.b)*smoothstep(.3,.45,cs.r);
@@ -563,6 +573,11 @@ treeM*=1.0-waterBed;
  vec3 grass=mix(texture2D(grassMap,w/3.3).rgb,texture2D(grassMap,rotated/4.8+.31).rgb,textureBlend);
  vec3 wild=mix(texture2D(wildMap,w/4.2).rgb,texture2D(wildMap,rotated/6.7+.17).rgb,textureBlend);
  vec3 concrete=mix(texture2D(concreteMap,w/3.9).rgb,texture2D(concreteMap,rotated/7.1+.5).rgb,.4);
+#endif
+#ifdef LAND_STEEP
+// On a steep face the grass and the rough ground are laid from the side, as a wall would be.
+vec2 landSide=abs(landN.x)>abs(landN.z)?vLandWorld.zy:vLandWorld.xy;
+grass=mix(grass,texture2D(grassMap,landSide/3.3).rgb,landSteep);wild=mix(wild,texture2D(wildMap,landSide/4.2).rgb,landSteep);
 #endif
 // Mown verge beside the asphalt, with stripes parallel to the track. The cut lays the
 // blades one way per stripe: seen along the cut a stripe is light, against it dark, so
@@ -1378,6 +1393,8 @@ function tvTower(h){
 // distant skyline so the world never ends at the edge of the LiDAR grid.
 function createHorizon(data,field,rand,{mobile,urban,rural=false,cityAngle=Math.PI/2}){
  const t=data.terrain,root=new THREE.Group();root.name='Horizonte';
+ // Over a plateau's rim the real valley is the horizon (far-terrain.js): no rings of made-up hills.
+ if(data.meta?.horizon==='chapada')return {root,buildings:0};
  const border=[],x1=t.x0+(t.nx-1)*t.step,y1=t.y0+(t.ny-1)*t.step,cx=(t.x0+x1)/2,cy=(t.y0+y1)/2;
  for(let i=0;i<t.nx-1;i++)border.push([t.x0+i*t.step,t.y0,0,-1]);
  for(let j=0;j<t.ny-1;j++)border.push([x1,t.y0+j*t.step,1,0]);

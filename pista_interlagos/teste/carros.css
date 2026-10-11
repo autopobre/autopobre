@@ -1,12 +1,13 @@
-/* Car screen (Modo Corrida, before the track screen): the chosen Opala turning on the left, drawn by
-   the game's canvas behind this screen's open middle (car-select.js), and the grid's cars on the right. */
+/* Car screen (Modo Corrida, before the track screen): the chosen car turning in the team's garage on the
+   left, drawn by the game's canvas behind this screen's open middle (car-select.js, car-garage.js), and the
+   grid's cars on the right. */
 /* Only the canvas (the studio) and this screen show (and a multiplayer room's card); the race's HUD
    and tools hide meanwhile. */
 body.cars-open>:not(#view):not(#cars):not(#rotatePhone):not(#mpRoom):not(dialog){visibility:hidden!important}
 #cars{z-index:30;align-items:stretch;justify-content:center;padding:22px 4vw;overflow:auto;backdrop-filter:none;
  background:radial-gradient(ellipse at 34% 58%,#20403a 0,#10231f 48%,#060d0c 100%)}
 /* With the studio drawn, only the edges darken (the head and the cards keep their own backgrounds). */
-#cars.live{background:linear-gradient(180deg,#060d0cb3 0,transparent 16%),linear-gradient(90deg,transparent 0,transparent 55%,#060d0ca6 75%)}
+#cars.live{background:linear-gradient(180deg,#060d0cd9 0,#060d0c8c 18%,transparent 30%),linear-gradient(90deg,transparent 0,transparent 55%,#060d0ca6 75%)}
 .cars-shell{width:min(1240px,100%);display:flex;flex-direction:column;gap:14px;margin:auto 0;min-height:min(640px,100%)}
 #carsPilot{margin:0;font-size:12px;color:#c9d3c4;font-weight:700}
 /* The model tabs on top: the Opala (the grid's 15) or the Fusca (the teams' colours, fusca.js). */
@@ -28,7 +29,12 @@ body.cars-open>:not(#view):not(#cars):not(#rotatePhone):not(#mpRoom):not(dialog)
  text-shadow:-2px 0 #101314,2px 0 #101314,0 -2px #101314,0 2px #101314,0 3px 8px #000a}
 .car-plate h3{margin:0;font-size:clamp(17px,2vw,23px);font-weight:900;color:#fff6dc}
 .car-plate p{margin:3px 0 0;font-size:12px;line-height:1.45;color:#d3ddd0;max-width:560px}
-.car-hint{position:absolute;top:10px;right:12px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#b7c4bacc;pointer-events:none}
+/* Top right of the stage: how to turn and zoom, and the zoom buttons (car-select.js; wheel, pinch and +/- too). */
+.car-zoom{position:absolute;top:10px;right:12px;display:flex;align-items:center;gap:6px;padding:3px 3px 3px 12px;border-radius:20px;background:#0a0d0f99}
+.car-hint{margin-right:4px;font-size:9px;line-height:1.35;letter-spacing:.06em;text-align:right;white-space:pre-line;text-transform:uppercase;color:#c9d3c4e6;text-shadow:0 1px 3px #000c;pointer-events:none}
+.car-zoom button{width:34px;height:34px;margin:0;padding:0;border-radius:50%;border:1px solid #ffffff40;background:#0c1012c4;color:#f4f3ee;font-size:20px;font-weight:700;line-height:1;cursor:pointer}
+.car-zoom button:hover{border-color:#f4ce39;color:#f4ce39}
+.car-zoom button:focus-visible{outline:2px solid #f4ce39;outline-offset:2px}
 .cars-side{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:12px;background:#0b1a18e8;border:1px solid #88978c40}
 .car-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .car-cards button{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;margin:0;padding:8px 6px 7px;border:1px solid #88978c45;border-radius:8px;
@@ -64,7 +70,7 @@ body.cars-open>:not(#view):not(#cars):not(#rotatePhone):not(#mpRoom):not(dialog)
  .cars-body{grid-template-columns:minmax(0,1fr) minmax(300px,1.15fr);gap:10px}
  .car-stage{min-height:0}
  .car-plate{padding:6px 8px;gap:8px}#carNumber{min-width:50px;font-size:19px;padding:4px 6px}.car-plate h3{font-size:13px}.car-plate p{display:none}
- .car-hint{display:none}
+ .car-hint{display:none}.car-zoom{top:6px;right:6px}.car-zoom button{width:30px;height:30px;font-size:17px}
  .cars-side{gap:6px;padding:8px}.cars-side>.tracks-kicker,.car-note{display:none}
  .car-cards{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
  .car-cards button{padding:4px 2px 3px;gap:1px}.car-cards span{font-size:8px}

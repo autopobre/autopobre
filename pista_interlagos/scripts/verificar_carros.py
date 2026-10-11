@@ -1,7 +1,8 @@
-"""Modo Corrida's car screen (#cars, car-select.js): the 15 Opalas, the studio turning the chosen one,
-the choice kept, and on track the player's car in that team's colours with the Opala 99 (Stevan
-Gaipo) in its seat. Modo História stays the 99's. Usage: verificar_carros.py [porta]
-Screens in renders/: carros_99.png, carros_73.png, carros_19.png, carros_pistas.png,
+"""Modo Corrida's car screen (#cars, car-select.js): the 15 Opalas, the garage (car-garage.js) turning the
+chosen one, zooming on it and tilting over it, the choice kept, and on track the player's car in that team's colours with
+the Opala 99 (Stevan Gaipo) in its seat. Modo História stays the 99's. Usage: verificar_carros.py [porta]
+Screens in renders/: carros_99.png, carros_73.png, carros_19.png, carros_zoom.png, carros_por_cima.png,
+carros_pistas.png,
 carros_corrida_73.png, carros_99_depois.png, carros_celular.png."""
 import json
 import sys
@@ -55,6 +56,28 @@ with sync_playwright() as p:
  page.mouse.move(box['x']+box['width']*.4,box['y']+box['height']*.4);page.mouse.down();page.mouse.move(box['x']+box['width']*.7,box['y']+box['height']*.4,steps=8);page.mouse.up()
  assert abs(page.evaluate(CARS)['yaw']-yaw)>1,'dragging turns the car'
  page.click('#carCards [data-car="19"]');wait_js(page,"interlagosCarros.info().built==='19'");page.wait_for_timeout(500);page.screenshot(path=str(RENDERS/'carros_19.png'))
+ # The garage (car-garage.js): its screens and the box number show the car on the turntable, the floor mirrors the room (Alto). The wheel, the
+ # buttons, + and - and a double click zoom while the car keeps turning; the page itself never scrolls.
+ garage=page.evaluate(CARS)['garage'];assert garage['screen']=='OPALA #19' and garage['box']=='19' and garage['mirror'] and garage['tyres']>20,garage
+ page.mouse.move(box['x']+box['width']*.5,box['y']+box['height']*.5)
+ for _ in range(4):page.mouse.wheel(0,-240);page.wait_for_timeout(60)
+ page.wait_for_timeout(1000);zoom=page.evaluate(CARS);assert zoom['zoom']>1.6 and zoom['distance']<8,zoom
+ # (A drag holds the turn for 2.5 s, the one above was just now; up close it turns slower.)
+ page.wait_for_timeout(2600);yaw=page.evaluate(CARS)['yaw'];page.wait_for_timeout(1000);assert page.evaluate(CARS)['yaw']>yaw+.06,'the car keeps turning up close'
+ page.screenshot(path=str(RENDERS/'carros_zoom.png'))
+ assert page.evaluate("document.querySelector('#cars').scrollTop")==0
+ page.click('#carZoomOut');assert page.evaluate(CARS)['zoomTo']<zoom['zoomTo']/1.3
+ page.mouse.dblclick(box['x']+box['width']*.5,box['y']+box['height']*.5);assert abs(page.evaluate(CARS)['zoomTo']-1)<.01
+ page.keyboard.press('Equal');page.keyboard.press('Equal');assert page.evaluate(CARS)['zoomTo']>1.5
+ page.keyboard.press('Minus');page.keyboard.press('Minus');page.keyboard.press('Minus');assert page.evaluate(CARS)['zoomTo']<1
+ # Dragging up and down tilts the camera: down to the tyres, up over the roof (closer, it goes higher).
+ page.click('#carZoomIn');page.click('#carZoomIn');page.click('#carZoomIn');page.click('#carZoomIn');page.wait_for_timeout(800)
+ def tilt(dy):
+  page.mouse.move(box['x']+box['width']*.5,box['y']+box['height']*.5);page.mouse.down();page.mouse.move(box['x']+box['width']*.5,box['y']+box['height']*.5+dy,steps=8);page.mouse.up();page.wait_for_timeout(900);return page.evaluate(CARS)
+ low=tilt(-180);assert low['elevation']<.08 and low['camera'][1]>.25,low
+ high=tilt(260);assert high['elevation']>1,high
+ page.screenshot(path=str(RENDERS/'carros_por_cima.png'))
+ page.mouse.dblclick(box['x']+box['width']*.5,box['y']+box['height']*.5);page.wait_for_timeout(300)
  page.click('#carCards [data-car="73"]');wait_js(page,"interlagosCarros.info().built==='73'")
 
  # On to the tracks: the car named there, the way back leads to it, the 1x1 is against the 99 now.

@@ -3,9 +3,11 @@ import {rosterOf,carEntry,MODEL_NAMES,CAR_MODELS,CAR_MODEL_DEFAULT,PLAYER_CAR_DE
 import {carWorkshop,FAR_PROFILE} from './immersive-visuals.js';
 import {fuscaCar,fuscaDispose,FUSCA_PROFILE,BOLT,BOLT_SHAPE} from './fusca.js';
 import {setCarEnvironment} from './car-finish.js';
+import {compileInSlices} from './cinematic.js';
+import {createGarage,garageLights,G} from './car-garage.js';
 // Modo Corrida's car screen (#cars, between the opening and the track screen): two tabs, the Opala and the
 // Fusca (fusca.js), each with its grid's 15 cars as cards (the Opala's Old Stock field, the Fusca's Copa Fusca one,
-// race-roster.js) and the chosen one turning in a small studio. The studio is drawn by the game's own renderer on the page's canvas, which
+// race-roster.js) and the chosen one turning on a turntable in the team's garage (car-garage.js). The studio is drawn by the game's own renderer on the page's canvas, which
 // shows through the screen's open middle (carros.css); the car is the race model, painted as the rivals
 // are (ImmersiveVisuals.rivalCar, fuscaCar), so it is what races.
 // Card icon: the car's side view (the distant rivals' model, immersive-visuals.js FAR_PROFILE, or the
@@ -35,66 +37,130 @@ function gradient(stops,size=256,radial=false){
  const c=document.createElement('canvas');c.width=c.height=size;const ctx=c.getContext('2d'),g=radial?ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2):ctx.createLinearGradient(0,0,0,size);
  for(const [at,color] of stops)g.addColorStop(at,color);ctx.fillStyle=g;ctx.fillRect(0,0,size,size);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
 }
-// The studio: a dark green backdrop, a floor fading into it, soft boxes for the paint's reflections
-// (a small room baked into an environment map) and a key light. The car turns on its own; dragging
-// the stage turns it by hand for a while.
+// The studio: the team's garage (car-garage.js) round a turntable, its own lights and the room baked into an
+// environment map for the paint. The car turns on its own (slower up close); dragging the stage turns it by hand
+// for a while and tilts the camera from near the floor (the tyres' lettering) to almost overhead (the roof). The
+// wheel, a pinch, the +/− buttons and keys zoom towards what is under the pointer (zoom: 1 = the whole car framed in
+// the stage): the camera closes in to VIEW.near from that point, then the lens narrows (VIEW.lens) so it never
+// goes through the car as it turns.
+const VIEW=Object.freeze({fov:34,azimuth:.62,elevation:.2,tilt:[-.25,1.35],height:.62+G.deck,near:1.7,lens:2.2,out:.8,ceiling:6,floor:.3,clear:.35});
+// The floor's mirror by the Gráficos tab's car reflections: the room drawn twice, so computers' Alto and Ultra only.
+const FLOOR_MIRROR=Object.freeze({ceu:false,pista:false,dinamico:true,dinamico_hd:true});
+// The studio's look on the screen (the race's cinematic.js draws linear, untoned): set, and what undoes it.
+function screenLook(renderer){
+ const saved=[renderer.toneMapping,renderer.toneMappingExposure,renderer.outputColorSpace];
+ renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1;renderer.outputColorSpace=THREE.SRGBColorSpace;
+ return ()=>{[renderer.toneMapping,renderer.toneMappingExposure,renderer.outputColorSpace]=saved;};
+}
 class Studio {
  constructor(carRoot){
-  this.workshop=carWorkshop(carRoot);this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(26,1,.1,200);
-  this.scene.background=gradient([[0,'#20403a'],[.55,'#10231f'],[1,'#060d0c']]);
-  this.turntable=new THREE.Group();this.scene.add(this.turntable);
-  const floor=new THREE.Mesh(new THREE.CircleGeometry(9,64).rotateX(-Math.PI/2),new THREE.MeshStandardMaterial({color:0x1d2a27,roughness:.62,metalness:.1,transparent:true,alphaMap:gradient([[0,'#fff'],[.55,'#fff'],[1,'#000']],256,true),depthWrite:false}));
-  this.scene.add(floor);
+  this.workshop=carWorkshop(carRoot);this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(VIEW.fov,1,.05,120);
+  // world: everything but the background, turned upside down for the floor's mirror (render).
+  this.scene.background=new THREE.Color(0x0c0e10);this.garage=null;this.world=new THREE.Group();this.scene.add(this.world);garageLights(this.world);
+  this.turntable=new THREE.Group();this.turntable.position.y=G.deck;this.world.add(this.turntable);
   const shadow=new THREE.Mesh(new THREE.PlaneGeometry(5.6,2.5).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({map:gradient([[0,'rgba(0,0,0,.85)'],[.6,'rgba(0,0,0,.45)'],[1,'rgba(0,0,0,0)']],128,true),transparent:true,depthWrite:false}));
   shadow.position.y=.004;this.turntable.add(shadow);
-  const key=new THREE.DirectionalLight(0xfff1dc,1.6);key.position.set(4,7,5);this.scene.add(key,new THREE.HemisphereLight(0xcfe3ff,0x1b1a14,.35));
-  // wanted/shown: 'model:number' of the car asked for and of the one built; template: the Opala's model, fusca the Fusca's.
-  this.yaw=-.55;this.handUntil=0;this.time=0;this.car=null;this.shown=null;this.wanted=null;this.template=null;this.fusca=null;this.environment=null;
+  // wanted/shown: 'model:number' of the car asked for and of the one on the turntable; next: the one being prepared
+  // (build); template: the Opala's model, fusca the Fusca's.
+  // zoom, elevation and offset (the point looked at, from the car's middle) ease towards their ...To; box: the car
+  // shown, in the turntable's frame (what the pointer can aim at, what the camera keeps clear of).
+  this.yaw=-.55;this.handUntil=0;this.time=0;this.car=null;this.shown=null;this.wanted=null;this.next=null;this.template=null;this.fusca=null;this.environment=null;
+  this.zoom=this.zoomTo=1;this.zoomMax=2;this.elevation=this.elevationTo=VIEW.elevation;this.offset=new THREE.Vector3();this.offsetTo=new THREE.Vector3();
+  this.box=new THREE.Box3(new THREE.Vector3(-2.4,0,-.95),new THREE.Vector3(2.4,1.45,.95));this.view=null;this.lens=1;this.distance=0;
  }
- // The room that lights the paint: a ceiling soft box, two side panels and a dim back wall.
- bake(renderer){
-  const room=new THREE.Scene(),panel=(w,h,p,r,level)=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({color:new THREE.Color(level,level,level),side:THREE.DoubleSide}));m.position.set(...p);m.rotation.set(...r);room.add(m);};
-  room.add(new THREE.Mesh(new THREE.BoxGeometry(24,12,24),new THREE.MeshBasicMaterial({color:0x26322f,side:THREE.BackSide})));
-  panel(14,7,[0,5.8,0],[Math.PI/2,0,0],5);panel(7,3.4,[-11.5,3,1],[0,Math.PI/2,0],2.6);panel(7,3.4,[11.5,3,-2],[0,-Math.PI/2,0],1.6);panel(10,2.4,[0,2.6,-11.5],[0,0,0],1.1);
-  const pmrem=new THREE.PMREMGenerator(renderer);this.environment=pmrem.fromScene(room,.04).texture;pmrem.dispose();
-  room.traverse(o=>{o.geometry?.dispose();o.material?.dispose();});this.scene.environment=this.environment;
+ // The garage is built the first time the screen draws (the story never shows it) and its lights baked into the
+ // map the paint reflects.
+ setup(renderer){
+  this.garage=createGarage();this.world.add(this.garage.root);this.turntable.add(this.garage.deck);
+  this.environment=this.garage.bake(renderer);this.scene.environment=this.environment;
  }
- // Throws away the car shown (what was made for it; the race car's own stay).
- drop(){if(!this.car)return;this.car.removeFromParent();if(this.car.userData.own)fuscaDispose(this.car);else this.workshop.disposeCar(this.car,this.template);this.car=null;this.shown=null;}
+ // Throws away a car made here, the one shown unless told (what was made for it; the race car's own parts stay).
+ drop(car=this.car,template=this.template){if(!car)return;car.removeFromParent();if(car.userData.own)fuscaDispose(car);else this.workshop.disposeCar(car,template);if(car===this.car){this.car=null;this.shown=null;}}
  ready(model){return !!(model==='fusca'?this.fusca:this.template);}
- build(){
-  const [model,number]=this.wanted.split(':'),entry=carEntry(number,model);if(!this.ready(model)||!entry||this.wanted===this.shown)return;
-  this.drop();
-  this.car=model==='fusca'?fuscaCar(this.fusca,entry):this.workshop.rivalCar(this.template,entry.color,entry.number,'',{stripe:entry.stripe,finish:entry.finish,livery99:entry.number==='99'});
-  this.turntable.add(this.car);this.shown=this.wanted;
+ // The car asked for is made hidden on the turntable while its programs (the garage's too, the first time) are
+ // built in the background, a few at a time (prepare): the page keeps answering and the car shown stays until the
+ // new one takes its place. Drawn at once, the first visit froze the page for seconds. stale: the model it was
+ // made from was replaced meanwhile (setTemplate, setFusca), so it is thrown away instead.
+ build(renderer){
+  const wanted=this.wanted,[model,number]=wanted.split(':'),entry=carEntry(number,model);if(!this.ready(model)||!entry)return;
+  const template=this.template,car=model==='fusca'?fuscaCar(this.fusca,entry):this.workshop.rivalCar(template,entry.color,entry.number,'',{stripe:entry.stripe,finish:entry.finish,livery99:entry.number==='99'});
+  car.visible=false;this.turntable.add(car);const next=this.next={car,template,stale:false};
+  this.prepare(renderer).then(()=>{
+   if(this.next===next)this.next=null;if(next.stale){this.drop(car,template);return;}
+   this.drop();this.car=car;car.visible=true;this.shown=wanted;this.garage.show(entry,model);
+   const yaw=this.turntable.rotation.y;this.turntable.rotation.y=0;this.turntable.updateMatrixWorld(true);
+   this.box.setFromObject(car).translate(this.turntable.position.clone().negate());this.turntable.rotation.y=yaw;this.turntable.updateMatrixWorld(true);
+  });
  }
- // rect: where the stage shows on the page (CSS pixels); the car is framed there.
- render(renderer,dt,rect){
-  this.time+=dt;if(this.time>this.handUntil)this.yaw+=dt*.32;this.turntable.rotation.y=this.yaw;
-  // The cars share their materials with the race's (car-finish.js): here they reflect the studio's soft
-  // boxes, not the circuit's map (the race takes its own back at its next frame, car-reflections.js).
-  if(!this.environment)this.bake(renderer);setCarEnvironment(this.environment,'estudio');if(this.wanted!==this.shown)this.build();
-  const size=renderer.getSize(new THREE.Vector2()),W=size.x,H=size.y,c=this.camera,half=Math.tan(THREE.MathUtils.degToRad(c.fov/2));
+ // The programs of everything in the studio as the screen draws it (ACES, sRGB: the renderer's own output colours
+ // go in every program's key).
+ prepare(renderer){return compileInSlices(renderer,this.scene,this.camera,()=>null,()=>screenLook(renderer)).catch(err=>console.warn(err));}
+ // rect: where the stage shows on the page (CSS pixels); the car is framed there. reflections: the Gráficos
+ // tab's car reflections, which set the floor's. False while there is no car to show yet.
+ render(renderer,dt,rect,reflections){
+  const {clamp,degToRad,radToDeg}=THREE.MathUtils,ease=1-Math.exp(-dt*9),mirror=FLOOR_MIRROR[reflections]??false;
+  // The cars share their materials with the race's (car-finish.js): here they reflect the garage, not the
+  // circuit's map (the race takes its own back at its next frame, car-reflections.js).
+  if(!this.garage)this.setup(renderer);setCarEnvironment(this.environment,'estudio');
+  if(this.wanted!==this.shown&&!this.next)this.build(renderer);
+  if(!this.car)return false;
+  this.time+=dt;this.zoom+=(this.zoomTo-this.zoom)*ease;if(this.time>this.handUntil)this.yaw+=dt*.32/Math.pow(Math.max(1,this.zoom),.6);this.turntable.rotation.y=this.yaw;
+  this.garage.update(dt);
+  const size=renderer.getSize(new THREE.Vector2()),W=size.x,H=size.y,c=this.camera,half=Math.tan(degToRad(VIEW.fov/2));
   // Far enough for the car (about 5 m seen three-quarters on, 1.6 m high) to fill most of the stage.
-  const d=THREE.MathUtils.clamp(Math.max(5*H/(2*half*.9*Math.max(1,rect.width)),1.7*H/(2*half*.66*Math.max(1,rect.height))),6,40);
-  const target=new THREE.Vector3(0,.62,0),el=.2,az=.62;c.position.set(Math.cos(el)*Math.cos(az)*d,.62+Math.sin(el)*d,Math.cos(el)*Math.sin(az)*d);c.lookAt(target);
-  c.aspect=W/H;c.setViewOffset(W,H,W/2-(rect.left+rect.width/2),H/2-(rect.top+rect.height*.5),W,H);c.updateProjectionMatrix();
-  const saved={tone:renderer.toneMapping,exposure:renderer.toneMappingExposure,space:renderer.outputColorSpace,target:renderer.getRenderTarget(),autoClear:renderer.autoClear};
-  renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.setRenderTarget(null);renderer.autoClear=true;
-  renderer.render(this.scene,c);
-  renderer.toneMapping=saved.tone;renderer.toneMappingExposure=saved.exposure;renderer.outputColorSpace=saved.space;renderer.setRenderTarget(saved.target);renderer.autoClear=saved.autoClear;
+  const d=clamp(Math.max(5*H/(2*half*.9*Math.max(1,rect.width)),1.7*H/(2*half*.66*Math.max(1,rect.height))),4.3,40);
+  this.zoomMax=Math.max(1,d/VIEW.near)*VIEW.lens;this.zoomTo=clamp(this.zoomTo,VIEW.out,this.zoomMax);
+  const want=d/this.zoom;let dist=Math.max(VIEW.near,want);this.lens=dist/want;
+  this.offset.lerp(this.offsetTo,ease);const target=this.offset.clone();target.y+=VIEW.height;
+  // Never under the floor nor through the ceiling's lights.
+  const tilt=[Math.max(VIEW.tilt[0],Math.asin(clamp((VIEW.floor-target.y)/dist,-1,1))),Math.min(VIEW.tilt[1],Math.asin(clamp((VIEW.ceiling-target.y)/dist,-1,1)))];
+  this.elevationTo=clamp(this.elevationTo,...tilt);this.elevation=clamp(this.elevation+(this.elevationTo-this.elevation)*ease,...tilt);
+  const el=this.elevation,az=VIEW.azimuth,dir=new THREE.Vector3(Math.cos(el)*Math.cos(az),Math.sin(el),Math.cos(el)*Math.sin(az));
+  // The camera stays out of the circle the turning car sweeps (narrowing to nothing just over the roof): farther
+  // back along its line.
+  const sweep=Math.hypot(Math.max(-this.box.min.x,this.box.max.x),Math.max(-this.box.min.z,this.box.max.z))+VIEW.clear,roof=this.box.max.y+G.deck,a=dir.x*dir.x+dir.z*dir.z;
+  for(let i=0;i<2&&a>1e-4;i++){const r=sweep*clamp((roof+.3-target.y-dir.y*dist)/.6,0,1);if(!r)break;
+   const b=2*(target.x*dir.x+target.z*dir.z),k=target.x*target.x+target.z*target.z-r*r,disc=b*b-4*a*k;if(disc>0)dist=Math.max(dist,(-b+Math.sqrt(disc))/(2*a));}
+  this.distance=dist;c.position.copy(target).addScaledVector(dir,dist);c.lookAt(target);c.fov=radToDeg(2*Math.atan(half/this.lens));
+  c.aspect=W/H;c.setViewOffset(W,H,W/2-(rect.left+rect.width/2),H/2-(rect.top+rect.height*.5),W,H);c.updateProjectionMatrix();c.updateMatrixWorld();
+  this.view=renderer.domElement.getBoundingClientRect();
+  // The mirror: the room upside down first (no floor), then the room over it, the floor letting part of it through
+  // (a colour background clears the screen whatever autoClear says: only the first picture has it).
+  const saved={target:renderer.getRenderTarget(),autoClear:renderer.autoClear},undo=screenLook(renderer),floor=this.garage.floor,background=this.scene.background;
+  renderer.setRenderTarget(null);renderer.autoClear=true;this.garage.mirror(mirror);
+  if(mirror){this.world.scale.y=-1;floor.visible=false;renderer.render(this.scene,c);this.world.scale.y=1;floor.visible=true;renderer.autoClear=false;renderer.clearDepth();this.scene.background=null;}
+  renderer.render(this.scene,c);this.scene.background=background;
+  undo();renderer.setRenderTarget(saved.target);renderer.autoClear=saved.autoClear;
+  return true;
  }
- turn(dx){this.yaw+=dx*.009;this.handUntil=this.time+2.5;}
+ // A drag: sideways turns the car (and holds its own turn a while), up and down tilts the camera.
+ turn(dx,dy=0){this.yaw+=dx*.009;this.elevationTo+=dy*.006;this.handUntil=this.time+2.5;}
+ // Where the pointer (page pixels) meets the car's box, in the scene; null off the car.
+ pick(x,y){
+  if(!this.view||!this.car)return null;const ray=new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2((x-this.view.left)/this.view.width*2-1,1-(y-this.view.top)/this.view.height*2),this.camera);
+  const local=ray.ray.clone().applyMatrix4(this.turntable.matrixWorld.clone().invert()),hit=local.intersectBox(this.box,new THREE.Vector3());
+  return hit&&hit.applyMatrix4(this.turntable.matrixWorld);
+ }
+ // Closer (factor > 1) towards what is under the pointer (x, y), or back out towards the car's middle.
+ zoomAt(factor,x,y){
+  const before=this.zoomTo,after=THREE.MathUtils.clamp(before*factor,VIEW.out,this.zoomMax);if(after===before)return;
+  if(after>before){const hit=x===undefined?null:this.pick(x,y);if(hit){hit.y-=VIEW.height;this.offsetTo.lerp(hit,1-before/after);}}
+  else this.offsetTo.multiplyScalar(after<=1?0:(after-1)/(before-1));
+  this.zoomTo=after;
+ }
+ // Double click or tap: up close to that spot, or back to the whole car seen as at first.
+ toggleZoom(x,y){if(this.zoomTo>1.05){this.zoomTo=1;this.offsetTo.set(0,0,0);this.elevationTo=VIEW.elevation;}else this.zoomAt(2.5/this.zoomTo,x,y);}
 }
 // root: the #cars screen. values: the chosen car's number in each model's field ({opala, fusca}); model: the tab
 // shown ('opala' or 'fusca'). onPick(number, model), onModel(model) (main.js then loads the Fusca's model:
-// setFusca), onNext(), onBack().
+// setFusca), onNext(), onBack(); quality() gives the Gráficos tab's car reflections (the garage floor's follow them).
 // In a multiplayer room (setRoom) the cars other pilots have show their names and cannot be taken, and
 // everyone races the Opala (the tabs hide).
 export class CarSelect {
- constructor({root,values={},model=CAR_MODEL_DEFAULT,carRoot,onPick,onModel,onNext,onBack}){
+ constructor({root,values={},model=CAR_MODEL_DEFAULT,carRoot,onPick,onModel,onNext,onBack,quality=()=>'pista'}){
   this.root=root;this.model=CAR_MODELS.includes(model)?model:CAR_MODEL_DEFAULT;
-  this.values=Object.fromEntries(CAR_MODELS.map(m=>[m,carEntry(values[m],m)?values[m]:PLAYER_CAR_DEFAULT]));this.onPick=onPick;this.onModel=onModel;this.studio=new Studio(carRoot);this.live=false;
+  this.values=Object.fromEntries(CAR_MODELS.map(m=>[m,carEntry(values[m],m)?values[m]:PLAYER_CAR_DEFAULT]));this.onPick=onPick;this.onModel=onModel;this.quality=quality;this.studio=new Studio(carRoot);this.live=false;
   this.room=null;this.taken=new Map();this.asked=null;this.guest=null;this.failure=null;this.tell('');
   const $=id=>root.querySelector('#'+id);this.stage=$('carStage');this.status=$('carStageStatus');this.tabs=$('carModels');this.note=root.querySelector('.car-note');
   for(const tab of this.tabs.querySelectorAll('[data-model]'))tab.onclick=()=>this.setModel(tab.dataset.model);
@@ -113,11 +179,23 @@ export class CarSelect {
    this.pick(next.number);this.cards.querySelector(`[data-car="${next.number}"]`).focus();
   });
   $('carsNext').onclick=()=>onNext();$('carsBack').onclick=()=>onBack();
-  // Dragging the stage turns the car.
-  let drag=null;
-  this.stage.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;drag={id:e.pointerId,x:e.clientX};this.stage.setPointerCapture(e.pointerId);this.stage.classList.add('dragging');});
-  this.stage.addEventListener('pointermove',e=>{if(drag?.id!==e.pointerId)return;this.studio.turn(e.clientX-drag.x);drag.x=e.clientX;});
-  const end=e=>{if(drag?.id===e.pointerId){drag=null;this.stage.classList.remove('dragging');}};this.stage.addEventListener('pointerup',end);this.stage.addEventListener('pointercancel',end);
+  // Dragging the stage turns the car and tilts the view; two fingers pinch closer or farther, as the mouse wheel does,
+  // towards what is under them; the +/− buttons and keys zoom on the stage's middle; a double click or tap goes up
+  // close to that spot and back.
+  const held=new Map(),spread=()=>{const [a,b]=[...held.values()];return Math.hypot(a.x-b.x,a.y-b.y);},middle=()=>{const [a,b]=[...held.values()];return [(a.x+b.x)/2,(a.y+b.y)/2];};let pinch=0;
+  this.stage.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;held.set(e.pointerId,{x:e.clientX,y:e.clientY});this.stage.setPointerCapture(e.pointerId);this.stage.classList.add('dragging');pinch=held.size===2?spread():0;});
+  this.stage.addEventListener('pointermove',e=>{const p=held.get(e.pointerId);if(!p)return;if(held.size===1)this.studio.turn(e.clientX-p.x,e.clientY-p.y);p.x=e.clientX;p.y=e.clientY;
+   if(held.size===2){const now=spread();if(pinch>0&&now>0)this.studio.zoomAt(now/pinch,...middle());pinch=now;}});
+  const end=e=>{if(!held.delete(e.pointerId))return;pinch=held.size===2?spread():0;if(!held.size)this.stage.classList.remove('dragging');};
+  this.stage.addEventListener('pointerup',end);this.stage.addEventListener('pointercancel',end);
+  this.stage.addEventListener('wheel',e=>{e.preventDefault();this.studio.zoomAt(Math.exp(-e.deltaY*({1:16,2:400}[e.deltaMode]??1)*.0015),e.clientX,e.clientY);},{passive:false});
+  this.stage.addEventListener('dblclick',e=>{if(!e.target.closest('button'))this.studio.toggleZoom(e.clientX,e.clientY);});
+  const onStage=factor=>{const r=this.stage.getBoundingClientRect();this.studio.zoomAt(factor,r.left+r.width/2,r.top+r.height/2);};
+  $('carZoomIn').onclick=()=>onStage(1.4);$('carZoomOut').onclick=()=>onStage(1/1.4);
+  // + and − anywhere while this screen shows (no other key of the game uses them; dialogs and fields keep theirs).
+  document.addEventListener('keydown',e=>{const f={'+':1.25,'=':1.25,'-':.8,'_':.8}[e.key];
+   if(!f||e.ctrlKey||e.metaKey||e.altKey||root.classList.contains('hidden')||e.target.closest?.('input,select,textarea,dialog'))return;e.preventDefault();onStage(f);});
+  $('carHint').textContent=`Arraste para girar e inclinar\n${matchMedia('(pointer:coarse)').matches?'Pince':'Role'} para aproximar`;
   this.show();
  }
  columns(){return getComputedStyle(this.cards).gridTemplateColumns.split(' ').length||1;}
@@ -144,7 +222,7 @@ export class CarSelect {
   this.model=model;this.fillCards();this.show();if(!silent)this.onModel?.(model);
  }
  // The Fusca's model arrived (main.js loads it when its tab is chosen).
- setFusca(template){const s=this.studio;if(s.fusca===template)return;if(s.car?.userData.own)s.drop();s.fusca=template;this.show();}
+ setFusca(template){const s=this.studio;if(s.fusca===template)return;if(s.car?.userData.own)s.drop();if(s.next?.car.userData.own)s.next.stale=true;s.fusca=template;this.show();}
  // The room's note; one about a car someone else has goes when that car changes hands (setRoom).
  tell(text,car=null){this.notice=text;this.noticeCar=car;this.noticeHolder=car&&this.taken.get(car);}
  // A multiplayer room (multiplayer.js, through main.js): taken, the cars other pilots have (number ->
@@ -161,7 +239,7 @@ export class CarSelect {
   this.show();
  }
  // The model arrived (main.js loads it for the screen): the studio can build the car.
- setTemplate(template){const s=this.studio;if(!s.car?.userData.own)s.drop();s.template=template;this.show();}
+ setTemplate(template){const s=this.studio;if(!s.car?.userData.own)s.drop();if(s.next&&!s.next.car.userData.own)s.next.stale=true;s.template=template;this.show();}
  failed(model='opala'){this.failure=model;if(model!==this.model)return;this.status.textContent=`Não foi possível carregar o ${MODEL_NAMES[model]}. A escolha vale mesmo assim.`;this.status.hidden=false;}
  show(){
   // own: the Opala 99, the Auto-Pobre Racing's; the Fusca 99 is Cristiano Canto's.
@@ -194,13 +272,18 @@ export class CarSelect {
    next.dataset.label=label+hint;const span=document.createElement('span'),small=document.createElement('small');span.className='mode-label';span.textContent=label;small.id='carsNextDetail';small.textContent=hint;
    next.replaceChildren(span,...hint?[small]:[]);
   }
-  const loaded=this.studio.ready(this.model);this.status.hidden=loaded;if(!loaded&&this.failure!==this.model)this.status.textContent=`Carregando o ${name}…`;
+  this.stageLine();
  }
  // Every frame while the screen shows (main.js): the studio on the page's canvas.
- render(renderer,dt){
-  const live=this.studio.ready(this.model);if(live!==this.live){this.live=live;this.root.classList.toggle('live',live);}
-  if(!live)return;
-  const rect=this.stage.getBoundingClientRect();this.studio.render(renderer,Math.min(dt,.05),rect);
+ // The stage's line while it has no picture: the model loading, then the garage and the car being prepared.
+ stageLine(){
+  if(this.failure===this.model)return;const loaded=this.studio.ready(this.model);this.status.hidden=loaded&&this.live;
+  if(!this.status.hidden)this.status.textContent=loaded?'Preparando a garagem…':`Carregando o ${MODEL_NAMES[this.model]}…`;
  }
- info(){return {value:this.value,model:this.model,live:this.live,taken:Object.fromEntries(this.taken),asked:this.asked,guest:this.guest,built:this.studio.shown?.split(':')[1]??null,builtModel:this.studio.shown?.split(':')[0]??null,cards:this.cards.children.length,yaw:this.studio.yaw,meshes:(()=>{let n=0;this.studio.car?.traverse(o=>{if(o.isMesh&&o.visible)n++;});return n;})()};}
+ render(renderer,dt){
+  const live=this.studio.ready(this.model)&&this.studio.render(renderer,Math.min(dt,.05),this.stage.getBoundingClientRect(),this.quality());
+  if(live!==this.live){this.live=live;this.root.classList.toggle('live',live);this.stageLine();}
+ }
+ info(){return {value:this.value,model:this.model,live:this.live,taken:Object.fromEntries(this.taken),asked:this.asked,guest:this.guest,built:this.studio.shown?.split(':')[1]??null,builtModel:this.studio.shown?.split(':')[0]??null,cards:this.cards.children.length,yaw:this.studio.yaw,zoom:this.studio.zoom,zoomTo:this.studio.zoomTo,zoomMax:this.studio.zoomMax,distance:this.studio.distance,elevation:this.studio.elevation,fov:this.studio.camera.fov,
+   offset:this.studio.offset.toArray(),camera:this.studio.camera.position.toArray(),garage:this.studio.garage?.info()??null,meshes:(()=>{let n=0;this.studio.car?.traverse(o=>{if(o.isMesh&&o.visible)n++;});return n;})()};}
 }

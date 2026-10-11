@@ -296,3 +296,39 @@ rasterio e do `scipy.ndimage`. `geo_io.py` lê e grava GeoTIFF e recorta COGs re
 o tifffile (Python puro) e numpy, `projecao.py` faz as conversões UTM/geográficas pelas séries de Krüger (iguais
 às do serviço de geometria da Prefeitura abaixo de 1 µm) e `compat_scipy.py` traz os filtros e a interpolação do
 `scipy.ndimage` em numpy. Com o rasterio e o scipy carregando, os scripts continuam usando os dois.
+
+## Chapada dos Sonhos (imaginário, Chapada dos Guimarães, MT) — fontes baixadas em 11/10/2026
+
+Pedido #5 da Central de Projetos: um autódromo **que não existe**, no alto do paredão da Chapada dos Guimarães, sem
+guard-rail e com a pista na beira do precipício. O relevo, os paredões, a mata, a cor do chão e o vale lá embaixo
+são os reais; o traçado, o perfil da pista, os boxes e a beirada são desenho de jogo. Gerado por
+`scripts/circuitos/gerar_chapada.py` (depois de `baixar_fontes.py chapada`), não por `refinar_eixo.py`/`gerar_pista.py`.
+
+- **Lugar**: o bloco de planalto (~820 m) entre a borda sul — o paredão que se vê da MT-251 chegando de Cuiabá —
+  e a borda leste de um bico, 2 a 3 km ao sul da cidade (origem local UTM 21S 630520 E, 8288300 N). Embaixo, o vale
+  a 350–450 m e a depressão de Cuiabá até o horizonte.
+- **Fontes**: ANADEM v1 (tile 21L) na caixa do circuito e numa janela de 44 km para o horizonte; Copernicus GLO-30
+  (tile S16W056, inteiro, onde o ANADEM não tem dado); ESA WorldCover 2021 (S18W057); Sentinel-2 L2A
+  S2C_21LXC_20261007 (0% de nuvem na caixa), completado ao norte da janela larga pelas cenas 21LXD e 21LWD do
+  mesmo dia; OSM e Microsoft Building Footprints da caixa. A imagem Esri não cobre a área em z18.
+- **Traçado**: poligonal com raio fixo em cada vértice (concordância de estrada), seguindo o topo do paredão medido no
+  relevo de 30 m (`VERTICES` no gerador). 5.142 m em planta, 5.153 m em 3D, sentido horário, o abismo sempre à
+  esquerda (o lado do piloto): reta principal de 2 km por dentro do planalto, Curva 1 (R 42 m) de frente para o
+  abismo, paredão leste, o Bico (R 30 m) na ponta, a borda sul, o S do Mirante (R 55 e 65 m) num degrau de 240 m
+  da borda e a Curva da Volta. 12 m de largura, 14 m na reta.
+- **Perfil**: terraplanagem de jogo. Nos trechos de beirada (e na chegada da Curva 1) a altura é a do planalto logo
+  atrás da borda (o relevo de 30 m borra o topo do paredão e deixaria a pista dezenas de metros abaixo dele);
+  suavizado e com rampa máxima de 8% (envelope de corte e aterro). 64 m de desnível. Em volta da Curva 1, uma
+  plataforma no nível da pista até 220 m.
+- **Beirada** (`scenery.cliff`): a borda esquerda do asfalto mais 2 a 6,5 m de terra (6 m na Curva 1, 5 m no Bico,
+  2,4 m no lado de dentro da esquerda do S), da Curva 1 à Curva da Volta; além da pista, o topo medido no relevo (a
+  borda do bloco leste até o fundo da enseada ao norte da Curva 1, a borda sul a oeste), emendado. Paredão de
+  40–168 m (sorteado de 95 a 175 m, mais baixo onde o vale é raso) e, do pé dele, uma encosta reta até encontrar o
+  relevo real a 180–280 m da beirada.
+- **No jogo**: `cliff-edge.js` (a linha, o lado de cada ponto e as duas cópias do chão para a física), `cliff-fall.js`
+  (queda, câmera de drone, volta à pista 8 m antes, a volta fora do recorde), `cliff-scenery.js` (paredão de arenito,
+  faixa de terra vermelha na quina, chão da beirada), `far-terrain.js` (anéis do vale até 22 km). Sem guard-rail em
+  lugar nenhum (`meta.rails` vazio).
+
+**Aproximações declaradas:** o circuito inteiro (não existe); a altura e a forma do paredão (o relevo de 30 m não o
+resolve); a beirada a poucos metros do asfalto; o perfil da pista; boxes, arquibancadas e pórtico.

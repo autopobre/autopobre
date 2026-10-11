@@ -23,7 +23,13 @@ export const CIRCUITS=Object.freeze({
  // contours and the buildings, floors and city towers from Goiânia's Mapa Fácil (circuitos-fontes.md).
  // Clockwise with the boxes on the cars' right, like Brasília (data.pit.reversed).
  goiania:{id:'goiania',podium:[-10,30],name:'Goiânia',label:'AUTÓDROMO AYRTON SENNA · GOIÂNIA, GO',length:3835,description:'3.835 m · 14 curvas · horário · Goiânia, GO',intro:'A casa da MotoGP no Brasil, reformada em 2026: a reta de 994 m sobe da curva inclinada até a linha, e da curva 1 à 3 a pista desce 13 m. Depois, dois grampos e o S. 17,8 m de desnível.',source:'Traçado OSM refinado sobre a ortofoto de 2016 · relevo das curvas de nível de 5 m e edificações do Mapa Fácil (Prefeitura de Goiânia) · Sentinel-2 de set/2026.',fuel:'Uma volta em Goiânia costuma gastar 3–4 L.',altitude:670,
-  data:'pista_goiania.json',ground:'./assets/circuitos/goiania_solo.jpg',track:'GOIÂNIA',boxTitle:'Cuida do Opala, uai!',weather:'Goiânia · 16h40 · 31 °C · pista seca',venue:'Autódromo Internacional Ayrton Senna'}
+  data:'pista_goiania.json',ground:'./assets/circuitos/goiania_solo.jpg',track:'GOIÂNIA',boxTitle:'Cuida do Opala, uai!',weather:'Goiânia · 16h40 · 31 °C · pista seca',venue:'Autódromo Internacional Ayrton Senna'},
+ // Imaginary (pedido #5 of the Central de Projetos): no circuit exists on the Chapada dos Guimarães. The relief, the
+ // walls, the forest and the ground's colour are the real ones; the layout, the boxes and the rim with no guardrail
+ // are game design (scripts/circuitos/gerar_chapada.py). Clockwise, the abyss on the left; whoever goes over falls
+ // (cliff-fall.js). altitude: the track file's base, so the HUD shows the height above the sea.
+ chapada:{id:'chapada',podium:[0,-70],name:'Chapada dos Sonhos',label:'AUTÓDROMO DA CHAPADA DOS SONHOS · CHAPADA DOS GUIMARÃES, MT',length:5153,description:'5.153 m · 8 curvas · horário · imaginário · Chapada dos Guimarães, MT',intro:'Um autódromo que não existe, no alto do paredão da Chapada: sem guard-rail, a 2 a 6 m de um precipício de mais de 100 m. A reta de 2 km termina de frente para o abismo; depois, o Bico e o S do Mirante. Quem sai da pista, cai.',source:'Traçado imaginário sobre o relevo real · ANADEM (ANA/UFRGS) e Copernicus GLO-30 · cobertura ESA WorldCover e Sentinel-2 de out/2026.',fuel:'Uma volta na Chapada costuma gastar 4–5 L.',altitude:290,
+  data:'pista_chapada.json',ground:'./assets/circuitos/chapada_solo.jpg',track:'CHAPADA',boxTitle:'Cuida do Opala, cumpadi!',weather:'Chapada dos Guimarães · 16h40 · 29 °C · pista seca',venue:'Autódromo da Chapada dos Sonhos'}
 });
 export const circuitId=value=>typeof value==='string'&&Object.hasOwn(CIRCUITS,value)?value:'interlagos';
 export function selectedCircuit(saved,search=''){

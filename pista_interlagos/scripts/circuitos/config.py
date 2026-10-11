@@ -152,6 +152,26 @@ CIRCUITOS = {
         'suavizacao_m': (8.0, 15.0),
         'edificios_locais': 'goiania',
     },
+    'chapada': {
+        # Circuito imaginario (pedido #5 da Central): nao existe autodromo na Chapada dos Guimaraes. O relevo,
+        # os paredoes, a cobertura do solo e a cor do chao sao os reais; o tracado, os boxes e a beirada sem
+        # guard-rail sao desenho de jogo (gerar_chapada.py). Bloco de planalto a ~820 m entre a borda sul (o
+        # paredao que se ve da MT-251) e a borda leste de um bico, 2 a 3 km ao sul da cidade.
+        'nome': 'Autódromo da Chapada dos Sonhos',
+        'cidade': 'Chapada dos Guimarães, MT',
+        'centro': (-15.4792, -55.7833),
+        'raio_m': 2600,
+        'epsg': 31981,                 # SIRGAS 2000 / UTM 21S
+        'anadem': '21L',
+        'copernicus': 'Copernicus_DSM_COG_10_S16_00_W056_00_DEM',
+        'worldcover': 'S18W057',
+        'extensao_m': 4200,            # desenho; gerar_chapada.py grava o medido
+        'centro_cidade': (-15.4608, -55.7495),   # Igreja Matriz de Sant'Ana, centro de Chapada dos Guimaraes
+        'largura_m': 12,
+        'sentido': 'horario',
+        'imaginario': True,
+        'horizonte': 'chapada',
+    },
 }
 
 

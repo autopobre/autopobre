@@ -106,7 +106,7 @@ function setup(laps=2){
 // The same checkpoint/clock logic must work with every circuit's elevation, banking and sample
 // spacing. Run the real car over one lap of the other six tracks, delivering poses at 30 Hz.
 {
- const circuits=[['curvelo',createCurveloData()],...['cascavel','piracicaba','chapeco','brasilia','goiania'].map(name=>[name,JSON.parse(fs.readFileSync(new URL(`../dados/pista_${name}.json`,import.meta.url)))])];
+ const circuits=[['curvelo',createCurveloData()],...['cascavel','piracicaba','chapeco','brasilia','goiania','chapada'].map(name=>[name,JSON.parse(fs.readFileSync(new URL(`../dados/pista_${name}.json`,import.meta.url)))])];
  const results=[];
  for(const [name,track] of circuits){
   const car=new TestCar(track);car.resetGrid();

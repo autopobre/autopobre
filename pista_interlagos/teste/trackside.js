@@ -96,14 +96,19 @@ function findMarshalSpots(data){
  // never under a billboard: a post that cannot keep 25 m from one stands where the old rule put it.
  const boards=billboardSpots(data),rand=seeded(circuitSeed(data.meta?.id)+360);
  for(let s=140,k=0;s<L-60;s+=360,k++){
-  const side=k%2?1:-1,jitter=(rand()-.5)*60;let fallback=null;
-  for(const shift of [0,20,-20,40,-40]){
-   const at=((s+jitter+shift)%L+L)%L,{p}=trackPoint(data,at),off=side*(p[4]/2+guardrailClearance(data,p[0],side)+2.6),x=p[1]-p[8]*off,y=p[2]+p[7]*off;
-   if(bandClearance(bands,x,y).distance<=2.5)continue;
-   const spot={s:at,side,x,y,p};fallback??=spot;
-   if(boards.every(b=>Math.hypot(b.x-x,b.y-y)>25)){fallback=null;spots.push(spot);break;}
+  const jitter=(rand()-.5)*60;
+  // On a plateau's rim (Chapada dos Sonhos) the abyss side has no ground for a post: it stands on the other side.
+  for(const side of [k%2?1:-1,k%2?-1:1]){
+   let fallback=null,placed=false;
+   for(const shift of [0,20,-20,40,-40]){
+    const at=((s+jitter+shift)%L+L)%L,{p}=trackPoint(data,at),off=side*(p[4]/2+guardrailClearance(data,p[0],side)+2.6),x=p[1]-p[8]*off,y=p[2]+p[7]*off;
+    if(bandClearance(bands,x,y).distance<=2.5)continue;
+    const spot={s:at,side,x,y,p};fallback??=spot;
+    if(boards.every(b=>Math.hypot(b.x-x,b.y-y)>25)){fallback=null;spots.push(spot);placed=true;break;}
+   }
+   if(fallback){spots.push(fallback);placed=true;}
+   if(placed||!data.scenery?.cliff)break;
   }
-  if(fallback)spots.push(fallback);
  }
  return spots;
 }

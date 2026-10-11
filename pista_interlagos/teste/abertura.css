@@ -46,6 +46,10 @@ body:not(.touch-device) #menu .menu-tool-icon{display:block;width:18px;height:18
 
 .race-restart[hidden]{display:none!important}
 #finishFade{position:fixed;inset:0;z-index:1000;background:#000;opacity:0;pointer-events:none;transition:opacity .35s ease-out}#finishFade.fading{transition:none}
+/* A fall into the abyss (cliff-fall.js FallView): black while the car is brought back to the track. */
+#fallFade{position:fixed;inset:0;z-index:999;background:#000;opacity:0;pointer-events:none}
+/* The impact's flash (FallView): hot white in the middle, orange to the edges. */
+#fallFlash{position:fixed;inset:0;z-index:998;background:radial-gradient(circle at 50% 58%,#fffbe8 0%,#ffc56a 32%,rgba(255,120,40,.35) 62%,rgba(255,90,30,0) 85%);opacity:0;pointer-events:none}
 #menu .old-stock-opening{width:105px;height:70px;object-fit:contain;background:#fff;border-radius:6px;padding:3px;margin:4px 0 20px;filter:none}
 @media(orientation:landscape) and (max-height:500px){#menu .opening-brand{position:relative}#menu .old-stock-opening{position:absolute;right:0;top:0;width:65px;height:44px;margin:0}#menu .opening-brand>img:not(.old-stock-opening){max-width:calc(100% - 72px)}}
 #finishingOrder[hidden]{display:none!important}#finishingOrder{list-style:none;padding:0 10px;max-height:150px;overflow:auto;background:#102420eb;border:1px solid #ffffff25;margin:0 0 14px;font-size:12px;color:#e5eade}#finishingOrder li{padding:7px 0;border-bottom:1px solid #ffffff16}#finishingOrder .player-row{color:#f4d055;font-weight:bold}

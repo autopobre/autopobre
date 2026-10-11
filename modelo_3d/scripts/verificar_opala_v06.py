@@ -174,11 +174,18 @@ if pivots:
    if len(q):L+=[((q[:,0].max()-.02,s*1.5,z),(0,-s,0),(1,0,0)),((q[:,0].min()+.02,s*1.5,z),(0,-s,0),(-1,0,0))]
   g=seam_widths(f'Porta_{side}_DOBRADICA',L)
   check(g and max(g)<=.006,f'Porta_{side}: frestas visiveis {min(g)*1000:.1f}-{max(g)*1000:.1f} mm (mediana {np.median(g)*1000:.1f}), limite 6 mm')
- W=world_verts(O['Capo_painel']);L=[]
- for y in np.arange(-.6,.61,.05):L+=[((W[:,0].min()+.02,y,2),(0,0,-1),(-1,0,0)),((W[:,0].max()-.02,y,2),(0,0,-1),(1,0,0))]
+ W=world_verts(O['Capo_painel']);L=[];Lr=[]
+ for y in np.arange(-.6,.61,.05):Lr.append(((W[:,0].min()+.02,y,2),(0,0,-1),(-1,0,0)));L.append(((W[:,0].max()-.02,y,2),(0,0,-1),(1,0,0)))
  for x in np.arange(1.1,2.1,.05):
   for s in (1,-1):q=W[(np.abs(W[:,0]-x)<.01)];L.append(((x,s*(np.abs(q[:,1]).max()-.02),2),(0,0,-1),(0,s,0)))
  g=seam_widths('Capo_DOBRADICA',L);check(g and max(g)<=.006,f'Capo: frestas visiveis {min(g)*1000:.1f}-{max(g)*1000:.1f} mm (mediana {np.median(g)*1000:.1f}), limite 6 mm')
+ # the rear edge stands proud of the cowl (race set-up, carro_3): its seam is a real one plus the lip's step back
+ from v06_carroceria import HOOD_REAR_LIFT,COWL_STEP_BACK
+ g=seam_widths('Capo_DOBRADICA',Lr);lim=.006+COWL_STEP_BACK
+ check(g and max(g)<=lim,f'Capo, borda traseira: frestas vistas de cima {min(g)*1000:.1f}-{max(g)*1000:.1f} mm, limite {lim*1000:.0f} mm')
+ C=world_verts(O['Torpedo_ventilacao']);c=C[np.abs(C[:,1])<.03];h=W[np.abs(W[:,1])<.03]
+ rise=h[h[:,0]<h[:,0].min()+.005][:,2].max()-c[c[:,0]>c[:,0].max()-.012][:,2].max()
+ check(abs(rise-HOOD_REAR_LIFT)<.004,f'Capo: borda traseira {rise*1000:.0f} mm acima do torpedo (carro_3: {HOOD_REAR_LIFT*1000:.0f} mm)')
  W=world_verts(O['Tampa_porta_malas_painel']);L=[]
  for y in np.arange(-.6,.61,.05):L.append(((W[:,0].max()-.02,y,2),(0,0,-1),(1,0,0)))
  for x in np.arange(-2.0,-1.6,.05):

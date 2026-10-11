@@ -5,6 +5,7 @@ import {terrainMaterial,structureMaterial} from './landscape.js';
 import {RIVAL_ROSTER,GRID_ROW_SPACING,GRID_START_BACK} from './race-roster.js';
 import {canvasTexture} from './pit-textures.js';
 import {gantryPosts,groundHeight} from './track-clearance.js';
+import {cliffShownHeights,createCliff} from './cliff-scenery.js';
 
 // Circuits rebuilt from open data (Cascavel, ECPA): data/pista_<id>.json carries the
 // centre line and widths measured on 2025 aerial imagery over the OSM trace, the ANADEM
@@ -38,11 +39,14 @@ export function terrainMesh(data,heights,material){
 export async function createOpenCircuit(data,roadSurface,{heights,textures,field,groundUrl,label,mobile=false}){
  const root=new THREE.Group();root.name='Circuito_'+data.meta.id;
  const loader=new THREE.TextureLoader(),ground=await loader.loadAsync(groundUrl);ground.colorSpace=THREE.SRGBColorSpace;ground.anisotropy=4;
- const cover=coverTexture(data.scenery.cover),groundMaterial=terrainMaterial(textures,field,{ortho:ground,cover,mobile});groundMaterial.userData.terrain=true;
+ const cover=coverTexture(data.scenery.cover),groundMaterial=terrainMaterial(textures,field,{ortho:ground,cover,mobile,steep:!!data.scenery.cliff});groundMaterial.userData.terrain=true;
  // Kept on the material too, so clearing the circuit (main.js) disposes it with the map.
  groundMaterial.coverMap=cover;
- root.add(terrainMesh(data,heights,groundMaterial));
+ // On a plateau's rim (Chapada dos Sonhos, cliff-scenery.js) no grid triangle leans across the lip: the wall and the
+ // ground along its top are drawn apart.
+ root.add(terrainMesh(data,data.scenery.cliff?cliffShownHeights(data,heights):heights,groundMaterial));
  const probe=new TestCar(data),a=data.samples,n=a.length,L=data.meta.reconstructed_xy_m;
+ const cliff=data.scenery.cliff?createCliff(data,{groundMaterial,probe,mobile}):null;if(cliff)root.add(cliff.root);
  // Road height at (x, y): the plane the car drives on, drawn 3.5 cm above it like the GLB asphalt.
  const road=(x,y,i)=>{probe.index=i;return probe.sample(x,y,i).z-.02;};
  function strip(from,to,material,name,lift=0,{s0=-Infinity,s1=Infinity}={}){
@@ -94,5 +98,5 @@ export async function createOpenCircuit(data,roadSurface,{heights,textures,field
  for(const side of [-1,1]){const face=new THREE.Mesh(new THREE.PlaneGeometry(span*2,1.25),signMaterial);face.rotation.y=side*Math.PI/2;face.position.set(side*.26,7.2,0);gantry.add(face);}
  // Camera proxies in world space (the root stays at the origin).
  root.updateMatrixWorld(true);const obstacles=[];gantry.traverse(o=>{if(o.isMesh&&o.name.startsWith('Portico_')){const proxy=new THREE.Mesh(o.geometry.clone().applyMatrix4(o.matrixWorld));proxy.name=o.name;obstacles.push(proxy);}});
- return {root,ground,cover,obstacles,stats:{gridSlots:slots.length,terrainVertices:data.terrain.nx*data.terrain.ny}};
+ return {root,ground,cover,obstacles,stats:{gridSlots:slots.length,terrainVertices:data.terrain.nx*data.terrain.ny,cliff:cliff?.stats}};
 }

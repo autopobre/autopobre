@@ -36,7 +36,7 @@ export class GhostRecorder {
  step(car,driving=true){
   const t=car.clock-car.lapStart;
   if(car.lapStart!==this.lapStart||!this.last||t<this.last.t-1e-9){
-   const crossed=!!this.last&&car.lapStart>this.lapStart&&car.lastLapValid===true&&Math.abs(car.lastLap-(car.lapStart-this.lapStart))<1e-6;
+   const crossed=!!this.last&&car.lapStart>this.lapStart&&car.lastLapValid===true&&!car.lastLapFell&&Math.abs(car.lastLap-(car.lapStart-this.lapStart))<1e-6;
    const lap=crossed?this.finish(car,car.lastLap):null;
    this.begin(car,t);return lap;
   }

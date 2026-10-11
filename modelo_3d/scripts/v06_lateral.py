@@ -331,5 +331,48 @@ def side_stickers():
  refit_decal(O['Decal_motorista_invent'],BOX_INVENT,'Motorista',1,texture_invent())
  refit_decal(O['Decal_motorista_99'],BOX_99,'Motorista',1,texture_99())
 
+# ---------------------------------------------------------------- A pillars
+# V04's A pillar was a 7 cm vane standing on the windscreen rubber and leaning out and forward, away from the door
+# window, twisting further toward the roof (V05's lower roof squeezed its top): from behind it left a 4-5 cm slot
+# between the pillar and the window frame. It is rebuilt as a crowned skin from the rubber to the window frame, as on
+# carro_3, its edges on the two tubes' centre lines, 3 mm thick.
+PILLAR_CROWN,PILLAR_THICK=.006,.003
+MOLD_RAIL_TOP=.920                 # the window frame's lower rail goes with the door below this (v06_carroceria)
+def ring_centres(o):return world_verts(o).reshape(-1,8,3).mean(1)    # V05 tubes: rings of 8 vertices
+def climb(C,seed):
+ """Ring centres of a tube up the A pillar, bottom to top: from the ring nearest seed, both ways while each ring
+ still climbs (the tube turns flat at the corners: along the cowl or the belt, the header or back over the roof)."""
+ n=len(C);i=int(np.argmin(np.linalg.norm(C-seed,axis=1)))
+ def walk(d):
+  out=[];j=i
+  while abs(C[(j+d)%n,2]-C[j,2])>.003:j=(j+d)%n;out.append(j)
+  return out
+ P=C[walk(-1)[::-1]+[i]+walk(1)];return P if P[0,2]<P[-1,2] else P[::-1]
+def resample(P,n):
+ L=np.r_[0,np.cumsum(np.linalg.norm(np.diff(P,axis=0),axis=1))];t=np.linspace(0,L[-1],n)
+ return np.stack([np.interp(t,L,P[:,k]) for k in range(3)],1)
+def a_pillars():
+ """Before the doors are cut and the frame loses its rear post (the tubes are still V05's rings)."""
+ O=bpy.data.objects;rubber=ring_centres(O['Borracha_parabrisa']);na,nb=48,9
+ for side,s in SIDES:
+  old=O['Coluna_A_'+side];seed=world_verts(old).mean(0);mat=old.data.materials[0];coll=old.users_collection[0].name
+  inner=climb(rubber,seed);outer=climb(ring_centres(O['Moldura_janela_'+side]),seed)
+  # the frame from where its tube clears the door's rail (z of the centre one tube radius over the cut)
+  z0=MOLD_RAIL_TOP+.013;k=int(np.argmax(outer[:,2]>z0));assert k>0,side;a=outer[k-1];b=outer[k]
+  outer=np.vstack([a+(b-a)*(z0-a[2])/(b[2]-a[2]),outer[k:]])
+  Ci,Co=resample(inner,na),resample(outer,na)
+  T=np.gradient(Ci+Co,axis=0);N=np.cross(T,Co-Ci);N/=np.linalg.norm(N,axis=1)[:,None]
+  N*=np.sign(N@np.array((0,s*.6,.8)))[:,None]                         # outward: up, forward and out
+  b=np.linspace(0,1,nb);crown=PILLAR_CROWN*4*b*(1-b)
+  top=(Ci[:,None]*(1-b)[None,:,None]+Co[:,None]*b[None,:,None]+N[:,None]*crown[None,:,None]).reshape(-1,3)
+  V=np.vstack([top,top-np.repeat(N,nb,axis=0)*PILLAR_THICK]);m=na*nb
+  F=grid_faces(na,nb)+[tuple(i+m for i in f) for f in grid_faces(na,nb)]
+  for i in range(na-1):
+   for j in (0,nb-1):F.append((i*nb+j,(i+1)*nb+j,(i+1)*nb+j+m,i*nb+j+m))
+  for i in (0,na-1):
+   for j in range(nb-1):F.append((i*nb+j,i*nb+j+1,i*nb+j+1+m,i*nb+j+m))
+  remove(old);new_mesh('Coluna_A_'+side,V,F,mat,coll,smooth=40)
+  print(f'V06 A pillar {side}: {np.linalg.norm(Co-Ci,axis=1).min()*100:.1f}-{np.linalg.norm(Co-Ci,axis=1).max()*100:.1f} cm between the tubes',flush=True)
+
 def build(mats):
- build_greenhouse(mats);side_stickers()
+ a_pillars();build_greenhouse(mats);side_stickers()

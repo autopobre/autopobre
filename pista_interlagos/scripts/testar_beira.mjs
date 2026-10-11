@@ -16,7 +16,7 @@ import {standLayout} from '../teste/track-clearance.js';
 import {guardrailPresent,guardrailClearance} from '../teste/physics.js';
 
 const only=process.argv[2],report={},seen=new Map();
-for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania']){
+for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada']){
  if(only&&only!==id)continue;
  const data=id==='curvelo'?createCurveloData():JSON.parse(readFileSync(new URL(`../dados/${id==='interlagos'?'pista':'pista_'+id}.json`,import.meta.url)));
  data.meta.id=id;data.meta.name=CIRCUITS[id].name;
@@ -30,8 +30,13 @@ for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasi
  // --- Rail banners.
  const plan=bannerPlan(data),banners=plan.banners;
  assert.equal(bannerPlan(data),plan,`${id}: found once per track data`);
+ // The Chapada has no guardrail anywhere (pedido #5): no rail, no banner hanging on one.
+ const railless=['-1','1'].every(k=>Array.isArray(data.meta.rails?.[k])&&!data.meta.rails[k].length);
+ const rows=new Map();
+ if(railless)assert.equal(banners.length,0,`${id}: no banner without a rail`);
+ else{
  assert(banners.length>=20,`${id}: ${banners.length} banners`);
- const lengths=banners.map(b=>b.s1-b.s0),rows=new Map();for(const b of banners)rows.set(b.row,(rows.get(b.row)??0)+1);
+ const lengths=banners.map(b=>b.s1-b.s0);for(const b of banners)rows.set(b.row,(rows.get(b.row)??0)+1);
  assert(lengths.every(l=>l>.5&&l<=9.41),`${id}: banners up to 9.4 m`);
  assert(Math.max(...lengths)-Math.min(...lengths.filter(l=>l>5))>2,`${id}: banners of different lengths`);
  assert(rows.size>=Math.min(10,sponsors.length-2),`${id}: ${rows.size} sponsors on the rails`);
@@ -48,6 +53,7 @@ for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasi
  // Gaps: tied banners leave a hand's width or more now and then, and whole banners are missing.
  const gaps=banners.slice(1).map((b,i)=>b.side===banners[i].side?b.s0-banners[i].s1:null).filter(g=>g!==null&&g>=0&&g<12);
  assert(gaps.some(g=>g>.03&&g<.3)&&gaps.some(g=>g>5),`${id}: small gaps and missing banners`);
+ }
  // --- Billboards: the same 16 slots, four builds, eight designs front and back.
  const spots=billboardSpots(data),art=billboardArt(data,spots),formats=spots.map(s=>billboardFormat(data,s));
  assert.deepEqual(formats,spots.map(s=>billboardFormat(data,s)),`${id}: a board's build is fixed by its slot`);
@@ -87,7 +93,8 @@ for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasi
  for(const t of plan2.items.filter(t=>!HIGH_FLAGS.includes(t.kind)))assert.equal(flagShadowless(t),t.up>FLAG_SHADOW_UP,`${id}: ${t.kind} flag ${t.up.toFixed(1)} m up`);
  // --- Marshal posts: about every 360 m, alternating sides, off the beat, never under a billboard where a spot allows.
  const marshals=marshalSpots(data),L=data.meta.reconstructed_xy_m;
- for(let k=1;k<marshals.length;k++){const gap=((marshals[k].s-marshals[k-1].s)%L+L)%L;assert(gap>250&&gap<480,`${id}: post gap ${gap.toFixed(0)} m`);assert.notEqual(marshals[k].side,marshals[k-1].side);}
+ // (Sides alternate, but on a plateau's rim the posts keep to the ground: the abyss side has none.)
+ for(let k=1;k<marshals.length;k++){const gap=((marshals[k].s-marshals[k-1].s)%L+L)%L;assert(gap>250&&gap<480,`${id}: post gap ${gap.toFixed(0)} m`);if(!data.scenery?.cliff)assert.notEqual(marshals[k].side,marshals[k-1].side);}
  const gaps2=marshals.slice(1).map((m,k)=>m.s-marshals[k].s);if(gaps2.length>2)assert(Math.max(...gaps2)-Math.min(...gaps2)>15,`${id}: posts off a fixed beat`);
  const underBoard=marshals.filter(m=>spots.some(b=>Math.hypot(b.x-m.x,b.y-m.y)<25)).length;assert(underBoard<=1,`${id}: ${underBoard} marshal posts under a billboard`);
  report[id]={sponsors:sponsors.length,banners:banners.length,bannerSponsors:rows.size,loose:banners.filter(b=>b.hangs).length,torn:banners.filter(b=>b.rip).length,boardSizes:[...new Set(formats.map(f=>f.w))],designs:new Set(art.fronts).size,roof:roof.length,marshals:marshals.length};

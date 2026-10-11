@@ -16,7 +16,7 @@ const load=id=>{
  const data=JSON.parse(readFileSync(new URL(`../dados/${id==='interlagos'?'pista':'pista_'+id}.json`,import.meta.url)));data.meta.id=id;return data;
 };
 const report={};
-for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania']){
+for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada']){
  const data=load(id),a=data.samples,n=a.length,car=new TestCar(data),out={};
  // The detector and the drawn strips agree segment for segment (createCurbs: 6 vertices x 2 faces x 3 per segment).
  const curbs=createCurbs(data);

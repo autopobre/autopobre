@@ -18,7 +18,7 @@ BASE = os.environ.get('INTERLAGOS_URL', GAME_URL)
 ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
 OUT = Path(ARGS[0]).resolve() if ARGS else Path(__file__).resolve().parents[2] / '.audit-local' / 'bandeiras'
 OUT.mkdir(parents=True, exist_ok=True)
-CIRCUITS = [] if '--sem-circuitos' in sys.argv else ['curvelo', 'cascavel', 'piracicaba', 'chapeco', 'brasilia', 'goiania']
+CIRCUITS = [] if '--sem-circuitos' in sys.argv else ['curvelo', 'cascavel', 'piracicaba', 'chapeco', 'brasilia', 'goiania', 'chapada']
 HIDE_UI = 'body *{visibility:hidden!important} #view{visibility:visible!important}'
 FLAGS = 'interlagos.sceneryInfo().flags'
 # The player's car at lap distance s, d metres left of the centre line, running along the track.

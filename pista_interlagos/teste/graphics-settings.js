@@ -48,6 +48,10 @@ export const GRAPHICS_PRESETS=Object.freeze({
 export const SHADOW_LEVELS=Object.freeze({off:null,baixa:{size:1024,reach:55,radius:2},media:{size:2048,reach:70,radius:2},alta:{size:4096,reach:85,radius:2,car:{size:1024,reach:4.5,cars:1}},ultra:{size:8192,reach:120,radius:3,car:{size:1024,reach:4.5,cars:4}}});
 // Fog from near to far (metres) and the camera's far plane; past 'far' everything is fog colour.
 export const VIEW_DISTANCES=Object.freeze({curta:{fog:[300,1600],far:1900},media:{fog:[420,2400],far:6500},longa:{fog:[520,3300],far:6500},maxima:{fog:[700,4600],far:9000}});
+// A circuit on a plateau's rim (Chapada dos Sonhos: far-terrain.js) looks over a valley out to 22 km: there the
+// fog and the far plane reach further, at each level.
+// The fog starts near, as over the other circuits: the valley's ridges a few km off take the blue of the distance.
+export const VALLEY_VIEW=Object.freeze({curta:{fog:[350,8000],far:12000},media:{fog:[400,13000],far:21000},longa:{fog:[500,17000],far:28000},maxima:{fog:[600,22000],far:34000}});
 // Scenery: the light build (mobile), trees and houses per area, and how near a tree shows its full crown.
 export const SCENERY_LEVELS=Object.freeze({basico:{mobile:true,density:.7,lod:55},leve:{mobile:true,density:1,lod:80},completo:{mobile:false,density:1,lod:130},denso:{mobile:false,density:1.3,lod:220}});
 // Car reflections: where the paint, glass and chrome get their surroundings (car-reflections.js). sky:

@@ -15,7 +15,7 @@ export class TreeField {
   for(const t of trees){
    // Trunk radius from the tree models (base of a 1 m unit tree, scaled by the crown width).
    const r=Math.min(.5,Math.max(.14,(t.kind==='tall'?.03:.05)*t.width));
-   const post={x:t.x,y:t.y,r,tree:t,shake:null};this.trees.push(post);
+   const post={x:t.x,y:t.y,z:t.z??null,r,tree:t,shake:null};this.trees.push(post);
    const key=this.key(Math.floor(t.x/CELL),Math.floor(t.y/CELL));if(!this.cells.has(key))this.cells.set(key,[]);this.cells.get(key).push(post);
   }
   // Falling leaves: a small pool of points coloured like the crown they come from.
@@ -45,6 +45,8 @@ export class TreeField {
   let impact=0;const posts=this.near(car.x,car.y,front+.6);if(!posts.length)return 0;
   const {f,l,u}=car.updateAxes(),c=Math.cos(car.heading),s=Math.sin(car.heading),r=[0,0,0],v=[0,0,0];
   for(const post of posts){
+   // Only a trunk the car is down beside (a car falling past the crowns, off a plateau's rim, misses them).
+   if(post.z!==null&&Math.abs(car.z-post.z)>3.5)continue;
    const dx=post.x-car.x,dy=post.y-car.y,bx=dx*c+dy*s,by=-dx*s+dy*c;
    const qx=Math.max(-rear,Math.min(front,bx)),qy=Math.max(-half,Math.min(half,by));
    let nx=qx-bx,ny=qy-by,d=Math.hypot(nx,ny),depth;
