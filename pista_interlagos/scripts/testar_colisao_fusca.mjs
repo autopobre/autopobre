@@ -66,9 +66,14 @@ const rest=metrics.upsideDown={opala:roofRest(OPALA_BODY),fusca:roofRest(FUSCA_B
 assert(rest.opala.upright<-.9&&rest.fusca.upright<-.9&&!rest.opala.rightings&&!rest.fusca.rightings,'both still on their roofs');
 near(rest.opala.height,.86,.05,'the Opala on its roof');assert(rest.fusca.height>.7&&rest.fusca.height<.84,`the Fusca on its dome: ${rest.fusca.height}`);
 // The guardrail: pushed sideways into it, held at an angle to the road, the centre of mass stops where the body's
-// plan meets the rail: halfWidth alongside, plus halfLength and wallAhead as the nose turns in.
+// plan meets the rail: halfWidth alongside, plus halfLength and wallAhead as the nose turns in. Where the rail runs
+// parallel to the car: straight, and the road's width and the rail's clearance steady along the car. Elsewhere
+// physics.js meets the rail point by point (BODY_POINTS): a rail closing in as the road narrows (1 cm a metre at
+// Interlagos' 926 m) stops the car on its nose's corner, its middle 1.5 to 2 cm off the rail.
 function railStop(body,angle){
- const i=data.samples.findIndex(p=>guardrailPresent(data,p[0],1)&&guardrailPresent(data,p[0]+40,1)&&guardrailPresent(data,p[0]-40,1));assert(i>=0);
+ const n=data.samples.length,head=k=>Math.atan2(data.samples[k][8],data.samples[k][7]),line=k=>data.samples[k][4]/2+guardrailClearance(data,data.samples[k][0],1);
+ const parallel=k=>k>=6&&k<n-6&&Math.abs(wrap(head(k+6)-head(k-6)))<.004&&Math.abs(line(k+3)-line(k-3))<.003;
+ const i=data.samples.findIndex((p,k)=>guardrailPresent(data,p[0],1)&&guardrailPresent(data,p[0]+40,1)&&guardrailPresent(data,p[0]-40,1)&&parallel(k));assert(i>=0,'a parallel stretch of rail');
  const c=new TestCar(data).setBody(body);c.reset(i);const r=c.surface,wall=s=>s.width/2+guardrailClearance(data,s.s,1)-.12;
  c.x+=r.lx*(wall(r)-2.6);c.y+=r.ly*(wall(r)-2.6);c.heading=Math.atan2(r.ty,r.tx)+angle;c.settle();
  for(let k=0;k<240;k++){const q=c.surface;c.heading=Math.atan2(q.ty,q.tx)+angle;c.yaw=0;c.vx=q.lx*4;c.vy=q.ly*4;c.step(idle,1/120);}
