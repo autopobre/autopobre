@@ -154,19 +154,25 @@ def parked_wipers():
  """carro_14: at rest the wipers lie along the foot of the windscreen, under the driver's line of sight. V05's were
  one bent tube each (arm and blade at 21 and 33 degrees up the glass, sinking from 3 to 33 mm under its outer face),
  so from the cockpit they crossed the view inside the car. Each is rebuilt parked from its own pivot: a cap on the
- glass, a slim arm and the blade under it, straight along the foot of the flat glass and just off its outer face."""
- O=bpy.data.objects;G=world_verts(O['Para_brisa']);c=G.mean(0)
- n=np.linalg.svd(G-c,full_matrices=False)[2][2];n*=np.sign(n[2])      # glass normal, outward and up
- outer=((G-c)@n).max()                                                 # outer face, from the centre
+ glass, a slim arm and the blade under it, along the foot of the glass and just off its outer face. The glass is
+ crowned (v06_vidros): each point of a wiper sits over the glass's own surface, along its local normal, as a blade
+ bends to the glass."""
+ O=bpy.data.objects;G=world_verts(O['Para_brisa']);c=G.mean(0);Tg=bvh(O['Para_brisa'])
+ n=np.linalg.svd(G-c,full_matrices=False)[2][2];n*=np.sign(n[2])      # mean glass normal, outward and up
  up=np.array((0,0,1.))-n[2]*n;up/=np.linalg.norm(up)                  # up the slope
- side=np.cross(up,n)                                                  # across the car, in the glass plane
+ side=np.cross(up,n)                                                  # across the car
+ def surface(q):
+  """The glass's outer face under q (along the mean normal) and its normal there, outward."""
+  h=Tg.ray_cast(Vector(q+n*.3),Vector(-n))
+  nn=np.array(h[1]);nn*=np.sign(nn@n);return np.array(h[0]),nn
  wipers=[]
  for o in [o for o in O if o.type=='MESH' and o.name.startswith('Limpador_parabrisa')]:
   W=world_verts(o);p=W[np.argmin(W@up)];tip=W[np.argmax(np.linalg.norm(W-p,axis=1))]
-  wipers.append((o.name,o.data.materials[0],o.users_collection[0].name,p-n*((p-c)@n-outer),side*np.sign((tip-p)@side)))
+  wipers.append((o.name,o.data.materials[0],o.users_collection[0].name,surface(p)[0],side*np.sign((tip-p)@side)))
  for rank,(name,mat,collection,p,e) in enumerate(sorted(wipers,key=lambda w:w[3]@w[4])):
   r=math.radians(WIPER_REST_DEG[min(rank,1)]);d=e*math.cos(r)+up*math.sin(r)
-  at=lambda s,h:tuple(p+d*s+n*h)                                       # s along the wiper, h off the glass
+  def at(s,h,p=p,d=d):                                                 # s along the wiper, h off the glass
+   q,nn=surface(p+d*s);return tuple(q+nn*h)
   P=Part(name,collection,None,smooth=40)
   P.cyl(mat,at(0,.001),at(0,.024),.013,16)                               # pivot cap
   P.sweep(mat,[at(0,.020),at(.04,.019),at(.25,.015),at(.43,.012)],.0045,10)   # arm

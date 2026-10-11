@@ -2,10 +2,10 @@ import * as THREE from 'three';
 
 // Working door mirrors for the cockpit view (players asked for them). They show the road
 // behind from the picture the rear-view mirror already renders (cockpit.js rearCamera: 125°
-// wide, from the middle of the cabin), so they cost no extra pass. In the V06 model the round
-// back of each mirror housing faces the driver and its "Espelho" glass sits buried inside it,
-// so the glass is drawn here: an oval turned to the driver's eye over the housing, filling
-// `fill` of the housing's outline as he sees it (the rest shows as a rim), on the door.
+// wide, from the middle of the cabin), so they cost no extra pass. Both cars' models carry
+// the mirrors' own glass facing the driver (the Opala's "Espelho", the Fusca's "Espelho_fusca"):
+// each side's picture is drawn in the plane of its glass, over its outline (the Opala's is a
+// rounded rectangle, the Fusca's an oval), a millimetre or two ahead of it.
 // Each glass is set as a driver sets it: its middle shows the road straight back, a few
 // degrees out past the car's flank, whatever the eye does; it is somewhat convex (widen) so a
 // car alongside stays in it. The reflected ray of every pixel meets the scene `distance`
@@ -13,77 +13,63 @@ import * as THREE from 'three';
 // that far, a little off for those very close. The glass is written with alpha -1: the film
 // look (cinematic.js) then keeps its ambient occlusion off it, which read the glass sunk in its
 // housing as a deep dark corner and left it about a third as bright as the rear-view mirror.
-export const SIDE_MIRRORS=Object.freeze({outward:.12,down:-.02,widen:3.4,distance:14,reflectance:.82,fill:.84,ahead:.075});
-const vertexShader=`varying vec3 vWorld;varying vec2 vGlass;
-void main(){vGlass=position.xy;vec4 world=modelMatrix*vec4(position,1.);vWorld=world.xyz;gl_Position=projectionMatrix*viewMatrix*world;}`;
+export const SIDE_MIRRORS=Object.freeze({outward:.12,down:-.02,widen:3.4,distance:14,reflectance:.82});
+const vertexShader=`attribute float edge;varying vec3 vWorld;varying float vEdge;
+void main(){vEdge=edge;vec4 world=modelMatrix*vec4(position,1.);vWorld=world.xyz;gl_Position=projectionMatrix*viewMatrix*world;}`;
 const fragmentShader=`uniform sampler2D map;uniform mat4 rearViewProjection;uniform vec3 glassNormal,glassCenter,centerRay;uniform float widen,distance,reflectance;
-varying vec3 vWorld;varying vec2 vGlass;
+varying vec3 vWorld;varying float vEdge;
 void main(){
- float e=length(vGlass);
  vec3 ray=reflect(normalize(vWorld-cameraPosition),glassNormal);ray=normalize(centerRay+(ray-centerRay)*widen);
  vec4 clip=rearViewProjection*vec4(glassCenter+ray*distance,1.);vec2 uv=clamp(clip.xy/max(clip.w,1e-3)*.5+.5,0.,1.);
- gl_FragColor=vec4(texture2D(map,uv).rgb*reflectance*(1.-.6*smoothstep(.9,1.,e)),-1.);
+ gl_FragColor=vec4(texture2D(map,uv).rgb*reflectance*(1.-.6*smoothstep(.9,1.,vEdge)),-1.);
  #include <colorspace_fragment>
 }`;
+// The glass's outline in its plane, scaled to the unit square: a fan from the middle, `edge`
+// running 0 there to 1 on the rim (the darkened border). Convex hull of the glass's points.
+function outlineGeometry(points){
+ const p=[...points].sort((a,b)=>a.x-b.x||a.y-b.y),cross=(o,a,b)=>(a.x-o.x)*(b.y-o.y)-(a.y-o.y)*(b.x-o.x),lower=[],upper=[];
+ for(const q of p){while(lower.length>1&&cross(lower.at(-2),lower.at(-1),q)<=0)lower.pop();lower.push(q);}
+ for(const q of p.reverse()){while(upper.length>1&&cross(upper.at(-2),upper.at(-1),q)<=0)upper.pop();upper.push(q);}
+ const hull=lower.slice(0,-1).concat(upper.slice(0,-1)),position=[0,0,0],edge=[0],index=[];
+ hull.forEach((q,i)=>{position.push(q.x,q.y,0);edge.push(1);index.push(0,i+1,(i+1)%hull.length+1);});
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(position,3));g.setAttribute('edge',new THREE.Float32BufferAttribute(edge,1));g.setIndex(index);return g;
+}
 const eyeToGlass=new THREE.Vector3(),back=new THREE.Vector3(),out=new THREE.Vector3(),up=new THREE.Vector3(),basis=new THREE.Matrix3(),viewProjection=new THREE.Matrix4();
 export class SideMirrors {
  constructor(texture,look=SIDE_MIRRORS){this.texture=texture;this.look=look;this.glasses=[];this.live=false;}
  // The player's car model (its doors shut) in the sprung body `body`, and the driver's eye
- // there (car frame: +X forward, +Y up, -Z the driver's side). The glasses are flagged
- // "interno", so the rivals cloned from the model drop them; they show only while live.
- // glass: a model whose mirrors' own glass faces the driver (the Fusca's, material named so, both
- // doors' in one mesh): each side's glass is drawn in the plane of its own, over its outline, a
- // millimetre or two ahead (turned to the eye instead, half of it went behind the tilted glass).
- attach(model,body,eye,{glass=null,ahead=.0015}={}){
+ // there (car frame: +X forward, +Y up, -Z the driver's side). glass: the material of the
+ // mirrors' glass in the model (one mesh per door or both doors' in one); each side's picture
+ // goes in the plane of its own glass, `ahead` in front of it toward the eye. The glasses are
+ // flagged "interno", so the rivals cloned from the model drop them; they show only while live.
+ attach(model,body,eye,{glass='Espelho',ahead=.0015}={}){
   this.show(false);for(const g of this.glasses)g.mesh.removeFromParent();this.glasses=[];if(!model)return 0;
   model.updateMatrixWorld(true);const inverse=body.matrixWorld.clone().invert(),found=[];
-  model.traverse(o=>{if(o.isMesh&&!Array.isArray(o.material)&&o.material.name===(glass??'Espelho'))found.push(o);});
-  const v=new THREE.Vector3(),w=new THREE.Vector3(),spots=[];
+  model.traverse(o=>{if(o.isMesh&&!Array.isArray(o.material)&&o.material.name===glass)found.push(o);});
+  const v=new THREE.Vector3(),w=new THREE.Vector3();
   for(const o of found){
-   if(glass){
-    // Each door's glass: its own vertices, split by side.
-    const toCar=new THREE.Matrix4().multiplyMatrices(inverse,o.matrixWorld),pos=o.geometry.attributes.position;
-    const turn=new THREE.Matrix3().getNormalMatrix(toCar),normals=o.geometry.attributes.normal;
-    for(const side of [-1,1]){const points=[],normal=new THREE.Vector3();
-     for(let i=0;i<pos.count;i++){v.fromBufferAttribute(pos,i).applyMatrix4(toCar);if(Math.sign(v.z)!==side)continue;points.push(v.clone());if(normals)normal.add(w.fromBufferAttribute(normals,i).applyMatrix3(turn));}
-     if(points.length<3)continue;
-     // Its plane: the normal toward the eye, x level across it, the outline's half sizes along x and y.
-     const c=points.reduce((a,p)=>a.add(p),new THREE.Vector3()).divideScalar(points.length);
-     if(normal.lengthSq()<1e-12)normal.subVectors(eye,c);normal.normalize();if(normal.dot(w.subVectors(eye,c))<0)normal.negate();
-     const xAxis=new THREE.Vector3(0,1,0).cross(normal).normalize(),yAxis=new THREE.Vector3().crossVectors(normal,xAxis);
-     let rx=0,ry=0;for(const p of points){w.subVectors(p,c);rx=Math.max(rx,Math.abs(w.dot(xAxis)));ry=Math.max(ry,Math.abs(w.dot(yAxis)));}
-     spots.push({o,side,c,plane:{normal,xAxis,yAxis,rx,ry},ahead});}
-    continue;
+   // Each door's glass: its own vertices, split by side.
+   const toCar=new THREE.Matrix4().multiplyMatrices(inverse,o.matrixWorld),pos=o.geometry.attributes.position;
+   const turn=new THREE.Matrix3().getNormalMatrix(toCar),normals=o.geometry.attributes.normal;
+   for(const side of [-1,1]){const points=[],normal=new THREE.Vector3();
+    for(let i=0;i<pos.count;i++){v.fromBufferAttribute(pos,i).applyMatrix4(toCar);if(Math.sign(v.z)!==side)continue;points.push(v.clone());if(normals)normal.add(w.fromBufferAttribute(normals,i).applyMatrix3(turn));}
+    if(points.length<3)continue;
+    // Its plane: the normal toward the eye, x level across it, the outline's half sizes along x and y.
+    const c=points.reduce((a,p)=>a.add(p),new THREE.Vector3()).divideScalar(points.length);
+    if(normal.lengthSq()<1e-12)normal.subVectors(eye,c);normal.normalize();if(normal.dot(w.subVectors(eye,c))<0)normal.negate();
+    const xAxis=new THREE.Vector3(0,1,0).cross(normal).normalize(),yAxis=new THREE.Vector3().crossVectors(normal,xAxis);
+    let rx=0,ry=0;for(const p of points){w.subVectors(p,c);rx=Math.max(rx,Math.abs(w.dot(xAxis)));ry=Math.max(ry,Math.abs(w.dot(yAxis)));}
+    const flat=points.map(p=>{w.subVectors(p,c);return new THREE.Vector2(w.dot(xAxis)/rx,w.dot(yAxis)/ry);});
+    const inCar=new THREE.Matrix4().makeBasis(xAxis,yAxis,normal).setPosition(c.clone().addScaledVector(normal,ahead)).scale(new THREE.Vector3(rx,ry,1));
+    const material=new THREE.ShaderMaterial({name:'Espelho_retrovisor_'+(side<0?'esquerdo':'direito'),vertexShader,fragmentShader,toneMapped:false,
+     uniforms:{map:{value:this.texture},rearViewProjection:{value:new THREE.Matrix4()},glassNormal:{value:new THREE.Vector3(-1,0,0)},glassCenter:{value:new THREE.Vector3()},centerRay:{value:new THREE.Vector3(-1,0,0)},
+      widen:{value:this.look.widen},distance:{value:this.look.distance},reflectance:{value:this.look.reflectance}}});
+    const mesh=new THREE.Mesh(outlineGeometry(flat),material);mesh.name=material.name;
+    // The glass rides the door: its pose in the door's frame.
+    new THREE.Matrix4().copy(o.parent.matrixWorld).invert().multiply(body.matrixWorld).multiply(inCar).decompose(mesh.position,mesh.quaternion,mesh.scale);
+    mesh.visible=false;mesh.castShadow=false;mesh.userData.interno=true;o.parent.add(mesh);
+    this.glasses.push({mesh,material,side,world:new THREE.Vector3()});
    }
-   const housing=o.parent?.children.find(s=>s.isMesh&&!Array.isArray(s.material)&&s.material.name==='Pintura_preta');if(!housing)continue;
-   o.geometry.computeBoundingBox();const c=o.geometry.boundingBox.getCenter(new THREE.Vector3()).applyMatrix4(o.matrixWorld).applyMatrix4(inverse),side=Math.sign(c.z)||1;
-   // The housing's outline from the eye, in angles about the line to the buried glass
-   // (its shell only: the arm to the door runs on inboard).
-   const toCar=new THREE.Matrix4().multiplyMatrices(inverse,housing.matrixWorld),pos=housing.geometry.attributes.position,points=[];
-   for(let i=0;i<pos.count;i++){v.fromBufferAttribute(pos,i).applyMatrix4(toCar);w.subVectors(v,c);if(Math.abs(w.x)>.16||Math.abs(w.y)>.07||Math.abs(w.z)>.065)continue;points.push(v.clone());}
-   spots.push({o,side,c,points,fill:this.look.fill,ahead:this.look.ahead});
-  }
-  for(const {o,side,c,points,fill,plane,ahead:forward} of spots){
-   let inCar;
-   if(plane){const {normal,xAxis,yAxis,rx,ry}=plane;inCar=new THREE.Matrix4().makeBasis(xAxis,yAxis,normal).setPosition(c.clone().addScaledVector(normal,forward)).scale(new THREE.Vector3(rx,ry,1));}
-   else{
-   const f=c.clone().sub(eye).normalize(),r=new THREE.Vector3().crossVectors(f,new THREE.Vector3(0,1,0)).normalize(),u=new THREE.Vector3().crossVectors(r,f);
-   let x0=Infinity,x1=-Infinity,y0=Infinity,y1=-Infinity;
-   for(const p of points){w.subVectors(p,eye);const along=w.dot(f),a=Math.atan2(w.dot(r),along),b=Math.atan2(w.dot(u),along);x0=Math.min(x0,a);x1=Math.max(x1,a);y0=Math.min(y0,b);y1=Math.max(y1,b);}
-   if(!(x1>x0&&y1>y0))continue;
-   // The glass: in front of the shell (or the model's glass) by `ahead`, facing the eye, its size the same angles.
-   const d=c.distanceTo(eye)-forward,ax=(x0+x1)/2,ay=(y0+y1)/2,dir=f.clone().add(r.clone().multiplyScalar(Math.tan(ax))).add(u.clone().multiplyScalar(Math.tan(ay))).normalize();
-   const place=eye.clone().addScaledVector(dir,d),normal=dir.clone().negate(),xAxis=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),normal).normalize(),yAxis=new THREE.Vector3().crossVectors(normal,xAxis);
-   inCar=new THREE.Matrix4().makeBasis(xAxis,yAxis,normal).setPosition(place).scale(new THREE.Vector3(d*Math.tan((x1-x0)/2*fill),d*Math.tan((y1-y0)/2*fill),1));
-   }
-   const material=new THREE.ShaderMaterial({name:'Espelho_retrovisor_'+(side<0?'esquerdo':'direito'),vertexShader,fragmentShader,toneMapped:false,
-    uniforms:{map:{value:this.texture},rearViewProjection:{value:new THREE.Matrix4()},glassNormal:{value:new THREE.Vector3(-1,0,0)},glassCenter:{value:new THREE.Vector3()},centerRay:{value:new THREE.Vector3(-1,0,0)},
-     widen:{value:this.look.widen},distance:{value:this.look.distance},reflectance:{value:this.look.reflectance}}});
-   const mesh=new THREE.Mesh(new THREE.CircleGeometry(1,48),material);mesh.name=material.name;
-   // The glass rides the door: its pose in the door's frame.
-   new THREE.Matrix4().copy(o.parent.matrixWorld).invert().multiply(body.matrixWorld).multiply(inCar).decompose(mesh.position,mesh.quaternion,mesh.scale);
-   mesh.visible=false;mesh.castShadow=false;mesh.userData.interno=true;o.parent.add(mesh);
-   this.glasses.push({mesh,material,side,world:new THREE.Vector3()});
   }
   return this.glasses.length;
  }

@@ -42,6 +42,8 @@ export class SunPlacement{
   this.direction=direction.clone().normalize();this.distance=distance;this.basis=lightBasis(this.direction);
   this.lean=new THREE.Vector3();this.wanted=new THREE.Vector3();this.centre=new THREE.Vector3();this.raw=new THREE.Vector3();this.texel=0;
  }
+ // Another key light (the weather's: a low sun at dusk, the moon at night): its frame, and the lean starts afresh.
+ setDirection(direction){this.direction.copy(direction).normalize();lightBasis(this.direction,this.basis);this.lean.set(0,0,0);}
  // p: the car; forward: where the camera looks (null: centred); reach: half-size of the box in
  // metres; size: map texels; dt: seconds since the last call (1 or more: no easing).
  place(p,forward,{reach,size,dt=1}){

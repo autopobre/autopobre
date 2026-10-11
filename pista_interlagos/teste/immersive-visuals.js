@@ -11,6 +11,7 @@ import {footState,stepOnFoot,placeFootCamera,turnFootView,zoomFootView,footJump}
 import {shutOpenings,CarOpenings,carSpot,SPOT_OPENING} from './car-openings.js';
 import {createRivalDriver,CABIN_DROP,sharedDriverMaterials} from './rival-driver.js';
 import {createBrakeLights,sharedBrakeLights} from './brake-lights.js';
+import {createHeadlights,sharedHeadlights,lampSetFor} from './headlights.js';
 import {podiumBanner,podiumPlate,podiumRibbon,signBoard} from './pit-textures.js';
 import {fuscaCar,rivalCabin,FUSCA_PROFILE,FUSCA_SEAT} from './fusca.js';
 import {finishMaterial,setCarDirt,setCarTone} from './car-finish.js';
@@ -421,6 +422,8 @@ export class ImmersiveVisuals {
   const own=car.getObjectByName('Volante_Fusca');if(own)own.visible=false;
   const driver=createRivalDriver({color:entry.color,number:entry.number});driver.root.position.add(new THREE.Vector3(...FUSCA_SEAT));detail.add(driver.root);
   const far=this.farProxy(entry.color,FUSCA_PROFILE,entry.stripe),lamps=createBrakeLights({far:FUSCA_PROFILE.lamps});far.add(lamps);root.add(far);
+  // Its headlamps, lit at dusk, at night and in the rain (headlights.js; main.js updateLamps shows them).
+  const heads=createHeadlights('fusca');root.add(heads);Object.assign(root.userData,{headlights:heads,lampSet:'fusca'});
   Object.assign(root.userData,{detail,far,driver,fusca:car,wheels:car.userData.wheels.map(obj=>({obj,base:obj.quaternion.clone()})),
    brake:v=>{car.userData.brake(v);lamps.userData.set(v);},nameLabel:name?this.tag(root,name,[0,2.2,0],2.7,.30,'#fff','#172a2ddb'):null});
   return root;
@@ -432,7 +435,7 @@ export class ImmersiveVisuals {
  disposeCar(obj,template){
   const keep=new Set(),hold=root=>root?.traverse(o=>{if(o.geometry)keep.add(o.geometry);for(const m of [o.material??[]].flat())keep.add(m);});
   hold(template);hold(this.carRoot.getObjectByName('Estrutura_cabine_V04'));
-  for(const r of [...(this.plateShapes?.get(template)??[]),...Object.values(this.materials),...sharedBrakeLights(),...sharedDriverMaterials(),...sharedLivery(),...sharedRims()])keep.add(r);
+  for(const r of [...(this.plateShapes?.get(template)??[]),...Object.values(this.materials),...sharedBrakeLights(),...sharedHeadlights(),...sharedDriverMaterials(),...sharedLivery(),...sharedRims()])keep.add(r);
   obj.traverse(o=>{if(o.geometry&&!o.isSprite&&!keep.has(o.geometry))o.geometry.dispose();for(const m of [o.material??[]].flat())if(!keep.has(m)){if(m.map?.isCanvasTexture)m.map.dispose();m.dispose();}});
  }
  // driven: a rival out on track, with its driver (rival-driver.js) in the team's suit and helmet;
@@ -471,6 +474,9 @@ export class ImmersiveVisuals {
   const far=this.farProxy(color,FAR_PROFILE,color,look.tone);root.add(far);root.userData.detail=detail;root.userData.far=far;
   // Brake lights on both levels of detail, lit while its driver brakes (userData.brake).
   const lamps=[createBrakeLights(),createBrakeLights({far:true})];detail.add(lamps[0]);far.add(lamps[1]);root.userData.brake=v=>{for(const l of lamps)l.userData.set(v);};
+  // Headlights on both levels (the auxiliary lamps where the template has them), lit at dusk, at night and in the
+  // rain (headlights.js; main.js updateLamps shows them while it races).
+  const heads=createHeadlights(lampSetFor(template));root.add(heads);root.userData.headlights=heads;root.userData.lampSet=heads.userData.lampSet;
   const label=name?this.tag(root,name,[0,2.08,0],2.7,.30,'#fff','#172a2ddb'):null;
   // The rival's own number where the Opala 99 carries its 99 (those stickers are
   // hidden): big on both rear quarters and on the roof, small on the tail; one texture each.

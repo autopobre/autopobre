@@ -2,6 +2,7 @@ import {circuitId} from './circuits.js';
 import {DUEL_DEFAULT,carEntry,duelDefault,AI_LEVELS,PLAYER_CAR_DEFAULT,CAR_MODELS,CAR_MODEL_DEFAULT} from './race-roster.js';
 import {normalizeGraphics,DEBUG_OVERLAY_MODES,DEBUG_OVERLAY_CORNERS} from './graphics-settings.js';
 import {WHEEL_LOCKS,WHEEL_LOCK_DEFAULT} from './wheel-controls.js';
+import {timeOfDay,rainLevel} from './weather.js';
 export const PREFERENCES_KEY='opala99-preferences-v1';
 // 'tv' films from the trackside towers and verge cameras (tv-camera.js).
 // Race length in laps, for the free race and the story alike, on every circuit.
@@ -44,6 +45,10 @@ export function normalizePreferences(value){
   carModel:CAR_MODELS.includes(source.carModel)?source.carModel:CAR_MODEL_DEFAULT,
   // Laps of every race (Modo Corrida and Modo História): 3 unless the player picks more or fewer.
   laps:Number.isInteger(source.laps)&&source.laps>=LAPS.min&&source.laps<=LAPS.max?source.laps:LAPS.standard,
+  // The race's weather (weather.js): the time of day (dia, fim_de_tarde, noite) and the rain (seco, garoa, chuva).
+  // Day and dry unless the player picks otherwise, in both modes.
+  timeOfDay:timeOfDay(source.timeOfDay),
+  rain:rainLevel(source.rain),
   // The ghost of the pilot's best lap on the circuit (G, ghost-lap.js): off unless turned on.
   ghost:typeof source.ghost==='boolean'?source.ghost:false,
   // Xbox / PlayStation controller (gamepad-controls.js): how the left stick steers, and the shake on impacts.

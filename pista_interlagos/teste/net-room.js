@@ -16,6 +16,7 @@
 // is cut off. No DOM here: testar_multiplayer.mjs runs two rooms in Node.
 import {CAR_CHOICES} from './race-roster.js';
 import {readCar} from './net-cars.js';
+import {TIMES_OF_DAY,RAIN_LEVELS} from './weather.js';
 // The seats, the 99 first: the car of a pilot who asks for none (or for one already taken).
 export const SEATS=Object.freeze(CAR_CHOICES.map(e=>e.number));
 // Seconds: a silent player (or host) is gone after SILENT; a window hosts once ELECTION passes
@@ -112,7 +113,9 @@ const validStops=v=>v===undefined||Array.isArray(v)&&v.length<=SEATS.length&&v.e
 const sameStops=(a,b)=>a.length===b.length&&a.every((x,i)=>x.number===b[i].number&&x.stage===b[i].stage&&(x.back??true)===(b[i].back??true)&&x.side===b[i].side);
 function validRace(r){
  return r===null||r&&typeof r==='object'&&isId(r.id)&&typeof r.circuit==='string'&&/^[a-z0-9_-]{1,32}$/.test(r.circuit)&&isInt(r.laps,1,50)&&isInt(r.seed,0,4294967295)&&SEATS.includes(r.car)
-  &&typeof r.ace==='boolean'&&typeof r.retirements==='boolean'&&typeof r.ghosts==='boolean'&&(r.level===null||typeof r.level==='string'&&/^[a-z]{1,16}$/.test(r.level))&&validSeats(r.seats)&&['waiting','racing'].includes(r.state);
+  &&typeof r.ace==='boolean'&&typeof r.retirements==='boolean'&&typeof r.ghosts==='boolean'&&(r.level===null||typeof r.level==='string'&&/^[a-z]{1,16}$/.test(r.level))&&validSeats(r.seats)&&['waiting','racing'].includes(r.state)
+  // The host's weather (weather.js); a room from before it has none.
+  &&(r.time===undefined||TIMES_OF_DAY.some(([v])=>v===r.time))&&(r.rain===undefined||RAIN_LEVELS.some(([v])=>v===r.rain));
 }
 export function validMessage(m){
  if(!m||typeof m!=='object'||typeof m.t!=='string'||!isId(m.from))return false;
@@ -412,9 +415,9 @@ export class Room {
  // seed, the host's car (car: the one at the back of the grid, whose driver sits out) and RaceField's
  // settings (the ace, the rivals' level, breakdowns) give every window the same grid and field;
  // ghosts, whether its humans pass through each other.
- planRace({circuit,laps,ace=false,level=null,retirements=true,ghosts=false}){
+ planRace({circuit,laps,ace=false,level=null,retirements=true,ghosts=false,time='dia',rain='seco'}){
   const seats=[...this.players.values()].filter(p=>p.number&&p.wait).map(({id,name,number})=>({id,name,number}));
-  return {id:randomId(this.random),circuit,laps,car:this.number,ace:!!ace,level:level??null,retirements:!!retirements,ghosts:!!ghosts,seed:Math.floor(this.random()*4294967296),seats,state:'waiting'};
+  return {id:randomId(this.random),circuit,laps,car:this.number,ace:!!ace,level:level??null,retirements:!!retirements,ghosts:!!ghosts,time,rain,seed:Math.floor(this.random()*4294967296),seats,state:'waiting'};
  }
  openRace(race){if(this.role!=='host')return;this.race=race;this.away.clear();this.stops=[];this.ready=new Set([this.id]);this.grant();this.beacon();this.emit('change');}
  closeRace(){if(this.role!=='host'||!this.race)return;this.race=null;this.away.clear();this.stops=[];this.grant();this.beacon();this.emit('change');}

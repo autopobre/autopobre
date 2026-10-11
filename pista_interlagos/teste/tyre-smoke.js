@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {EFFECT_LIGHT} from './weather.js';
 import {SUSPENSION_WHEELS} from './physics.js';
 import {surfaceKind,KERB_WIDTH} from './kerb-contact.js';
 
@@ -26,7 +27,7 @@ export class TyreSmoke {
   // fraction: under .6 a tumbling grass blade, above it a speck of grit).
   // Drawn over the picture, the HDR target's alpha (cinematic.js occlusion mask) left as it is.
   this.material=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.CustomBlending,blendSrc:THREE.SrcAlphaFactor,blendDst:THREE.OneMinusSrcAlphaFactor,blendSrcAlpha:THREE.ZeroFactor,blendDstAlpha:THREE.OneFactor,
-   uniforms:{viewport:{value:900},clearNear:{value:1.2},clearFar:{value:5.5},maxOpacity:{value:.32}},
+   uniforms:{viewport:{value:900},clearNear:{value:1.2},clearFar:{value:5.5},maxOpacity:{value:.32},effectLight:EFFECT_LIGHT},
    vertexShader:`attribute vec2 puff;attribute float dust;uniform float viewport,clearNear,clearFar,maxOpacity;varying float opacity,vDust,vTurn;
     void main(){vec4 p=modelViewMatrix*vec4(position,1.);vDust=dust;vTurn=dot(position,vec3(2.3,3.1,1.7));
      bool bit=dust>1.5;
@@ -35,17 +36,18 @@ export class TyreSmoke {
      // Depth taken from the puff's near side: the ground just in front of a low cloud no longer
      // cuts it along a straight line.
      vec4 front=projectionMatrix*vec4(p.xy,p.z+min(puff.x*.4,-p.z*.5),1.);gl_Position.z=front.z/front.w*gl_Position.w;}`,
-   fragmentShader:`varying float opacity,vDust,vTurn;
+   // effectLight: the weather's light (weather.js); smoke has no lights of its own and would glow at night.
+   fragmentShader:`varying float opacity,vDust,vTurn;uniform float effectLight;
     void main(){if(opacity<.003)discard;vec2 p=gl_PointCoord*2.-1.;float r=length(p);
      if(vDust>1.5){
       // A thin blade tapering to its tip, turned as it tumbles; grit a small dark speck.
       float g=vDust-2.,c=cos(vTurn),s=sin(vTurn);vec2 q=vec2(c*p.x+s*p.y,c*p.y-s*p.x);
       float shape=g<.6?(1.-smoothstep(.75,.95,abs(q.x)))*(1.-smoothstep(.55,1.,abs(q.y)/max(.02,.2*(1.-.75*abs(q.x))))):1.-smoothstep(.3,.5,r);
-      float a=opacity*shape;if(a<.003)discard;gl_FragColor=vec4(g<.6?mix(vec3(.13,.17,.06),vec3(.25,.26,.11),g/.6):vec3(.24,.2,.14),a);return;}
+      float a=opacity*shape;if(a<.003)discard;gl_FragColor=vec4((g<.6?mix(vec3(.13,.17,.06),vec3(.25,.26,.11),g/.6):vec3(.24,.2,.14))*effectLight,a);return;}
      float cloud=.83+.12*sin(p.x*11.+sin(p.y*8.))+.05*sin(p.y*21.+p.x*7.);
      float a=opacity*pow(max(0.,1.-r*r),2.)*cloud;
      // Dust is a dull grey-brown, not the sunny tan that glowed round the car in the bloom.
-     if(a<.003)discard;gl_FragColor=vec4(mix(vec3(.76+.12*(1.-r)),vec3(.4,.36,.3)*(.85+.2*(1.-r)),vDust),a);}`});
+     if(a<.003)discard;gl_FragColor=vec4(mix(vec3(.76+.12*(1.-r)),vec3(.4,.36,.3)*(.85+.2*(1.-r)),vDust)*effectLight,a);}`});
   this.mesh=new THREE.Points(this.geometry,this.material);this.mesh.name='Fumaca_dos_pneus';this.mesh.frustumCulled=false;this.mesh.renderOrder=2;
  }
  // How close to the camera a puff starts to clear (clearView in main.js follows the camera):

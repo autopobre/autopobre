@@ -55,7 +55,11 @@ export class RemoteCar {
   const s=this.state;if(!s)return {throttle:0,brake:0,left:0,right:0};
   this.age+=dt;const fade=Math.exp(-dt/SMOOTH);for(let i=0;i<4;i++)this.err[i]*=fade;
   const p=this.predict(),t=Math.min(this.age,PREDICT_AHEAD),tr=Math.min(this.age,.1);
+  // The first state or a jump (beyond SNAP) may land where the lap passes over itself (a viaduct over a street):
+  // the stretch is looked for at the state's height there (physics.js levelNearest), not the nearest in plan.
+  const jumped=!this.shown||Math.hypot(p[0]+this.err[0]-this.shown[0],p[1]+this.err[1]-this.shown[1])>SNAP;
   car.x=p[0]+this.err[0];car.y=p[1]+this.err[1];car.z=p[2]+this.err[2];car.heading=p[3]+this.err[3];
+  if(jumped&&car.nearest)car.index=car.nearest(car.x,car.y,true,null,car.z).i;
   car.pitch=s.pitch+s.pitchRate*tr;car.roll=s.roll+s.rollRate*tr;
   Object.assign(car,{vx:s.vx,vy:s.vy,vz:s.vz,yaw:s.yaw,pitchRate:s.pitchRate,rollRate:s.rollRate,steer:s.steer,steerVisual:s.steer,steerInput:s.steer,rpm:s.rpm,gear:s.gear,
    latAccel:s.latAccel,longAccel:s.longAccel,rearSlipSpeed:s.rearSlipSpeed,laps:s.laps,best:s.best});

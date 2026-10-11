@@ -28,7 +28,7 @@ export class SoundEffects {
   // Recorded effects: the starter cranking comes from car_trying_to_start.mp3 once it has
   // loaded; until then, or without the file, the synthesized loop stands in.
   this.samples={};this.loadSample('starter','./assets/audio/car_trying_to_start.mp3');
-  for(const [name,wave,hz,cut] of [['starter','sawtooth',95,700],['tow','sawtooth',45,550],['rival0','sawtooth',90,1100],['rival1','sawtooth',85,900],['crowd','noise',0,460],['gravel','noise',0,1400],['wind','noise',0,650],['scrape','noise',0,2700],['leak','noise',0,700],['kerb','square',60,520]]){
+  for(const [name,wave,hz,cut] of [['starter','sawtooth',95,700],['tow','sawtooth',45,550],['rival0','sawtooth',90,1100],['rival1','sawtooth',85,900],['crowd','noise',0,460],['gravel','noise',0,1400],['wind','noise',0,650],['scrape','noise',0,2700],['leak','noise',0,700],['kerb','square',60,520],['rain','noise',0,3400],['spray','noise',0,1100]]){
    const source=wave==='noise'?ctx.createBufferSource():ctx.createOscillator();
    if(wave==='noise'){source.buffer=noise;source.loop=true;}else{source.type=wave;source.frequency.value=hz;}
    const filter=ctx.createBiquadFilter();filter.type=wave==='noise'?'bandpass':'lowpass';filter.frequency.value=cut;filter.Q.value=.7;
@@ -141,6 +141,10 @@ export class SoundEffects {
   level('wind',scene.driving?Math.min(.075,speed*.0014):0);
   // The rush of air brightens and rises with speed (650 Hz standing, about 2.4 kHz flat out; 'Sensação de velocidade' Leve and up).
   this.loops.wind.filter.frequency.setTargetAtTime(scene.windSweep?650+Math.min(speed,62)**1.35*7:650,t,.12);
+  // Rain (weather.js): the downpour's hiss (duller, the roof drumming, from the cockpit) and the tyres' hiss on the wet
+  // track, rising with speed.
+  level('rain',(scene.rain??0)*.06);this.loops.rain.filter.frequency.setTargetAtTime(scene.camera==='cockpit'?1500:3400,t,.25);
+  level('spray',(scene.wet??0)*(scene.onRoad===false?.4:1)*Math.min(.09,speed*.0018));
   level('scrape',scene.tankDetached?Math.min(.15,speed*.012):0);
   level('leak',scene.tankDetached&&scene.fuel>0?.025:0);
   for(let i=0;i<2;i++){const r=scene.rivals?.[i];level('rival'+i,r?Math.max(0,1-r.distance/95)**2*.23:0,r?65+r.speed*4:65,r?.pan||0);}

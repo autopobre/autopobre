@@ -1,4 +1,4 @@
-import {TestCar,clamp,wrap,steerLimit,WHEELBASE,OPALA_BODY} from './physics.js?v=20260923-capotagem';
+import {TestCar,clamp,wrap,steerLimit,WHEELBASE,OPALA_BODY,sameLevel} from './physics.js?v=20260923-capotagem';
 import {RIVAL_ROSTER,ACE_NUMBER,AI_LEVELS,gridSlot,playerGridSlot} from './race-roster.js';
 import {pitGeometry,wallContact,pitLane,curveloPitFrame,CURVELO_PIT} from './pit-lane.js';
 import {trackFall} from './cliff-fall.js';
@@ -229,7 +229,7 @@ export class RaceField {
  // level (AI_LEVELS), also taken at the next reset; retirements: one to four cars break down (the
  // race option "Abandonos", on in the game, off by default here so seeded checks race full fields).
  // body: the rivals' body (physics.js OPALA_BODY, FUSCA_BODY in a Fusca race), taken at the next reset.
- constructor(data,{onStep,onReset,seed,ace=false,level='facil',retirements=false,roster=RIVAL_ROSTER,body=OPALA_BODY}={}){this.data=data;this.body=body;this.onStep=onStep;this.onReset=onReset;this.seed=seed;this.ace=ace;this.level=level;this.retirements=retirements;this.roster=roster;this.line=racingLine(data);this.route=pitRoute(data);this.time=0;this.collisions=0;this.cooldowns=new Map();this.reset();}
+ constructor(data,{onStep,onReset,seed,ace=false,level='facil',retirements=false,roster=RIVAL_ROSTER,body=OPALA_BODY,weatherGrip=1}={}){this.data=data;this.weatherGrip=weatherGrip;this.body=body;this.onStep=onStep;this.onReset=onReset;this.seed=seed;this.ace=ace;this.level=level;this.retirements=retirements;this.roster=roster;this.line=racingLine(data);this.route=pitRoute(data);this.time=0;this.collisions=0;this.cooldowns=new Map();this.reset();}
  // entrants: the roster numbers that race (null: all of them; [] a solo practice, [number] a 1x1). A
  // short field closes up to the front of the grid, the player in the next slot (playerGridSlot).
  // roster (taken here too): the drivers, RIVAL_ROSTER or, when the player races another team's car,
@@ -250,7 +250,7 @@ export class RaceField {
   this.rivals=roster.map((entry,i)=>{
    const slot=slots[i],style=ace(entry)?ACE_STYLE:styleForLevel(entry,level),progress=playerBack-gridSlot(slot).back;
    const L=this.data.meta.reconstructed_xy_m,s=((startS+progress)%L+L)%L;let index=this.data.samples.findIndex(p=>p[0]>=s);if(index<0)index=0;
-   const car=new TestCar(this.data).setBody(this.body);car.reset(index);car.awaitingStart=grid;car.engineScale=style.engineScale;if(style.heavy)car.contactMass=style.heavy;
+   const car=new TestCar(this.data).setBody(this.body);car.reset(index);car.awaitingStart=grid;car.engineScale=style.engineScale;car.weatherGrip=this.weatherGrip;if(style.heavy)car.contactMass=style.heavy;
    const lane=gridSlot(slot).lane;car.x+=car.surface.lx*lane;car.y+=car.surface.ly*lane;car.surface=car.sample(car.x,car.y);
    const rating=levelRating(entry,level);
    const rival={car,entry,rosterIndex:field.indexOf(entry),style,level,progress,start:progress,splits:[],lastS:car.surface.s,finished:false,finishTime:null,stun:0,
@@ -280,10 +280,11 @@ export class RaceField {
  step(player,dt,totalLaps=0){
   this.time+=dt;const impacts=[],commands=[],L=this.data.meta.reconstructed_xy_m,a=this.data.samples,n=a.length,line=this.line,ds=line.ds,t=this.time;
   const bodies=[player,...this.rivals.map(r=>r.car)],driverOf=new Map(this.rivals.map(r=>[r.car,r]));
-  // Slipstream: in another car's wake the air resistance drops (physics reads car.draft).
+  // Slipstream: in another car's wake the air resistance drops (physics reads car.draft). Not under a car on a
+  // viaduct overhead, nor over one on the street below (physics.js sameLevel).
   for(const c of bodies){
    c.draft=0;const fx=Math.cos(c.heading),fy=Math.sin(c.heading);if(c.vx*fx+c.vy*fy<15)continue;
-   for(const o of bodies){if(o===c)continue;const dx=o.x-c.x,dy=o.y-c.y,f=dx*fx+dy*fy,side=Math.abs(dy*fx-dx*fy);if(f>4&&f<35&&side<1.9)c.draft=Math.max(c.draft,.38*(1-f/35)*(1-side/3.8));}
+   for(const o of bodies){if(o===c)continue;const dx=o.x-c.x,dy=o.y-c.y,f=dx*fx+dy*fy,side=Math.abs(dy*fx-dx*fy);if(f>4&&f<35&&side<1.9&&sameLevel(c,o))c.draft=Math.max(c.draft,.38*(1-f/35)*(1-side/3.8));}
   }
   // One physics step for a rival, then its race distance and the flag. A car with nobody at the
   // wheel that gets there has run its race without its driver: AB for good (reclaim).
@@ -356,8 +357,9 @@ export class RaceField {
     if(gap<-4.4&&gap>-40&&(!behind||gap>behind.gap))behind={o,gap,od,v:ov};
     // Last-moment braking for a slower body right in front; contacts handle the rest.
     const forward=dx*fx+dy*fy,side=dy*fx-dx*fy,relative=speed-(o.vx*fx+o.vy*fy);
-    // (The ace only for a car he is closing on: one pulling away is no reason to lift.)
-    if(forward>0&&forward<6+Math.max(0,relative)*.8&&Math.abs(side)<2&&!(st.clean&&relative<.5))emergency=Math.max(emergency,clamp((7+relative-forward)/7,.2,1));
+    // (The ace only for a car he is closing on: one pulling away is no reason to lift. Nor for one on another
+    // level where the lap passes over itself: physics.js sameLevel.)
+    if(forward>0&&forward<6+Math.max(0,relative)*.8&&Math.abs(side)<2&&!(st.clean&&relative<.5)&&sameLevel(c,o))emergency=Math.max(emergency,clamp((7+relative-forward)/7,.2,1));
    }
    const corner=line.cornerAt[i],bend=line.corners[corner],toCorner=line.cornerDist[i];
    const attack=!!ahead&&ahead.gap<Math.max(12,along*1.1),pressured=!!behind&&behind.gap>-Math.max(8,along*.5);
@@ -379,7 +381,7 @@ export class RaceField {
    // outside of the corner ahead leaves him a margin instead (the car drifts out as it gets there).
    const outside=st.clean&&r.mode==='pass'&&!!bend&&r.passSide===-bend.dir,pushGrip=st.clean?(outside?0:.006):.02,pushBrake=st.clean?.025:.05;
    // The style's grip and braking are an Opala's: a car with stickier tyres (physics.js mechanics) corners and brakes harder.
-   const tyres=c.mechanics?.grip??1,grip=(m?m.grip:st.cornerGrip*r.form*(1+wobble)*(1+pushGrip*push)*(outside?.97:1))*tyres,braking=(m?m.brake:st.braking*(1+1.5*wobble)*(1+pushBrake*push)*(st.clean?r.pace:1))*tyres;
+   const tyres=(c.mechanics?.grip??1)*(c.weatherGrip??1),grip=(m?m.grip:st.cornerGrip*r.form*(1+wobble)*(1+pushGrip*push)*(outside?.97:1))*tyres,braking=(m?m.brake:st.braking*(1+1.5*wobble)*(1+pushBrake*push)*(st.clean?r.pace:1))*tyres;
    // Bend of the planned path at sample k. A parallel lane bends tighter on the inside
    // (curvature / (1 - curvature * offset)); banking helps.
    const bendAt=k=>{const cl=line.centre[k],mine=r.lineUse*line.curve[(k-r.apex+n)%n]+(1-r.lineUse)*cl;return mine+(cl/Math.max(.5,1-cl*fit(r.lane,k))-mine)*r.blend;};
@@ -522,7 +524,7 @@ export class RaceField {
    const reach=1+.12*look;aim=clamp(aim,d-reach,d+reach);
    const p=a[k],dx=p[1]+p[9]*aim-c.x,dy=p[2]+p[10]*aim-c.y,alpha=wrap(Math.atan2(dy,dx)-c.heading),away=Math.abs(alpha)>Math.PI/2;
    // After a spin the path can lie behind: turn round on full lock, slowly.
-   const turn=away?Math.sign(alpha):clamp(Math.atan2(2*WHEELBASE*Math.sin(alpha),Math.hypot(dx,dy))/steerLimit(speed,c.mechanics?.grip),-1,1);
+   const turn=away?Math.sign(alpha):clamp(Math.atan2(2*WHEELBASE*Math.sin(alpha),Math.hypot(dx,dy))/steerLimit(speed,(c.mechanics?.grip??1)*(c.weatherGrip??1)),-1,1);
    if(away)target=Math.min(target,6);
    // Off the asphalt the ace eases off until the tyres are back on it.
    if(st.clean&&!here.onRoad&&!here.pit)target=Math.min(target,Math.max(12,speed-1));
@@ -632,7 +634,7 @@ export class RaceField {
  pursuit(c,look,aim,reach){
   const a=this.data.samples,here=c.surface,p=a[(c.index+Math.round(look/this.line.ds))%a.length],to=clamp(aim(p),here.d-reach,here.d+reach);
   const dx=p[1]+p[9]*to-c.x,dy=p[2]+p[10]*to-c.y,alpha=wrap(Math.atan2(dy,dx)-c.heading);
-  return clamp(Math.atan2(2*WHEELBASE*Math.sin(alpha),Math.hypot(dx,dy))/steerLimit(Math.hypot(c.vx,c.vy),c.mechanics?.grip),-1,1);
+  return clamp(Math.atan2(2*WHEELBASE*Math.sin(alpha),Math.hypot(dx,dy))/steerLimit(Math.hypot(c.vx,c.vy),(c.mechanics?.grip??1)*(c.weatherGrip??1)),-1,1);
  }
  // Multiplayer (multiplayer.js, the host's field): the driver of a car raced over the network is gone
  // mid-race and no bot takes the wheel: nobody drives it (stopInput), and at the flag it is AB (why:
@@ -676,10 +678,10 @@ export class RaceField {
   // Speed: bends and the limit zone ahead through a gentle braking curve, then the stop.
   let target=Math.sqrt(2*2.2*Math.max(0,left-.3));
   for(let k=P.k;k<Math.min(st.length,P.k+60);k++){const s=st[k],v=R.limit&&s.u>=R.limit.from-2&&s.u<=R.limit.to?Math.min(s.v,PIT_LIMIT):s.v;target=Math.min(target,Math.sqrt(v*v+2*3.5*Math.max(0,s.u-u-speed*.1)));}
-  for(const o of bodies){if(o===c)continue;const dx=o.x-c.x,dy=o.y-c.y,forward=dx*fx+dy*fy,side=dy*fx-dx*fy;if(forward>0&&forward<40&&Math.abs(side)<2.3)target=Math.min(target,Math.max(0,o.vx*fx+o.vy*fy)+Math.sqrt(2*3*Math.max(0,forward-6.3)));}
+  for(const o of bodies){if(o===c)continue;const dx=o.x-c.x,dy=o.y-c.y,forward=dx*fx+dy*fy,side=dy*fx-dx*fy;if(forward>0&&forward<40&&Math.abs(side)<2.3&&sameLevel(c,o))target=Math.min(target,Math.max(0,o.vx*fx+o.vy*fy)+Math.sqrt(2*3*Math.max(0,forward-6.3)));}
   if(speed<.5&&(left<1.5||target<.3)){P.parked=left<1.5;return hold;}
   const look=u+4+speed*.3,p=R.at(look),t=clamp((look-slot.u+12)/10,0,1),lane=p.fast+(p.work-p.fast)*t*t*(3-2*t),tx=p.x-p.ty*lane,ty=p.y+p.tx*lane,alpha=wrap(Math.atan2(ty-c.y,tx-c.x)-c.heading);
-  const turn=clamp(Math.atan2(2*WHEELBASE*Math.sin(alpha),Math.hypot(tx-c.x,ty-c.y))/steerLimit(speed,c.mechanics?.grip),-1,1);
+  const turn=clamp(Math.atan2(2*WHEELBASE*Math.sin(alpha),Math.hypot(tx-c.x,ty-c.y))/steerLimit(speed,(c.mechanics?.grip??1)*(c.weatherGrip??1)),-1,1);
   const input={left:Math.max(0,turn),right:Math.max(0,-turn),throttle:clamp((target-speed)*.6,0,1),brake:clamp((speed-target)*.7,0,1),reverse:0,handbrake:0};
   // Wedged against a wall: back out with the wheels turned, then go on.
   r.blocked=speed<1.2&&target>3?(r.blocked??0)+dt:0;if(r.blocked>2.5){r.recover=1.2;r.blocked=0;}

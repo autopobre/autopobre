@@ -1,5 +1,5 @@
 // Depois da bandeirada: volta de desaceleração (dando passagem a quem ainda corre), entrada no
-// pit lane e fila na faixa de trabalho, com o Box 99 livre. Interlagos, Curvelo, Brasília e Goiânia (boxes
+// pit lane e fila na faixa de trabalho, com o Box 99 livre. Interlagos, Curvelo, Brasília, Goiânia e Minhocão (boxes
 // à direita dos carros: o bloco do pit vem da saída para a entrada, pit.reversed).
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -12,8 +12,9 @@ const interlagos=JSON.parse(fs.readFileSync(new URL('../dados/pista.json',import
 const curvelo=createCurveloData();curvelo.meta.id='curvelo';
 const brasilia=JSON.parse(fs.readFileSync(new URL('../dados/pista_brasilia.json',import.meta.url)));brasilia.meta.id='brasilia';
 const goiania=JSON.parse(fs.readFileSync(new URL('../dados/pista_goiania.json',import.meta.url)));goiania.meta.id='goiania';
+const minhocao=JSON.parse(fs.readFileSync(new URL('../dados/pista_minhocao.json',import.meta.url)));minhocao.meta.id='minhocao';
 const report={};
-for(const [name,data] of [['interlagos',interlagos],['curvelo',curvelo],['brasilia',brasilia],['goiania',goiania]]){
+for(const [name,data] of [['interlagos',interlagos],['curvelo',curvelo],['brasilia',brasilia],['goiania',goiania],['minhocao',minhocao]]){
  const R=pitRoute(data),geo=pitGeometry(data),frame=data.pit??curveloPitFrame(data),u0=data.pit?0:150,b=frame.box99;
  // Box 99 service box (lane distance u, offset d to the cars' left) and its car pose; on a reversed
  // block the stations run against the cars, so u counts from the lane's far end and d turns round.

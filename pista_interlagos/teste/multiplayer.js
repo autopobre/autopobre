@@ -193,10 +193,12 @@ export class Multiplayer {
  plan(immersive){
   this.phase='lobby';this.holding=false;this.finishedAt=null;this.autopilotOn=false;this.cut=null;this.reclaiming=null;this.lost=false;this.pause=null;this.raced=new Set();this.clearStops();
   const room=this.room,field=immersive.field;
-  this.race=room.role==='host'?this.game.fullGrid()?room.planRace({circuit:this.game.session().circuit,laps:immersive.laps,ace:!!field.ace,level:field.level,retirements:field.retirements!==false,ghosts:this.params.ghosts}):null
+  this.race=room.role==='host'?this.game.fullGrid()?room.planRace({circuit:this.game.session().circuit,laps:immersive.laps,ace:!!field.ace,level:field.level,retirements:field.retirements!==false,ghosts:this.params.ghosts,...this.game.weather?.()}):null
    :this.hostRace();
   field.seed=this.race?.seed;
   if(this.race){immersive.laps=this.race.laps;field.ace=this.race.ace;if(this.race.level)field.level=this.race.level;field.retirements=this.race.retirements;}
+  // Everyone races the host's weather (the same grip for all); a guest's own choice stays saved for its own races.
+  this.game.setWeather?.(room.role!=='host'&&this.race?.time?{time:this.race.time,rain:this.race.rain??'seco'}:null);
  }
  // After the field resets (same seed, same grid in every window): who drives which car. The field's
  // roster and the 99's model in the host's car's seat are main.js's (seatCar, from gridCar).
@@ -459,8 +461,8 @@ export class Multiplayer {
   car.syncLaps(s.progress<lead?-1:Math.floor((s.progress-lead)/L),this.cut.clock);
   Object.assign(car,{x:s.x,y:s.y,heading:s.heading,vx:s.vx,vy:s.vy,yaw:s.yaw,excursion:null});
   // (its stretch of track found from where it is now: the one it left may be far away, and another
-  // stretch near there on the ground)
-  car.index=car.nearest(s.x,s.y,true).i;car.settle();
+  // stretch near there on the ground; where the lap passes over itself, the one at the state's height)
+  car.relocate(s.x,s.y,s.z);
   immersive.freePlayerProgress=s.progress;immersive.freeLastS=car.surface.s;Object.assign(field.playerRun,{progress:s.progress,lastS:null});
  }
  // The race's host: a guest's car whose states stopped coming mid-race (a line dead without a word, a

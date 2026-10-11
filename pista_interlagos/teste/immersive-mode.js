@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {CIRCUITS,circuitId} from './circuits.js';
 import {RIVAL_ROSTER,GRID_SIZE} from './race-roster.js';
 import {RaceField,lapTravel} from './race-field.js';
-import {recognitionInput} from './physics.js';
+import {recognitionInput,sameLevel} from './physics.js';
 import {CrashParts} from './crash-parts.js';
 import {ImmersiveState,FANS,JOKES,BLAZER_COST,COSTS,START,startCost} from './immersive-state.js';
 import {SWITCH_TILT} from './cockpit-instruments.js';
@@ -494,7 +494,8 @@ export class ImmersiveMode {
   this.contactCooldown-=dt;this.debrisTimer-=dt;
   for(const rival of this.rivals){
    if(rival.finished)continue;const p={x:rival.car.x,y:rival.car.surface.z,z:-rival.car.y,heading:rival.car.heading},dx=p.x-c.x,dy=-p.z-c.y,forward=dx*Math.cos(c.heading)+dy*Math.sin(c.heading),side=-dx*Math.sin(c.heading)+dy*Math.cos(c.heading);
-   if(!this.projectile&&this.debrisTimer<=0&&forward>7&&forward<34&&Math.abs(side)<2.1&&Math.hypot(c.vx,c.vy)>9){
+   // (Never from a car on the viaduct overhead or the street below: physics.js sameLevel.)
+   if(!this.projectile&&this.debrisTimer<=0&&forward>7&&forward<34&&Math.abs(side)<2.1&&Math.hypot(c.vx,c.vy)>9&&sameLevel(c,rival.car)){
     s.emitSound('debrisFly',{pan:clamp(side/3,-1,1)});this.projectile={age:0,duration:1.25,start:new THREE.Vector3(p.x-Math.cos(p.heading)*2,p.y+.8,p.z+Math.sin(p.heading)*2),end:new THREE.Vector3(c.x+c.vx*1.25+Math.cos(c.heading)*.45,c.surface.z+1.1,-c.y-c.vy*1.25-Math.sin(c.heading)*.45)};
     s.warn('Peça voando do carro da frente! Mude de linha.');this.debrisTimer=8+Math.random()*5;
    }

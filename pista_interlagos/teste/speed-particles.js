@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {EFFECT_LIGHT} from './weather.js';
 import {kerbSound} from './kerb-contact.js';
 
 // The Gráficos tab's 'Sensação de velocidade' (speedEffects) for the air and the ground round the
@@ -67,7 +68,7 @@ export class AirMotes {
   this.geometry.setAttribute('seed',new THREE.InstancedBufferAttribute(seeds,3));this.geometry.setAttribute('look',new THREE.InstancedBufferAttribute(looks,4));this.geometry.setAttribute('tint',new THREE.InstancedBufferAttribute(tints,4));
   this.geometry.instanceCount=0;this.capacity=capacity;
   this.uniforms={moteCentre:{value:new THREE.Vector3()},moteBox:{value:new THREE.Vector3(...MOTE_BOX)},moteDrift:{value:new THREE.Vector3()},moteStreak:{value:new THREE.Vector3()},
-   moteViewport:{value:new THREE.Vector2(1920,1080)},moteTime:{value:0},moteNear:{value:1.4},moteFar:{value:4},moteAlpha:{value:1},moteEye:{value:new THREE.Vector2(...MOTE_EYE)}};
+   moteViewport:{value:new THREE.Vector2(1920,1080)},moteTime:{value:0},moteNear:{value:1.4},moteFar:{value:4},moteAlpha:{value:1},moteEye:{value:new THREE.Vector2(...MOTE_EYE)},effectLight:EFFECT_LIGHT};
   // Dust drawn over the picture (its own colour at its coverage), but the HDR target's alpha (its occlusion
   // mask, cinematic.js) is left as it is: no speck ever writes the mask.
   this.material=new THREE.ShaderMaterial({name:'Ar_em_movimento',transparent:true,depthWrite:false,blending:THREE.CustomBlending,
@@ -105,8 +106,9 @@ export class AirMotes {
      gl_Position=head.z<-.05&&a>.003?vec4(pixel/screen*clip.w,clip.z,clip.w):vec4(2.,2.,2.,1.);
     }`,
    // A dense head and a tail that thins out behind it.
-   fragmentShader:`varying float vAlpha;varying vec2 vQuad;varying vec3 vTint;
-    void main(){float across=1.-vQuad.y*vQuad.y,a=vAlpha*across*across*mix(1.,.3,smoothstep(0.,1.,vQuad.x));if(a<.002)discard;gl_FragColor=vec4(vTint,a);}`});
+   // effectLight: the weather's light on them (weather.js), so specks do not glow at night.
+   fragmentShader:`varying float vAlpha;varying vec2 vQuad;varying vec3 vTint;uniform float effectLight;
+    void main(){float across=1.-vQuad.y*vQuad.y,a=vAlpha*across*across*mix(1.,.3,smoothstep(0.,1.,vQuad.x));if(a<.002)discard;gl_FragColor=vec4(vTint*effectLight,a);}`});
   this.mesh=new THREE.Mesh(this.geometry,this.material);this.mesh.name='Ar_em_movimento';this.mesh.frustumCulled=false;this.mesh.renderOrder=3;this.mesh.visible=false;
   // Only the picture on screen (cinematic.js marks its HDR target isMainView): mirrors and
   // reflection probes would wrap the box round the wrong camera.
@@ -162,15 +164,16 @@ export function createSpeedEffects({smoke=null,level='off'}={}){
  // The ground under the camera, from the camera's own last station (a short search), or the whole lap when
  // it jumps (TV towers, a watched rival far from the player's car, the opening shots): the player's
  // station as the hint gave the road beside that car, specks floating in the air or gone.
- const groundAt=(car,x,y)=>{
+ // (z, the camera's height, picks the level where the lap passes over itself: physics.js levelNearest.)
+ const groundAt=(car,x,y,z)=>{
   if(groundIndex!==null){const q=car.nearest(x,y,false,groundIndex),n=car.n;if(q.i!==(groundIndex-4+n)%n&&q.i!==(groundIndex+4)%n){groundIndex=q.i;return car.sample(x,y,q.i).z;}}
-  groundIndex=car.nearest(x,y,true).i;return car.sample(x,y,groundIndex).z;
+  groundIndex=car.nearest(x,y,true,null,z).i;return car.sample(x,y,groundIndex).z;
  };
  const fx={root,motes,profile:speedEffects(level),
   setLevel(next){value=Object.hasOwn(SPEED_EFFECTS,next)?next:'off';fx.profile=speedEffects(value);motes.setCount(fx.profile.motes);if(smoke)smoke.debris=fx.profile.debris;},
   // cars: the player's TestCar first, then the rivals'. landscape: for the verge grass.
   update(dt,camera,{cars=[],landscape=null,inside=false,viewport}={}){
-   const player=cars[0],ground=motes.count&&player?.sample?groundAt(player,camera.position.x,-camera.position.z):undefined;
+   const player=cars[0],ground=motes.count&&player?.sample?groundAt(player,camera.position.x,-camera.position.z,camera.position.y):undefined;
    motes.update(dt,camera,{inside,viewport,ground});
    if(smoke&&fx.profile.rivalDust&&dt>0)for(let i=1;i<cars.length;i++){const c=cars[i];if(c&&Math.hypot(c.x-camera.position.x,-c.y-camera.position.z)<170)smoke.rival(c,dt);}
    const pushing=fx.profile.grassWake?wakeCars(cars,camera):NONE;wake=pushing.length;landscape?.setCars?.(pushing);

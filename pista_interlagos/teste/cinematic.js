@@ -528,6 +528,9 @@ export function createCinematic(renderer,{mobile=false,level=mobile?'lite':'full
    await compileInSlices(renderer,scene,camera,()=>level==='off'?null:hdr);
   },
   setSun(direction){compositeUniforms.sunDir.value.copy(direction).normalize();},
+  // The weather's changes to the look (weather.js profile.look): everything else back to LOOK. The eye adapts
+  // afresh, so a race at night does not open on the day's exposure.
+  setLook(patch={}){for(const key of Object.keys(look))if(!Object.hasOwn(LOOK,key))delete look[key];Object.assign(look,LOOK,patch);adaptReset=true;return look;},
   dispose(){dispose();for(const m of [aoMaterial,blurMaterial,prefilter,down,up,tent,sunMaterial,lumMaterial,adaptMaterial,...composites.values()])m.dispose();triangle.dispose();},
   // Reads the adapted mean luminance back from the GPU: for tests and tuning only.
   adaptation(){if(!adapt[0])return null;const out=new Uint16Array(4);renderer.readRenderTargetPixels(adapt[0],0,0,1,1,out);const mean=Math.exp(THREE.DataUtils.fromHalfFloat(out[0]));

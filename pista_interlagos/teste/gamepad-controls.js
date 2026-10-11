@@ -12,7 +12,7 @@ export const BUTTON_KEYS=Object.freeze({
  4:['KeyI'],           // LB / L1: the starter, held
  5:['KeyC'],           // RB / R1: next camera (on foot: crouch)
  8:['KeyR'],           // View / Share: reposition, or call the tow
- 10:['ShiftLeft'],     // LS / L3: run on foot, held
+ 10:['ShiftLeft','KeyH'], // LS / L3: run on foot, held; in the car the headlights
  11:['KeyB'],          // RS / R3: look back, held
  12:['Digit2','KeyG'],13:['KeyN'],14:['Digit1'],15:['Digit3'] // D-pad: answers 1 2 3 on foot; ↑ in the car the ghost lap; ↓ the next driver in the recon lap
 });

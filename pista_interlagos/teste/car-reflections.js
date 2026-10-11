@@ -13,14 +13,18 @@ const BAKE_DELAY=3;   // race frames before the grid's picture is taken: the tra
 // What a capture leaves out, by name among the scene's and the landscape's children: the crowd (some
 // 800 thousand triangles drawn whole in every cube face, a few coloured pixels in the reflection; the
 // stands stay), skid marks, the lake's splashes, falling leaves and the verge's grass tufts.
-const CAPTURE_SKIP=new Set(['Torcida','Marcas_de_derrapagem','Respingos_do_lago','Folhas_caindo','Vegetacao_das_margens']);
+const CAPTURE_SKIP=new Set(['Torcida','Marcas_de_derrapagem','Respingos_do_lago','Folhas_caindo','Vegetacao_das_margens','Chuva']);
 export class CarReflections {
  // cinematic: the film look (cinematic.js), whose multisampling sets how smooth the coat may be.
  constructor(renderer,sky,cinematic=null){
   this.renderer=renderer;this.sky=sky;this.cinematic=cinematic;this.key='ceu';this.level=REFLECTION_LEVELS.ceu;
   this.bakeTarget=null;this.bakeWanted=0;this.cube=null;this.cubeCamera=null;this.probePmrem=null;this.probeTarget=null;this.face=0;this.fresh=true;this.tick=0;
-  this.stats={bakes:0,bakeMs:0,updates:0,faces:0,frames:0,lastFaces:0};this.hidden=[];this.pending=null;
+  this.stats={bakes:0,bakeMs:0,updates:0,faces:0,frames:0,lastFaces:0};this.hidden=[];this.pending=null;this.skyOnly=false;
  }
+ // At night (weather.js) the cars wear the night sky's map only: a capture of the track there is the asphalt in the
+ // headlights' pools, and every black paint came out pale. True when that changed (another map size: main.js
+ // precompiles); the grid's picture and the probe wait until the day comes back.
+ setSkyOnly(value){value=!!value;if(value===this.skyOnly)return false;this.skyOnly=value;if(!value&&this.level.source==='bake'&&!this.bakeTarget)this.bakeWanted=BAKE_DELAY;if(!value&&this.cube)this.fresh=true;setCarEnvironment(this.environment(true),'corrida');return true;}
  // The middle of the grid (about 80 m before the line), 1.2 m over the asphalt: next to the main
  // grandstand and the pits on the circuits here. World frame (x, height, -y).
  static gridPoint(data){
@@ -64,6 +68,7 @@ export class CarReflections {
  // The map the cars wear now. onTrack false (the story's paddock): the grid's picture would be the
  // wrong place, the sky's is neutral; the probe is where the car is, so it stays.
  environment(onTrack=true){
+  if(this.skyOnly)return this.sky.carEnvironment;
   if(this.level.source==='probe'&&this.probeTarget)return this.probeTarget.texture;
   if(this.level.source==='bake'&&onTrack&&this.bakeTarget)return this.bakeTarget.texture;
   return this.sky.carEnvironment;
@@ -78,7 +83,8 @@ export class CarReflections {
   const list=this.hidden;list.length=0;const set=(o,v)=>{if(o&&o.visible!==v){list.push(o,o.visible);o.visible=v;}};
   for(const o of hide)set(o,false);
   for(const o of scene.children){if(CAPTURE_SKIP.has(o.name))set(o,false);else if(o.name==='Paisagem')for(const c of o.children)if(CAPTURE_SKIP.has(c.name))set(c,false);}
-  for(const r of rivals??[]){if(!r.visible)continue;const u=r.userData;set(u.nameLabel,false);
+  // The rivals' headlight glare too (headlights.js): ten times white, blurred by the prefilter it greyed every paint.
+  for(const r of rivals??[]){if(!r.visible)continue;const u=r.userData;set(u.nameLabel,false);set(u.headlights,false);
    if(!lod)set(r,false);else if(u.far&&u.detail){set(u.detail,false);set(u.far,true);}}
  }
  restore(){const list=this.hidden;for(let i=list.length-2;i>=0;i-=2)list[i].visible=list[i+1];list.length=0;}
@@ -103,9 +109,9 @@ export class CarReflections {
   if((this.tick++&31)===0)setCarSamples(this.samples());
   // While the captures' programs compile (compile()) the bake waits and the probe holds its last picture.
   const waiting=!!this.pending;
-  if(!waiting&&this.bakeWanted>0&&data&&--this.bakeWanted===0)this.bake(scene,data,{hide,rivals});
+  if(!waiting&&!this.skyOnly&&this.bakeWanted>0&&data&&--this.bakeWanted===0)this.bake(scene,data,{hide,rivals});
   setCarEnvironment(this.environment(onTrack),'corrida');
-  if(waiting||this.level.source!=='probe'||!this.cube)return;
+  if(waiting||this.skyOnly||this.level.source!=='probe'||!this.cube)return;
   const r=this.renderer,fresh=this.fresh,faces=fresh?6:this.level.faces,previous=r.getRenderTarget(),shadows=r.shadowMap.autoUpdate;this.fresh=false;
   this.cubeCamera.position.copy(center);this.cubeCamera.updateMatrixWorld(true);
   // The sun's shadow map is the last main pass's; a capture before any exists (the race's first

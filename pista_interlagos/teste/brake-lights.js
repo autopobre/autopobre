@@ -11,6 +11,9 @@ export const LAMP_Y=.6835;
 // The distant rival (immersive-visuals farProxy) carries its lamps higher and further back.
 const FAR_OFFSET=Object.freeze([-.215,.27,0]);
 export const BRAKE_ON=.05;
+// Tail lights (weather.js: dusk, night, rain): the lamps glow dimly all the time and brighten under braking. on: the
+// rivals' (main.js applyWeather); the player's car follows its own light switch (headlights.js), set(brake, lit).
+export const TAIL_LIGHTS={on:false};
 // The lamps' lens (car-finish.js 'lens': ring normals) needs each lamp mapped on its own: the GLB's lamp mesh holds
 // all four with no usable UVs. On the template as loaded (main.js setLivery), so every clone shares them: each
 // vertex, in the car frame, takes the nearest lamp's box (u across the car, v up).
@@ -44,18 +47,22 @@ function parts(){
  shared={lens:merge(lens),halo:merge(halo),
   // Brighter than white on purpose: the film look's bloom (cinematic.js) makes them glow.
   lensMaterial:new THREE.MeshBasicMaterial({name:'Luz_de_freio',map:lensMap,color:new THREE.Color().setRGB(6,.16,.07)}),
-  haloMaterial:new THREE.MeshBasicMaterial({name:'Luz_de_freio_halo',map:glow,color:new THREE.Color().setRGB(1.6,.06,.03),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending})};
+  haloMaterial:new THREE.MeshBasicMaterial({name:'Luz_de_freio_halo',map:glow,color:new THREE.Color().setRGB(1.6,.06,.03),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}),
+  // The tail lights alone: the same lamps about a fifth as bright.
+  tailMaterial:new THREE.MeshBasicMaterial({name:'Lanterna_acesa',map:lensMap,color:new THREE.Color().setRGB(1.3,.035,.016)}),
+  tailHaloMaterial:new THREE.MeshBasicMaterial({name:'Lanterna_acesa_halo',map:glow,color:new THREE.Color().setRGB(.32,.012,.006),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending})};
  return shared;
 }
 // The geometries and materials every car's lamps share (kept when one car is thrown away).
-export const sharedBrakeLights=()=>shared?[shared.lens,shared.halo,shared.lensMaterial,shared.haloMaterial]:[];
+export const sharedBrakeLights=()=>shared?[shared.lens,shared.halo,shared.lensMaterial,shared.haloMaterial,shared.tailMaterial,shared.tailHaloMaterial]:[];
 // A car's brake lights; far: placed for the distant rival's simple body (true: the Opala's, or the
-// offset from the Opala's lamps for another body, fusca.js FUSCA_PROFILE.lamps). set(brake) shows them.
+// offset from the Opala's lamps for another body, fusca.js FUSCA_PROFILE.lamps). set(brake, lit) shows them: bright
+// while braking, dim while the tail lights are on (lit, the rivals' TAIL_LIGHTS.on unless given).
 export function createBrakeLights({far=false}={}){
- const {lens,halo,lensMaterial,haloMaterial}=parts(),group=new THREE.Group();group.name='Luz_de_freio';
+ const {lens,halo,lensMaterial,haloMaterial,tailMaterial,tailHaloMaterial}=parts(),group=new THREE.Group();group.name='Luz_de_freio';
  const a=new THREE.Mesh(lens,lensMaterial),b=new THREE.Mesh(halo,haloMaterial);b.renderOrder=3;
  for(const m of [a,b]){m.castShadow=m.receiveShadow=false;group.add(m);}
  if(far)group.position.set(...(far===true?FAR_OFFSET:far));
- group.visible=false;group.userData.set=brake=>{group.visible=brake>BRAKE_ON;};
+ group.visible=false;group.userData.set=(brake,lit=TAIL_LIGHTS.on)=>{const braking=brake>BRAKE_ON;group.visible=braking||lit;a.material=braking?lensMaterial:tailMaterial;b.material=braking?haloMaterial:tailHaloMaterial;};
  return group;
 }

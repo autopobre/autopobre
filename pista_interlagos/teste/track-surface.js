@@ -7,7 +7,7 @@ import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {canvasTexture} from './pit-textures.js';
 import {CIRCUITS} from './circuits.js';
 import {circuitSponsors,circuitSeed,seeded,paintBoard,paintWelcome} from './sponsors.js';
-import {createStreetWalls} from './street-walls.js';
+import {createStreetWalls,barrierLines,barrierAt} from './street-walls.js';
 
 // Compile away the expensive near-surface detail on modest GPUs. The same road and
 // collision surface are used by every preset; changing this does not reload the lap.
@@ -21,6 +21,11 @@ const trackQuality=quality=>Object.hasOwn(TRACK_DETAIL,quality)?quality:'alto';
 
 // Billboards stand this far (metres) from roads, garages and the grandstands' margin.
 export const BOARD_CLEARANCE=6.5;
+// Rain (weather.js wetness, 0 dry .. 1 soaked): one uniform for the asphalt of every circuit, its pit-lane copies and
+// the kerbs. Wet stones darken and go glossy; standing water gathers in the dips and at the shoulders as near
+// mirrors. main.js sets it through the surface's setWetness.
+// roadRain: how hard it falls (weather.js drops) and roadTime its clock, for the rings the drops make on the puddles.
+export const ROAD_WEATHER={roadWetness:{value:0},roadRain:{value:0},roadTime:{value:0}};
 // Sixteen slots for boards facing the approaching drivers, alternating sides. Each board
 // keeps off every road (the other straights too), out of the garages, out of the
 // grandstands' view and away from the other boards: it tries the other side, then slides
@@ -29,8 +34,9 @@ export const BOARD_CLEARANCE=6.5;
 // (billboardFormat: the 14.4 m one, or any on a bend) would reach over a rail toward the cars.
 export function billboardSpots(data){
  const length=data.meta.reconstructed_xy_m,bands=sceneryBands(data),spots=[],shifts=[0];
- // A street circuit (Floripa) looks further: its line is on a bridge, and the city leaves few gaps behind the walls.
- for(let d=12;d<=(data.meta.street?600:150);d+=12)shifts.push(d,-d);
+ // A street circuit (Floripa) looks further: its line is on a bridge, and the city leaves few gaps behind the walls (and
+ // the Minhocão's 1.3 km on its deck and in its tunnel have none).
+ for(let d=12;d<=(data.meta.street?900:150);d+=12)shifts.push(d,-d);
  for(let slot=0;slot<16;slot++){
   const start=slot===0?length-30:slot===1?70:230+(slot-2)*(length-480)/14,f=billboardFormat(data,{slot});
   search:for(const shift of shifts)for(const side of [slot%2?1:-1,slot%2?-1:1]){
@@ -234,9 +240,10 @@ function curbTextures(colors=['#e2b22e','#1a7034']){
 // at its ends, with rubber on the track side (heavier where the track bends: kerbData.x) and dust on
 // the outer side that change along the lap, so the 2.4 m tile never repeats.
 function kerbPatch(shader){
+ Object.assign(shader.uniforms,ROAD_WEATHER);
  shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute vec2 kerbData;\nvarying vec2 vKerbData;').replace('#include <begin_vertex>','#include <begin_vertex>\nvKerbData=kerbData;');
  shader.fragmentShader=shader.fragmentShader.replace('#include <common>',`#include <common>
-varying vec2 vKerbData;
+varying vec2 vKerbData;uniform float roadWetness;
 float kerbHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float kerbNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(kerbHash(i),kerbHash(i+vec2(1,0)),f.x),mix(kerbHash(i+vec2(0,1)),kerbHash(i+vec2(1,1)),f.x),f.y);}`).replace('#include <map_fragment>',`
 float kerbBlock=floor(vMapUv.y*2.0),kerbAlong=fract(vMapUv.y*2.0);
@@ -260,8 +267,11 @@ float kerbRubber=(1.0-smoothstep(.05,.6,vMapUv.x))*(.2+.8*vKerbData.x)*(.35+.65*
 diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.03,.028,.026),clamp(kerbRubber*.7,0.0,.75));
 float kerbDust=smoothstep(.5,1.0,vMapUv.x)*smoothstep(.3,.8,kerbNoise(vec2(kp.y*.15,vKerbData.y+5.1)));
 diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.7+vec3(.06,.05,.035),kerbDust*.45);
+// Wet paint: a little darker and glassy (wet kerbs are as slippery as they look).
+diffuseColor.rgb*=1.0-.3*roadWetness;
 `).replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
-roughnessFactor=clamp(roughnessFactor-kerbRubber*.18+kerbWear*.06+kerbDust*.05,.35,1.0);`);
+roughnessFactor=clamp(roughnessFactor-kerbRubber*.18+kerbWear*.06+kerbDust*.05,.35,1.0);
+roughnessFactor=mix(roughnessFactor,.12,roadWetness);`);
  carShadowPatch(shader);
 }
 
@@ -271,7 +281,7 @@ export function createCurbs(data,{quality='alto'}={}){
  const maps=curbTextures(data.meta.kerb_colors),material=new THREE.MeshStandardMaterial({name:'Zebra_pintada',map:maps.map,normalMap:maps.normalMap,roughnessMap:maps.roughnessMap,normalScale:new THREE.Vector2(.6,.6),roughness:.88,metalness:0,side:THREE.DoubleSide});
  material.detailNormalMap=maps.normalMap;material.detailRoughnessMap=maps.roughnessMap;
  // Each block weathered on its own; the cars' crisp shadows fall on the kerbs too (car-shadow.js).
- material.onBeforeCompile=kerbPatch;material.customProgramCacheKey=()=>'kerb-blocks-car-shadow-v2';
+ material.onBeforeCompile=kerbPatch;material.customProgramCacheKey=()=>'kerb-blocks-car-shadow-v3';
  root.userData.setQuality=value=>{
   const detail=TRACK_DETAIL[trackQuality(value)];
   const normal=detail.shader?maps.normalMap:null;
@@ -311,7 +321,7 @@ export function createGuardrails(data,{quality='alto'}={}){
  // A street circuit (Floripa) is closed by concrete blocks and catch fences instead of steel rails.
  if(data.meta.barrier==='street')return createStreetWalls(data,{quality});
  const root=new THREE.Group(),closed=data.meta.id==='curvelo';root.name=closed?'Guardrail_circuito_completo':'Guardrails_trechos_Interlagos';
- const probe=new TestCar(data),nodes=data.samples.filter((_,i)=>i%2===0),positions=[],uvs=[],indices=[],postPoints=[],reflectorPoints=[],a=data.samples,L=data.meta.reconstructed_xy_m;
+ const positions=[],uvs=[],indices=[],postPoints=[],reflectorPoints=[],L=data.meta.reconstructed_xy_m;
  const profile=[[.34,0],[.44,.10],[.56,0],[.68,.10],[.8,0],[.91,.06]];
  const metal=new THREE.MeshStandardMaterial({name:'Aco_galvanizado',color:0xaab6c0,metalness:.72,roughness:.37,side:THREE.DoubleSide});
  const railMetal=metal.clone();railMetal.name='Guardrail_galvanizado';
@@ -335,27 +345,24 @@ diffuseColor.rgb*=1.0+(zinc-.5)*.12*zincFade;
  };
  railMetal.customProgramCacheKey=()=>`galvanized-rail-v1-${railMetal.defines.ROAD_DETAIL}`;
  let segments=0,coverage=0,sections=0;
- function point(s){
-  if(s>=L)return a[0];let lo=0,hi=a.length-1;while(lo<hi){const mid=Math.ceil((lo+hi)/2);if(a[mid][0]<=s)lo=mid;else hi=mid-1;}
-  const p=a[lo],q=a[(lo+1)%a.length],u=(s-p[0])/((lo===a.length-1?L:q[0])-p[0]);return p.map((value,k)=>k===0?s:value+(q[k]-value)*u);
- }
- for(const side of [-1,1])for(const [from,end] of guardrailSections(data,side)){
-  const to=Math.min(end,L);if(from>=to)continue;coverage+=to-from;sections++;
-  const strip=[point(from),...nodes.filter(p=>p[0]>from&&p[0]<to),point(to)],base=positions.length/3;
-  for(let i=0;i<strip.length;i++){
-   const p=strip[i],offset=side*(p[4]/2+guardrailClearance(data,p[0],side)),x=p[1]-p[8]*offset,y=p[2]+p[7]*offset;
-   probe.index=Math.min(a.length-1,Math.floor(p[0]/L*a.length));const surface=probe.sample(x,y);probe.index=surface.i;const ground=surface.z;
-   for(const [height,ridge] of profile){positions.push(x+p[8]*side*ridge,ground+height,-y+p[7]*side*ridge);uvs.push((to===L&&i===strip.length-1?L:p[0])/4,(height-.34)/.57);}
-   // Posts reach 1 m into the ground, so they meet it where a bank beside the road was cut back.
-   if(!(to===L&&i===strip.length-1))postPoints.push({x,y:ground,z:-y,heading:Math.atan2(p[8],p[7])});
+ for(const side of [-1,1])for(const {from,to,stations} of barrierLines(data)[side]){
+  coverage+=to-from;sections++;const base=positions.length/3,last=stations.length-1;
+  // The rail bends at every track sample (barrierLines, shared with the banners hung on it: every 4 m it was a
+  // polygon in the corners, the banners a finer one of their own a hand off it or through it).
+  for(let i=0;i<=last;i++){
+   const {s,node,p,x,y,z:ground,ox,oy}=stations[i];
+   for(const [height,ridge] of profile){positions.push(x-ox*ridge,ground+height,-(y-oy*ridge));uvs.push(s/4,(height-.34)/.57);}
+   // Posts every 4 m as before (even samples and the section's ends), reaching 1 m into the ground, so they meet it
+   // where a bank beside the road was cut back.
+   if(node===undefined?!(to===L&&i===last):node%2===0)postPoints.push({x,y:ground,z:-y,heading:Math.atan2(p[8],p[7])});
    if(i>0){segments++;for(let j=0;j<profile.length-1;j++){const k=base+(i-1)*profile.length+j,b=k+profile.length;indices.push(k,b,k+1,b,b+1,k+1);}}
   }
   // Amber catchlights repeat every 14 m on actual guardrail strips only. No posts are
-  // introduced on the road/runoff: two instanced draws provide peripheral speed cues.
+  // introduced on the road/runoff: two instanced draws provide peripheral speed cues. On the rail's own line (where
+  // a hairpin's fold was cut off, the offset of the centreline stands metres off the rail).
   for(let s=Math.ceil((from+2)/14)*14;s<to-2;s+=14){
-   const p=point(s),offset=side*(p[4]/2+guardrailClearance(data,s,side)),x=p[1]-p[8]*offset,y=p[2]+p[7]*offset;
-   probe.index=Math.min(a.length-1,Math.floor(s/L*a.length));
-   reflectorPoints.push({x:x+p[8]*side*.13,y:probe.sample(x,y).z+.91,z:-y+p[7]*side*.13,heading:Math.atan2(-p[7],p[8])});
+   const {x,y,z,ox,oy}=barrierAt(stations,s);
+   reflectorPoints.push({x:x-ox*.13,y:z+.91,z:-(y-oy*.13),heading:Math.atan2(-oy*side,-ox*side)});
   }
  }
  const posts=new THREE.InstancedMesh(new THREE.BoxGeometry(.12,2,.14),metal,postPoints.length),matrix=new THREE.Matrix4(),q=new THREE.Quaternion(),scale=new THREE.Vector3(1,1,1);
@@ -428,11 +435,11 @@ export async function createTrackSurface(renderer,data,{quality='alto'}={}){
  material.grainMap=grainMap;
  const grainAnisotropy={value:anisotropy},roadMotion={value:new THREE.Vector3()};
  material.onBeforeCompile=shader=>{
-  shader.uniforms.grainMap={value:grainMap};shader.uniforms.grainAnisotropy=grainAnisotropy;shader.uniforms.roadMotion=roadMotion;
+  shader.uniforms.grainMap={value:grainMap};shader.uniforms.grainAnisotropy=grainAnisotropy;shader.uniforms.roadMotion=roadMotion;Object.assign(shader.uniforms,ROAD_WEATHER);
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute vec4 roadData;\nvarying vec4 vRoad;');
   shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvRoad=roadData;');
   shader.fragmentShader=shader.fragmentShader.replace('#include <common>',`#include <common>
-varying vec4 vRoad;
+varying vec4 vRoad;uniform float roadWetness,roadRain,roadTime;
 float roadHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float roadNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(roadHash(i),roadHash(i+vec2(1,0)),f.x),mix(roadHash(i+vec2(0,1)),roadHash(i+vec2(1,1)),f.x),f.y);}
 // The grain map's eight variants: cos and sin of a turn that keeps the 6 m tile off any lattice (quarter
@@ -670,6 +677,14 @@ asphaltColor=mix(asphaltColor,asphaltColor*vec3(1.16,1.1,.98),edge*.6);
 asphaltColor=mix(asphaltColor,vec3(.02,.019,.018),max(max(tar*.72,patchBorder*.6),marble*.8));
 asphaltColor=mix(asphaltColor,concreteColor,concrete);
 diffuseColor.rgb*=asphaltColor;
+// Rain: the soaked stones about half as bright; puddles where the broad noise dips, more at the shoulders and off
+// the racing line (the cars' tyres clear their line), none on the concrete's joints.
+float puddle=0.0;
+if(roadWetness>0.0){
+ float pond=roadNoise(vec2(d*.8+3.1,s*.07))*.62+roadNoise(vec2(d*2.6+7.7,s*.29))*.38;
+ puddle=smoothstep(.5,.66,pond+shoulder*.12+offLine*.06-rubber*.4)*smoothstep(.35,.9,roadWetness);
+ diffuseColor.rgb*=mix(1.0,.52,roadWetness)*(1.0-.3*puddle);
+}
 `);
   shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>',`
 // Open aggregate is matte (about .88); the rubbered line is darker and smoother (.68-.75), so the
@@ -681,6 +696,8 @@ float fineRough=.83;
 #endif
 // Seen at a grazing angle only the polished tops of the stones show, so the far road is a little smoother.
 float roughnessFactor=clamp(.6+.34*fineRough-clamp(rubber*3.0,0.0,1.0)*.2-tar*.12-roadRepair*.06+edge*.04+concrete*.04-grain*.1-drop*.2-.12*smoothstep(15.0,80.0,viewDist),.45,1.0);
+// Wet: a film of water over the stones (about .3), the puddles near mirrors.
+roughnessFactor=mix(roughnessFactor,mix(.3+.12*fineRough,.05,puddle),roadWetness);
 `);
   shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>',`
 #if ROAD_DETAIL > 0
@@ -690,12 +707,23 @@ asphaltN.xy*=normalScale*(1.0-.75*max(tar,rubber*.6));
 // bright pixels on grazing highlights. Ultra retains a little more nearby aggregate.
 float normalFootprint=length(fwidth(vNormalMapUv))*2048.0;
 asphaltN.xy*=1.0-smoothstep(8.0,96.0,normalFootprint)*.7;
+// Standing water is flat: the stones under a puddle no longer break up its reflection.
+asphaltN.xy*=1.0-puddle*.9;
+// The drops' rings on the standing water: one ring at a time per 45 cm cell, each at its own moment and place,
+// spreading over a third of a second and smoothing out; faded with distance (the pixel would only sparkle).
+if(roadRain>0.0&&puddle>.05){
+ vec2 rp=vec2(d,s)*2.2,rid=floor(rp),rf=fract(rp)-.5;
+ float ph=fract(roadTime*1.7+roadHash(rid+1.3)),rad=ph*.42;
+ vec2 rv=rf-(vec2(roadHash(rid+3.1),roadHash(rid+5.7))-.5)*.4;float rr=length(rv);
+ float ring=sin((rr-rad)*55.0)*smoothstep(.07,0.0,abs(rr-rad))*(1.0-ph)*(1.0-smoothstep(10.0,30.0,viewDist));
+ asphaltN.xy+=rv/max(rr,1e-3)*ring*.45*puddle*roadRain;
+}
 normal=normalize(tbn*asphaltN);
 #endif
 `);
   carShadowPatch(shader);
  };
- material.customProgramCacheKey=()=> 'opala-track-asphalt-circuit-v8-'+(data.meta.id||'interlagos')+'-'+material.defines.ROAD_DETAIL;
+ material.customProgramCacheKey=()=> 'opala-track-asphalt-circuit-v10-'+(data.meta.id||'interlagos')+'-'+material.defines.ROAD_DETAIL;
  const probe=new TestCar(data),length=data.meta.reconstructed_xy_m;
  const stats={texture:'assets/texturas/asfalto_diff_v3.jpg',normal:'assets/texturas/asfalto_nor_gl_v3.jpg',roughness:'assets/texturas/asfalto_rough_v3.jpg',grain:'assets/texturas/asfalto_grao_v2.jpg',grainTileMetres:6,grainTiling:'stochastic',asphalt,resolution:2048,tileMetres:2,anisotropy:texture.anisotropy,vertices:0,wear:'decorative',pbr:true,motion:0};
  function setQuality(value){
@@ -753,5 +781,9 @@ normal=normalize(tbn*asphaltN);
   // The map units are world metres / 2.
   v.set(eyeVelocity.x*SHUTTER*.5,eyeVelocity.y*SHUTTER*.5,weight);stats.motion=+weight.toFixed(3);
  }
- return {material,geometry,setQuality,cloneMaterial,setMotion,stats};
+ // Rain on the road (weather.js wetness): shared by every circuit's asphalt and the kerbs (ROAD_WEATHER).
+ function setWetness(value,rain=value){ROAD_WEATHER.roadWetness.value=Math.max(0,Math.min(1,value||0));ROAD_WEATHER.roadRain.value=Math.max(0,Math.min(1,rain||0));stats.wetness=ROAD_WEATHER.roadWetness.value;}
+ // The rings' clock (seconds; the game's, so a pause holds them).
+ function tickRain(dt){ROAD_WEATHER.roadTime.value=(ROAD_WEATHER.roadTime.value+dt)%1000;}
+ return {material,geometry,setQuality,cloneMaterial,setMotion,setWetness,tickRain,stats};
 }

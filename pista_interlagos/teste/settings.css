@@ -36,3 +36,5 @@
 .wheel-bindings{margin-top:4px;font-size:11px;color:#c0cec2}.wheel-bindings summary{cursor:pointer;padding:10px 0;color:#a6c88d}.settings-content .wheel-binding-group{margin:14px 0 4px;font-size:9px;letter-spacing:1.4px;color:#c9a96a}
 .wheel-binding{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto 34px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #ffffff12}.wheel-binding em{font-style:normal;color:#98aca0;overflow-wrap:anywhere}.wheel-binding button{padding:6px 10px;font-size:10px}
 @media(max-width:700px){.wheel-meter{grid-template-columns:74px 1fr 52px}.wheel-binding{grid-template-columns:minmax(0,1fr) auto 34px}.wheel-binding em{grid-column:1;grid-row:2}}
+/* The weather's row (Horario, Clima): two selects half the row, under the race's own. */
+.weather-choices{margin-top:-4px}.weather-choices label{max-width:calc(50% - 9px)}

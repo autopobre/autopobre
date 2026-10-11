@@ -197,6 +197,33 @@ CIRCUITOS = {
         'relevo_local': 'geofloripa_mdt_1m',
         'edificios_locais': 'geofloripa',
     },
+    'minhocao': {
+        # Circuito de rua imaginario (pedido da equipe, 11/10/2026, desenhado sobre o mapa das ruas):
+        # as ruas, o Elevado Presidente Joao Goulart (Minhocao) e o tunel da Radial Leste-Oeste sob a Praca Roosevelt
+        # sao os reais do centro de Sao Paulo (gerar_minhocao.py). Largada na Av. Sao Joao; sobe a rampa da Rua Ana
+        # Cintra, 790 m por cima do Minhocao rumo a Roosevelt, desce reto no tunel sob a praca, sai na Rua Martins
+        # Fontes; Augusta, Caio Prado, Cesario Mota Junior, Major Sertorio (por baixo do Minhocao), a Praca da
+        # Republica, a Av. Vieira de Carvalho, o Largo do Arouche e a Av. Duque de Caxias de volta a Sao Joao.
+        'nome': 'Circuito do Minhocão',
+        'cidade': 'São Paulo, SP',
+        # Meio da volta: entre a Praca da Republica e a Amaral Gurgel.
+        'centro': (-23.5443, -46.6455),
+        'raio_m': 1600,
+        'epsg': 31983,                 # SIRGAS 2000 / UTM 23S
+        'anadem': '23K',
+        'copernicus': 'Copernicus_DSM_COG_10_S24_00_W047_00_DEM',
+        'worldcover': 'S24W048',
+        'extensao_m': 4068,            # desenho; gerar_minhocao.py grava o medido
+        'centro_cidade': (-23.5503, -46.6339),   # Praca da Se, marco zero de Sao Paulo
+        'largura_m': 11,
+        'sentido': 'horario',
+        'imaginario': True,
+        'rua': True,
+        # Relevo do LiDAR 2020 da Prefeitura (MDT em grade de 1 m; MDS de 0,5 m so ao longo do Minhocao, para medir o
+        # tabuleiro), quadras viarias (meios-fios), pontos cotados, obras de arte e pracas do GeoSampa.
+        'relevo_local': 'geosampa_lidar_2020',
+        'caixa_mds': (-23.5487, -46.6500, -23.5376, -46.6458),
+    },
 }
 
 

@@ -21,6 +21,8 @@ import v06_motor as motor
 import v06_porta_malas as porta_malas
 import v06_interior as interior
 import v06_vigia as vigia
+import v06_retrovisores as retrovisores
+import v06_vidros as vidros
 R=Path(__file__).resolve().parents[2]
 source=Path(bpy.data.filepath);assert source.name.startswith('opala99_'),'open opala99_<livery>.blend before running'
 assert 'OPALA_99_ROOT' in bpy.data.objects and 'Capo' in bpy.data.objects,'run on a V05 blend (it still has the one-piece hood)'
@@ -84,9 +86,11 @@ def structure_finish():
 def main():
  t0=time.time();v05=set(bpy.data.materials.keys());mats=materials()
  structure_finish()
+ vidros.build()                       # windscreen and rear window bent to the roof, cowl and deck (before the A pillars)
  lateral.build(mats)                  # greenhouse and stickers to the photos, before the doors are cut
  vigia.build()                        # quarter-glass stickers and fuel fillers (carro_18, 44, 45), before the cap hinges
  carroceria.build_doors(mats)
+ retrovisores.build(mats)             # door mirrors from carro_20/21/23, on the doors' pivots
  carroceria.build_hood(mats);carroceria.hood_pin_posts(mats)
  carroceria.build_lid(mats);carroceria.small_pivots(mats)
  detalhes.build(mats)

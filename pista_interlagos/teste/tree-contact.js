@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {EFFECT_LIGHT} from './weather.js';
 
 // Tree trunks as posts the car can hit. TestCar.step calls collide() after its walls:
 // the body's plan (a box round the centre of mass: car.body front, rear and halfWidth, the
@@ -25,11 +26,11 @@ export class TreeField {
   this.geometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(n*3),3).setUsage(THREE.DynamicDrawUsage));
   this.geometry.setAttribute('color',new THREE.BufferAttribute(new Float32Array(n*3),3).setUsage(THREE.DynamicDrawUsage));
   this.geometry.setAttribute('alpha',new THREE.BufferAttribute(new Float32Array(n),1).setUsage(THREE.DynamicDrawUsage));
-  this.material=new THREE.ShaderMaterial({name:'Folhas_caindo',transparent:true,depthWrite:false,uniforms:{viewport:{value:900}},
+  this.material=new THREE.ShaderMaterial({name:'Folhas_caindo',transparent:true,depthWrite:false,uniforms:{viewport:{value:900},effectLight:EFFECT_LIGHT},
    vertexShader:`attribute vec3 color;attribute float alpha;uniform float viewport;varying vec3 vColor;varying float vAlpha;
     void main(){vec4 p=modelViewMatrix*vec4(position,1.);vColor=color;vAlpha=alpha;gl_Position=projectionMatrix*p;gl_PointSize=clamp(.09*viewport*projectionMatrix[1][1]/max(.3,-p.z),1.,40.);}`,
-   fragmentShader:`varying vec3 vColor;varying float vAlpha;
-    void main(){vec2 q=gl_PointCoord*2.-1.;q.x*=1.8;if(dot(q,q)>1.||vAlpha<.01)discard;gl_FragColor=vec4(vColor,vAlpha);}`});
+   fragmentShader:`varying vec3 vColor;varying float vAlpha;uniform float effectLight;
+    void main(){vec2 q=gl_PointCoord*2.-1.;q.x*=1.8;if(dot(q,q)>1.||vAlpha<.01)discard;gl_FragColor=vec4(vColor*effectLight,vAlpha);}`});
   this.points=new THREE.Points(this.geometry,this.material);this.points.name='Folhas_caindo';this.points.frustumCulled=false;
   this.stats={hits:0,lastImpact:0,leaves:0};this.pendingSound=0;
  }

@@ -6,6 +6,7 @@ import {canvasTexture} from './pit-textures.js';
 import {createPeople} from './pit-crew.js';
 import {circuitSponsors,circuitSeed,seeded,paintBanner,paintBannerAlt} from './sponsors.js';
 import {billboardSpots} from './track-surface.js';
+import {barrierLines,barrierAt,jerseyFace,WALL_SINK} from './street-walls.js';
 
 // What makes a circuit look run by people on race day: sponsor banners tied to the
 // guardrails, marshal posts with their flags, and TV camera towers on the outside of
@@ -14,8 +15,14 @@ import {billboardSpots} from './track-surface.js';
 
 // The trackside people's skin and hair tones.
 const SKINS=[0xc68e6a,0x8d5a3b,0xe0b08f,0x6b4128,0xd9a37f,0xb77a55,0xf0c8a8,0x4a2c1d],HAIR=[0x2b1f17,0x1b1410,0x5a3a22,0x8a6a4a,0xbab4ab,0x111111];
-// Banners: lengths (m) of the tiles a run is made of, their height on the rail and how far in front of it.
+// Banners: lengths (m) of the tiles a run is made of, their height on the rail and how far in front of its line (the
+// W-beam's ridges stand 0.10 m out of it: a banner lies 2 cm off them).
 const BANNER_TILE=[5.6,9.4],BANNER_LOW=.37,BANNER_HIGH=.87,BANNER_FRONT=.118;
+// On a street circuit's concrete wall (street-walls.js) a banner lies on the upper face of the Jersey profile, the plane
+// that leans back 9 cm from 0.33 m to the top at 0.81 m: from WALL_LOW to WALL_HIGH in the wall's own heights,
+// WALL_GAP in front of the face. (Hung at the rail's height and in front of the wall's foot, as on a rail, it stood
+// 0.34 to 0.41 m off the face and over the top.)
+const WALL_LOW=.335,WALL_HIGH=.805,WALL_GAP=.02;
 // Two rows of the atlas per sponsor of the circuit (sponsors.js), its main banner and its reversed
 // one: the Old Stock one names the circuit it hangs at (meta.name, set by main.js), the local
 // businesses are the city's own. 64 px rows: about as sharp across a 0.5 m banner as along it.
@@ -155,20 +162,25 @@ export function createTrackside(data){
  const probe=new TestCar(data),ground=(x,y,i=probe.index)=>{probe.index=i;const q=probe.sample(x,y);probe.index=q.i;return q.z;};
  const parts=[],people=[];
 
- // Sponsor banners on the track face of the guardrails (bannerPlan): each banner its own strip.
- const L=data.meta.reconstructed_xy_m,a=data.samples,positions=[],uvs=[],colors=[],tiles=[],wears=[],indices=[];
+ // Sponsor banners on the track face of the guardrails and walls (bannerPlan): each banner its own strip, on the
+ // barrier's own line (street-walls.js barrierLines) and at its stations, so it lies along the barrier's facets.
+ const positions=[],uvs=[],colors=[],tiles=[],wears=[],indices=[],lines=barrierLines(data),wall=data.meta.barrier==='street';
  const plan=bannerPlan(data),sponsors=plan.sponsors,ROWS=sponsors.length*2,tint=new THREE.Color();
- const point=s=>{if(s>=L)return a[0];const {i}=trackPoint(data,s),p=a[i],q=a[(i+1)%a.length],u=(s-p[0])/((i===a.length-1?L:q[0])-p[0]);return p.map((v,k)=>k===0?s:v+(q[k]-v)*u);};
  for(const b of plan.banners){
   const {side,s0,s1,fade,bright,dirt,reach,seed,rip,hangs,lift,drop}=b,row=bannerRow(b.row,b.alt),v0=1-(row+.96)/ROWS,v1=1-(row+.04)/ROWS,len=s1-s0,base=positions.length/3;
+  const line=lines[side].find(l=>s0>=l.from-1e-6&&s1<=l.to+1e-6)?.stations;if(!line)continue;
   // Sun fade and a warm cast with it; a loose one sags and billows out from the rail at its free corner.
   tint.setRGB(bright,bright*(1-.03*fade),bright*(1-.09*fade));
-  const stations=[];for(let t=s0;t<s1-.01;t+=hangs?.5:2)stations.push(t);stations.push(s1);
+  // Its stations: its two ends and the barrier's own between them (every half metre too on a loose one, for the sag).
+  const inner=line.map(q=>q.s);if(hangs)for(let t=s0+.5;t<s1;t+=.5)inner.push(t);
+  const stations=[s0];for(const t of inner.filter(t=>t>s0+.03&&t<s1-.03).sort((u,v)=>u-v))if(t-stations.at(-1)>.03)stations.push(t);stations.push(s1);
   stations.forEach((t,count)=>{
-   const p=point(t),off=side*(p[4]/2+guardrailClearance(data,p[0],side)),e=hangs<0?t-s0:s1-t,sag=hangs&&e<1.6?(1-e/1.6)**2:0,out=BANNER_FRONT+sag*.09;
-   const x=p[1]-p[8]*off+p[8]*side*out,y=p[2]+p[7]*off-p[7]*side*out;
-   probe.index=Math.min(a.length-1,Math.floor(p[0]/L*a.length));const z=ground(x,y),f=(t-s0)/len,u=side>0?f:1-f;
-   positions.push(x,z+BANNER_LOW+drop+sag*.12,-y,x,z+BANNER_HIGH+lift-sag*.3,-y);uvs.push(u,v0,u,v1);
+   const w=barrierAt(line,t),e=hangs<0?t-s0:s1-t,sag=hangs&&e<1.6?(1-e/1.6)**2:0,f=(t-s0)/len,u=side>0?f:1-f;
+   // Its bottom and top edges: up from the barrier's ground and out from its foot (negative: in front of it). On a
+   // wall the jitter of the banner's height stays within the face.
+   const z=wall?w.z-WALL_SINK:w.z,lo=wall?WALL_LOW+(drop+.02)*.25+sag*.12:BANNER_LOW+drop+sag*.12,hi=wall?WALL_HIGH+(lift-.025)*.2-sag*.3:BANNER_HIGH+lift-sag*.3;
+   const out=h=>(wall?jerseyFace(h)-WALL_GAP:-BANNER_FRONT)-sag*.09,o0=out(lo),o1=out(hi);
+   positions.push(w.x+w.ox*o0,z+lo,-(w.y+w.oy*o0),w.x+w.ox*o1,z+hi,-(w.y+w.oy*o1));uvs.push(u,v0,u,v1);
    for(const h of [0,1]){colors.push(tint.r,tint.g,tint.b);tiles.push(side>0?t-s0:s1-t,h,fade);wears.push(dirt,reach,rip?len:0,seed);}
    if(count>0){const k=base+(count-1)*2;indices.push(k,k+2,k+1,k+1,k+2,k+3);}
   });

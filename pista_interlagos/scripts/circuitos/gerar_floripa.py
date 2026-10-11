@@ -68,6 +68,10 @@ LARG_VIA = {
     35893667: 14.0,
 }
 LARG_FIXA = {687688904: 9.5}
+# Esquinas abertas (desenho de jogo): o arco de `raio` m tangente as duas ruas substitui a quina do OSM, usando parte do
+# lote de dentro (pedido da equipe, 11/10/2026: a de 90+ graus da Alameda Adolfo Konder com a Rua Hoepcke, no alto do morro,
+# era a mais fechada da volta, ~9 m no eixo, e o muro de dentro dobrava num raio de 3 m). `largura`: a pista no arco.
+ESQUINAS = [{'nome': 'Adolfo Konder x Hoepcke', 'no': (-27.59368, -48.55907), 'raio': 22.0, 'largura': 11.0, 'alcance': 40.0}]
 # Linha de chegada: fracao do tabuleiro da Hercilio Luz a partir da cabeceira continental. O grid (76 m
 # atras do Opala 99, o ultimo) fica no vao central, do lado do continente; a reta segue ate a ilha.
 LINHA = .56
@@ -102,6 +106,72 @@ def ll_cadeia(osm):
         raise SystemExit('a cadeia nao fecha a volta')
     ll = np.array([nos[n] for n in pts[:-1]])
     return ll, np.array(ids[:-1]), np.array(larg[:-1])
+
+
+def abrir_esquinas(P, ids, larg, origem, para):
+    """Troca a quina de cada ESQUINAS por um arco de raio dado, tangente as duas ruas (as direcoes medias delas nos
+    `alcance` m antes e depois da quina). Devolve o poligono novo, as vias e larguras de cada vertice, e os pontos dos
+    arcos (as estacoes junto deles ficam sem a medida dos meios-fios)."""
+    arcos = []
+    for e in ESQUINAS:
+        x, y = para.transform(e['no'][1], e['no'][0])
+        c = int(np.argmin(np.hypot(P[:, 0] - (x - origem[0]), P[:, 1] - (y - origem[1]))))
+        n = len(P)
+        seg = np.linalg.norm(np.roll(P, -1, 0) - P, axis=1)
+
+        def ponto(dist, sentido):
+            """O ponto do poligono a `dist` m da quina, andando no sentido dado, e o indice do vertice que comeca (na
+            ordem da volta) o lado onde ele cai."""
+            k, feito = c, 0.0
+            while True:
+                j = (k + sentido) % n
+                passo = seg[k] if sentido > 0 else seg[j]
+                if feito + passo >= dist:
+                    f = (dist - feito) / passo
+                    return P[k] + (P[j] - P[k]) * f, (k if sentido > 0 else j)
+                feito += passo
+                k = j
+        antes, _ = ponto(e['alcance'], -1)
+        depois, _ = ponto(e['alcance'], 1)
+        u = (P[c] - antes) / np.linalg.norm(P[c] - antes)
+        w = (depois - P[c]) / np.linalg.norm(depois - P[c])
+        defl = math.atan2(u[0] * w[1] - u[1] * w[0], u @ w)
+        tang = e['raio'] * math.tan(abs(defl) / 2)
+        # Os pontos das ruas a `tang` m da quina, e a direcao de cada rua ali: a curva sai e chega tangente a elas.
+        t1, k1 = ponto(tang, -1)
+        t2, k2 = ponto(tang, 1)
+        d1 = P[(k1 + 1) % n] - P[k1]
+        d1 /= np.linalg.norm(d1)
+        d2 = P[(k2 + 1) % n] - P[k2]
+        d2 /= np.linalg.norm(d2)
+        giro = abs(math.atan2(d1[0] * d2[1] - d1[1] * d2[0], d1 @ d2))
+        corda = float(np.linalg.norm(t2 - t1))
+        raio_ef = corda / (2 * math.sin(giro / 2))
+        # Bezier cubica com as alcas de um arco circular do mesmo giro (4/3 tan(giro/4) R).
+        h = 4 / 3 * math.tan(giro / 4) * raio_ef
+        b0, b1, b2, b3 = t1, t1 + d1 * h, t2 - d2 * h, t2
+        m = max(12, int(giro * raio_ef / 1.0))
+        q_ = np.linspace(0, 1, m + 1)[:, None]
+        arco = (1 - q_) ** 3 * b0 + 3 * (1 - q_) ** 2 * q_ * b1 + 3 * (1 - q_) * q_ ** 2 * b2 + q_ ** 3 * b3
+        # Do vertice k1 ao comeco da curva (t1, no lado k1-k1+1) e do fim dela (t2, no lado k2-k2+1) ao vertice k2+1: os
+        # vertices entre eles saem.
+        fim = (k2 + 1) % n
+        manter = [i for i in range(n) if not (((i - k1) % n) > 0 and ((i - k1) % n) < ((fim - k1) % n))]
+        novo, nid, nlg = [], [], []
+        for i in manter:
+            novo.append(P[i]); nid.append(ids[i]); nlg.append(larg[i])
+            if i == k1:
+                meio = len(arco) // 2
+                for q, pt in enumerate(arco):
+                    if np.linalg.norm(pt - novo[-1]) < .05:
+                        continue
+                    novo.append(pt); nid.append(ids[c] if q < meio else ids[(c + 1) % n]); nlg.append(larg[c])
+        P, ids, larg = np.array(novo), np.array(nid), np.array(nlg)
+        arcos.append(arco)
+        afast = float(np.linalg.norm(arco[len(arco) // 2] - np.array([x - origem[0], y - origem[1]])))
+        print(f"esquina {e['nome']}: {math.degrees(giro):.0f} graus, raio {raio_ef:.1f} m, tangentes de {tang:.1f} m, "
+              f"apice {afast:.1f} m para dentro da quina do OSM")
+    return P, ids, larg, arcos
 
 
 def arredondar(P, raio_alvo=24.0, raio_esquina=13.0, frac=.46):
@@ -174,6 +244,7 @@ def eixo(c, pasta, epsg):
     ux, uy = para.transform(ll[:, 0], ll[:, 1])
     P0 = np.column_stack([ux, uy]) - origem
     print(f'cadeia OSM: {len(P0)} nos, {np.linalg.norm(np.diff(np.vstack([P0, P0[:1]]), axis=0), axis=1).sum():.0f} m')
+    P0, ids, larg_no, arcos = abrir_esquinas(P0, ids, larg_no, origem, para)
     R, orig = arredondar(P0)
     P, _, _ = reamostrar_fechado(R)
     P = suavizar_rumo(P)
@@ -188,7 +259,7 @@ def eixo(c, pasta, epsg):
     desvio = cKDTree(densa).query(P)[0]
     print(f'eixo: {L:.0f} m, {len(P)} estacoes; desvio da via OSM arredondada: mediana {np.median(desvio):.2f} m, '
           f'max {desvio.max():.2f} m')
-    return P, s, L, via, larg, origem, P0
+    return P, s, L, via, larg, origem, P0, arcos
 
 
 def corrida(mask):
@@ -411,25 +482,33 @@ def main():
     c = CIRCUITOS[NOME]
     pasta = pasta_fontes(NOME)
     epsg = c['epsg']
-    P, s, L, via, larg_osm, ORIGEM, P0 = eixo(c, pasta, epsg)
+    P, s, L, via, larg_osm, ORIGEM, P0, arcos = eixo(c, pasta, epsg)
+    # Estacoes das esquinas abertas (e 12 m de cada lado): ali nao vale o leito entre os meios-fios da rua.
+    esquina = np.zeros(len(P), bool)
+    for arco in arcos:
+        esquina |= cKDTree(arco).query(P)[0] < 4.0
+    esquina = maximum_filter1d_wrap(esquina.astype(float), 13) > 0
     rel = Relevo(pasta, epsg, ORIGEM)
     dem = rel.terreno
     # --- Leito entre os meios-fios: o eixo vai para o meio dele (ate 3,5 m) e a largura de corrida e a dele, com o
     # minimo de corrida; onde nao ha medida (esquinas, acessos) vale a da via no OSM.
     T, E = gp.quadro(P)
     lm, cm, ok = larguras_meiofio(pasta, ORIGEM, P, E)
+    ok = ok & ~esquina
     idx = np.arange(len(P))
     desl = np.interp(idx, np.r_[idx[ok] - len(P), idx[ok], idx[ok] + len(P)], np.r_[cm[ok], cm[ok], cm[ok]])
     desl = gaussian_filter1d(np.clip(desl, -3.5, 3.5), 12 / DS, mode='wrap')
     antigo = P + E * desl[:, None]
     P, s, L = reamostrar_fechado(antigo)
     k = cKDTree(antigo).query(P)[1]
-    via, larg_osm, lm, ok = via[k], larg_osm[k], lm[k], ok[k]
+    via, larg_osm, lm, ok, esquina = via[k], larg_osm[k], lm[k], ok[k], esquina[k]
     n = len(P)
     T, E = gp.quadro(P)
     kappa = gp.curvatura(P)
     raio = 1 / np.maximum(np.abs(kappa), 1e-6)
     medida = np.where(ok, lm, larg_osm)
+    for e in ESQUINAS:
+        medida = np.where(esquina, e['largura'], medida)
     medida = np.array([np.median(np.take(medida, np.arange(i - 10, i + 11), mode='wrap')) for i in range(n)])
     largura = np.clip(medida, LARG_MIN, LARG_MAX)
     for w, lg in LARG_VIA.items():

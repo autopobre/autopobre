@@ -1,4 +1,4 @@
-import {TestCar,onDeck,guardrailClearance} from './physics.js';
+import {TestCar,onDeck,inTunnel,guardrailClearance} from './physics.js';
 import {pitGeometry,locatePit,wallsNear} from './pit-lane.js';
 import {cliffEdge} from './cliff-edge.js';
 
@@ -81,9 +81,15 @@ export function sceneryBands(data){
   bands.push({name:'arquibancada',margin:12,points:[-b.length/2,b.length/2].map(a=>[...standPoint(b,a,0),-b.rx,-b.ry,-b.roof.to,-b.apron])});
  // Bridge decks (meta.decks, Floripa): nothing stands beside them, over the water or on the shore far below: no trees,
  // posts, towers, flags or boards. One band per deck, its stations in lap order (the Hercílio Luz runs across the line).
- // Where the deck runs low over the shore (the abutments) only its own footprint is kept clear.
+ // Where the deck runs low over the shore (the abutments) only its own footprint is kept clear. A viaduct through a
+ // city (the Minhocão, its parapets a few metres from the buildings) gives its own band instead (meta.deck_band_m,
+ // metres past each edge of the asphalt, the same all along).
  const under=(x,y)=>{const g=data.terrain,fx=Math.max(0,Math.min(g.nx-1.001,(x-g.x0)/g.step)),fy=Math.max(0,Math.min(g.ny-1.001,(y-g.y0)/g.step)),i=Math.floor(fx),j=Math.floor(fy),u=fx-i,v=fy-j,k=j*g.nx+i;return (g.z[k]*(1-u)+g.z[k+1]*u)*(1-v)+(g.z[k+g.nx]*(1-u)+g.z[k+g.nx+1]*u)*v;};
- for(const run of deckRuns(data))bands.push({name:'ponte',margin:0,points:run.map(p=>{const side=p[3]-under(p[1],p[2])>DECK_HIGH?DECK_SIDE:4;return [p[1],p[2],p[9],p[10],-p[4]/2-side,p[4]/2+side];})});
+ const band=Number.isFinite(data.meta.deck_band_m)?data.meta.deck_band_m:null;
+ for(const run of deckRuns(data))bands.push({name:'ponte',margin:0,points:run.map(p=>{const side=band??(p[3]-under(p[1],p[2])>DECK_HIGH?DECK_SIDE:4);return [p[1],p[2],p[9],p[10],-p[4]/2-side,p[4]/2+side];})});
+ // A tunnel and its open trench (meta.tunnels, the Minhocão's dive under Praça Roosevelt): nothing stands in it nor on the
+ // strip over its walls (a post, a flag, a board or a tree there would hang inside the trench or poke through the roof).
+ for(const run of stationRuns(data,p=>inTunnel(data,p[0])))bands.push({name:'tunel',margin:0,points:run.map(p=>[p[1],p[2],p[9],p[10],-p[4]/2-TUNNEL_BAND,p[4]/2+TUNNEL_BAND])});
  // A plateau's rim (cliff-edge.js): nothing stands past it nor within RIM_KEEP of the lip. No points: the track field
  // (landscape.js) has no use for it, and the trees down the slope stay.
  const rim=cliffEdge(data);if(rim)bands.push({name:'abismo',margin:0,points:[],rim});
@@ -95,8 +101,13 @@ export const RIM_KEEP=3;
 export function highDeck(data,probe,i){const p=data.samples[i];return onDeck(data,p[0])&&p[3]-probe.terrain(p[1],p[2])>3;}
 // How far beside a bridge deck the scenery keeps away (m past each edge of the asphalt).
 const DECK_SIDE=36,DECK_HIGH=6;
-function deckRuns(data){
- const a=data.samples,n=a.length,on=a.map(p=>onDeck(data,p[0])),runs=[];if(!on.some(Boolean))return runs;
+// How far beside a tunnel's asphalt the scenery keeps away: its walls and their coping (the plaza above it keeps its
+// trees and benches).
+const TUNNEL_BAND=3;
+function deckRuns(data){return stationRuns(data,p=>onDeck(data,p[0]));}
+// The lap's stations where test(p) holds, as runs in lap order (a run may go across the line).
+function stationRuns(data,test){
+ const a=data.samples,n=a.length,on=a.map(test),runs=[];if(!on.some(Boolean))return runs;
  const start=on.findIndex((v,i)=>v&&!on[(i-1+n)%n]);if(start<0)return [a];
  let run=null;for(let k=0;k<n;k++){const i=(start+k)%n;if(on[i]){(run??=[]).push(a[i]);}else if(run){runs.push(run);run=null;}}
  if(run)runs.push(run);return runs;
@@ -236,9 +247,15 @@ export function groundTriangle(t,x,y){
  return u>=v?{k:[a,a+1,a+t.nx+1],w:[1-u,u-v,v]}:{k:[a,a+t.nx+1,a+t.nx],w:[1-v,u,v-u]};
 }
 export function groundHeight(t,heights,x,y){const q=groundTriangle(t,x,y);return q?q.w[0]*heights[q.k[0]]+q.w[1]*heights[q.k[1]]+q.w[2]*heights[q.k[2]]:null;}
+// A street that passes under a viaduct of the same lap (meta.decks): its stations further apart along the lap than
+// this from the deck's, its road more than DECK_OVER lower. Beside a tunnel (meta.tunnels) the grid is the road's
+// only out to its walls (wall_right_m / wall_left_m, WALL_GAP without them) and TUNNEL_SIDE beyond.
+const CROSSING_APART=60,DECK_OVER=3,WALL_GAP=.6,TUNNEL_SIDE=1.5;
 export function fitGround(data,limits=groundLimits(data)){
- const t=data.terrain,{nx,ny,step,x0,y0}=t,h=Float64Array.from(t.z),A=data.samples,N=A.length,probe=new TestCar(data),reach=16;
- const hint=new Int32Array(nx*ny).fill(-1),best=new Float64Array(nx*ny).fill(Infinity);
+ const t=data.terrain,{nx,ny,step,x0,y0}=t,h=Float64Array.from(t.z),A=data.samples,N=A.length,probe=new TestCar(data),reach=16,L=data.meta.reconstructed_xy_m;
+ const hint=new Int32Array(nx*ny).fill(-1),best=new Float64Array(nx*ny).fill(Infinity),high=A.map((p,i)=>highDeck(data,probe,i));
+ // Off the high decks too (only on a circuit that has them): the street under a viaduct.
+ const low=high.some(Boolean)?new Int32Array(nx*ny).fill(-1):null,lowBest=low?new Float64Array(nx*ny).fill(Infinity):null;
  for(let i=0;i<N;i++){
   const p=A[i],q=A[(i+1)%N],r=Math.max(p[4],q[4])/2+reach,dx=q[1]-p[1],dy=q[2]-p[2],len2=dx*dx+dy*dy||1e-9;
   const i0=Math.max(0,Math.floor((Math.min(p[1],q[1])-r-x0)/step)),i1=Math.min(nx-1,Math.ceil((Math.max(p[1],q[1])+r-x0)/step));
@@ -246,30 +263,54 @@ export function fitGround(data,limits=groundLimits(data)){
   for(let j=j0;j<=j1;j++)for(let k=i0;k<=i1;k++){
    const x=x0+k*step,y=y0+j*step;let u=((x-p[1])*dx+(y-p[2])*dy)/len2;u=u<0?0:u>1?1:u;
    const ex=x-p[1]-u*dx,ey=y-p[2]-u*dy,d2=ex*ex+ey*ey,g=j*nx+k;if(d2<best[g]){best[g]=d2;hint[g]=i;}
+   if(low&&!high[i]&&d2<lowBest[g]){lowBest[g]=d2;low[g]=i;}
   }
  }
- const geo=pitGeometry(data);let driven=0;
+ // A tunnel's stations, and the gap from the asphalt to its walls on each side.
+ const tunnel=data.meta.tunnels?.length?A.map(p=>inTunnel(data,p[0])):null,wr=data.columns?.indexOf('wall_right_m')??-1,wl=data.columns?.indexOf('wall_left_m')??-1;
+ const lock=tunnel?new Uint8Array(nx*ny):null;
+ const geo=pitGeometry(data);let driven=0,locked=0;
  for(let j=0;j<ny;j++)for(let k=0;k<nx;k++){
+  const g=j*nx+k,x=x0+k*step,y=y0+j*step;let i=hint[g],d2=best[g];
+  // Under a viaduct where the lap crosses itself the nearest station in plan is often the deck's: the ground there is
+  // the street's below it, so it is fitted to the lower stretch whenever that one is within reach. Not "the lowest of
+  // the stations about as near": at a 90° crossing the deck can be metres nearer in plan over the whole street. A
+  // deck's own approaches (the same stretch, under CROSSING_APART along the lap) keep the old rule, so a bridge's
+  // shores stay as surveyed.
+  if(low&&i>=0&&high[i]&&low[g]>=0){
+   const m=low[g],apart=Math.abs(A[m][0]-A[i][0]);
+   if(Math.sqrt(lowBest[g])-A[m][4]/2<reach&&Math.min(apart,L-apart)>CROSSING_APART&&A[m][3]<A[i][3]-DECK_OVER){i=m;d2=lowBest[g];}
+  }
+  // Beside a tunnel or its trench: the corridor cut down to the road is fitted; past it the plaza or the street
+  // above stays as surveyed, never driven nor lowered (lock).
+  if(tunnel&&i>=0&&tunnel[i]){
+   const p=A[i],q=A[(i+1)%N],dx=q[1]-p[1],dy=q[2]-p[2];let u=((x-p[1])*dx+(y-p[2])*dy)/(dx*dx+dy*dy||1e-9);u=u<0?0:u>1?1:u;
+   const side=(x-p[1]-u*dx)*p[9]+(y-p[2]-u*dy)*p[10],gap=(side<0?p[wr]:p[wl])??WALL_GAP;
+   if(Math.sqrt(d2)>p[4]/2+(Number.isFinite(gap)?gap:WALL_GAP)+TUNNEL_SIDE){lock[g]=1;locked++;continue;}
+  }
   // Beside and under a bridge deck the ground stays where the survey has it (the sea, the shore far below).
-  const g=j*nx+k,x=x0+k*step,y=y0+j*step,nearMain=hint[g]>=0&&Math.sqrt(best[g])-A[hint[g]][4]/2<reach&&!highDeck(data,probe,hint[g]);
+  const nearMain=i>=0&&Math.sqrt(d2)-A[i][4]/2<reach&&!high[i];
   const lane=!nearMain&&geo?locatePit(geo,x,y):null;
   if(!nearMain&&!(lane&&Math.max(lane.lo-lane.d,lane.d-lane.hi)<reach))continue;
-  h[g]=probe.sample(x,y,nearMain?hint[g]:probe.nearest(x,y,true).i).z-.055;driven++;
+  h[g]=probe.sample(x,y,nearMain?i:probe.nearest(x,y,true).i).z-.055;driven++;
  }
  const start=Float64Array.from(h);
- // Each limit point lowers its triangle along the barycentric weights (least change).
+ // Each limit point lowers its triangle along the barycentric weights (least change); a locked node keeps its
+ // height and the others take the whole change.
  let passes=0,residual=0;
  for(passes=1;passes<=80;passes++){
   residual=0;
   for(let n=0;n<limits.count;n++){
    const q=groundTriangle(t,limits.x[n],limits.y[n]);if(!q)continue;
    const [a,b,c]=q.k,[wa,wb,wc]=q.w,e=wa*h[a]+wb*h[b]+wc*h[c]-limits.z[n];if(e<=5e-4)continue;
-   residual=Math.max(residual,e);const k=e/(wa*wa+wb*wb+wc*wc);h[a]-=k*wa;h[b]-=k*wb;h[c]-=k*wc;
+   residual=Math.max(residual,e);
+   const ua=lock?.[a]?0:wa,ub=lock?.[b]?0:wb,uc=lock?.[c]?0:wc,w2=ua*ua+ub*ub+uc*uc;if(!w2)continue;
+   const k=e/w2;h[a]-=k*ua;h[b]-=k*ub;h[c]-=k*uc;
   }
   if(residual<=2e-3)break;
  }
  let lowered=0,maxLowered=0;for(let g=0;g<h.length;g++){const d=start[g]-h[g];if(d>.01)lowered++;maxLowered=Math.max(maxLowered,d);}
- return {heights:h,start,stats:{limits:limits.count,driven,lowered,maxLowered,passes,residual}};
+ return {heights:h,start,lock,stats:{limits:limits.count,driven,lowered,maxLowered,passes,residual,...(lock?{locked}:{})}};
 }
 
 // Writes fitted heights into the GLB terrain (same grid) and re-triangulates it

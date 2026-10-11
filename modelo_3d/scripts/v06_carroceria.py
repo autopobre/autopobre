@@ -177,7 +177,7 @@ def build_doors(mats):
    if body is not None and not shows_texels(body):remove(body)        # only the sticker's clear margin was left there
   remove('Junta_porta_'+side)
   # (the quarter-glass frame is built open over the door's belt: v06_lateral)
-  for n in ('Carcaca_espelho_','Haste_espelho_','Vidro_espelho_'):reparent(O[n+side],piv)
+  # (the door mirror is rebuilt on the door's pivot afterwards: v06_retrovisores)
   # The cabin side wall, the sill return and the floor edge sat where the door now swings: trimmed.
   x_front=float(front(.5))+.03;x_rear=min(float(rear(z)) for z in np.linspace(.2,.95,16))-G-.004
   lo=(x_rear,min(s*.52,s*1.0),.0);hi=(x_front+.1,max(s*.52,s*1.0),1.2)

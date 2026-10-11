@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {EFFECT_LIGHT} from './weather.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {steeringWheelAngle} from './driver-rig.js';
 import {GATE} from './driver-controls.js';
@@ -12,6 +13,20 @@ import {buildPassengerSide,buildKeyPanel,buildWindscreenNumber,buildDriverFootwe
 // Lever length (m) and lever/pedal travel (rad) for the controls the driver works.
 const SHIFT_LEVER=.255,SHIFT_THROW=.2,SHIFT_LANE=.15,SHIFT_LEAN=.1;
 const PEDAL_TRAVEL=Object.freeze({clutch:.22,brake:.11,throttle:.16});
+// The V06 windscreen as modelo_3d/scripts/v06_vidros.py bends it to the roof and the cowl (its build prints this as
+// V06_GLASS and fails when this copy differs): a point moves by (1-t)*foot(y)*fade(y)+t*top(y), t its place between
+// the old flat pane's foot (0) and top (1) along the slope. Blender car frame (x forward, y driver side, z up); each
+// edge holds the x and z coefficients of y^0, y^2, y^4, y^6 and the |y| they hold to; the foot's move fades out between
+// the two |y| of taper (the corners keep their height clear of the doors).
+const V06_GLASS=Object.freeze({"c":[0.6892,0.0,1.07927],"up":[-0.81756,0.0,0.57585],"a0":-0.30456,"a1":0.28032,"foot":[[0.003186,0.010416,-0.021013,0.023056],[0.001847,-0.042119,0.001898,-0.002116],0.737],"top":[[0.009597,0.0,-0.0,0.0],[0.037092,-0.105842,0.003534,-0.008165],0.578],"taper":[0.6,0.72]});
+// How far a point of the cabin near the windscreen moves with the bent glass: three.js car frame in, [dx, dy] out.
+function glassLift(x,y,z){
+ const g=V06_GLASS,by=-z,s=(x-g.c[0])*g.up[0]+(by-g.c[1])*g.up[1]+(y-g.c[2])*g.up[2],t=clamp((s-g.a0)/(g.a1-g.a0),0,1);
+ const edge=([cx,cz,lim])=>{const q=clamp(by,-lim,lim)**2;let px=0,pz=0,k=1;for(let i=0;i<4;i++){px+=cx[i]*k;pz+=cz[i]*k;k*=q;}return [px,pz];};
+ // the foot's move fades out toward the corners (taper: |y| where it starts fading and where it is gone)
+ const q=clamp((Math.abs(by)-g.taper[0])/(g.taper[1]-g.taper[0]),0,1),fade=1-q*q*(3-2*q);
+ const f=edge(g.foot),u=edge(g.top);return [(1-t)*f[0]*fade+t*u[0],(1-t)*f[1]*fade+t*u[1]];
+}
 // Photos in carro/ the interior is built from: the onboard view, the driver, and the
 // walk-round of the cabin (instruments, switches, pedals, fittings and the rear).
 export const INTERIOR_REFERENCES=Object.freeze(['carro_14_interna.JPG','carro_8_piloto_dentro_edu_neves.jpg',
@@ -93,9 +108,18 @@ export function createCockpit(renderer){
  bar([.575,.886,-.69],[.575,.886,.69],.02,m.dash,dashTop); // rolled rear edge of the dash top
  for(let i=0;i<14;i++)mesh(new THREE.SphereGeometry(.004,8,6),silver,[.556,.888,-.62+i*.095],dashTop);
  bar([.60,.80,-.70],[.60,.80,.70],.0225); // dash bar
+ // V06 parts that hug the windscreen move with it as v06_vidros.py bends it (glassLift): their geometry is baked
+ // into the fillers' frame (the car's, setView keeps it there) and moved `weight(x)` of the glass's way.
+ function bendWithGlass(o,weight=()=>1){
+  const M=new THREE.Matrix4();for(let p=o;p!==fillers;p=p.parent){p.updateMatrix();M.premultiply(p.matrix);}
+  const g=o.geometry.clone().applyMatrix4(M),pos=g.attributes.position;
+  for(let i=0;i<pos.count;i++){const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i),w=weight(x),[dx,dy]=glassLift(x,y,z);pos.setXYZ(i,x+dx*w,y+dy*w,z);}
+  g.computeVertexNormals();o.geometry.dispose();o.geometry=g;o.removeFromParent();o.position.set(0,0,0);o.rotation.set(0,0,0);o.scale.set(1,1,1);fillers.add(o);return o;
+ }
  // Inside the V06 body its windscreen base is 10 cm ahead of this dash top: a strip closes it,
- // stopping short of the windscreen rubber.
- box([.872,.896,0],[.094,.012,1.40],m.dash,fillers);
+ // stopping short of the windscreen rubber. Its front edge follows the glass's foot (lower at the
+ // corners, down to the cowl), its rear edge stays on the dash top.
+ bendWithGlass(mesh(boxUV(new THREE.BoxGeometry(.094,.012,1.40,1,1,28)),m.dash,[.872,.896,0],fillers),x=>clamp((x-.825)/.094,0,1));
  // And the parcel shelf: from its rear bulkhead top up to just ahead of the trunk lid frame.
  box([-1.4715,.9165,0],[.047,.01,1.50],m.paint,fillers).rotation.z=Math.atan2(.035,-.031);
  for(const side of [-1,1]){
@@ -129,13 +153,18 @@ export function createCockpit(renderer){
  const bannerPlane=new THREE.PlaneGeometry(.51,.079);const buv=bannerPlane.attributes.uv;for(let i=0;i<buv.count;i++)buv.setX(i,1-buv.getX(i));
  const logoMaterial=new THREE.MeshBasicMaterial({map:bannerLogo,transparent:true,opacity:.85,depthWrite:false});
  mesh(bannerPlane,logoMaterial,[0,0,0],panel([.335,1.288,.005],classic));
- // In the V06 body the strip lies on the inside of its windscreen, 7 mm off the flat glass (55.6 degrees
+ // In the V06 body the strip lies on the inside of its windscreen, 7 mm off the old flat pane (55.6 degrees
  // from upright), from just under the header rubber down 12 cm, narrowing with the glass to 1 cm inside
- // its side rubbers: the band under the header in carro_14, pale with the sun behind it.
- const stripShape=new THREE.Shape([[-.598,-.06],[.598,-.06],[.558,.06],[-.558,.06]].map(([x,y])=>new THREE.Vector2(x,y)));
+ // its side rubbers: the band under the header in carro_14, pale with the sun behind it. The glass is now
+ // crowned up to the roof's edge, and the strip and its logo bend with it (bendWithGlass).
+ const stripGeometry=new THREE.BoxGeometry(1.196,.12,.003,32,2,1),stripPos=stripGeometry.attributes.position;
+ for(let i=0;i<stripPos.count;i++)stripPos.setX(i,stripPos.getX(i)*(1-(stripPos.getY(i)+.06)/.12*(1-1.116/1.196)));  // trapezoid, 1.196 m at the foot, 1.116 m at the top
  const backlit=stripMaterial.clone();backlit.emissive.set(0x958c77);backlit.emissiveIntensity=.45;
- const strip=panel([.5247,1.1843,0],fillers,.970);mesh(new THREE.ExtrudeGeometry(stripShape,{depth:.003,bevelEnabled:false}),backlit,[0,0,-.0035],strip);
- mesh(bannerPlane,logoMaterial,[0,.02,0],strip);
+ const strip=panel([.5247,1.1843,0],fillers,.970);
+ const stripLogo=new THREE.PlaneGeometry(.51,.079,16,1);const suv=stripLogo.attributes.uv;for(let i=0;i<suv.count;i++)suv.setX(i,1-suv.getX(i));
+ const stripMesh=bendWithGlass(mesh(stripGeometry,backlit,[0,0,-.002],strip));bendWithGlass(mesh(stripLogo,logoMaterial,[0,.02,0],strip));strip.removeFromParent();
+ // The sun behind it is the weather's (weather.js EFFECT_LIGHT): at dusk it dims, at night the band goes dark, and its logo with it.
+ stripMesh.onBeforeRender=()=>{backlit.emissiveIntensity=.45*EFFECT_LIGHT.value;logoMaterial.color.setScalar(Math.max(.08,EFFECT_LIGHT.value));};
 
  // --- Sgarbi bucket seat (carro_8, 24, 28, 36): air-mesh centres, back and head
  // wings, black bolsters with white piping, fibreglass sides.

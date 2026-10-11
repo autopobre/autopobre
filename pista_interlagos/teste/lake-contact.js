@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {EFFECT_LIGHT} from './weather.js';
 import {SUSPENSION_WHEELS,HULL,CG_HEIGHT,clamp} from './physics.js';
 
 // The Opala in a lake. The hull and the tyres push the water (lake-waves.js): a bow
@@ -31,7 +32,7 @@ export class LakeContact {
   geometry.setAttribute('position',new THREE.Float32BufferAttribute([-1,0,0,1,0,0,1,1,0,-1,1,0],3));geometry.setIndex([0,1,2,0,2,3]);
   for(const [name,size] of [['dropAt',3],['dropVelocity',3],['drop',2]])geometry.setAttribute(name,new THREE.InstancedBufferAttribute(new Float32Array(n*size),size).setUsage(THREE.DynamicDrawUsage));
   geometry.instanceCount=n;
-  this.material=new THREE.ShaderMaterial({name:'Respingos_do_lago',transparent:true,depthWrite:false,side:THREE.DoubleSide,uniforms:{viewport:{value:900},streak:{value:STREAK}},
+  this.material=new THREE.ShaderMaterial({name:'Respingos_do_lago',transparent:true,depthWrite:false,side:THREE.DoubleSide,uniforms:{viewport:{value:900},streak:{value:STREAK},effectLight:EFFECT_LIGHT},
    vertexShader:`attribute vec3 dropAt,dropVelocity;attribute vec2 drop;uniform float viewport,streak;
     varying vec2 vLocal;varying float vLength,vRadius,vAlpha,vMist;
     void main(){
@@ -46,12 +47,12 @@ export class LakeContact {
      // Motion spreads the same water over a longer streak; drops right at the lens fade out.
      vAlpha=drop.y*cover*sqrt(radius/(radius+len*.35))*smoothstep(.8,2.5,-head.z);
      gl_Position=projectionMatrix*vec4(head.xyz+side*vLocal.x+along*y,1.);}`,
-   fragmentShader:`varying vec2 vLocal;varying float vLength,vRadius,vAlpha,vMist;
+   fragmentShader:`varying vec2 vLocal;varying float vLength,vRadius,vAlpha,vMist;uniform float effectLight;
     void main(){vec2 q=vec2(vLocal.x,vLocal.y-clamp(vLocal.y,0.,vLength))/vRadius;float r=dot(q,q);if(r>1.)discard;
      // Bright at the drop, fading along the streak it leaves.
      float tail=vLength>0.?clamp(vLocal.y/vLength,0.,1.):0.;
      float a=vAlpha*mix(smoothstep(1.,.2,r)*.9*(1.-.65*tail),pow(1.-r,2.)*.5,vMist);if(a<.004)discard;
-     gl_FragColor=vec4(mix(vec3(.74,.8,.82),vec3(.97,.99,1.),smoothstep(.8,0.,r)*(1.-vMist*.5)),a);}`});
+     gl_FragColor=vec4(mix(vec3(.74,.8,.82),vec3(.97,.99,1.),smoothstep(.8,0.,r)*(1.-vMist*.5))*effectLight,a);}`});
   this.mesh=new THREE.Mesh(geometry,this.material);this.mesh.name='Respingos_do_lago';this.mesh.frustumCulled=false;this.mesh.renderOrder=3;
   this.wheels=SUSPENSION_WHEELS.map(()=>({depth:0,level:0,x:0,y:0,z:0,emit:0}));
   this.hull=0;this.inWater=false;this.soundClock=0;this.bow=[0,0];this.landed=0;this.breaking=0;

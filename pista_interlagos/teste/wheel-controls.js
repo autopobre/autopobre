@@ -24,7 +24,9 @@ export const ROLES=Object.freeze({
  ignition:{kind:'button',label:'Ignição (IGN)',keys:['KeyL','KeyF']},
  starter:{kind:'button',label:'Partida, segurando',keys:['KeyI']},
  reset:{kind:'button',label:'Reposicionar / reboque',keys:['KeyR']},
- ghost:{kind:'button',label:'Fantasma',keys:['KeyG']}
+ ghost:{kind:'button',label:'Fantasma',keys:['KeyG']},
+ lights:{kind:'button',label:'Faróis',keys:['KeyH']},
+ wipers:{kind:'button',label:'Limpador',keys:['KeyJ']}
 });
 export const H_ROLES=Object.freeze(Object.keys(GEAR_LABELS));
 // The guided setup, in order; the first three are needed to drive, the rest can be skipped.

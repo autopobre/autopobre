@@ -399,6 +399,155 @@ def fontes_geofloripa(c, pasta):
     return info
 
 
+GEOSAMPA_WFS = 'https://wfs.geosampa.prefeitura.sp.gov.br/geoserver/geoportal/wfs'
+GEOSAMPA_ARQUIVO = 'https://download.geosampa.prefeitura.sp.gov.br/PaginasPublicas/downloadArquivo.aspx'
+
+
+def geosampa_wfs(camada, w, s, e, n):
+    """Feicoes de uma camada do GeoSampa (WFS sem login: Fees NONE, AccessConstraints NONE) numa caixa lon/lat, em
+    SIRGAS 2000 / UTM 23S (o CRS nativo), paginadas."""
+    feats, inicio, paginar = [], 0, True
+    while True:
+        params = {'service': 'WFS', 'version': '2.0.0', 'request': 'GetFeature', 'typeNames': f'geoportal:{camada}',
+                  'outputFormat': 'application/json', 'srsName': 'EPSG:31983',
+                  'bbox': f'{s},{w},{n},{e},urn:ogc:def:crs:EPSG::4326'}
+        if paginar:
+            params.update({'count': 5000, 'startIndex': inicio})
+        for tentativa in range(4):
+            try:
+                r = requests.get(GEOSAMPA_WFS, params=params, headers=AGENTE, timeout=300)
+                if r.status_code == 400 and paginar:
+                    # Camadas sem ordem natural recusam a paginacao: uma pagina so, inteira.
+                    break
+                r.raise_for_status()
+                dados = r.json()
+                break
+            except (requests.RequestException, ValueError):
+                if tentativa == 3:
+                    raise
+                time.sleep(5 + 5 * tentativa)
+        if r.status_code == 400 and paginar:
+            paginar, feats, inicio = False, [], 0
+            continue
+        feats += dados['features']
+        if not paginar or len(dados['features']) < 5000:
+            return {'type': 'FeatureCollection', 'features': feats}
+        inicio += 5000
+
+
+def geosampa_laz(produto, quadro, cache):
+    """Um quadro (1:1000, ~540 x 580 m) do levantamento LiDAR de 2020 (zip com o LAZ), guardado em cache."""
+    import zipfile
+    from io import BytesIO
+    destino = cache / produto / f'{quadro}.zip'
+    if not destino.exists():
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        url = f'{GEOSAMPA_ARQUIVO}?orig=DownloadMapaArticulacao&arq={produto}%5C{quadro}.zip&arqTipo=MAPA_ARTICULACAO'
+        for tentativa in range(4):
+            try:
+                r = requests.get(url, headers=AGENTE, timeout=600)
+                r.raise_for_status()
+                if not r.content.startswith(b'PK'):
+                    raise ValueError(r.text[:200])
+                break
+            except (requests.RequestException, ValueError):
+                if tentativa == 3:
+                    raise
+                time.sleep(5 + 5 * tentativa)
+        destino.write_bytes(r.content)
+    sys.modules.setdefault('pyproj', None)          # o laspy importa o pyproj (DLL bloqueada aqui); nao precisa dele
+    import laspy
+    with zipfile.ZipFile(destino) as z:
+        nome = next(n for n in z.namelist() if n.lower().endswith('.laz'))
+        las = laspy.read(BytesIO(z.read(nome)))
+    return np.asarray(las.x), np.asarray(las.y), np.asarray(las.z), np.asarray(las.classification)
+
+
+def fontes_geosampa(c, pasta):
+    """Dados abertos da Prefeitura de Sao Paulo (GeoSampa; WFS sem login, credito GeoSampa / PMSP), SIRGAS 2000 / UTM 23S:
+    - MDT do levantamento LiDAR de 2020 (Optech Orion, ~10 pontos/m2, ~10 cm): os pontos de chao dos quadros 1:1000 que
+      cobrem o terreno do jogo, numa grade de 1 m (media por celula); sob os predios, sem pontos, o chao e preenchido por
+      convolucao normalizada (o vazio vira a media ponderada do chao em volta, em escalas crescentes);
+    - MDS 2020 so ao longo do Minhocao (a caixa `caixa_mds` de config.py): o maior z por celula de 0,5 m, para medir o
+      tabuleiro (o MDT nao tem pontos sob ele);
+    - as quadras viarias editadas (os poligonos entre os meios-fios: as vias sao os vaos entre eles), os pontos cotados,
+      as obras de arte (viadutos e tuneis), as pracas e largos e as arvores de rua cadastradas."""
+    from projecao import Transformer
+    from compat_scipy import gaussian_filter
+    T = Transformer.from_crs(4326, 31983, always_xy=True)
+    w, s, e, n = caixa(c, c.get('margem_geosampa_m', -500))
+    xs, ys = T.transform(np.array([w, e, w, e]), np.array([s, s, n, n]))
+    x0, y0, x1, y1 = (math.floor(min(xs)), math.floor(min(ys)), math.ceil(max(xs)), math.ceil(max(ys)))
+    info = {'servico': GEOSAMPA_WFS, 'arquivos': GEOSAMPA_ARQUIVO, 'baixado_em': date.today().isoformat(),
+            'caixa_utm': [x0, y0, x1, y1], 'credito': 'GeoSampa / Prefeitura do Município de São Paulo'}
+    cache = pasta / 'geosampa'
+    if '--so-vetores' in sys.argv:
+        info = json.loads((pasta / 'geosampa.json').read_text(encoding='utf-8')) if (pasta / 'geosampa.json').exists() else info
+        return vetores_geosampa(pasta, info, w, s, e, n)
+    quadros = geosampa_wfs('quadricula_folha_mdt_mds_2020', w, s, e, n)
+    nomes = sorted({f['properties']['cd_quadricula'] for f in quadros['features']})
+    (pasta / 'geosampa_quadros_2020.geojson').write_text(json.dumps(quadros, ensure_ascii=False), encoding='utf-8')
+    # --- MDT 2020 em grade de 1 m.
+    nx, ny = x1 - x0, y1 - y0
+    soma = np.zeros((ny, nx))
+    cont = np.zeros((ny, nx))
+    for q in nomes:
+        x, y, z, cl = geosampa_laz('MDT_2020', q, cache)
+        i = np.floor(y1 - y).astype(int)
+        j = np.floor(x - x0).astype(int)
+        ok = (i >= 0) & (i < ny) & (j >= 0) & (j < nx)
+        np.add.at(soma, (i[ok], j[ok]), z[ok])
+        np.add.at(cont, (i[ok], j[ok]), 1)
+        print(f'GeoSampa MDT 2020 {q}: {len(z)} pontos ({ok.mean():.0%} na caixa)')
+    tem = cont > 0
+    z = np.where(tem, soma / np.maximum(cont, 1), 0.0)
+    cheio = z.copy()
+    falta = ~tem
+    for sigma in (2, 4, 8, 16, 32, 64):
+        if not falta.any():
+            break
+        num = gaussian_filter(np.where(tem, z, 0.0), sigma)
+        den = gaussian_filter(tem.astype(float), sigma)
+        preenche = falta & (den > 1e-3)
+        cheio[preenche] = num[preenche] / den[preenche]
+        falta &= ~preenche
+    np.savez_compressed(pasta / 'mdt_geosampa_1m.npz', z=cheio.astype(np.float32), medido=tem, x0=x0, y1=y1, passo=1.0, epsg=31983)
+    print(f'MDT 1 m {nx}x{ny}: {tem.mean():.0%} das celulas com chao medido -> mdt_geosampa_1m.npz')
+    info['mdt_2020'] = {'quadros': nomes, 'arquivo': 'mdt_geosampa_1m.npz', 'medido': round(float(tem.mean()), 3)}
+    # --- MDS 2020 ao longo do Minhocao (0,5 m, maior z).
+    if c.get('caixa_mds'):
+        la0, lo0, la1, lo1 = c['caixa_mds']
+        mx, my = T.transform(np.array([lo0, lo1]), np.array([la0, la1]))
+        bx0, by0, bx1, by1 = math.floor(min(mx)), math.floor(min(my)), math.ceil(max(mx)), math.ceil(max(my))
+        qm = geosampa_wfs('quadricula_folha_mdt_mds_2020', min(lo0, lo1), min(la0, la1), max(lo0, lo1), max(la0, la1))
+        nomes_m = sorted({f['properties']['cd_quadricula'] for f in qm['features']})
+        mnx, mny = int((bx1 - bx0) * 2), int((by1 - by0) * 2)
+        topo = np.full((mny, mnx), -1e9)
+        for q in nomes_m:
+            x, y, zz, cl = geosampa_laz('MDS_2020', q, cache)
+            i = np.floor((by1 - y) * 2).astype(int)
+            j = np.floor((x - bx0) * 2).astype(int)
+            ok = (i >= 0) & (i < mny) & (j >= 0) & (j < mnx) & (cl != 7) & (cl != 18)      # sem ruido
+            np.maximum.at(topo, (i[ok], j[ok]), zz[ok])
+            print(f'GeoSampa MDS 2020 {q}: {ok.sum()} pontos na caixa do Minhocao')
+        np.savez_compressed(pasta / 'mds_minhocao_05m.npz', z=np.where(topo > -1e8, topo, np.nan).astype(np.float32),
+                            x0=bx0, y1=by1, passo=.5, epsg=31983)
+        info['mds_2020'] = {'quadros': nomes_m, 'arquivo': 'mds_minhocao_05m.npz', 'caixa_utm': [bx0, by0, bx1, by1]}
+    return vetores_geosampa(pasta, info, w, s, e, n)
+
+
+def vetores_geosampa(pasta, info, w, s, e, n):
+    for camada, destino in (('quadra_viaria_editada', 'geosampa_quadras.geojson'), ('ponto_cotado', 'geosampa_pontos_cotados.geojson'),
+                            ('obra_arte', 'geosampa_obras_arte.geojson'), ('GEOSAMPA_v_praca_largo', 'geosampa_pracas.geojson'),
+                            ('arvore', 'geosampa_arvores.geojson')):
+        dados = geosampa_wfs(camada, w, s, e, n)
+        (pasta / destino).write_text(json.dumps(dados, ensure_ascii=False), encoding='utf-8')
+        print(f'GeoSampa {camada}: {len(dados["features"])} feicoes -> {destino}')
+        info[camada] = len(dados['features'])
+    (pasta / 'geosampa.json').write_text(json.dumps(info, indent=1, ensure_ascii=False), encoding='utf-8')
+    return info
+
+
 def pegadas_das_torres(c, pasta, torres):
     """Pegadas da Microsoft que contem um edificio em altura do cadastro de Goiania (o horizonte), e as
     demais ate `horizonte_casas_m` do centro (os bairros em volta do autodromo, alem da grade)."""
@@ -598,6 +747,12 @@ def main():
         prov['goiania'] = fontes_goiania(c, pasta)
         (pasta / 'proveniencia.json').write_text(json.dumps(prov, indent=1, ensure_ascii=False), encoding='utf-8')
         return
+    if '--geosampa' in sys.argv:
+        # So os dados da Prefeitura de Sao Paulo, gravados tambem na proveniencia ja baixada.
+        prov = json.loads((pasta / 'proveniencia.json').read_text(encoding='utf-8'))
+        prov['geosampa'] = fontes_geosampa(c, pasta)
+        (pasta / 'proveniencia.json').write_text(json.dumps(prov, indent=1, ensure_ascii=False), encoding='utf-8')
+        return
     if '--geofloripa' in sys.argv:
         # So os dados da Prefeitura de Florianopolis, gravados tambem na proveniencia ja baixada.
         prov = json.loads((pasta / 'proveniencia.json').read_text(encoding='utf-8'))
@@ -622,6 +777,8 @@ def main():
             proveniencia['goiania'] = fontes_goiania(c, pasta)
         if c.get('relevo_local') == 'geofloripa_mdt_1m':
             proveniencia['geofloripa'] = fontes_geofloripa(c, pasta)
+        if c.get('relevo_local') == 'geosampa_lidar_2020':
+            proveniencia['geosampa'] = fontes_geosampa(c, pasta)
         (pasta / 'proveniencia.json').write_text(json.dumps(proveniencia, indent=1, ensure_ascii=False), encoding='utf-8')
     if '--referencia' in sys.argv or '--so-referencia' in sys.argv:
         esri_referencia(c, pasta)

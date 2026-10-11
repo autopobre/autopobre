@@ -22,8 +22,8 @@ void main(){
  gl_Position=vec4(clip.xy,clip.w*.99999,clip.w);
 }`;
 const fragmentShader=`
-uniform vec3 sunDirection,zenith,horizon,ground;
-uniform float time,cloudCover,environment;
+uniform vec3 sunDirection,zenith,horizon,ground,cloudShade,cloudLit,cirrusTint,aureoleTint,silverTint,disc,sunset,city;
+uniform float time,cloudCover,environment,stars,band;
 varying vec3 vDirection;
 float skyHash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
 float skyNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
@@ -34,10 +34,24 @@ void main(){
  vec3 color=mix(horizon,zenith,pow(clamp(h,0.0,1.0),.45));
  // Directional aerial scattering: neutral blue overhead, pearl-grey distance and
  // warm light only near the sun. The opposite horizon stays cool rather than orange.
+ // The weather (weather.js) tints that glow: gold and wide at dusk, a faint cool halo round the moon at night.
  float aureole=.014/pow(max(1.0-.94*mu,.065),1.35);
- color+=vec3(1.0,.82,.62)*(pow(towardSun,6.0)*.14+aureole*.45);
- vec3 horizonLight=horizon+vec3(.11,.065,.02)*pow(towardSun,4.0);
+ color+=aureoleTint*(pow(towardSun,6.0)*.14+aureole*.45);
+ vec3 horizonLight=horizon+aureoleTint*vec3(.11,.0793,.0323)*pow(towardSun,4.0);
  color=mix(color,horizonLight,exp(-max(h,0.0)*12.0)*.5);
+ // Dusk: the band of orange over the horizon on the sun's side, fading up into the blue.
+ color+=sunset*pow(towardSun,2.5)*exp(-max(h,0.0)*7.0);
+ // Night: São Paulo's sodium light glows low all round, strongest toward the city's centre (north, -z).
+ color+=city*exp(-max(h,0.0)*9.0)*(1.0+.6*max(-direction.z,0.0));
+ // A few thousand stars, fewer and fainter near the city's glow; they twinkle a little.
+ if(stars>0.0&&h>0.0){
+  vec3 cell=floor(direction*230.0),f=fract(direction*230.0)-.5;
+  float r=fract(sin(dot(cell,vec3(12.9898,78.233,37.719)))*43758.5453);
+  vec3 spot=vec3(fract(r*13.1),fract(r*71.7),fract(r*29.3))-.5;
+  float star=step(.9925,r)*smoothstep(.2,.02,length(f-spot*.5));
+  float bright=pow((r-.9925)/.0075,3.0)*2.2+.12;
+  color+=vec3(.85,.9,1.0)*star*bright*stars*(.8+.2*sin(time*(1.3+r*3.0)+r*91.0))*smoothstep(.04,.3,h);
+ }
  // environment: 0 the dome, 1 the world's lighting map, 2 the cars' own (the horizon band below).
  float world=min(environment,1.0);
  if(h<0.0)color=mix(horizon,ground,smoothstep(0.0,.18,-h)*world+smoothstep(0.0,.5,-h)*(1.0-world)*.35);
@@ -48,7 +62,7 @@ void main(){
   vec2 high=direction.xz/(h+.18)*vec2(1.5,6.0)+vec2(time*.0014,-time*.0007);
   float wisps=skyNoise(high)*.57+skyNoise(high*2.4+19.0)*.28+skyNoise(high*5.7)*.15;
   float cirrus=smoothstep(.53,.79,wisps)*smoothstep(.02,.25,h)*.23;
-  color=mix(color,vec3(.91,.94,1.0)+vec3(.19,.12,.045)*pow(towardSun,6.0),cirrus);
+  color=mix(color,(vec3(.91,.94,1.0)+vec3(.19,.12,.045)*pow(towardSun,6.0))*cirrusTint,cirrus);
   #endif
   // Lower cumulus: independent broad masses, sun-facing rims and shaded interiors.
   // The offset density approximates light travelling through each cloud mass.
@@ -58,9 +72,11 @@ void main(){
   float cover=smoothstep(1.0-cloudCover,1.22-cloudCover,density)*horizonFade;
   float thickness=smoothstep(1.01-cloudCover,1.32-cloudCover,density);
   float lit=clamp(.67+(density-towards)*3.8-thickness*.13,.23,1.0);
-  vec3 cloud=mix(vec3(.34,.405,.52),vec3(1.08,1.06,1.01),lit);
+  vec3 cloud=mix(cloudShade,cloudLit,lit);
   float silver=pow(towardSun,10.0)*(1.0-smoothstep(.3,.86,cover))*cover;
-  cloud+=vec3(1.0,.85,.65)*(silver*1.7+pow(towardSun,5.0)*.14);
+  cloud+=silverTint*(silver*1.7+pow(towardSun,5.0)*.14);
+  // At night the cloud's underside takes the city's light.
+  cloud+=city*.8*(1.0-lit*.5);
   color=mix(color,cloud,cover*.97);
   transmission=exp(-cover*7.0);
  }
@@ -74,25 +90,29 @@ void main(){
   vec2 ring=normalize(direction.xz+vec2(1e-5,0.0));
   float trees=.03+.045*skyNoise(ring*7.0+3.1)+.015*skyNoise(ring*29.0+7.7),stands=step(.62,skyNoise(ring*3.0+11.0))*(.11+.04*skyNoise(ring*17.0));
   float top=max(trees,stands),wall=smoothstep(-.036,-.028,h)*(1.0-smoothstep(-.008,-.003,h));
-  vec3 band=stands>trees?mix(vec3(.07,.072,.08),vec3(.22,.22,.23),step(top-.012,h)):vec3(.03,.04,.028);
+  vec3 band=(stands>trees?mix(vec3(.07,.072,.08),vec3(.22,.22,.23),step(top-.012,h)):vec3(.03,.04,.028))*band;
   // Asphalt a little brighter than the shade's (the circuits' own captures read about .36 sunlit on the grid; a
   // uniform ground that bright greys a whole black body); a soft fill over the band, the bright low sky a flank's
   // shoulder catches.
-  if(h<0.0)color=mix(mix(vec3(.18,.185,.19),ground,smoothstep(.05,.45,-h)),vec3(.42,.42,.41),wall);
+  if(h<0.0)color=mix(mix(vec3(.18,.185,.19)*band,ground,smoothstep(.05,.45,-h)),vec3(.42,.42,.41)*band,wall);
   else color=mix(band,color*(1.0+.22*(1.0-smoothstep(.1,.35,h))),smoothstep(top-.003,top+.002,h));
  }
  // A cloud also occludes the solar disc; otherwise it glowed on top of dark clouds. The world's lighting
  // map keeps 10% of it; the cars' 30%: a glint in the paint beside the sun's own highlight, not a second sun.
- color+=vec3(22.0,19.0,15.0)*smoothstep(.99965,.99986,mu)*(environment>1.5?.3:1.0-environment*.9)*transmission;
+ color+=disc*smoothstep(.99965,.99986,mu)*(environment>1.5?.3:1.0-environment*.9)*transmission;
  gl_FragColor=vec4(color,1.0);
  #include <tonemapping_fragment>
  #include <colorspace_fragment>
 }`;
 
 export function createSky(renderer,scene,{mobile=false,detail=mobile?'leve':'completo'}={}){
+ const v3=value=>new THREE.Vector3(...value);
  const uniforms={
   sunDirection:{value:SUN_DIRECTION.clone()},zenith:{value:ZENITH.clone()},horizon:{value:HORIZON.clone()},ground:{value:GROUND.clone()},
-  time:{value:0},cloudCover:{value:.47},environment:{value:0}
+  time:{value:0},cloudCover:{value:.47},environment:{value:0},
+  // The weather's tints (weather.js weatherProfile().sky); these are the clear day's, the game as it always was.
+  cloudShade:{value:v3([.34,.405,.52])},cloudLit:{value:v3([1.08,1.06,1.01])},cirrusTint:{value:v3([1,1,1])},aureoleTint:{value:v3([1,.82,.62])},
+  silverTint:{value:v3([1,.85,.65])},disc:{value:v3([22,19,15])},sunset:{value:v3([0,0,0])},city:{value:v3([0,0,0])},stars:{value:0},band:{value:1}
  };
  const quality=detailFor(detail);
  const material=new THREE.ShaderMaterial({name:'Ceu_dinamico',uniforms,vertexShader,fragmentShader,side:THREE.BackSide,depthWrite:false,fog:false,defines:{CLOUD_OCTAVES:quality.octaves,CLOUD_LAYERS:quality.layers}});
@@ -101,22 +121,45 @@ export function createSky(renderer,scene,{mobile=false,detail=mobile?'leve':'com
  scene.add(dome);
  scene.background=null;
  scene.fog=new THREE.Fog(HORIZON.clone(),mobile?420:520,mobile?2400:3300);
- // Image-based lighting: reflections on paint, glass, rails and water come from the same sky.
- const envScene=new THREE.Scene(),envMaterial=material.clone();envMaterial.uniforms.environment.value=1;envMaterial.defines={CLOUD_OCTAVES:4,CLOUD_LAYERS:2};
+ // Image-based lighting: reflections on paint, glass, rails and water come from the same sky. The maps share the
+ // dome's uniforms (only 'environment' is their own), so a new weather draws them again with its own colours.
+ const envScene=new THREE.Scene(),envMaterial=material.clone();envMaterial.uniforms={...uniforms,environment:{value:1}};envMaterial.defines={CLOUD_OCTAVES:4,CLOUD_LAYERS:2};
  envScene.add(new THREE.Mesh(dome.geometry,envMaterial));
- const pmrem=new THREE.PMREMGenerator(renderer),environmentTarget=pmrem.fromScene(envScene,.025),environment=environmentTarget.texture;
- // The cars' own map (car-reflections.js 'ceu' and its fallback): the same sky with the horizon band.
- envMaterial.uniforms.environment.value=2;const carTarget=pmrem.fromScene(envScene,.025),carEnvironment=carTarget.texture;
- pmrem.dispose();envMaterial.dispose();
- // The world's sky light (the cars carry their own map and strength, car-finish.js): with the hemisphere
- // (main.js skyFill), about a fifth of the sun on open ground, so shade keeps its skylight.
- scene.environment=environment;scene.environmentIntensity=WORLD_ENV;
- return {
-  dome,environment,carEnvironment,sunDirection:SUN_DIRECTION,horizon:HORIZON,
+ let environmentTarget=null,carTarget=null;
+ function bake(){
+  const pmrem=new THREE.PMREMGenerator(renderer);
+  envMaterial.uniforms.environment.value=1;const world=pmrem.fromScene(envScene,.025);
+  // The cars' own map (car-reflections.js 'ceu' and its fallback): the same sky with the horizon band.
+  envMaterial.uniforms.environment.value=2;const cars=pmrem.fromScene(envScene,.025);
+  pmrem.dispose();
+  const old=[environmentTarget,carTarget];environmentTarget=world;carTarget=cars;
+  // The world's sky light (the cars carry their own map and strength, car-finish.js): with the hemisphere
+  // (main.js skyFill), about a fifth of the sun on open ground, so shade keeps its skylight.
+  if(!scene.environment||scene.environment===old[0]?.texture)scene.environment=world.texture;
+  for(const t of old)t?.dispose();
+ }
+ bake();scene.environmentIntensity=WORLD_ENV;
+ const sky={
+  dome,get environment(){return environmentTarget.texture;},get carEnvironment(){return carTarget.texture;},sunDirection:uniforms.sunDirection.value,horizon:HORIZON,
+  weather:'dia',
   update(dt){uniforms.time.value+=dt;},
   // The boolean API remains valid; scenery names also distinguish Básico and Ultra.
   setDetail(value){const next=detailFor(value);if(material.defines.CLOUD_OCTAVES!==next.octaves||material.defines.CLOUD_LAYERS!==next.layers){material.defines.CLOUD_OCTAVES=next.octaves;material.defines.CLOUD_LAYERS=next.layers;material.needsUpdate=true;}},
-  dispose(){scene.remove(dome);dome.geometry.dispose();material.dispose();if(scene.environment===environment)scene.environment=null;environmentTarget.dispose();carTarget.dispose();},
-  info:()=>({clouds:uniforms.cloudCover.value,cloudOctaves:material.defines.CLOUD_OCTAVES,cloudLayers:material.defines.CLOUD_LAYERS,environment:!!scene.environment,fog:[scene.fog.near,scene.fog.far]})
+  // A weather (weather.js weatherProfile): the dome's colours, the key light's direction (the moon at night), the fog's
+  // colour, and both lighting maps drawn again. key: what the profile is ('dia/seco'...), nothing is redrawn for the same.
+  // Returns true when the maps changed: the cars wearing the sky's old map must take the new one (main.js).
+  setWeather(profile,key=`${profile.time}/${profile.rain}`){
+   if(key===sky.weather)return false;sky.weather=key;const k=profile.sky;
+   uniforms.sunDirection.value.fromArray(profile.sun.direction).normalize();
+   uniforms.zenith.value.setRGB(...k.zenith);uniforms.horizon.value.setRGB(...k.horizon);uniforms.ground.value.setRGB(...k.ground);uniforms.cloudCover.value=k.cloudCover;
+   for(const name of ['cloudShade','cloudLit','disc','sunset','city'])uniforms[name].value.fromArray(k[name]);
+   uniforms.cirrusTint.value.fromArray(k.cirrus);uniforms.aureoleTint.value.fromArray(k.aureole);uniforms.silverTint.value.fromArray(k.silver);
+   uniforms.stars.value=k.stars;uniforms.band.value=k.band;
+   scene.fog.color.setRGB(...profile.fog.color);
+   bake();return true;
+  },
+  dispose(){scene.remove(dome);dome.geometry.dispose();material.dispose();envMaterial.dispose();if(scene.environment===environmentTarget.texture)scene.environment=null;environmentTarget.dispose();carTarget.dispose();},
+  info:()=>({clouds:uniforms.cloudCover.value,cloudOctaves:material.defines.CLOUD_OCTAVES,cloudLayers:material.defines.CLOUD_LAYERS,environment:!!scene.environment,fog:[scene.fog.near,scene.fog.far],weather:sky.weather,stars:uniforms.stars.value})
  };
+ return sky;
 }

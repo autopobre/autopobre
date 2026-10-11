@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {numberSticker,bodyTriangles,bendOnBody} from './immersive-visuals.js';
-import {BRAKE_ON} from './brake-lights.js';
+import {BRAKE_ON,TAIL_LIGHTS} from './brake-lights.js';
 import {FuscaCockpit} from './fusca-cockpit.js';
 import {finishCar,finishMaterial} from './car-finish.js';
 import {prepareWheels} from './car-wheels.js';
@@ -117,7 +117,8 @@ export function fuscaCar(template,entry){
   const decal=new THREE.Mesh(geometry,art);decal.name='Raio_'+(side<0?'esquerdo':'direito');decal.renderOrder=1;decal.receiveShadow=true;root.add(decal);own.push(art,geometry);
  }
  root.userData.own=own;root.userData.wheels=wheels;root.userData.entry=entry;root.userData.lamp=lamp;
- root.userData.brake=v=>{if(lamp)lamp.emissiveIntensity=v>BRAKE_ON?7:0;};
+ // Dim while the tail lights are on (dusk, night, rain: brake-lights.js TAIL_LIGHTS, or lit for the player's own switch).
+ root.userData.brake=(v,lit=TAIL_LIGHTS.on)=>{if(lamp)lamp.emissiveIntensity=v>BRAKE_ON?7:lit?1.5:0;};
  return root;
 }
 // A rival's Fusca keeps the cabin seen through its windows (dash, seat, cage, door cards, lining) without what only
@@ -158,7 +159,7 @@ export class FuscaBody {
   this.cockpit=new FuscaCockpit(car,new THREE.Vector3(...FUSCA_EYE).add(CABIN_EYE),this.mirror);
   this.holder.add(car);return true;
  }
- brake(v){this.car?.userData.brake(v);}
+ brake(v,lit){this.car?.userData.brake(v,lit);}
  // The dials (fusca-cockpit.js): speed in km/h, rpm, the fuel left (0-1).
  update(speed,rpm,fuel){this.cockpit?.update(speed,rpm,fuel);}
  clear(){if(!this.car)return;this.cockpit?.dispose();this.cockpit=null;this.car.removeFromParent();fuscaDispose(this.car);this.car=null;this.wheels=[];}

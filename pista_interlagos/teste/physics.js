@@ -133,6 +133,21 @@ function wallGap(data,s,side){
 // Stretches over a structure (meta.decks, [from, to] by lap distance, a bridge across the sea): the road plane
 // reaches out to the walls there, it never blends down into the terrain grid far below.
 export function onDeck(data,s){const d=data.meta.decks;if(!d)return false;const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L;return d.some(([from,to])=>from<=to?t>=from&&t<=to:t>=from||t<=to);}
+// Stretches below the ground around them (meta.tunnels, [from, to] by lap distance like the decks: a trench and the
+// covered tunnel under a plaza). The terrain grid is cut down to the road only in a narrow corridor over it, so there
+// too the road plane reaches out to the walls instead of blending up into the plaza beside them.
+export function inTunnel(data,s){const d=data.meta.tunnels;if(!d)return false;const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L;return d.some(([from,to])=>from<=to?t>=from&&t<=to:t>=from||t<=to);}
+// Where the lap passes over itself (a viaduct over a street) two cars can be at one spot in plan on two roads.
+// Same level: the ground under the other car (on its own stretch) against this car's road at that spot, sampled from
+// this car's own stretch (its window never reaches the other level). A car up the road ahead, over a crest or round
+// a kink of a steep street, is on the same road and the two agree to the centimetre; a car on the street under a
+// viaduct is LEVEL_GAP and more off the deck's road. (Not the plane under this car: Floripa's streets bend 5 m away
+// from it within 40 m.) For a short look ahead (a few dozen metres): the cheap checks come first.
+export const LEVEL_GAP=2.5;
+export function sameLevel(c,o){return Math.abs(c.sample(o.x,o.y).z-o.surface.z)<LEVEL_GAP;}
+// The level choice in TestCar.nearest: stretches whose asphalt comes within LEVEL_REACH of the point compete; one
+// whose road is more than LEVEL_SPLIT above or below another is on another level.
+const LEVEL_REACH=8,LEVEL_SPLIT=3;
 export function guardrailClearance(data,s,side){
  if(data.meta.id!=='curvelo'){
   const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L,section=guardrailSections(data,side).find(([from,to])=>t>=from&&t<=to),gap=wallGap(data,t,side),base=gap??GUARDRAIL_CLEARANCE;
@@ -157,14 +172,14 @@ function bodyAxes(heading,pitch,roll,axes){
 }
 const renderAxes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};
 export class TestCar {
- constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.cliff=cliffEdge(data);this.decks=!!data.meta?.decks?.length;this.edgeHit={};this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.reset();}
+ constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.cliff=cliffEdge(data);this.decks=!!data.meta?.decks?.length;this.tunnels=!!data.meta?.tunnels?.length;this.edgeHit={};this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.weatherGrip=1;this.reset();}
  // The body it meets the world with (OPALA_BODY, FUSCA_BODY), with its mechanics; the next reset or settle seats
  // it on its own shell.
  setBody(body){if(body!==this.body){this.body=body;this.shell=null;}return this;}
  get mechanics(){return this.body.mechanics??OPALA_MECHANICS;}
  // The grid spot: back metres before the line, lane metres across (race-roster.js playerGridSlot).
  resetGrid({back=GRID_START_BACK,lane=0}={}){const target=this.data.meta.reconstructed_xy_m-back;this.reset(Math.max(0,this.a.findIndex(p=>p[0]>=target)));if(lane){this.x+=this.surface.lx*lane;this.y+=this.surface.ly*lane;this.settle();}this.awaitingStart=true;}
- reset(index=0){this.awaitingStart=false;this.distance=0;this.clock=0;this.lapStart=0;this.laps=0;this.best=null;this.lastLap=null;this.checkpoints=new Set();this.nextCheckpoint=1;this.lapValid=true;this.lastLapValid=null;this.excursion=null;this.spin=0;this.rearSpin=0;this.shifts=0;this.rightings=0;this.rightedAt=null;this.invalidReason=null;this.lastInvalidReason=null;this.pitPenalty=null;this.beforeCross=null;this.lapFell=false;this.lastLapFell=false;this.fall=null;this.falls=0;this.backAt=null;this.recover(index);}
+ reset(index=0){this.awaitingStart=false;this.distance=0;this.clock=0;this.lapStart=0;this.laps=0;this.best=null;this.lastLap=null;this.checkpoints=new Set();this.nextCheckpoint=1;this.lapValid=true;this.lastLapValid=null;this.excursion=null;this.lineBack=false;this.spin=0;this.rearSpin=0;this.shifts=0;this.rightings=0;this.rightedAt=null;this.invalidReason=null;this.lastInvalidReason=null;this.pitPenalty=null;this.beforeCross=null;this.lapFell=false;this.lastLapFell=false;this.fall=null;this.falls=0;this.backAt=null;this.recover(index);}
  // Put the car back at rest on the centre line, keeping its clock, laps and race progress.
  recover(index=this.index){const p=this.a[index%this.n];this.x=p[1];this.y=p[2];this.heading=Math.atan2(p[8],p[7]);this.vx=0;this.vy=0;this.yaw=0;this.steer=0;this.index=index;this.burnout=0;this.rearSlipSpeed=0;this.rearWheelSpeed=undefined;this.steerInput=0;this.steerVisual=0;this.gear=1;this.manualGear=false;this.rpm=IDLE_RPM;this.shiftTimer=0;this.longAccel=0;this.latAccel=0;this.crashImpactSpeed=0;this.settle();}
  // Seat the body on its wheels at the current position and heading: level with
@@ -188,7 +203,11 @@ export class TestCar {
   this.frontLoad=this.rearLoad=1;this.gripFront=MASS*G*FRONT_WEIGHT;this.gripRear=MASS*G*REAR_WEIGHT;this.wheelsDown=4;this.airTime=0;this.hullContact=false;this.overturned=0;this.upright=Math.cos(this.pitch)*Math.cos(this.roll);
   this.stepX=this.x;this.stepY=this.y;
  }
- nearest(x,y,global=false,hint=null){
+ // z (a global search only, optional): the height the point is at. Where the lap passes over itself (a viaduct
+ // over a street) the nearest stretch in plan can be the other level, and a car seated there drops or is launched
+ // 6 m: see levelNearest. The window's own fall-back (a car placed more than 100 m from its stretch) takes the
+ // car's height.
+ nearest(x,y,global=false,hint=null,z=NaN){
   let best=Infinity,out;
   // Contact probes stay within a few metres of the car: a short window around it suffices.
   const count=global?this.n:hint===null?81:9,start=global?0:hint===null?this.index-40:hint-4;
@@ -198,9 +217,30 @@ export class TestCar {
    const ex=x-a[1]-u*dx,ey=y-a[2]-u*dy,d2=ex*ex+ey*ey;
    if(d2<best){best=d2;out={i,u,ex,ey};}
   }
-  if(best>10000&&!global&&hint===null)return this.nearest(x,y,true);
-  return out;
+  if(best>10000&&!global&&hint===null)return this.nearest(x,y,true,null,this.z);
+  return global&&Number.isFinite(z)?this.levelNearest(x,y,z,out):out;
  }
+ // The level at height z: among the stretches whose asphalt comes within LEVEL_REACH of (x, y), the road nearest z
+ // picks the level, and on that level the nearest stretch in plan. A hard choice and not a weight on the height
+ // (distance² + K·Δz²): a stale or meaningless z (a probe, a car moved without its height) never trades plan
+ // distance for height on a hill, and the answer is out, the nearest in plan, whenever the stretches near the point
+ // lie within LEVEL_SPLIT of one height (every single-level circuit) or the point is off every road.
+ levelNearest(x,y,z,out){
+  const a=this.a,n=this.n,o0=a[out.i],o1=a[(out.i+1)%n],near=[];
+  if(Math.hypot(out.ex,out.ey)-(o0[4]+out.u*(o1[4]-o0[4]))/2>LEVEL_REACH)return out;
+  for(let i=0;i<n;i++){
+   const p=a[i],q=a[(i+1)%n],dx=q[1]-p[1],dy=q[2]-p[2],u=clamp(((x-p[1])*dx+(y-p[2])*dy)/(dx*dx+dy*dy),0,1);
+   const ex=x-p[1]-u*dx,ey=y-p[2]-u*dy,d2=ex*ex+ey*ey,r=(p[4]+u*(q[4]-p[4]))/2+LEVEL_REACH;
+   if(d2<=r*r)near.push({i,u,ex,ey,d2,z:p[3]+u*(q[3]-p[3])});
+  }
+  let level=null;for(const c of near)if(!level||Math.abs(c.z-z)<Math.abs(level.z-z))level=c;
+  if(!level||Math.abs(level.z-(o0[3]+out.u*(o1[3]-o0[3])))<=LEVEL_SPLIT)return out;
+  let pick=level;for(const c of near)if(Math.abs(c.z-level.z)<=LEVEL_SPLIT&&c.d2<pick.d2)pick=c;
+  return {i:pick.i,u:pick.u,ex:pick.ex,ey:pick.ey};
+ }
+ // A car put down at (x, y) by a script, a menu or the network (a teleport): on the stretch at height z there
+ // where the lap passes over itself (levelNearest), then seated on its wheels. Without z: the nearest in plan.
+ relocate(x,y,z=NaN,heading=this.heading){this.x=x;this.y=y;this.heading=heading;this.index=this.nearest(x,y,true,null,z).i;this.settle();return this;}
  // ground: the heights to read (a plateau circuit's two copies, cliff-edge.js); the track file's grid by default.
  terrain(x,y,ground=this.data.terrain.z){const t=this.data.terrain,z=ground,fx=clamp((x-t.x0)/t.step,0,t.nx-1.001),fy=clamp((y-t.y0)/t.step,0,t.ny-1.001),ix=Math.floor(fx),iy=Math.floor(fy),u=fx-ix,v=fy-iy,k=iy*t.nx+ix;
   return (z[k]*(1-u)+z[k+1]*u)*(1-v)+(z[k+t.nx]*(1-u)+z[k+t.nx+1]*u)*v;
@@ -230,8 +270,9 @@ export class TestCar {
     if(pit)s=lane.mainS;
    }
   }
-  // On a bridge deck the road plane runs out to the parapet: the sea is 30 m below.
-  const blend=abyss?1:this.decks&&onDeck(this.data,s)?0:clamp(outside/3,0,1);
+  // On a bridge deck the road plane runs out to the parapet: the sea is 30 m below. In a tunnel or its trench it
+  // runs out to the walls: the plaza beside them is 6 m above.
+  const blend=abyss?1:this.decks&&onDeck(this.data,s)||this.tunnels&&inTunnel(this.data,s)?0:clamp(outside/3,0,1);
   // Off the asphalt the car sits on the LiDAR terrain, so it must also lean and roll with it.
   if(blend>0){const e=1.5,tx2=(this.terrain(x+e,y,ground)-this.terrain(x-e,y,ground))/(2*e),ty2=(this.terrain(x,y+e,ground)-this.terrain(x,y-e,ground))/(2*e);gx+=(tx2-gx)*blend;gy+=(ty2-gy)*blend;}
   const service=abyss?null:pitLane(this.data,s);
@@ -280,14 +321,14 @@ export class TestCar {
   const p=this.surface,oldX=this.x,oldY=this.y;
   const c=Math.cos(this.heading),s=Math.sin(this.heading),v=this.vx*c+this.vy*s,lat=-this.vx*s+this.vy*c,speed=Math.hypot(this.vx,this.vy);
   const condition=this.condition?.factors,grounded=this.wheelsDown>0,m=this.mechanics;
-  const loose=!p.onRoad,mu=(p.onRoad?(input.handbrake?.99:ROAD_GRIP*m.grip):GRASS_GRIP)*(condition?.grip??1);
+  const loose=!p.onRoad,mu=(p.onRoad?(input.handbrake?.99:ROAD_GRIP*m.grip):GRASS_GRIP)*(condition?.grip??1)*this.weatherGrip;
   // Smooth the driver's input, then scale it to the lock available at this speed. A racing wheel
   // (input.wheel) is already where the driver's hands put it: it turns the wheels at once.
   const command=clamp(input.left-input.right,-1,1),inputResponse=command*(this.steerInput??0)<0?20:12;
   this.steerInput=input.wheel?command:(this.steerInput??0)+(command-(this.steerInput??0))*(1-Math.exp(-dt*inputResponse));
   // With the tail out, steering against the slide gets extra lock up to the
   // slide angle, and castor already turns the wheels part of the way.
-  const drift=v>3?Math.atan2(lat-REAR_AXLE*this.yaw,v):0,baseSteer=this.steerInput*steerLimit(speed,m.grip)*(condition?.steering??1);
+  const drift=v>3?Math.atan2(lat-REAR_AXLE*this.yaw,v):0,baseSteer=this.steerInput*steerLimit(speed,m.grip*this.weatherGrip)*(condition?.steering??1);
   const counterSteer=this.steerInput*drift>0?this.steerInput*Math.abs(drift)*COUNTER_RANGE:0;
   this.steer=clamp(baseSteer+counterSteer+drift*CASTER_ALIGN,-MAX_STEER,MAX_STEER);
   // Cockpit wheel keeps the familiar hand travel: road-wheel angle is small at speed.
@@ -420,7 +461,7 @@ export class TestCar {
   if(this.upright<.45&&resting)this.overturned+=dt;else if(this.upright>.8)this.overturned=0;
   if(this.overturned>RIGHTING_DELAY){this.vx=this.vy=this.yaw=0;this.settle();this.rightings++;this.rightedAt=this.clock;}
   this.stepX=this.x;this.stepY=this.y;
-  this.trackLap(p,this.surface,Math.hypot(this.x-oldX,this.y-oldY),v);
+  this.trackLap(p,this.surface,Math.hypot(this.x-oldX,this.y-oldY),speed);
  }
  integrate(h,f){
   const {f:F,l:L,u:U}=this.updateAxes(),ch=Math.cos(this.heading),sh=Math.sin(this.heading);
@@ -544,10 +585,15 @@ export class TestCar {
    q.friction+=friction;this.impulse(r,-dx*friction,-dy*friction,-dz*friction);
   }
  }
- trackLap(previous,current,distance,forwardSpeed){
+ // speed: the car's speed over the ground. The line counts a car moving across it in the race
+ // direction whichever way its nose points (sideways or backwards in a handbrake turn, as net-verify.js
+ // has it on the host). Slipped back over it, the next time across is the same passage, not a new lap.
+ trackLap(previous,current,distance,speed){
   const L=this.data.meta.reconstructed_xy_m;
   let advance=current.s-previous.s;if(advance<-L/2)advance+=L;if(advance>L/2)advance-=L;
-  const finish=previous.s>L-16&&current.s<16&&advance>0&&forwardSpeed>1;
+  if(previous.s<16&&current.s>L-16&&advance<0)this.lineBack=true;
+  let finish=previous.s>L-16&&current.s<16&&advance>0&&speed>1;
+  if(finish&&this.lineBack){this.lineBack=false;finish=false;}
   if(this.awaitingStart){if(finish)this.crossLine();return;}
   const outside=p=>!p.pit&&Math.abs(p.d)>p.width/2+1;
   if(!this.excursion&&(outside(previous)||outside(current)))this.excursion={advance:0,distance:0};
@@ -579,7 +625,7 @@ export class TestCar {
  }
  // Everything crossLine changes: the laps that count, the lap under way and the one before, the best.
  lapBooks(){return {awaitingStart:this.awaitingStart,laps:this.laps,lapStart:this.lapStart,lapValid:this.lapValid,invalidReason:this.invalidReason,best:this.best,lastLap:this.lastLap,
-  lastLapValid:this.lastLapValid,lastInvalidReason:this.lastInvalidReason,lapFell:this.lapFell,lastLapFell:this.lastLapFell,checkpoints:new Set(this.checkpoints),nextCheckpoint:this.nextCheckpoint};}
+  lastLapValid:this.lastLapValid,lastInvalidReason:this.lastInvalidReason,lapFell:this.lapFell,lastLapFell:this.lastLapFell,checkpoints:new Set(this.checkpoints),nextCheckpoint:this.nextCheckpoint,lineBack:!!this.lineBack};}
  // The last crossing taken back, as if the car had never reached the line: its lap goes on, timed
  // from where it began. Only one: false when there is none to take back.
  uncrossLine(){

@@ -345,7 +345,9 @@ dados da Prefeitura; `--geofloripa` baixa só eles).
   Rodoviária Rita Maria, o laço da Rua Pedro Bittencourt, a Ponte Colombo Salles (no sentido real dela, ilha →
   continente), a alça da Via Expressa, a Rua 14 de Julho e a Av. Gov. Ivo Silveira de volta à cabeceira continental.
   Esquinas arredondadas (13 m nas de mais de 50°, 24 m nas outras, limitadas pelos lados) e rumo suavizado; o eixo
-  vai para o meio do leito entre os meios-fios (até 3,5 m). 4.452 m em planta, 4.455 m em 3D, sentido horário.
+  vai para o meio do leito entre os meios-fios (até 3,5 m). A esquina da Adolfo Konder com a Hoepcke, a mais fechada
+  (93° com ~9 m de raio no eixo), foi aberta para 22 m sobre o lote de dentro (`ESQUINAS`, desenho de jogo). 4.442 m
+  em planta, 4.445 m em 3D, sentido horário.
 - **Larguras**: o leito entre os meios-fios do cadastro (medido em 83% das estações), com o mínimo de corrida de
   9,5 m e o máximo de 15 m; na Hercílio Luz, os 9,2 m do leito entre as treliças (as calçadas correm por fora delas)
   viram 9,5 m.
@@ -377,3 +379,67 @@ dados da Prefeitura; `--geofloripa` baixa só eles).
 **Aproximações declaradas:** o circuito inteiro; larguras mínimas de corrida; o greide das pontes sobre o mar; os
 muros; os boxes diante da rodoviária (a ponte, onde fica a largada, não tem espaço para um pit lane); as
 arquibancadas na Paulo Fontes; alturas de prédios construídos depois de 2012.
+
+## Circuito do Minhocão (circuito de rua imaginário, São Paulo, SP) — fontes baixadas em 11/10/2026
+
+Pedido da equipe, com o traçado escolhido sobre o mapa das ruas: uma volta que passa POR CIMA e POR BAIXO do Elevado
+Presidente João Goulart (o Minhocão). Não existe: as ruas, o elevado, o túnel da Ligação Leste-Oeste sob a Praça
+Roosevelt, o relevo e os prédios são os reais do centro de São Paulo; fechar a volta, subir a rampa de saída da Rua
+Ana Cintra e andar no Minhocão ao contrário, a ligação de ~30 m dentro do túnel até a Rua Martins Fontes, os muros,
+os boxes e a arquibancada são desenho de jogo. Gerado por `scripts/circuitos/gerar_minhocao.py` (depois de
+`baixar_fontes.py minhocao --referencia`, que também baixa os dados da Prefeitura; `--geosampa` baixa só eles e
+`--geosampa --so-vetores` só as camadas vetoriais).
+
+- **Traçado**: as vias do OpenStreetMap por uma volta de pernas (`PERNAS` no gerador, roteadas por `rota_osm.py`: o
+  menor caminho entre pontos de passagem, com os nomes de rua preferidos). Largada na Rua Major Sertório, 150 m depois
+  de passar sob o Minhocão; Av. Ipiranga, a Praça da República pelo lado das árvores, a Av. Vieira de Carvalho, o
+  Largo do Arouche, a Av. Duque de Caxias, a Av. São João, a rampa da Rua Ana Cintra (de saída, subida ao contrário),
+  790 m sobre o Minhocão rumo à Roosevelt (a pista sentido bairro, ao contrário), a descida reta no túnel sob a Rua da
+  Consolação e a praça, a saída na Rua Martins Fontes, a Rua Augusta, a Rua Caio Prado, a Rua Dr. Cesário Mota Júnior e
+  de novo a Major Sertório, que passa POR BAIXO do mesmo tabuleiro (um cruzamento em dois níveis, 7,9 m entre eles). A
+  volta é um oito: não dá volta inteira em torno de nada. Esquinas arredondadas e rumo suavizado (como Floripa); no
+  Minhocão o eixo vai para o meio do tabuleiro (a corrida usa as duas pistas, sem o separador) e nas ruas para o meio
+  do leito entre os meios-fios (até 3,5 m). 4.034 m em planta, 4.035 m em 3D.
+- **Larguras**: o leito entre os meios-fios das quadras viárias do GeoSampa (medido em 56% das estações; Major
+  Sertório 10,1 m, Ipiranga 11,4 m, Caio Prado 10,9 m), com o mínimo de corrida de 9,5 m e o máximo de 14,5 m; o
+  tabuleiro inteiro, 14 m de asfalto entre os muros (15,7–16,1 m de borda a borda medidos); a rampa 9,5 m; o túnel 11 m.
+- **Relevo**: o MDT do levantamento LiDAR de 2020 da Prefeitura (GeoSampa, quadros 1:1000 em LAZ, ~10 pontos/m²) numa
+  grade de 1 m; sob os prédios, sem pontos de chão, preenchido por convolução normalizada; o ANADEM fora da caixa. O
+  chão cai 30 m da Augusta (768 m) à São João sob o Minhocão (738 m).
+- **Minhocão**: o pavimento da rampa, do tabuleiro e da descida MEDIDO no MDS 2020 (a superfície, 0,5 m) e rastreado
+  estação por estação (o grupo de pontos mais perto da rampa que vinha: o pé da rampa da Ana Cintra passa sob a curva do
+  próprio Minhocão, e no fim, antes da Consolação, as duas pistas descem com um vão entre elas): 7,5 a 9,2 m acima do
+  chão sob ele. Ali a pista anda no plano do tabuleiro até os muros (`meta.decks`) e o terreno fica o medido, pelo
+  menos 2,5 m abaixo dele. O resto do elevado (2,7 km de tabuleiro, as alças da São João, da Amaral Gurgel, da
+  Consolação e da Marechal Deodoro), os 105 pilares numa fila só (fora das ruas que cruzam por baixo e da volta) e o
+  túnel vão em `scenery.minhocao` para os modelos (`minhocao-structures.js`). A faixa livre ao lado do tabuleiro é de
+  2,5 m (`meta.deck_band_m`): os prédios encostam nele, como na cidade.
+- **Túnel**: da boca medida sob a Consolação (755 m) à Martins Fontes, sempre pelo menos 5,8 m abaixo do chão de cima
+  (gabarito de 4,3–4,5 m mais a laje); 290 m abaixo do chão, 218 m cobertos, até 9,6 m sob a praça
+  (`meta.tunnels`). O terreno só desce num corredor sobre a pista (até 5 m atrás dos muros); fora dele fica a praça e
+  as ruas por cima.
+- **Edificações**: as do OpenStreetMap, quase todas com a altura da importação da Prefeitura (PMSP, mapa digital de
+  2004; os mais altos subestimados); ~6.600 na grade de 4 m, fora da pista e dos muros (as calçadas ficam), dos boxes e
+  da arquibancada; ~11.900 no horizonte, além dela, com o chão de cada uma. Os marcos têm modelo próprio
+  (`minhocao-landmarks.js`, `scenery.landmarks`, contornos do OSM): o Copan (118 m), o Edifício Itália (165 m), o antigo
+  Hilton (110 m), a Casa Caetano de Campos, a Igreja da Consolação (torre de 75 m), o Edifício Esther, o Andraus e o
+  coreto da Praça da República.
+- **Chão e árvores**: a cor do chão é a ortofoto de 2020 da Prefeitura (WMS do GeoSampa, pedida a 1 m e reduzida a
+  ~1,4 m por pixel); fora das praças e largos do cadastro a cobertura é chão construído (o WorldCover chama de mata a
+  copa das árvores de rua) e a Praça Roosevelt, uma laje de concreto; as árvores de rua são as 3.222 do cadastro de
+  arborização do GeoSampa dentro da grade (`scenery.trees`).
+- **No jogo**: muros de concreto com alambrado dos dois lados (`street-walls.js`; sem alambrado no tabuleiro e no
+  túnel), os boxes à direita da Major Sertório entre o Minhocão e a Ipiranga, a arquibancada diante deles, o
+  cruzamento em dois níveis tratado pelo motor (busca de estação com altura, IAs que não freiam por um carro no outro
+  nível, `scripts/testar_cruzamento.mjs`).
+
+| Dado | Fonte | Uso |
+|---|---|---|
+| Vias, prédios com altura (importação PMSP) | OpenStreetMap (Overpass, base 11/10/2026) | eixo, edificações |
+| MDT e MDS do LiDAR 2020, ortofoto 2020, quadras viárias (meios-fios), pontos cotados, obras de arte, praças, árvores | GeoSampa, Prefeitura de São Paulo (WFS, WMS e arquivos sem login) | relevo, tabuleiro, larguras, cor do chão, árvores |
+| Relevo 30 m, superfície 30 m, cobertura 10 m, cor 10 m | ANADEM, Copernicus GLO-30, ESA WorldCover, Sentinel-2 S2B_23KLQ_20260927 | fora da caixa da Prefeitura, cor do chão |
+| Dimensões do Minhocão e do túnel | Wikipédia, SPObras, GeoSampa (medidas no MDS e nas obras de arte) | modelos |
+
+**Aproximações declaradas:** o circuito inteiro; a rampa de saída subida e o Minhocão ao contrário; a ligação de 30 m
+no túnel; o leito do túnel sob a praça (desenhado); larguras mínimas de corrida; os muros; os boxes e a arquibancada na
+Major Sertório; alturas de prédios do mapa de 2004.

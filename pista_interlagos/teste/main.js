@@ -27,7 +27,12 @@ import {createTrackSurface,createGuardrails,createCurbs,createTrackBranding} fro
 import {createCockpit} from './cockpit.js?v=20260927-omp-retrovisores';
 import {CarOpenings} from './car-openings.js';
 import {SideMirrors} from './side-mirrors.js';
-import {createBrakeLights,lampUVs} from './brake-lights.js';
+import {createBrakeLights,lampUVs,TAIL_LIGHTS} from './brake-lights.js';
+import {PlayerHeadlights,createHeadlights,lampSetFor,setGlare,lampPatch,updateRoadLamps,ROAD_LAMPS} from './headlights.js';
+import {SWITCH_TILT} from './cockpit-instruments.js';
+import {Rain,RAIN_DROPS} from './rain.js';
+import {prepareWipers,WindscreenRain} from './windscreen-rain.js';
+import {createFloodlights,FLOOD} from './floodlights.js';
 import {CameraReturn,LookBack,turnHead,neckTwist,HEAD_YAW_COCKPIT,HEAD_YAW_HOOD} from './camera-return.js';
 import {CameraRig,CAMERA_FRAMES,FOLLOW_FRAMES,baseFov,speedFov as lensFov,easeLens,dolly,frameFor,topSpeed,vibration,carPoints,carScale} from './camera-rig.js';
 import {clearView} from './on-foot.js';
@@ -47,6 +52,7 @@ import {setupSettings} from './settings.js';
 import {CarAudio} from './car-audio.js?v=20260913-immersive';
 import {PlayerPreferences,CAMERA_MODES,LAPS} from './player-preferences.js';
 import {createSky,SUN_DIRECTION} from './sky.js';
+import {weatherProfile,weatherCaption,TIMES_OF_DAY,RAIN_LEVELS,EFFECT_LIGHT} from './weather.js';
 import {createCinematic,SMEAR_CARS} from './cinematic.js';
 import {SunPlacement} from './sun-light.js';import {CarShadow} from './car-shadow.js';
 import {createLandscape,loadTerrainTextures,buildTrackField,readOrtho,looseGround,terrainMaterial,structureMaterial,createCrowd} from './landscape.js';
@@ -63,6 +69,8 @@ import {createFarTerrain} from './far-terrain.js';
 import {createSea} from './sea-water.js';
 import {createFloripaBridges} from './floripa-bridges.js';
 import {createFloripaLandmarks} from './floripa-landmarks.js';
+import {createMinhocaoStructures} from './minhocao-structures.js';
+import {createMinhocaoLandmarks,hasMinhocaoLandmarks} from './minhocao-landmarks.js';
 import {Explosions} from './explosion.js';
 import {trackPoint as podiumPoint} from './immersive-visuals.js';
 import {CinematicIntro} from './intro-cinematic.js';
@@ -149,6 +157,12 @@ $('retirements').onchange=()=>{preferences.update({retirements:$('retirements').
 // preference, taken at the next start, so a race under way keeps its own.
 for(const laps of [$('raceLaps'),$('tracksLaps')]){for(let n=LAPS.min;n<=LAPS.max;n++)laps.add(new Option(`${n} volta${n>1?'s':''}${n===LAPS.standard?' (padrão)':''}`,String(n)));laps.value=String(preferences.values.laps);
  laps.onchange=()=>{preferences.update({laps:Number(laps.value)});$('raceLaps').value=$('tracksLaps').value=String(preferences.values.laps);if(immersive)immersive.laps=preferences.values.laps;updateMenuLabels();};}
+// The weather (weather.js): the time of day and the rain, in the race settings and on the track screen, like the
+// laps. One preference each; a race under way takes it at once (applyWeather).
+for(const [key,choices,ids] of [['timeOfDay',TIMES_OF_DAY,['timeOfDay','tracksTime']],['rain',RAIN_LEVELS,['rainLevel','tracksRain']]])for(const id of ids){
+ const select=$(id);for(const [value,label] of choices)select.add(new Option(label,value));select.value=preferences.values[key];
+ select.onchange=()=>{preferences.update({[key]:select.value});for(const other of ids)$(other).value=preferences.values[key];applyWeather();};
+}
 // The 1x1's rival, on the track screen: any driver of the field the chosen car races in (options and
 // labels in updateMenuLabels).
 {const pick=$('duelRival');
@@ -238,6 +252,10 @@ const sunOffset=SUN_DIRECTION.clone().multiplyScalar(140);
 // The shadow box leans toward what the camera sees and moves in whole texels (sun-light.js); the
 // cars get a crisp map of their own on Alto and Ultra (car-shadow.js).
 const sunPlacement=new SunPlacement(SUN_DIRECTION),sunView=new THREE.Vector3(),carShadow=new CarShadow(SUN_DIRECTION),shadowRoots=[];
+// The race's weather (weather.js; the Corrida tab's Horário and Clima): the key light's direction (the day's sun,
+// a low sun at dusk, the moon at night) and everything applyWeather puts on the world.
+// weatherOverride: a multiplayer room's (the host's weather, multiplayer.js), not saved.
+let weather=weatherProfile(),weatherOverride=null;const sunDirection=SUN_DIRECTION.clone();
 function placeSun(p,view=null,dt=1){const c=sunPlacement.place(p,view,{reach:sun.shadow.camera.right,size:sun.shadow.mapSize.x,dt});sun.target.position.copy(c);sun.position.copy(c).add(sunOffset);sun.target.updateMatrixWorld();}
 // The followed car (the watched rival in the recon lap) first, then the nearest cars within 30 m of it;
 // none when the camera is far from it (TV camera, the pilot on foot away from the car).
@@ -268,13 +286,22 @@ function cabinVisibility(){
 }
 const suspension={roll:0,rollRate:0,pitch:0,pitchRate:0},bodyPivot=new THREE.Vector3(.3,.38,0),bodyTilt=new THREE.Quaternion(),bodyTiltInverse=new THREE.Quaternion(),bodyEuler=new THREE.Euler(),wheelOffset=new THREE.Vector3();
 function springTo(key,target,dt,frequency,damping){const rate=key+'Rate';suspension[rate]+=((target-suspension[key])*frequency*frequency-2*damping*frequency*suspension[rate])*dt;suspension[key]+=suspension[rate]*dt;}
-let cockpit,skidMarks,tyreSmoke,sideMirrors,fuscaMirrors;
+let cockpit,skidMarks,tyreSmoke,sideMirrors,fuscaMirrors,rain;
 // Air, dust and pushed grass that sell the speed (speed-particles.js), built with each circuit.
 let speedFx=null;
 // The player's Opala on the sprung body: its model, cabin structure (setLivery) and brake lights
 // (brake-lights.js), hidden together while the player races a Fusca (fuscaBody, showFusca).
 const opalaShell=new THREE.Group();opalaShell.name='Opala_do_jogador';carBody.add(opalaShell);
 const brakeLamps=createBrakeLights();opalaShell.add(brakeLamps);
+// Headlights (headlights.js): the player's two spot lights ride the sprung body; the lit lenses and glare sit on the
+// car shown (the Opala's auxiliary lamps or headlamps, the Fusca's headlamps). H switches them.
+const playerLamps=new PlayerHeadlights(carBody);let playerGlow=null,playerGlowKey='',farolSwitch=null,limpSwitch=null;
+// The rain on the Opala's windscreen and its wipers (windscreen-rain.js): J or the LIMP switch.
+const windscreen=new WindscreenRain();
+// Where the drops splash: the road's plane under the player's car (rain.js).
+const splashGround={point:new THREE.Vector3(),normal:new THREE.Vector3(0,1,0)};
+// The floodlight masts on the pit wall of the circuit loaded (floodlights.js), lit after dark.
+let floods=null;
 const fuscaBody=new FuscaBody(carBody),seatShift=new THREE.Vector3(),eyeShift=new THREE.Vector3(),noShift=new THREE.Vector3();
 // The two TVs in Box 99's garage and the team stand's monitors show this track's records (the mode
 // being played, and the other mode's best laps on the stand); they are
@@ -350,13 +377,16 @@ function initializeRenderer(){
  sideMirrors=new SideMirrors(cockpit.mirrorTarget.texture);fuscaMirrors=new SideMirrors(cockpit.mirrorTarget.texture);fuscaBody.mirror=cockpit.mirrorTarget.texture;
  skidMarks=new SkidMarks(16384);scene.add(skidMarks.mesh);
  tyreSmoke=new TyreSmoke();scene.add(tyreSmoke.mesh);
- applyGraphics();
+ // The rain and the cars' spray (rain.js), drawn only when the weather has rain.
+ rain=new Rain({count:RAIN_DROPS[graphics.values.materials]??RAIN_DROPS.alto});scene.add(rain.root);
+ applyGraphics();applyWeather();
 }
 // The Gráficos tab's values on the renderer, the sun, the film look, the fog and the mirrors. All of
 // it takes effect at once except the scenery (built with the circuit: loadCircuit rebuilds it at the
 // next start) and the screen's own antialiasing (initializeRenderer).
 // The fog and the far plane of the Gráficos tab's view distance; a circuit over a valley (far-terrain.js) sees further.
-function applyViewDistance(){const view=(data?.scenery?.far?VALLEY_VIEW:VIEW_DISTANCES)[graphics.values.viewDistance];[scene.fog.near,scene.fog.far]=view.fog;camera.far=view.far;camera.updateProjectionMatrix();}
+// The weather shortens the fog (rain, night: weather.js fog.reach), never the far plane.
+function applyViewDistance(){const view=(data?.scenery?.far?VALLEY_VIEW:VIEW_DISTANCES)[graphics.values.viewDistance],reach=weather.fog.reach;[scene.fog.near,scene.fog.far]=[view.fog[0]*Math.min(1,reach*1.15),view.fog[1]*reach];camera.far=view.far;camera.updateProjectionMatrix();}
 function applyGraphics(){
  graphics=graphicsPanel.show(preferences.values.graphics);const g=graphics.values;
  resolution.max=Math.min(devicePixelRatio,g.resolution);resolution.min=Math.min(resolution.max,touchDevice?.6:.7);resolution.dynamic=g.dynamicResolution;frameCap.limit=g.fpsLimit;
@@ -373,7 +403,7 @@ function applyGraphics(){
  // Alto/Ultra: the cars' crisp map (uniforms only: the ground shaders always carry the lookup).
  carShadow.configure(shadow?.car??null);
  cinematic.setLevel(cinematicLevel());cinematic.setQuality(graphics.level);cinematic.setFeatures(cinematicFeatures());
- roadSurface?.setQuality(g.materials);roadRails?.setQuality(g.materials);roadCurbs?.userData.setQuality(g.materials);
+ roadSurface?.setQuality(g.materials);roadRails?.setQuality(g.materials);rain?.setCount(RAIN_DROPS[g.materials]??RAIN_DROPS.alto);roadCurbs?.userData.setQuality(g.materials);
  // The cars' finish and reflections (car-reflections.js); another map size, the flake or a capture in the
  // Simples look means other programs (precompiled below).
  const reflectionPrograms=carReflections.setLevel(g.reflections);
@@ -402,6 +432,80 @@ function precompileGraphics(){
  // programs; coming back then built the rest inside one frame, the very freeze this avoids. The cars'
  // reflection captures (Simples look: linear programs of their own) wait for theirs in car-reflections.js.
  Promise.race([Promise.all([cinematic.compile(scene,camera),carReflections.compile(scene)]),new Promise(done=>setTimeout(done,30000))]).catch(err=>console.warn(err)).finally(()=>{if(graphicsCompiling!==token)return;graphicsCompiling=null;graphicsPanel.busy(false);});
+}
+// The weather picked in the Corrida tab or on the track screen (weather.js), put on the world: the key light (sun or
+// moon), the sky's fill, the dome and its lighting maps, the film look, the fog, the road's water, the rain, the
+// headlights and every car's grip. Taken at once (a paused race too): the next frames show it. A change that brings
+// lights in or takes them out (headlights.js) needs new programs, compiled in slices like the Gráficos tab's.
+function applyWeather(){
+ weather=weatherProfile(weatherOverride?.time??preferences.values.timeOfDay,weatherOverride?.rain??preferences.values.rain);
+ sunDirection.fromArray(weather.sun.direction).normalize();sunOffset.copy(sunDirection).multiplyScalar(140);sunPlacement.setDirection(sunDirection);carShadow.direction.copy(sunDirection);
+ sun.color.set(weather.sun.color);sun.intensity=weather.sun.intensity;sun.shadow.bias=weather.shadowBias.bias;sun.shadow.normalBias=weather.shadowBias.normalBias;
+ skyFill.color.set(weather.fill.sky);skyFill.groundColor.set(weather.fill.ground);skyFill.intensity=weather.fill.intensity;
+ // The tyres on a wet track (physics.js weatherGrip): the player's car and the rivals', and those the next start builds.
+ if(car)car.weatherGrip=weather.grip;if(immersive){immersive.field.weatherGrip=weather.grip;for(const r of immersive.rivals??[])r.car.weatherGrip=weather.grip;}
+ if(!renderer)return;
+ scene.environmentIntensity=weather.environment;
+ // New lighting maps: the cars wearing the sky's old one take the new one (a probe or the grid's picture keep theirs).
+ if(sky.setWeather(weather))carReflections.useRaceMap();
+ cinematic.setSun(sunDirection);cinematic.setLook(weather.look);
+ // The Simples look has no eye adaptation: its exposure follows the light.
+ renderer.toneMappingExposure=weather.exposure;
+ applyViewDistance();placeSun(carRoot.position);
+ roadSurface?.setWetness?.(weather.wetness,weather.drops);
+ EFFECT_LIGHT.value=weather.ambient;rain?.setWeather(weather);
+ // Headlights: the rivals' and the tail lamps follow the weather; the player's spot lights come into the scene with it
+ // (new programs: compiled in slices when a race already shows), lit as the start decides (startLights) or H.
+ TAIL_LIGHTS.on=weather.lights;setGlare(weather.lamps);playerLamps.setStrength(weather.lamps);
+ floods?.setLevel(weather.night?1:weather.time==='fim_de_tarde'?.45:0);
+ // At night the cars reflect the night sky only (car-reflections.js setSkyOnly): another map size, other programs.
+ const programs=playerLamps.install(weather.lights)|carReflections.setSkyOnly(weather.night);
+ if(programs&&ready)precompileGraphics();
+ if(!weather.lights)playerLamps.on(false);else if(sessionStarted&&!immersive?.active)playerLamps.on(true);
+ // The wipers: parked when it stops raining; started for the Modo Corrida's driver when it starts.
+ if(!weather.wet)windscreen.setWipers(false);else if(sessionStarted&&!immersive?.active)windscreen.setWipers(true);
+ floodLevel=0;headlightsHud();
+}
+// The player's lamps as a race starts: on whenever the weather wants them in Modo Corrida; in the story the pilot
+// switches them on (H), as the IGN and PART before.
+function startLights(){playerLamps.on(weather.lights&&!preferences.values.immersive);windscreen.setWipers(weather.wet&&!preferences.values.immersive);headlightsHud();}
+// J (the touch button, a learnt wheel button): the wipers on or off (they finish their stroke and park).
+function toggleWipers(){
+ if(!ready||!sessionStarted||immersive?.onFoot())return;
+ const on=windscreen.setWipers(!windscreen.wiping),text=on?'Limpador ligado · J desliga':'Limpador desligado · J liga';
+ status(text);setTimeout(()=>{if($('status').textContent===text)status('');},2500);headlightsHud();
+}
+// H (the controller's L3, the touch button, a learnt wheel button): the player's headlights on or off.
+function toggleHeadlights(){
+ if(!ready||!sessionStarted||immersive?.onFoot())return;
+ const on=playerLamps.toggle(),text=on?'Faróis acesos · H apaga':'Faróis apagados · H acende';
+ status(text);setTimeout(()=>{if($('status').textContent===text)status('');},2500);headlightsHud();
+}
+function headlightsHud(){$('touchLights')?.classList.toggle('active',playerLamps.lit);$('touchWipers')?.classList.toggle('active',windscreen.wiping);document.body.classList.toggle('lights-weather',weather.lights);document.body.classList.toggle('rain-weather',weather.wet);}
+// Every frame: the player's lit lenses on the car shown (rebuilt for another livery or the Fusca), the cockpit's FAROL
+// switch, the rivals' lamps (on while they race in the weather that wants them) and the lamps that light the road.
+// RIVAL_BEAM: a rival's beam on the road against the player's own (a pack behind would flood the road white).
+const ROAD_LAMP_LIMIT={baixo:6,medio:10,alto:18,ultra:24},RIVAL_BEAM=.5,lampCars=[];let lampLimit=null;
+const FLOODLIGHT=Object.freeze({gain:6,color:'#ffdcb0'}),floodSky=new THREE.Color(),floodWarm=new THREE.Color(FLOODLIGHT.color);let floodLevel=0;
+function updateLamps(dt){
+ const fusca=fuscaBody.active&&fuscaBody.car?fuscaBody.car:null,owner=fusca??model,holder=fusca??opalaShell;
+ if(owner&&owner.uuid!==playerGlowKey){playerGlowKey=owner.uuid;playerGlow?.removeFromParent();const set=fusca?'fusca':lampSetFor(model);playerGlow=createHeadlights(set);holder.add(playerGlow);playerLamps.place(set);}
+ if(playerGlow)playerGlow.visible=playerLamps.lit&&!!owner?.visible;
+ farolSwitch??=cockpit.root.getObjectByName('Interruptor_FAROL');
+ if(farolSwitch)farolSwitch.rotation.x+=((playerLamps.lit?SWITCH_TILT:-SWITCH_TILT)-farolSwitch.rotation.x)*Math.min(1,dt*28||1);
+ limpSwitch??=cockpit.root.getObjectByName('Interruptor_LIMP');
+ if(limpSwitch)limpSwitch.rotation.x+=((windscreen.wiping?SWITCH_TILT:-SWITCH_TILT)-limpSwitch.rotation.x)*Math.min(1,dt*28||1);
+ // The paddock, the podium and the pit box are floodlit after dark (the garages' and the stands' lamps): a warm lift
+ // of the sky's fill there, eased so walking in or driving out does not pop.
+ const phase=immersive?.active?immersive.state.phase:null,floodlit=weather.night&&(phase==='crowd'||phase==='podium'||!!pitstop?.opened);
+ // Untouched while there is nothing to lift (the fill stays as applyWeather or the light hook left it).
+ const ease=dt>0?1-Math.exp(-dt*2.5):1,flood=floodLevel;floodLevel+=((floodlit?1:0)-floodLevel)*ease;if(floodLevel<.002&&!floodlit)floodLevel=0;
+ if(flood>0||floodLevel>0){skyFill.intensity=weather.fill.intensity*(1+(FLOODLIGHT.gain-1)*floodLevel);skyFill.color.lerpColors(floodSky.set(weather.fill.sky),floodWarm,floodLevel);}
+ const racing=!immersive?.active||phase!=='crowd',lit=weather.lights&&racing;lampCars.length=0;
+ for(const obj of immersive?.visual?.rivals??[]){const heads=obj.userData.headlights;if(heads)heads.visible=lit&&obj.visible;if(lit&&obj.visible)lampCars.push({obj,set:obj.userData.lampSet,head:RIVAL_BEAM,tail:1});}
+ // The player's own beam on the road comes from here too (its spot lights light what stands up in it).
+ if(playerLamps.lit)lampCars.push({obj:carBody,set:playerLamps.set,head:1,tail:1});
+ updateRoadLamps(lampCars,camera.position,lampLimit??ROAD_LAMP_LIMIT[graphics.values.materials]??12,weather.lamps,floods?.lamps??[],FLOOD.slots);
 }
 reducedMotion.addEventListener('change',()=>{if(cinematic)cinematic.setFeatures(cinematicFeatures());});
 const cinematicFeatures=()=>({ao:graphics.values.ao,lens:graphics.values.lens,motionBlur:graphics.values.motionBlur&&!reducedMotion.matches,samples:graphics.values.antialias});
@@ -453,9 +557,9 @@ function withCleanModel(clone){
 const gridPreview=()=>immersive?.active&&immersive.state.phase==='grid';
 let wasGridPreview=false;
 const keys=new Set(),clock=new THREE.Clock(),matrix=new THREE.Matrix4(),forward=new THREE.Vector3(),up=new THREE.Vector3(),right=new THREE.Vector3(),desired=new THREE.Vector3(),look=new THREE.Vector3();
-// Number keys (a test) set the wheel and leave it there: 3 straight ahead, 2 / 1 a little / a lot to
-// the left, 4 / 5 to the right. A, D or the arrows centre it again and steer as before.
-const WHEEL_KEYS={Digit1:-1,Digit2:-.4,Digit3:0,Digit4:.4,Digit5:1,Numpad1:-1,Numpad2:-.4,Numpad3:0,Numpad4:.4,Numpad5:1};let wheelSet=0;
+// Number keys pick a view straight away, in the menu's order: 1 chase, 2 close, 3 far, 4 hood,
+// 5 cockpit, 6 TV, 7 aerial, 8 orbit. The numpad does the same.
+const CAMERA_KEYS=Object.fromEntries(cameraModes.flatMap((view,i)=>[[`Digit${i+1}`,view],[`Numpad${i+1}`,view]]));
 const wheelForward=new THREE.Vector3(),wheelUp=new THREE.Vector3(0,1,0),wheelAxle=new THREE.Vector3(),wheelMatrix=new THREE.Matrix4(),wheelTurn=new THREE.Quaternion(),wheelSpin=new THREE.Quaternion(),axleAxis=new THREE.Vector3(0,0,1);
 function status(text){$('status').textContent=text;$('status').classList.toggle('hidden',!text);}
 function flattenStatic(root){
@@ -490,7 +594,7 @@ async function setLivery(value){
  const token=++loadToken;status('Carregando Opala 99…');
  $('skinButton').disabled=true;$('skinButton').textContent='Carregando pintura…';$('livery').disabled=true;
  try{
- const gltf=await loader.loadAsync(`./assets/opala99_${value}.glb?v=06-coluna-a-capo`);
+ const gltf=await loader.loadAsync(`./assets/opala99_${value}.glb?v=06-vidros`);
  if(token!==loadToken)return;
  carLivery.clear();if(model)opalaShell.remove(model);model=gltf.scene;wheels=[];
  // Meshes inside the shut body (engine bay, trunk, hinges: glTF extra "interno") cast no shadow.
@@ -503,6 +607,8 @@ async function setLivery(value){
  }if(o.name.startsWith('Roda_')&&o.name.includes('PIVO')){const front=o.name.includes('Dianteira');wheels.push({obj:o,front,index:(front?0:2)+(o.position.z>0?1:0),base:o.quaternion.clone(),basePosition:o.position.clone()});}});
  // Slicks with lettered sidewalls on the template (car-wheels.js): every clone made from it shares them.
  prepareWheels(model,'opala');
+ // Its wipers on their own pivots, cut out of the body (windscreen-rain.js), before any rival is cloned from it.
+ prepareWipers(model);
  // The tail lamps' lens rings (brake-lights.js); the trunk's inside shown only with the lid open (car-livery.js).
  lampUVs(model);trunkInterior=trunkInside(model);
  openings.attach(model);
@@ -514,7 +620,7 @@ async function setLivery(value){
  model.updateMatrixWorld(true);const structuralParts=[];
  model.traverse(o=>{if(o.isMesh&&(Array.isArray(o.material)?o.material:[o.material]).some(m=>m.name==='Chapa_fechamento_V04'))structuralParts.push(o);});
  for(const part of structuralParts){const local=part.matrixWorld.clone();carStructure.add(part);local.decompose(part.position,part.quaternion,part.scale);}
- opalaShell.add(model,carStructure);sideMirrors.attach(model,carBody,cockpit.eye);cabinVisibility();activeLivery=value;status('');if(sessionStarted&&immersive)paintCar();
+ opalaShell.add(model,carStructure);windscreen.attach(model,opalaShell);sideMirrors.attach(model,carBody,cockpit.eye);cabinVisibility();activeLivery=value;status('');if(sessionStarted&&immersive)paintCar();
  preferences.update({livery:value});if(ready)carAudio.effect('paint');
  }finally{
   if(token===loadToken){
@@ -563,7 +669,7 @@ async function cycleLivery(){
 // hand shuts as the car moves off.
 function updateOpenings(dt){if(Math.hypot(car.vx,car.vy)>1.5)openings.release('manual');openings.update(dt);showTrunkInside(trunkInterior,openings);}
 // nearest (R key): only the player's car goes back on track; rivals, laps and fuel carry on.
-function reset(nearest=false){car.fall=null;if(fallMode){setCameraMode(fallMode);fallMode=null;}fallView.stop(camera);if(!nearest)explosions?.reset();action.reset();mobile?.setHandbrake(false);wheelSet=0;openings.closeAll(true);if(nearest)car.recover();else{ghostRecorder.reset();car.resetGrid(playerGridSlot(immersive?.lineup?.length));if(immersive&&!immersive.active)immersive.resetField();cockpit.resetPhone();}driver?.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();automatic=false;followInitialized=false;cameraReturn.reset(performance.now());headLook.yaw=headLook.pitch=0;lookBack.reset();updateCar(1);updateCamera(1);}
+function reset(nearest=false){car.fall=null;if(fallMode){setCameraMode(fallMode);fallMode=null;}fallView.stop(camera);if(!nearest)explosions?.reset();action.reset();mobile?.setHandbrake(false);openings.closeAll(true);if(nearest)car.recover();else{ghostRecorder.reset();car.resetGrid(playerGridSlot(immersive?.lineup?.length));if(immersive&&!immersive.active)immersive.resetField();cockpit.resetPhone();}driver?.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();automatic=false;followInitialized=false;cameraReturn.reset(performance.now());headLook.yaw=headLook.pitch=0;lookBack.reset();updateCar(1);updateCamera(1);}
 const names=[[0,'Reta dos boxes'],[280,'S do Senna · T1–T2'],[490,'Curva do Sol · T3'],[700,'Reta Oposta'],[1500,'Descida do Lago · T4–T5'],[1810,'Subida para a Ferradura'],[1990,'Ferradura · T6–T7'],[2230,'Laranjinha · T8'],[2430,'Pinheirinho · T9'],[2660,'Bico de Pato · T10'],[2840,'Mergulho · T11'],[3120,'Junção · T12'],[3250,'Subida dos boxes · T13'],[3570,'Café · T14'],[3960,'T15 · Reta dos boxes']];
 function location(s){const sections=data.meta.sections||names;let name=sections[0][1];for(const [d,n] of sections)if(s>=d)name=n;return name;}
 const fmt=t=>{if(t===null)return '—';const m=Math.floor(t/60),s=t%60;return `${String(m).padStart(2,'0')}:${s.toFixed(3).padStart(6,'0')}`;};
@@ -945,9 +1051,9 @@ const pressed=code=>keys.has(code)||mobile?.pressed.has(code)||code!=='Space'&&(
 // Modo Corrida out of fuel: nothing drives, Q included.
 const outOfFuel=()=>immersive&&!immersive.active&&immersive.freeFuel<=0&&!pitstop?.coffee;
 function input(step=0){
- const afoot=pitstop?.coffee||immersive?.onFoot(),walk=afoot?gamepad.walk:0,set=afoot?0:wheelSet;
+ const afoot=pitstop?.coffee||immersive?.onFoot(),walk=afoot?gamepad.walk:0;
  const steer=afoot?Math.sign(wheel.steering)*Math.max(0,Math.abs(wheel.steering)-.25)/.75:wheel.steering;
- const command={ignition:pressed('KeyI')?1:0,throttle:Math.max(pressed('KeyW')||pressed('ArrowUp')?1:0,mobile?.throttle??0,gamepad.throttle,wheel.throttle,walk),brake:Math.max(pressed('KeyS')||pressed('ArrowDown')?1:0,mobile?.brake??0,gamepad.brake,wheel.brake,-walk),left:Math.max(pressed('KeyA')||pressed('ArrowLeft')?1:0,-(mobile?.steering??0),-gamepad.steering,-set,-steer),right:Math.max(pressed('KeyD')||pressed('ArrowRight')?1:0,mobile?.steering??0,gamepad.steering,set,steer),reverse:pressed('KeyQ')?1:0,handbrake:pressed('Space')?1:0};
+ const command={ignition:pressed('KeyI')?1:0,throttle:Math.max(pressed('KeyW')||pressed('ArrowUp')?1:0,mobile?.throttle??0,gamepad.throttle,wheel.throttle,walk),brake:Math.max(pressed('KeyS')||pressed('ArrowDown')?1:0,mobile?.brake??0,gamepad.brake,wheel.brake,-walk),left:Math.max(pressed('KeyA')||pressed('ArrowLeft')?1:0,-(mobile?.steering??0),-gamepad.steering,-steer),right:Math.max(pressed('KeyD')||pressed('ArrowRight')?1:0,mobile?.steering??0,gamepad.steering,steer),reverse:pressed('KeyQ')?1:0,handbrake:pressed('Space')?1:0};
  // The wheel alone steering: physics turns the road wheels where it is, with no smoothing.
  if(!afoot&&wheel.steers&&command.left+command.right===Math.abs(steer))command.wheel=true;
  // Câmbio manual: the gear the player put in, and a wheel's clutch pedal (the keyboard has none).
@@ -984,7 +1090,7 @@ function introContext(){
  const center=k=>{const t=((s+k)%L+L)%L,i=Math.max(0,a.findIndex(q=>q[0]>=t)),p=a[i];probe.index=i;return new THREE.Vector3(p[1],probe.sample(p[1],p[2]).z,-p[2]);};
  const here=center(0),position=immersive.active?immersive.state.position:immersive.freePosition;
  return {car:carRoot.position.clone(),number:raceCar,model:raceModel,forward:forward.clone(),inward:here.sub(carRoot.position),center,pilot:immersive.pilotName||'Stevan',position,grid:immersive.fieldSize,laps:immersive.active?immersive.storyLaps:immersive.freeTotalLaps,practice:immersive.practice,duel:!immersive.active&&immersive.freeLineup?.length===1?carEntry(immersive.freeLineup[0]):null,
-  circuit:circuit.name,venue:circuit.id==='interlagos'?'Autódromo José Carlos Pace':circuit.venue??circuit.label,weather:circuit.id==='interlagos'?'São Paulo · 16h40 · 27 °C · pista seca':circuit.weather??'Fim de tarde · 26 °C · pista seca',
+  circuit:circuit.name,venue:circuit.id==='interlagos'?'Autódromo José Carlos Pace':circuit.venue??circuit.label,weather:weatherCaption(circuit.id==='interlagos'?'São Paulo · 16h40 · 27 °C · pista seca':circuit.weather??'Fim de tarde · 26 °C · pista seca',weather),
   hero:immersive.visual?.hero?immersive.visual.hero.getWorldPosition(new THREE.Vector3()):carRoot.position.clone(),
   // People face their local +x.
   heroForward:immersive.visual?.hero?new THREE.Vector3(1,0,0).applyQuaternion(immersive.visual.hero.getWorldQuaternion(new THREE.Quaternion())):forward.clone()};
@@ -1077,9 +1183,9 @@ function runFrame(){const rawDt=clock.getDelta(),dt=Math.min(rawDt,.08);gamepad.
  // The same command drives the engine sound and the driver's hands and feet.
  const driveCommand=pitstop?.opened?{throttle:0,brake:1,engineOff:true}:immersive?.audioCommand(automatic?pilot():input())??input();
  const rivalSound=heard!==car?immersive.rivalSound(heard):null;
- const braking=driveCommand.engineOff?0:driveCommand.brake;brakeLamps.userData.set(model?.visible?braking:0);fuscaBody.brake(braking);
+ const braking=driveCommand.engineOff?0:driveCommand.brake;brakeLamps.userData.set(model?.visible?braking:0,!!model?.visible&&playerLamps.lit);fuscaBody.brake(braking,playerLamps.lit);
  carAudio.update(heard,rivalSound?.command??driveCommand,rivalSound?.skid??skid,paused||frozen,mode);
- carAudio.updateScene({...immersive?.audioScene(heard),speed:Math.hypot(heard.vx,heard.vy),onRoad:heard.surface.onRoad,...speedFx?.sound(heard===car?car:null),camera:mode},immersive?.state.takeSounds()??[],dt);
+ carAudio.updateScene({...immersive?.audioScene(heard),speed:Math.hypot(heard.vx,heard.vy),onRoad:heard.surface.onRoad,rain:weather.drops,wet:weather.wetness,...speedFx?.sound(heard===car?car:null),camera:mode},immersive?.state.takeSounds()??[],dt);
  sky.update(paused?0:dt);landscape?.update(paused?0:dt,camera);for(const extra of circuitExtras)extra.update?.(paused?0:dt,camera);
  // A watched rival is posed by immersive.update below: its camera follows after that.
  updateOpenings(paused?0:dt);updateCar(dt);if(!watchedRival())updateCamera(dt);const dash=cockpit.update(car,paused?0:dt,heard===car?carAudio.state:null),phoneArrived=dash.phoneArrived;if(phoneArrived)carAudio.notifyPhone();fuscaBody.update(dash.speed,dash.rpm,(immersive?.active?immersive.state.fuel:immersive?.freeFuel??12)/12);driver.update(car,paused?0:dt,{command:driveCommand,impact:frameImpact,phoneArrived});gamepad.bump(actionImpact);frameImpact=0;lapBanner(paused?0:dt);lastHud+=dt;if(lastHud>.07){hud();lastHud=0;}
@@ -1112,7 +1218,14 @@ function runFrame(){const rawDt=clock.getDelta(),dt=Math.min(rawDt,.08);gamepad.
  // The results sheet is opaque; avoid spending mobile GPU time behind it.
  if(!raceResults.root.hidden)return;
  // The cars' crisp shadow tiles (Alto/Ultra) before any pass that draws the ground.
- holdLightPhoto();carShadow.update(renderer,carShadowRoots());
+ holdLightPhoto();updateLamps(paused?0:dt);
+ // The rain falls round the eye (out of the cabin in the cockpit and bonnet views) and the cars throw their spray.
+ roadSurface?.tickRain?.(paused||frozen?0:dt);
+ splashGround.point.copy(carRoot.position);splashGround.normal.set(0,1,0).applyQuaternion(carRoot.quaternion);
+ rain.update(paused||frozen?0:dt,camera,{cabin:carBody,inside:isInside()||mode==='hood',cars:[car,...(immersive?.rivals??[]).map(r=>r.car)],viewport:renderer.domElement.height,ground:car.fall?null:splashGround});
+ // The drops on the windscreen, seen from the Opala's cockpit; the wipers turn in every view.
+ windscreen.update(paused||frozen?0:dt,{rain:weather.drops,speed:Math.hypot(car.vx,car.vy),inside:mode==='cockpit'&&!fuscaBody.active&&!immersive?.onFoot()});
+ carShadow.update(renderer,carShadowRoots());
  // Render the reflection from this frame's car pose before displaying the cockpit.
  // A simulation-time timer made the mirror visibly stutter, especially at low FPS.
  const watchedCar=watchedRival();
@@ -1223,10 +1336,10 @@ function hold(on){
  if(!ready||on===held||on&&paused||on&&roomWanted)return;
  held=on;paused=on;carAudio.setPaused(on);if(!on)carAudio.unlock();
  if(on&&document.pointerLockElement===$('view'))document.exitPointerLock();
- keys.clear();wheelSet=0;mobile?.clear();cameraReturn.reset(performance.now());$('pauseBadge').hidden=!on;
+ keys.clear();mobile?.clear();cameraReturn.reset(performance.now());$('pauseBadge').hidden=!on;
 }
 $('pauseBadge').onclick=()=>hold(false);
-function menu(show){held=false;$('pauseBadge').hidden=true;if(!show&&!immersive?.active&&immersive?.freeResultReady)show=true;paused=show;updateMenuLabels();carAudio.setPaused(show);if(!show)carAudio.unlock();if(show&&document.pointerLockElement===$('view'))document.exitPointerLock();cameraReturn.reset(performance.now());updateScreens();keys.clear();wheelSet=0;mobile?.clear();status('');}
+function menu(show){held=false;$('pauseBadge').hidden=true;if(!show&&!immersive?.active&&immersive?.freeResultReady)show=true;paused=show;updateMenuLabels();carAudio.setPaused(show);if(!show)carAudio.unlock();if(show&&document.pointerLockElement===$('view'))document.exitPointerLock();cameraReturn.reset(performance.now());updateScreens();keys.clear();mobile?.clear();status('');}
 function updateScreens(){
  const free=paused&&!sessionStarted,tracks=free&&screen==='tracks',cars=free&&screen==='cars';
  $('menu').classList.toggle('hidden',!paused||tracks||cars);$('tracks').classList.toggle('hidden',!tracks);$('cars').classList.toggle('hidden',!cars);
@@ -1301,9 +1414,20 @@ function holdLightPhoto(){if(!lightPhoto)return;carRoot.updateMatrixWorld();
  // world: from and at in the track's frame (x east, y north, z up), for photos of the scenery away from the car.
  if(lightPhoto.world){const [fx,fy,fz]=lightPhoto.from,[ax,ay,az]=lightPhoto.at;camera.position.set(fx,fz,-fy);camera.up.set(0,1,0);camera.lookAt(lightPhotoAt.set(ax,az,-ay));}else{camera.position.set(...lightPhoto.from).applyMatrix4(carRoot.matrixWorld);camera.up.set(0,1,0);camera.lookAt(lightPhotoAt.set(...lightPhoto.at).applyMatrix4(carRoot.matrixWorld));}camera.fov=lightPhoto.fov??40;camera.updateProjectionMatrix();}
 window.interlagosLuz={
- info:()=>({sun:{intensity:sun.intensity,color:'#'+sun.color.getHexString(),direction:SUN_DIRECTION.toArray()},fill:skyFill.intensity,fillColor:'#'+skyFill.color.getHexString(),fillGround:'#'+skyFill.groundColor.getHexString(),environment:scene.environmentIntensity,exposure:renderer?.toneMappingExposure??null,box:sunPlacement.info(),car:carShadow.info()}),
+ info:()=>({sun:{intensity:sun.intensity,color:'#'+sun.color.getHexString(),direction:sunDirection.toArray()},fill:skyFill.intensity,fillColor:'#'+skyFill.color.getHexString(),fillGround:'#'+skyFill.groundColor.getHexString(),environment:scene.environmentIntensity,exposure:renderer?.toneMappingExposure??null,box:sunPlacement.info(),car:carShadow.info()}),
  set:({sun:i,sunColor,fill,fillColor,fillGround,environment,exposure,carShadow:look}={})=>{if(i!=null)sun.intensity=i;if(sunColor)sun.color.set(sunColor);if(fill!=null)skyFill.intensity=fill;if(fillColor)skyFill.color.set(fillColor);if(fillGround)skyFill.groundColor.set(fillGround);if(environment!=null)scene.environmentIntensity=environment;if(exposure!=null&&renderer)renderer.toneMappingExposure=exposure;if(look)carShadow.look(look);return window.interlagosLuz.info();},
  photo:pose=>{lightPhoto=pose?{from:pose.from,at:pose.at,fov:pose.fov,world:!!pose.world}:null;if(!pose){followInitialized=false;camera.fov=baseFov(mode,camera.aspect);camera.updateProjectionMatrix();}return !!lightPhoto;}
+};
+// The weather for checks and photos (weather.js): what is in force, set({time, rain}) as the selects do (saved),
+// settle() lets the eye adapt at once (a held frame has no time to adapt).
+window.interlagosClima={
+ info:()=>({time:weather.time,rain:weather.rain,floods:floods?.info()??null,falling:rain?.info()??null,wipers:windscreen.info(),limp:limpSwitch?+limpSwitch.rotation.x.toFixed(3):null,compiling:!!graphicsCompiling,lamps:playerLamps.info(),farol:farolSwitch?+farolSwitch.rotation.x.toFixed(3):null,glow:!!playerGlow?.visible,rivalGlow:!!immersive?.visual?.rivals?.some(o=>o.userData.headlights?.visible),tail:TAIL_LIGHTS.on,roadLamps:ROAD_LAMPS.roadLampCount.value,wetness:roadSurface?.stats.wetness??0,grip:car?.weatherGrip??null,fieldGrip:immersive?.field.weatherGrip??null,rivalGrip:immersive?.rivals?.[0]?.car.weatherGrip??null,sun:{intensity:sun.intensity,color:'#'+sun.color.getHexString(),direction:sunDirection.toArray()},fog:scene.fog?[scene.fog.near,scene.fog.far]:null,sky:sky?.info()??null,exposure:renderer?.toneMappingExposure??null,look:cinematic?{exposure:cinematic.look.exposure,adaptRange:cinematic.look.adaptRange,hazeDensity:cinematic.look.hazeDensity}:null}),
+ set:({time,rain}={})=>{const patch={};if(time)patch.timeOfDay=time;if(rain)patch.rain=rain;preferences.update(patch);for(const [id,key] of [['timeOfDay','timeOfDay'],['tracksTime','timeOfDay'],['rainLevel','rain'],['tracksRain','rain']])$(id).value=preferences.values[key];applyWeather();return window.interlagosClima.info();},
+ settle:()=>{cinematic?.resetAdaptation();return true;},
+ // The follow cameras placed afresh round the car where it stands now (a photo after moving it by hand).
+ snap:()=>{followInitialized=false;car.settle?.();updateCar(1);updateCamera(1);return true;},
+ // Tuning, not saved: {cap (road lamps' ceiling), limit (road lamps), spot (player's spot strength), glare}.
+ tune:({cap,limit,spot,glare,rainSky,rainWidth,rainShutter,dropsDebug}={})=>{if(dropsDebug!=null){windscreen.material.fragmentShader=dropsDebug;windscreen.material.needsUpdate=true;}if(rainSky!=null)rain.uniforms.rainSky.value=rainSky;if(rainWidth!=null)rain.uniforms.rainWidth.value=rainWidth;if(rainShutter!=null)rain.uniforms.rainShutter.value=rainShutter;if(cap!=null)ROAD_LAMPS.roadLampCap.value=cap;if(limit!=null)lampLimit=limit;if(spot!=null)playerLamps.setStrength(spot);if(glare!=null)setGlare(glare);return {cap:ROAD_LAMPS.roadLampCap.value,limit:lampLimit,count:ROAD_LAMPS.roadLampCount.value,car:[car.x,car.y],lamps:ROAD_LAMPS.roadLampPos.value.slice(0,ROAD_LAMPS.roadLampCount.value).map((p,i)=>[...p.toArray().map(v=>+v.toFixed(2)),...ROAD_LAMPS.roadLampDir.value[i].toArray().map(v=>+v.toFixed(2))])};}
 };
 // The cars' reflections in that info (source, map size, faces, captures, who lends the map now) and, in
 // a race, interlagos.carPaintInfo(): the finish in force and the paint of the player's car and a rival's.
@@ -1397,9 +1521,9 @@ document.addEventListener('keydown',e=>{
  if(!paused&&immersive?.handleKey(e.code)){e.preventDefault();return;}
  // Câmbio manual: X shifts up, Z down.
  if(e.code==='KeyX'||e.code==='KeyZ')shiftGear(e.code==='KeyX'?1:-1);
- // The controller's D-pad sends 1 2 3 too (synthetic): only the keyboard's numbers turn the wheel.
- if(e.code in WHEEL_KEYS&&e.isTrusted&&!paused&&!immersive?.onFoot())wheelSet=WHEEL_KEYS[e.code];
- if(['KeyA','KeyD','ArrowLeft','ArrowRight'].includes(e.code))wheelSet=0;
+ // The controller's D-pad sends 1 2 3 too (synthetic), and on foot the numbers answer: only the
+ // keyboard's numbers, in the car, pick a view.
+ if(e.code in CAMERA_KEYS&&e.isTrusted&&!immersive?.onFoot()&&!pitstop?.coffee)setCameraMode(CAMERA_KEYS[e.code],true);
  // Space pulls the handbrake and leaves it pulled until the next press, like the touch button.
  if(e.code==='Space'&&!paused)mobile.setHandbrake(!mobile.handbrake);
  if(e.code==='KeyC')setCameraMode(nextCameraMode(),true);
@@ -1409,11 +1533,13 @@ document.addEventListener('keydown',e=>{
  if(e.code==='KeyV')cycleLivery();
  // The controller's ↑ (a synthetic G) answers 2 on foot: there it leaves the ghost alone.
  if(e.code==='KeyG'&&(e.isTrusted||!immersive.onFoot()))toggleGhost();
+if(e.code==='KeyH')toggleHeadlights();
+if(e.code==='KeyJ')toggleWipers();
  // P pauses on the track (from the menu it resumes, as before); Escape opens the menu.
  if(e.code==='KeyP'){if(held||!paused)hold(!held);else menu(false);}
  if(e.code==='Escape')menu(true);
- if(automatic&&(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)||e.code in WHEEL_KEYS&&e.isTrusted))takeWheel();
-});document.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('focus',()=>carAudio.setFocused(!document.hidden));window.addEventListener('blur',()=>{carAudio.setFocused(automatic);keys.clear();wheelSet=0;mobile?.clear();if(!automatic)hold(true);});
+ if(automatic&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))takeWheel();
+});document.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('focus',()=>carAudio.setFocused(!document.hidden));window.addEventListener('blur',()=>{carAudio.setFocused(automatic);keys.clear();mobile?.clear();if(!automatic)hold(true);});
 document.addEventListener('visibilitychange',()=>{carAudio.setFocused(!document.hidden&&(automatic||document.hasFocus()));if(document.hidden&&!automatic)hold(true);});
 window.addEventListener('resize',()=>{displayCadence.reset();resolution.max=Math.min(devicePixelRatio,graphics.values.resolution);resolution.min=Math.min(resolution.max,touchDevice?.6:.7);if(renderer)renderer.setPixelRatio(Math.min(resolution.max,Math.max(resolution.min,renderer.getPixelRatio())));camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer?.setSize(innerWidth,innerHeight,false);mobile?.clear();if(touchDevice&&innerHeight>innerWidth&&ready)menu(true);});
 $('orbitButton').onclick=()=>{if(ready)setCameraMode(mode==='orbit'?'chase':'orbit',true);};
@@ -1421,6 +1547,7 @@ $('cockpitButton').onclick=()=>{if(ready)setCameraMode(mode==='cockpit'?'chase':
 $('skinButton').onclick=cycleLivery;
 $('watchButton').onclick=()=>watchNext(1);
 $('ghostButton').onclick=$('touchGhost').onclick=toggleGhost;
+$('touchLights').onclick=toggleHeadlights;$('touchWipers').onclick=toggleWipers;
 async function beginRace(restart=false,tour=false,story=preferences.values.immersive){
  if(loading)return;
  // The race the track screen asked for (a championship round or a room's race is a single race); a
@@ -1450,11 +1577,13 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  else{if(immersive.active)immersive.disable();reset();setCameraMode(preferences.values.camera);updateCar(1);updateCamera(1);}
  paintCar();
  if(!immersive.active&&!tour)immersive.beginCountdown();
+ startLights();
  sessionStarted=true;automatic=tour&&!immersive.active;menu(false);
 }
 // Leaving a race (the result sheet, the pause menu, settings) lands on the track screen; a
 // championship round left unfinished is raced again next time.
 function returnToMainMenu(){
+ if(weatherOverride){weatherOverride=null;applyWeather();}
  $('settings').close();lapRecords.dialog.close();championshipDialog.close();
  if(!sessionStarted){updateMenuLabels();return;}
  multiplayer?.leaving();
@@ -1560,7 +1689,7 @@ function clearCircuit(){
  if(car)delete car.condition;
  // The grid's reflection goes with its circuit; the cars wear the sky's map until the next one.
  carReflections?.clearCircuit();
- const keepRoots=new Set([carRoot,ghostCar.root,skidMarks?.mesh,tyreSmoke?.mesh,sun,sun.target,sky?.dome]);
+ const keepRoots=new Set([carRoot,ghostCar.root,skidMarks?.mesh,tyreSmoke?.mesh,rain?.root,sun,sun.target,sky?.dome]);
  for(const root of [...scene.children])if(!root.isLight&&!keepRoots.has(root)){scene.remove(root);retired.push(root);}
  const collect=roots=>{const geometries=new Set(),materials=new Set(),textures=new Set();for(const root of roots)root?.traverse(o=>{if(o.geometry)geometries.add(o.geometry);for(const m of o.material?(Array.isArray(o.material)?o.material:[o.material]):[]){materials.add(m);for(const value of Object.values(m))if(value?.isTexture)textures.add(value);}});return {geometries,materials,textures};};
  const keep=collect([...keepRoots]),old=collect(retired);
@@ -1581,7 +1710,7 @@ async function loadCircuit(){
  for(const button of document.querySelectorAll('[data-circuit]'))button.disabled=true;
  updateMenuLabels();
  try{
- if(reuse){if(activeLivery!==$('livery').value)await setLivery($('livery').value);await fuscaWanted();ready=true;window.interlagos.ready=true;$('skinButton').disabled=false;return true;}
+ if(reuse){if(activeLivery!==$('livery').value)await setLivery($('livery').value);await fuscaWanted();applyWeather();ready=true;window.interlagos.ready=true;$('skinButton').disabled=false;return true;}
  initializeRenderer();clearCircuit();showCircuitSelection();
  // The Gráficos tab's scenery level (graphics-settings.js): taken now, a change waits for the next start.
  const sceneryLevel=graphics.values.scenery,scenery=SCENERY_LEVELS[sceneryLevel];
@@ -1612,6 +1741,11 @@ async function loadCircuit(){
   if(data.meta.sea_level_m!=null)circuitExtras.push(createSea(data,{mobile:scenery.mobile}));
   if(data.scenery.bridges)circuitExtras.push(createFloripaBridges(data,{mobile:scenery.mobile,ground:groundAt}));
   if(data.scenery.landmarks?.some(m=>m.kind==='rodoviaria'))circuitExtras.push(createFloripaLandmarks(data,{mobile:scenery.mobile,ground:groundAt}));
+  // São Paulo's Minhocão (minhocao-structures.js): the elevated's girders, pillars and ramps, the tunnel under Praça Roosevelt.
+  if(data.scenery.minhocao)circuitExtras.push(createMinhocaoStructures(data,{mobile:scenery.mobile,ground:groundAt}));
+  // Its landmarks (minhocao-landmarks.js: Copan, Itália, the ex-Hilton, Caetano de Campos, the Consolação church...),
+  // before the landscape: the generic buildings that cut into them are trimmed back first.
+  if(hasMinhocaoLandmarks(data))circuitExtras.push(createMinhocaoLandmarks(data,{mobile:scenery.mobile,ground:groundAt}));
   for(const extra of circuitExtras){scene.add(extra.root);if(extra.obstacles)cameraObstacles.push(...extra.obstacles);}
   landscape=createLandscape({data,field:landscapeField,ground:(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y),cover:data.scenery.cover,buildings:data.scenery.buildings,cityAngle:data.meta.city_angle??Math.PI/2,mobile:scenery.mobile,density:scenery.density,lod:scenery.lod,lean:sceneryLevel==='basico',style:'urban'});
   // The trees the land cover put where a landmark's yard or apron is (floripa-landmarks.js) go.
@@ -1643,6 +1777,8 @@ async function loadCircuit(){
  let pitLayout=null;if(data.pit){const pitLaneScene=createInterlagosPit(data,roadSurface,terrainTextures,circuit.track?{label:`${circuit.track} · BOX 99`,title:circuit.boxTitle,name:`Box 99 de ${circuit.name}`,track:circuit.track}:undefined);scene.add(pitLaneScene.root);cameraObstacles.push(...pitLaneScene.obstacles);pitLayout=pitLaneScene.box;}
  // Curvelo: the same garage row and Box 99, on the infield behind its service lane.
  else if(circuit.id==='curvelo'){const pitScene=createCurveloPit(data,terrainTextures);scene.add(pitScene.root);cameraObstacles.push(...pitScene.obstacles);pitLayout=pitScene.box;}
+ // Floodlight masts along the pit wall, lit by the weather after dark (floodlights.js).
+ floods=createFloodlights(data);if(floods)scene.add(floods.root);
  recordTvs=pitLayout?.showRecords?pitLayout:null;recordTvsKey='';recordTvsAt=0;
  const branding=await createTrackBranding(data);scene.add(branding.root);
  // Race-day dressing: sponsor banners on the rails, marshal posts and TV towers (trackside.js).
@@ -1662,7 +1798,7 @@ async function loadCircuit(){
  speedFx=createSpeedEffects({smoke:tyreSmoke,level:graphics.values.speedEffects});scene.add(speedFx.root);
  restBodyPose();
  carLivery.clear();
- immersive=new ImmersiveMode({scene,carRoot,car,data,driver,rivalTemplate:model,skidMarks,layout:pitLayout,obstacles:cameraObstacles,setView:setCameraMode,getView:()=>mode,playerView:()=>preferences.values.camera,resetVehicle:()=>reset(),releaseMouse:()=>{keys.clear();wheelSet=0;mobile?.clear();if(document.pointerLockElement)document.exitPointerLock();},onNormal:()=>{storyRound=null;chooseImmersive(false);reset();menu(true);},
+ immersive=new ImmersiveMode({scene,carRoot,car,data,driver,rivalTemplate:model,skidMarks,layout:pitLayout,obstacles:cameraObstacles,setView:setCameraMode,getView:()=>mode,playerView:()=>preferences.values.camera,resetVehicle:()=>reset(),releaseMouse:()=>{keys.clear();mobile?.clear();if(document.pointerLockElement)document.exitPointerLock();},onNormal:()=>{storyRound=null;chooseImmersive(false);reset();menu(true);},
   // The start always finds the handbrake down: A (Space) pressed to skip the opening, in the 3-2-1 or in the
   // story paddock pulled it, and the car would sit there at the green light.
   onGo:()=>mobile?.setHandbrake(false)});
@@ -1674,6 +1810,8 @@ async function loadCircuit(){
  if(!ghostCar.has('opala'))ghostCar.build(model,immersive.visual.farProxy(0xffffff).geometry,'opala');
  // In a Modo História championship the story's own restarts lead to the next round (after this frame).
  {const storyStart=immersive.start.bind(immersive);immersive.start=()=>{if(storyRound){queueMicrotask(()=>{if(storyRound)nextStoryRound();});return;}storyStart();};}immersive.laps=preferences.values.laps;immersive.field.ace=preferences.values.aceKoyzinho;immersive.field.level=preferences.values.aiLevel;immersive.field.retirements=preferences.values.retirements;immersive.visual.viewCamera=camera;
+ // The weather on the new track, the new car and the new field, before their programs compile below.
+ applyWeather();
  // Sessions started from the menu open with the cinematic intro (the 3-2-1 waits for it).
  const beginCountdown=immersive.beginCountdown.bind(immersive),startStory=immersive.start.bind(immersive);
  immersive.beginCountdown=()=>{beginCountdown();if(paused&&!automatic&&introWanted()){immersive.state.sounds=immersive.state.sounds.filter(sound=>sound.name!=='countdown');intro.play('race',introContext);}};
@@ -1681,7 +1819,7 @@ async function loadCircuit(){
  const disableStory=immersive.disable.bind(immersive);immersive.disable=()=>{intro.stop();disableStory();};
  multiplayer?.attach(immersive);
  // Box 99: Curvelo's service lane, or the surveyed garage at Interlagos.
- if(circuit.id==='curvelo'||pitLayout)pitstop=new PitStop({scene,car,carRoot,driver,mode:immersive,data,roadSurface,layout:pitLayout,obstacles:cameraObstacles,openings,onOpen:()=>{automatic=false;keys.clear();wheelSet=0;mobile?.clear();mobile?.setHandbrake(false);setCameraMode('chase');if(document.pointerLockElement)document.exitPointerLock();},onClose:()=>{keys.clear();wheelSet=0;mobile?.clear();followInitialized=false;},onSettings:openSettings});
+ if(circuit.id==='curvelo'||pitLayout)pitstop=new PitStop({scene,car,carRoot,driver,mode:immersive,data,roadSurface,layout:pitLayout,obstacles:cameraObstacles,openings,onOpen:()=>{automatic=false;keys.clear();mobile?.clear();mobile?.setHandbrake(false);setCameraMode('chase');if(document.pointerLockElement)document.exitPointerLock();},onClose:()=>{keys.clear();mobile?.clear();followInitialized=false;},onSettings:openSettings});
  syncDamage(true);
  landscape.setRealisticWater(graphics.values.water==='realista');
  const kleber=immersive.visual.rivals.find(o=>o.userData.entry.number==='70');
@@ -1689,6 +1827,8 @@ async function loadCircuit(){
  oldStockMaterial=finishMaterial(new THREE.MeshPhysicalMaterial({name:'OldStock_portas',map:branding.oldStock,roughness:.35,clearcoat:.8,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
  for(const decal of immersive.visual.doorStickers(kleber,oldStockMaterial))decal.name='OldStock_no_Opala70';
  showRoster();
+ // The rivals' headlights and tail lamps light the asphalt, the kerbs, the rails and the ground (headlights.js).
+ scene.traverse(o=>{if(o.isMesh)for(const m of [o.material].flat())if(m&&(/^(Asfalto_PBR_circuito_v5|Zebra_pintada|Aco_galvanizado)$/.test(m.name)||m.userData?.terrain))lampPatch(m);});
  // Compile the new programs while the loading label is still shown, instead of
  // freezing the first race frame (D3D shader compilation is slow on Windows).
  carShadow.compile(renderer,[carRoot,...immersive.visual.rivals.slice(0,1)]);
@@ -1765,6 +1905,9 @@ if(roomWanted)import('./multiplayer.js').then(({startMultiplayer})=>{multiplayer
  command:()=>automatic?pilot():input(),
  autopilot:on=>{if(on!==undefined&&ready&&sessionStarted&&!immersive.active){if(on)automatic=true;else takeWheel();}return automatic;},
  hasCircuit:id=>Object.hasOwn(CIRCUITS,id),
+ // The weather a host announces with its race (weather.js), and a guest racing it (null: its own again).
+ weather:()=>({time:preferences.values.timeOfDay,rain:preferences.values.rain}),
+ setWeather:w=>{const key=JSON.stringify(w??null);if(key===JSON.stringify(weatherOverride))return;weatherOverride=w??null;applyWeather();},
  // A race the host announced: its track as a single race, from whatever screen or race this window is on.
  startRace:id=>{
   if(loading||!Object.hasOwn(CIRCUITS,id))return false;
