@@ -61,6 +61,12 @@ desktop.ini
 # Art references are versioned: the carro/ photos (metadata stripped before
 # adding) and the geracoes_carro/, geracoes_piloto/ and geracoes_jogo/ images
 # and prompts used to build the car, the driver and the game screens.
+# Photos of other people taken by others stay local: Kléber Eletric's (reference for pit-crew.js and
+# story-scene.js; one carries a photographer's credit).
+/carro/kleber_eletric_*
+# Research write-ups (e.g. "Netcode em jogos de corrida") stay local: not part of the game.
+/reports/
+/research_notes/
 # Progress previews of a work round stay local (the v03 and v04 ones were versioned before this rule).
 /geracoes_jogo/*/previas/
 # Local model workshop. Runtime copies stay in teste/assets/.
