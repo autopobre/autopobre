@@ -115,3 +115,14 @@ body.arena-editing #arenaTune{display:none}
 .touch-device #arenaTune{top:126px;right:auto;left:50%;transform:translateX(-50%);width:230px}
 .touch-device .arena-tune-row kbd{display:none}
 .touch-device .arena-tune-row{grid-template-columns:62px 1fr 38px}
+/* "Ver a IA fazer" (drift-arena-ai.js): the AI's keys lit at the bottom of the screen, its tip, how to take over. */
+#arenaPanel .arena-demo-button{margin:6px 0 0;padding:9px 12px;background:transparent;border:1px solid #f4ce39aa;border-radius:6px;color:#f4ce39;font-size:12px;cursor:pointer}
+#arenaPanel .arena-demo-button:hover{background:#f4ce3918}
+#arenaDemo{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);width:min(560px,92vw);padding:12px 18px 12px;border-radius:14px;background:#0d1a16e6;border:1px solid #f4ce3966;text-align:center;z-index:4;pointer-events:none}
+#arenaDemo[hidden]{display:none}
+#arenaDemo b{font-size:13px;color:#f4ce39;letter-spacing:.06em}
+#arenaDemo .k{display:inline-flex;align-items:center;justify-content:center;width:58px;height:50px;margin:8px 5px 0;border-radius:9px;background:#ffffff14;border:2px solid #ffffff30;font-size:28px;color:#bfcdc1}
+#arenaDemo .k.on{background:#f4ce39;border-color:#fff3b0;color:#171c15;box-shadow:0 0 18px #f4ce39aa}
+#arenaDemo p{margin:8px 0 2px;font-size:12px;color:#e6ecdf;line-height:1.4}
+#arenaDemo small{font-size:11px;color:#93a397}
+body.arena-editing #arenaDemo{display:none}

@@ -100,13 +100,39 @@ with sync_playwright() as p:
     # The panel (T): free drive, layouts, challenges.
     page.keyboard.press('KeyT')
     wait_js(page, "interlagos.arenaInfo().panel")
-    assert page.locator('[data-arena-challenge]').count() == 4 and page.locator('[data-arena-preset]').count() == 6
+    assert page.locator('[data-arena-challenge]').count() == 5 and page.locator('[data-arena-preset]').count() == 6
     shot(page, '04_painel')
     page.click('[data-arena-challenge=qualificacao]')
     wait_js(page, "!interlagos.arenaInfo().panel&&interlagos.arenaInfo().mode==='qualificacao'")
     page.wait_for_timeout(1200)
     assert page.is_visible('#arenaChallenge')
     shot(page, '05_desafio')
+    # Zerinho ao lado do cone: from the challenge's spot, ↑ and ← held (away from the cone), whole turns are counted.
+    page.keyboard.press('KeyT'); wait_js(page, "interlagos.arenaInfo().panel")
+    page.click('[data-arena-challenge=zerinho]')
+    wait_js(page, "!interlagos.arenaInfo().panel&&interlagos.arenaInfo().mode==='zerinho'")
+    page.mouse.click(800, 450)
+    page.keyboard.down('ArrowUp'); page.keyboard.down('ArrowLeft'); page.wait_for_timeout(9000)
+    z = info(page)
+    shot(page, '05b_zerinho')
+    page.keyboard.up('ArrowLeft'); page.keyboard.up('ArrowUp')
+    assert z['challenge']['current'] >= 1 and z['world']['knocked'] == 0 and z['score']['drifting'], z['challenge']
+    result['zerinho'] = {'giros': z['challenge']['current'], 'pontos': z['score']['points']}
+    # "Ver a IA fazer": the AI drives the cone in the middle with the keys lit on screen; its laps are not the player's
+    # record, and the first driving key gives the car back with the player's own tune.
+    page.keyboard.press('KeyT'); wait_js(page, "interlagos.arenaInfo().panel")
+    page.click('[data-arena-demo=rosquinha]')
+    wait_js(page, "interlagos.arenaInfo().demo==='rosquinha'&&!interlagos.arenaInfo().panel")
+    assert page.is_visible('#arenaDemo') and page.inner_text('#arenaThrottleValue') == '65%' and page.inner_text('#arenaSteerValue') == '22°'
+    page.wait_for_timeout(16000)
+    d = info(page)
+    shot(page, '05c_ia_rosquinha')
+    assert d['challenge']['current'] >= 1.5 and d['world']['knocked'] == 0 and d['carTune'] == {'throttle': 0.65, 'steer': 22.0}, (d['challenge'], d['carTune'])
+    page.keyboard.press('ArrowUp'); page.wait_for_timeout(300)
+    d2 = info(page)
+    assert d2['demo'] is None and not page.is_visible('#arenaDemo') and d2['carTune'] == {'throttle': 1, 'steer': 49.0} and 'rosquinha' not in d2['bests'], d2
+    assert page.inner_text('#arenaThrottleValue') == '100%' and page.inner_text('#arenaSteerValue') == '49°'
+    result['ia'] = {'voltas': d['challenge']['current']}
     # The editor: back to the player's arena, seen from above; a cone put down, turned, taken away.
     page.keyboard.press('KeyT'); wait_js(page, "interlagos.arenaInfo().panel")
     page.click('#arenaEdit')

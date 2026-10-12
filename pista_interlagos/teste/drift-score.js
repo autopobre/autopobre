@@ -8,7 +8,7 @@ import {CLIP_REACH} from './drift-arena.js';
 const wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 // spinAngle: past it the car has spun round (a donut's tail swings past 90° and still counts).
-export const DRIFT=Object.freeze({minAngle:10,minKmh:20,spinAngle:125,grace:.7,crash:3.5,comboStep:2,comboMax:5,
+export const DRIFT=Object.freeze({minAngle:10,minKmh:20,donutYaw:1.2,donutKmh:11,spinAngle:125,grace:.7,crash:3.5,comboStep:2,comboMax:5,
  // A clip's bonus at the line, a zone's multiplier.
  clipBonus:250,zoneFactor:2});
 // The rear axle's slip angle (degrees, -180..180: the travel against the nose, the sign telling the side the tail is
@@ -26,7 +26,11 @@ export class DriftScore{
  // One physics step of the player's car on the arena (world: ArenaWorld). impact: the hardest knock this step.
  update(car,world,dt,impact=0){
   const {angle,kmh}=slip(car),abs=Math.abs(angle);this.angle=angle;this.kmh=kmh;
-  const down=car.wheelsDown>=3,drifting=down&&kmh>=DRIFT.minKmh&&abs>=DRIFT.minAngle&&abs<DRIFT.spinAngle;
+  // A donut (zerinho) counts too: the car itself barely moves (9 km/h) while its tail sweeps round, the rear axle sliding
+  // past 11 km/h with the car turning faster than 1.2 rad/s (user 10-12: the donut happened and scored nothing).
+  const rearKmh=Math.hypot(car.vx+car.yaw*1.117*Math.sin(car.heading),car.vy-car.yaw*1.117*Math.cos(car.heading))*3.6;
+  const donut=Math.abs(car.yaw)>=DRIFT.donutYaw&&rearKmh>=DRIFT.donutKmh;this.donut=donut;
+  const down=car.wheelsDown>=3,drifting=down&&(kmh>=DRIFT.minKmh||donut)&&abs>=DRIFT.minAngle&&abs<DRIFT.spinAngle;
   world.rearWheels(car,this.wheels);
   const zones=this.wheels.map(([x,y])=>world.zoneAt(x,y)),inZone=zones.some(Boolean);this.inZone=drifting&&inZone;
   const ch=Math.cos(car.heading),sh=Math.sin(car.heading),front=car.body.front,clip=world.nearestClip(car.x+ch*front,car.y+sh*front);this.clipNear=clip;
@@ -42,7 +46,7 @@ export class DriftScore{
    // A change of side at speed (a transition): the combo jumps.
    if(side!==g.side&&abs>15){g.side=side;g.transitions++;g.combo=Math.min(DRIFT.comboMax,g.combo+.5);this.event('transition',{combo:g.combo});}
    g.combo=Math.min(DRIFT.comboMax,Math.max(g.combo,1+Math.floor(g.time/DRIFT.comboStep)*.5));
-   const rate=driftRate(abs,kmh)*(inZone?DRIFT.zoneFactor:1);g.points+=rate*g.combo*dt;g.angleSum+=abs*dt;g.maxAngle=Math.max(g.maxAngle,abs);g.kmhSum+=kmh*dt;
+   const rate=driftRate(abs,Math.max(kmh,rearKmh))*(inZone?DRIFT.zoneFactor:1);g.points+=rate*g.combo*dt;g.angleSum+=abs*dt;g.maxAngle=Math.max(g.maxAngle,abs);g.kmhSum+=kmh*dt;
    if(inZone){g.zoneTime+=dt;for(const z of zones)if(z)g.zones.add(z.zone.item);}
    if(clip&&clip.distance<=CLIP_REACH&&!g.clips.has(clip.clip.item)){
     const bonus=Math.round(DRIFT.clipBonus*(1-clip.distance/CLIP_REACH*.6)*g.combo);g.clips.add(clip.clip.item);g.points+=bonus;this.event('clip',{bonus,distance:clip.distance});
@@ -68,8 +72,16 @@ export class DriftScore{
 // The challenges: each races on its own layout (drift-arena.js PRESETS) and measures one thing per attempt; medals at
 // three marks (higher is better). unit: how the value is written. spawn: where the car waits for it (R brings it back).
 export const CHALLENGES=Object.freeze({
- rosquinha:{name:'Rosquinha no cone',preset:'um_cone',spawn:{x:-34,y:-14,heading:0},unit:'voltas',digits:1,medals:[2,4,7],
-  goal:'Derrape em volta do cone sem parar: quantas voltas inteiras em um drift só?'},
+ // Donuts beside the cone (user 10-12): the car's own turns, sideways and without a break, near the cone and with it
+ // standing. Held flat out with the wheel turned, a donut turns about a point under the car, 5-7 m to the side it is
+ // turned to: start beside the cone and turn away from it.
+ zerinho:{name:'Zerinho ao lado do cone',preset:'um_cone',spawn:{x:-5,y:0,heading:Math.PI/2},unit:'giros',digits:1,medals:[3,6,10],reach:14,
+  goal:'Zerinhos sem parar ao lado do cone: segure ↑ e vire para o lado de longe do cone (←). Conta cada giro completo do carro de lado, sem derrubar o cone.'},
+ // The hard one (user 10-12: "o difícil é controlar o carro e fazer o zerinho com o cone no meio"): laps round the cone,
+ // sideways all along. A drift circle round it holds by itself for a second or two (about 6 m, 22 km/h, the tail at
+ // 40°): the wheel turned AWAY from the cone (counter-steer), the throttle keeping the tail out.
+ rosquinha:{name:'Rosquinha com o cone no meio',preset:'um_cone',spawn:{x:0,y:-12,heading:0},unit:'voltas',digits:1,medals:[1,3,5],reach:15,
+  goal:'Dê voltas de lado em volta do cone, com o cone no meio do círculo. O segredo: o volante vai para FORA (contraesterço, uns 10-15°) e o acelerador segura a traseira; virar para o cone faz o carro passar por cima dele.'},
  oito:{name:'Oito nos cones',preset:'oito',spawn:{x:-55,y:-16,heading:0},unit:'laços',digits:0,medals:[2,4,6],
   goal:'Faça o oito em volta dos dois cones sem endireitar o carro: cada laço completo em volta de um cone conta, trocando de cone.'},
  canteiro:{name:'Rodas na zona',preset:'canteiros',spawn:{x:5,y:24,heading:Math.PI},unit:'s',digits:1,medals:[3,6,10],
@@ -77,7 +89,7 @@ export const CHALLENGES=Object.freeze({
  qualificacao:{name:'Classificação Auto-Pobre',preset:'campeonato',spawn:{x:48,y:34,heading:Math.PI},unit:'pontos',digits:0,medals:[50,70,85],
   goal:'Como numa etapa de drift: cruze a largada e faça o traçado de lado, zona norte, canteiro oeste e o clipe, troca de lado, canteiro leste e o clipe, zona sul. Os juízes dão nota de 0 a 100.'}
 });
-export const CHALLENGE_ORDER=Object.freeze(['rosquinha','oito','canteiro','qualificacao']);
+export const CHALLENGE_ORDER=Object.freeze(['zerinho','rosquinha','oito','canteiro','qualificacao']);
 export const medalOf=(id,value)=>{const m=CHALLENGES[id].medals;return value>=m[2]?'ouro':value>=m[1]?'prata':value>=m[0]?'bronze':null;};
 export const MEDAL_NAMES=Object.freeze({ouro:'Ouro',prata:'Prata',bronze:'Bronze'});
 
@@ -92,11 +104,27 @@ export class ArenaChallenge{
  }
  // score: the DriftScore after its update this step. Returns a finished attempt's result, or null.
  update(car,score,dt,impact=0){return this[this.id](car,score,dt,impact);}
- // Round the cone: the angle swept round it while one drift lasts.
+ // Donuts by the cone: the car's own turning while one drift lasts within reach of the cone; the cone down ends the try.
+ zerinho(car,score){
+  const cone=this.world.props[0];if(!cone)return null;
+  const spot=this.world.layout.items[cone.item],near=Math.hypot(car.x-spot.x,car.y-spot.y)<=this.def.reach;
+  if(cone.hit){this.lastAngle=null;if(this.state==='running')return this.finish(0,{reason:'Derrubou o cone. R arruma.'});return null;}
+  if(score.drift&&near){
+   if(this.lastAngle!==null)this.sweep+=wrap(car.heading-this.lastAngle);this.lastAngle=car.heading;this.state='running';this.current=Math.abs(this.sweep)/(2*Math.PI);
+   return null;
+  }
+  this.lastAngle=null;
+  if(this.state==='running')return this.finish(Math.floor(Math.abs(this.sweep)/(2*Math.PI)*10)/10);
+  return null;
+ }
+ // Laps round the cone, the cone in the middle: the angle the car sweeps round the cone's spot while one drift lasts
+ // within reach of it; the cone down ends the try.
  rosquinha(car,score){
   const cone=this.world.props[0];if(!cone)return null;
-  const a=Math.atan2(car.y-cone.y,car.x-cone.x);
-  if(score.drift&&Math.hypot(car.x-cone.x,car.y-cone.y)<30){
+  const spot=this.world.layout.items[cone.item],near=Math.hypot(car.x-spot.x,car.y-spot.y)<=this.def.reach;
+  if(cone.hit){this.lastAngle=null;if(this.state==='running')return this.finish(0,{reason:'Derrubou o cone. R arruma.'});return null;}
+  const a=Math.atan2(car.y-spot.y,car.x-spot.x);
+  if(score.drift&&near){
    if(this.lastAngle!==null)this.sweep+=wrap(a-this.lastAngle);this.lastAngle=a;this.state='running';this.current=Math.abs(this.sweep)/(2*Math.PI);
    return null;
   }

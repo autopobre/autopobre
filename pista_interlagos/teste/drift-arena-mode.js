@@ -8,6 +8,7 @@ import {ARENA,ITEM_KINDS,ITEM_ORDER,PRESETS,PRESET_ORDER,presetLayout,cleanLayou
 import {ArenaWorld} from './drift-arena-world.js';
 import {DriftScore,ArenaChallenge,CHALLENGES,CHALLENGE_ORDER,MEDAL_NAMES} from './drift-score.js';
 import {ArenaProps,FLOOR_Y} from './drift-arena-props.js';
+import {ArenaAi,AI_DEMOS} from './drift-arena-ai.js';
 
 const fmt=n=>Math.round(n).toLocaleString('pt-BR');
 const html=(strings,...values)=>strings.reduce((out,s,i)=>out+s+(i<values.length?String(values[i]).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])):''),'');
@@ -32,6 +33,7 @@ export class ArenaMode{
  attach(car){this.car=car;car.world=this.world;car.tune?.(this.save.tune);}
  // Where the car comes in (a fresh start, R): the west end, at rest; every cone back in place.
  spawn(car=this.car){
+  this.stopDemo();
   const s=this.challenge?.def.spawn??DRIFT_ARENA.spawn;car.relocate(s.x,s.y,NaN,s.heading);car.vx=car.vy=car.yaw=0;car.settle();car.awaitingStart=false;
   this.world.resetProps();this.score.reset();this.score.best=this.save.bestDrift;this.challenge?.reset();this.renderHud(true);
  }
@@ -46,7 +48,7 @@ export class ArenaMode{
  }
  onEvent(e){
   if(e.type==='bank'&&e.points>0){
-   this.toast(`DRIFT ${fmt(e.points)}`,'bank');if(e.points>this.save.bestDrift){this.save.bestDrift=e.points;this.persist();if(e.points>=300)this.toast(`NOVO RECORDE · ${fmt(e.points)}`,'record');}
+   this.toast(`DRIFT ${fmt(e.points)}`,'bank');if(!this.demo&&e.points>this.save.bestDrift){this.save.bestDrift=e.points;this.persist();if(e.points>=300)this.toast(`NOVO RECORDE · ${fmt(e.points)}`,'record');}
    if(e.points>1500)this.sound('crowdWelcome',{strength:Math.min(1,e.points/6000)});
   }
   if(e.type==='lost'){this.toast(`${e.reason.toUpperCase()} −${fmt(e.points)}`,'lost');this.sound('denied');}
@@ -68,13 +70,26 @@ export class ArenaMode{
  }
  // --- Challenges
  startChallenge(id){
-  this.mode=id;this.challenge=new ArenaChallenge(id,this.world);this.world.setLayout(presetLayout(CHALLENGES[id].preset));this.props.setLayout(this.world.layout,this.world);
+  this.stopDemo();this.mode=id;this.challenge=new ArenaChallenge(id,this.world);this.world.setLayout(presetLayout(CHALLENGES[id].preset));this.props.setLayout(this.world.layout,this.world);
   this.challenge.world=this.world;this.spawn();this.closePanel();this.toast(CHALLENGES[id].name.toUpperCase(),'combo');this.sound('raceGo');
  }
- freeDrive(){this.mode='livre';this.challenge=null;this.world.setLayout(this.save.layout);this.props.setLayout(this.world.layout,this.world);this.spawn();}
+ // "Ver a IA fazer": the challenge from its start, driven by the AI pilot (drift-arena-ai.js) with the tune it uses,
+ // its keys lit on screen. Any driving key, the panel or R gives the car back; its marks are never the player's.
+ startDemo(id){
+  this.startChallenge(id);this.demo=new ArenaAi(this.car,this.world,id);this.showTune(AI_DEMOS[id].tune);
+  const box=this.$('arenaDemo'),t=AI_DEMOS[id].tune;box.hidden=false;this.$('arenaDemoCaption').textContent=`${AI_DEMOS[id].caption} Ajuste da IA: acelerador ${Math.round(t.throttle*100)}%, volante ${t.steer}°.`;
+  this.toast('IA DEMONSTRANDO','combo');
+ }
+ stopDemo(why=''){
+  if(!this.demo)return;this.demo=null;this.showTune();this.$('arenaDemo').hidden=true;if(why)this.toast(why,'combo');
+ }
+ // The command while the AI drives (main.js uses it in place of the player's keys).
+ demoCommand(){const c=this.demo.command();for(const [k,id] of [['throttle','arenaDemoUp'],['left','arenaDemoLeft'],['right','arenaDemoRight']])this.$(id).classList.toggle('on',!!c[k]);return c;}
+ freeDrive(){this.stopDemo();this.mode='livre';this.challenge=null;this.world.setLayout(this.save.layout);this.props.setLayout(this.world.layout,this.world);this.spawn();}
  challengeDone(result){
   const id=this.challenge.id,def=CHALLENGES[id],best=this.save.bests[id],value=result.value;
   const text=`${value.toLocaleString('pt-BR',{maximumFractionDigits:def.digits})} ${def.unit}`;
+  if(this.demo){this.toast(`IA: ${result.reason??text}`,result.medal??'combo',3);this.renderHud(true);return;}
   if(!best||value>best.score){this.save.bests[id]={score:value,pilot:this.pilot()||'',at:new Date().toISOString().slice(0,10)};this.persist();}
   this.toast(result.reason?`${result.reason}`:`${text}${result.medal?' · '+MEDAL_NAMES[result.medal].toUpperCase():''}`,result.medal??(result.reason?'lost':'bank'),3.5);
   this.sound(result.medal?'finish':'click');this.lastSheet=result.sheet??null;this.renderHud(true);
@@ -91,6 +106,7 @@ export class ArenaMode{
 <section id="arenaChallenge" hidden></section>
 <div id="arenaHandbrake" hidden role="status">FREIO DE MÃO</div>
 <div id="arenaToast" role="status" aria-live="polite"></div>
+<section id="arenaDemo" hidden aria-live="off"><b>IA DEMONSTRANDO · SÓ TECLAS</b><div><span class="k" id="arenaDemoLeft">←</span><span class="k" id="arenaDemoUp">↑</span><span class="k" id="arenaDemoRight">→</span></div><p id="arenaDemoCaption"></p><small>Aperte ↑ ← → (ou W A D) para assumir o carro daqui · T volta ao painel</small></section>
 <button id="arenaButton" type="button" title="Arena: layouts, desafios e editor (T)">Arena <kbd>T</kbd></button>
 <section id="arenaTune" aria-label="Ajuste do carro">
  <label class="arena-tune-row" title="Quanto ↑ / W acelera apertado até o fim · teclas 9 e 0"><span>Acelerador</span><input id="arenaThrottle" type="range" min="20" max="100" step="5"><output id="arenaThrottleValue"></output><kbd>9 0</kbd></label>
@@ -119,16 +135,17 @@ export class ArenaMode{
  }
  renderChallenges(){
   this.$('arenaChallenges').innerHTML=CHALLENGE_ORDER.map(id=>{const c=CHALLENGES[id],b=this.save.bests[id],medal=b?['ouro','prata','bronze'].find(m=>b.score>=c.medals[['bronze','prata','ouro'].indexOf(m)]):null;
+   // (The AI's button joins the card after the escaping template: inside it, its markup would turn to text.)
    return html`<article class="arena-card"><h4>${c.name}</h4><p>${c.goal}</p><p class="arena-medals"><span class="bronze">${c.medals[0]}</span><span class="prata">${c.medals[1]}</span><span class="ouro">${c.medals[2]}</span> ${c.unit}</p>
-    <p class="arena-best">${b?`Seu recorde: ${this.bestText(id)} ${c.unit}${medal?' · '+MEDAL_NAMES[medal]:''}`:'Ainda sem recorde'}</p><button type="button" class="primary" data-arena-challenge="${id}">Tentar →</button></article>`;}).join('');
+    <p class="arena-best">${b?`Seu recorde: ${this.bestText(id)} ${c.unit}${medal?' · '+MEDAL_NAMES[medal]:''}`:'Ainda sem recorde'}</p><button type="button" class="primary" data-arena-challenge="${id}">Tentar →</button>`+(AI_DEMOS[id]?html`<button type="button" class="arena-demo-button" data-arena-demo="${id}">Ver a IA fazer</button>`:'')+'</article>';}).join('');
  }
  bind(){
   this.$('arenaButton').onclick=()=>this.togglePanel();
   // The player's map of the keys: kept as it moves, on the car at once (drift-physics.js tune).
-  const tuned=()=>{const t=this.save.tune;this.$('arenaThrottle').value=String(Math.round(t.throttle*100));this.$('arenaSteer').value=String(Math.round(t.steer));
+  const tuned=(t=this.save.tune)=>{this.$('arenaThrottle').value=String(Math.round(t.throttle*100));this.$('arenaSteer').value=String(Math.round(t.steer));
    this.$('arenaThrottleValue').textContent=`${Math.round(t.throttle*100)}%`;this.$('arenaSteerValue').textContent=`${Math.round(t.steer)}°`;this.car?.tune?.(t);};
-  this.$('arenaThrottle').oninput=e=>{this.save.tune.throttle=+e.target.value/100;tuned();this.persist();};
-  this.$('arenaSteer').oninput=e=>{this.save.tune.steer=+e.target.value;tuned();this.persist();};
+  this.$('arenaThrottle').oninput=e=>{this.stopDemo('VOCÊ ASSUMIU O CARRO');this.save.tune.throttle=+e.target.value/100;tuned();this.persist();};
+  this.$('arenaSteer').oninput=e=>{this.stopDemo('VOCÊ ASSUMIU O CARRO');this.save.tune.steer=+e.target.value;tuned();this.persist();};
   // Let go of the slider, the keys drive again (a focused range input would take the arrows).
   for(const id of ['arenaThrottle','arenaSteer']){this.$(id).addEventListener('change',e=>e.target.blur());this.$(id).addEventListener('pointerup',e=>e.target.blur());}
   this.showTune=tuned;tuned();
@@ -136,7 +153,7 @@ export class ArenaMode{
   this.$('arenaFree').onclick=()=>{this.freeDrive();this.closePanel();};
   this.$('arenaEdit').onclick=()=>{this.closePanel(false);this.openEditor();};
   this.$('arenaPresets').onclick=e=>{const b=e.target.closest('[data-arena-preset]');if(!b)return;this.save.layout=presetLayout(b.dataset.arenaPreset);this.persist();this.freeDrive();this.closePanel();this.toast(PRESETS[b.dataset.arenaPreset].name.toUpperCase(),'combo');};
-  this.$('arenaChallenges').onclick=e=>{const b=e.target.closest('[data-arena-challenge]');if(b)this.startChallenge(b.dataset.arenaChallenge);};
+  this.$('arenaChallenges').onclick=e=>{const b=e.target.closest('[data-arena-challenge]');if(b)this.startChallenge(b.dataset.arenaChallenge);const d=e.target.closest('[data-arena-demo]');if(d)this.startDemo(d.dataset.arenaDemo);};
   this.$('arenaTools').onclick=e=>{const b=e.target.closest('[data-arena-tool]');if(b)this.setTool(b.dataset.arenaTool);};
   this.$('arenaRotL').onclick=()=>this.turn(-ROTATE);this.$('arenaRotR').onclick=()=>this.turn(ROTATE);
   this.$('arenaSmaller').onclick=()=>this.resize(-1);this.$('arenaBigger').onclick=()=>this.resize(1);
@@ -166,11 +183,12 @@ export class ArenaMode{
  }
  // One step of the player's map: the throttle by 5%, the wheel by 2°.
  nudge(which,step){
+  this.stopDemo('VOCÊ ASSUMIU O CARRO');
   const t=this.save.tune;if(which==='throttle')t.throttle=Math.min(1,Math.max(.2,Math.round((t.throttle+step)*100)/100));else t.steer=Math.min(49,Math.max(10,t.steer+step));
   this.showTune();this.persist();const box=this.$('arenaTune');box.classList.remove('nudged');void box.offsetWidth;box.classList.add('nudged');
  }
  togglePanel(){if(this.panelOpen)this.closePanel();else this.openPanel();}
- openPanel(){if(this.editing)return;this.panelOpen=true;this.renderChallenges();this.$('arenaPanel').classList.remove('hidden');this.onPause(true);this.$('arenaFree').focus({preventScroll:true});}
+ openPanel(){if(this.editing)return;this.stopDemo();this.panelOpen=true;this.renderChallenges();this.$('arenaPanel').classList.remove('hidden');this.onPause(true);this.$('arenaFree').focus({preventScroll:true});}
  closePanel(resume=true){if(!this.panelOpen)return;this.panelOpen=false;if(this.root.contains(document.activeElement))document.activeElement.blur();this.$('arenaPanel').classList.add('hidden');if(resume)this.onPause(false);}
  // --- Editor
  openEditor(){
@@ -256,7 +274,7 @@ export class ArenaMode{
   const box=this.$('arenaChallenge'),c=this.challenge;box.hidden=!c;
   if(c){
    const def=c.def,running=c.state==='running',sheet=this.lastSheet,last=c.lastResult;
-   box.innerHTML=html`<h4>${def.name}</h4><p class="arena-now">${running?`${c.current.toLocaleString('pt-BR',{maximumFractionDigits:def.digits})} ${def.unit}`:c.id==='qualificacao'?'Cruze a largada para valer':'Comece um drift'}</p>
+   box.innerHTML=html`<h4>${def.name}</h4><p class="arena-now">${running?`${c.current.toLocaleString('pt-BR',{maximumFractionDigits:def.digits})} ${def.unit}`:c.id==='qualificacao'?'Cruze a largada para valer':c.id==='zerinho'?'Segure ↑ e ← (longe do cone)':c.id==='rosquinha'?'Volante para fora, acelerador segura':'Comece um drift'}</p>
     <p class="arena-medals"><span class="bronze">${def.medals[0]}</span><span class="prata">${def.medals[1]}</span><span class="ouro">${def.medals[2]}</span> · recorde ${this.bestText(c.id)}</p><p class="arena-keys">R recomeça · T troca de desafio</p>`+
     (last?html`<p class="arena-last">Última: ${last.value.toLocaleString('pt-BR',{maximumFractionDigits:def.digits})} ${def.unit}${last.medal?' · '+MEDAL_NAMES[last.medal]:''}${last.reason?' · '+last.reason:''}</p>`:'')+
     (sheet&&c.id==='qualificacao'&&!running?html`<p class="arena-sheet">Linha ${sheet.line}/40 · Ângulo ${sheet.angle}/30 · Estilo ${sheet.style}/30${sheet.penalty?` · −${sheet.penalty}`:''}</p>`:'');
@@ -278,7 +296,7 @@ export class ArenaMode{
   for(const p of this.world.props){const [x,y]=project(p.x,p.y);ctx.beginPath();ctx.arc(x,y,p.kind==='cone'?1.6:2,0,Math.PI*2);ctx.fillStyle=p.kind==='cone'?(p.down?'#ff8a3a66':'#ff8a3a'):'#111';ctx.fill();}
   const [x,y]=project(car.x,car.y);ctx.save();ctx.translate(x,y);ctx.rotate(-car.heading);ctx.beginPath();ctx.moveTo(7,0);ctx.lineTo(-5,-4);ctx.lineTo(-3,0);ctx.lineTo(-5,4);ctx.closePath();ctx.fillStyle='#e2fb57';ctx.shadowBlur=10;ctx.shadowColor='#d6fa4b';ctx.fill();ctx.restore();
  }
- info(){return {tune:{...this.save.tune},carTune:this.car?{throttle:this.car.throttleMax,steer:+((this.car.steerMax??0)*180/Math.PI).toFixed(1)}:null,mode:this.mode,setup:this.car?.setup?this.car.mechanics.name:null,drift:this.car?.info?.()??null,editing:this.editing,panel:this.panelOpen,layout:this.world.layout.items.length,world:this.world.info(),score:this.score.info(),challenge:this.challenge?.info()??null,props:this.props.info(),bests:structuredClone(this.save.bests),bestDrift:this.save.bestDrift,selected:this.selected,tool:this.tool,zoom:this.zoom};}
+ info(){return {demo:this.demo?this.demo.id:null,tune:{...this.save.tune},carTune:this.car?{throttle:this.car.throttleMax,steer:+((this.car.steerMax??0)*180/Math.PI).toFixed(1)}:null,mode:this.mode,setup:this.car?.setup?this.car.mechanics.name:null,drift:this.car?.info?.()??null,editing:this.editing,panel:this.panelOpen,layout:this.world.layout.items.length,world:this.world.info(),score:this.score.info(),challenge:this.challenge?.info()??null,props:this.props.info(),bests:structuredClone(this.save.bests),bestDrift:this.save.bestDrift,selected:this.selected,tool:this.tool,zoom:this.zoom};}
  dispose(){
   const v=this.view;v.removeEventListener('pointerdown',this.onPointerDown,{capture:true});v.removeEventListener('pointermove',this.onPointerMove);window.removeEventListener('pointerup',this.onPointerUp);
   v.removeEventListener('wheel',this.onWheel,{capture:true});v.removeEventListener('contextmenu',this.onContext);

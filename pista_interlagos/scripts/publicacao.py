@@ -11,7 +11,7 @@ MODULES = (
     'car-condition.js', 'pit-lane.js', 'interlagos-pit.js', 'pit-building.js', 'pit-box99.js', 'pit-crew.js', 'pit-textures.js', 'on-foot.js', 'pitstop.js', 'pitstop.css',
     'circuits.js', 'curvelo-data.js', 'curvelo-scene.js', 'open-circuit.js', 'track-clearance.js', 'interlagos-stands.js',
     'cliff-edge.js', 'cliff-fall.js', 'cliff-scenery.js', 'far-terrain.js', 'explosion.js',
-    'drift-arena.js', 'drift-arena-world.js', 'drift-score.js', 'drift-physics.js', 'drift-arena-props.js', 'drift-arena-mode.js', 'drift-arena-scene.js', 'drift-arena-stadium.js', 'arena.css',
+    'drift-arena.js', 'drift-arena-world.js', 'drift-score.js', 'drift-physics.js', 'drift-arena-ai.js', 'drift-arena-props.js', 'drift-arena-mode.js', 'drift-arena-scene.js', 'drift-arena-stadium.js', 'arena.css',
     'sea-water.js', 'street-walls.js', 'floripa-bridges.js', 'floripa-landmarks.js', 'minhocao-structures.js', 'minhocao-landmarks.js',
     'race-results.js', 'race-results.css', 'lap-records.js', 'ghost-lap.js', 'ghost-car.js', 'championship.js', 'championship-board.js', 'pistas.css',
     'race-roster.js', 'car-select.js', 'car-garage.js', 'car-livery.js', 'fusca.js', 'fusca-cockpit.js', 'carros.css',
