@@ -2,7 +2,7 @@ name: Publicar Auto-Pobre Racing
 
 # Publishing is manual: pushes to main no longer replace the live game.
 # Actions -> Publicar Auto-Pobre Racing -> Run workflow, choosing what to publish.
-# The main link shows `versao` (the announced release, apr-3.0-rc2), /apr_v1/ and /apr_v2/ keep
+# The main link shows `versao` (the announced release, apr-3.0-rc3), /apr_v1/ and /apr_v2/ keep
 # `versao_v1` (the first release, apr-1.0) and `versao_v2` (the last 2.x, apr-2.1) online as
 # legacy, and /dev/ shows `versao_dev` (the one in progress, main). Each is built from its own
 # checkout, tested and packed into one Pages site. An empty versao_v1, versao_v2 or versao_dev
@@ -12,9 +12,9 @@ on:
   workflow_dispatch:
     inputs:
       versao:
-        description: 'Link principal (inteligenciamilgrau.github.io/autopobre/): qual versão do jogo vai ali. Tag (apr-3.0-rc2), branch (main) ou commit.'
+        description: 'Link principal (inteligenciamilgrau.github.io/autopobre/): qual versão do jogo vai ali. Tag (apr-3.0-rc3), branch (main) ou commit.'
         required: true
-        default: apr-3.0-rc2
+        default: apr-3.0-rc3
       versao_v1:
         description: 'Endereço .../autopobre/apr_v1/ (versão legada 1.0): qual versão vai ali. Se apagar este campo, o /apr_v1/ sai do ar.'
         required: false
@@ -91,7 +91,7 @@ jobs:
           for pasta in principal apr_v1 apr_v2 dev; do
             [ -d "$pasta" ] || continue
             echo "::group::Testes de $pasta"
-            for teste in testar_preferencias testar_audio testar_eventos_audio testar_colisoes testar_saldo testar_imersivo testar_voltas testar_derrapadas testar_terreno_rivais testar_aderencia testar_direcao testar_bandeirada testar_recordes testar_pilotos_largada testar_curvelo testar_pitstop testar_controle testar_retorno_camera testar_volante testar_freio_re testar_graficos testar_luz testar_fantasma testar_camera testar_colisao_fusca testar_mecanica_fusca testar_multiplayer testar_estados_sala testar_zebras testar_particulas testar_bandeiras testar_beira testar_contato testar_pintura testar_grid_fusca testar_clima; do
+            for teste in testar_preferencias testar_audio testar_eventos_audio testar_colisoes testar_saldo testar_imersivo testar_voltas testar_derrapadas testar_terreno_rivais testar_aderencia testar_direcao testar_bandeirada testar_recordes testar_pilotos_largada testar_curvelo testar_pitstop testar_controle testar_retorno_camera testar_volante testar_freio_re testar_graficos testar_luz testar_fantasma testar_camera testar_colisao_fusca testar_mecanica_fusca testar_multiplayer testar_estados_sala testar_zebras testar_particulas testar_bandeiras testar_beira testar_contato testar_pintura testar_grid_fusca testar_clima testar_arena_drift testar_muro_curvas; do
               # A release from before a test was written (apr-1.0 and apr-2.1 lack the newer ones, e.g. testar_controle, testar_volante, testar_graficos, testar_fantasma, testar_clima)
               # skips it; /dev/ must have every one.
               if [ "$pasta" != dev ] && [ ! -f "$pasta/pista_interlagos/scripts/$teste.mjs" ]; then
