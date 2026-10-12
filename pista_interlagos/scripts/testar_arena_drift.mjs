@@ -166,4 +166,18 @@ const report={};
  const f=carOn(presetLayout('vazia'),{x:-60,y:-30,body:FUSCA_BODY});run(f,{throttle:1,left:1},4,c=>{});assert.ok(Math.abs(slideOf(f))>15||f.yaw>1,'the drift Fusca turns sideways');
  report.drift={donutSideways:+(sideways/steps).toFixed(2),donutRadius_m:+far.toFixed(1),slideRace:+race.toFixed(1),slideDrift:+drift.toFixed(1),keyboardRace_s:+racePlayer.toFixed(2),keyboardDrift_s:+driftPlayer.toFixed(2)};
 }
+// --- The player's map of the keys (user 10-12): a full press gives the throttle's share and turns the wheels to the
+// chosen angle; the browser keeps both, within their range.
+{
+ const speedAfter=throttle=>{const c=carOn(presetLayout('vazia'),{x:-60,y:-30});c.tune({throttle});run(c,{throttle:1},2);return Math.hypot(c.vx,c.vy);};
+ const full=speedAfter(1),half=speedAfter(.5);assert.ok(half<full*.85,`half throttle ${half.toFixed(1)} vs full ${full.toFixed(1)} m/s`);
+ const c=carOn(presetLayout('vazia'),{x:-60,y:-30});c.tune({steer:20});let most=0;run(c,{left:1},1,c=>most=Math.max(most,Math.abs(c.steer)));
+ assert.ok(Math.abs(most*180/Math.PI-20)<.5,`wheels at ${(most*180/Math.PI).toFixed(1)}° for a 20° map`);
+ c.tune({throttle:5,steer:2});assert.equal(c.throttleMax,1);assert.ok(Math.abs(c.steerMax*180/Math.PI-10)<1e-9);
+ const store=new Map(),storage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,v)};
+ const save=loadArenaSave(storage);assert.deepEqual(save.tune,{throttle:1,steer:49});save.tune={throttle:.65,steer:30};storeArenaSave(storage,save);
+ assert.deepEqual(loadArenaSave(storage).tune,{throttle:.65,steer:30});
+ store.set('opala99-arena-drift-v1',JSON.stringify({tune:{throttle:-3,steer:'x'}}));assert.deepEqual(loadArenaSave(storage).tune,{throttle:.2,steer:49});
+ report.tune={fullThrottle_ms:+full.toFixed(1),halfThrottle_ms:+half.toFixed(1),steerMapped_deg:+(most*180/Math.PI).toFixed(1)};
+}
 console.log(JSON.stringify({passed:true,...report}));

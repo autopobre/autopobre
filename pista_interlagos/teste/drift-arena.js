@@ -117,11 +117,14 @@ export function createArenaData(){
   rails:{'-1':[],'1':[]},sections:[[0,'Arena de Drift']],asphalt:{tone:.93,tar:-.25,repair:.05}},columns:['s','x','y','z','width','bank','grade','tx','ty','lx','ly'],samples,terrain};
 }
 
-// What this browser keeps of the arena: the free layout and the best marks. Storage may be missing or throw.
+// What this browser keeps of the arena: the free layout, the best marks and the player's map of the keys (tune:
+// throttle 0.2-1, steer: the wheels' angle at rest in degrees, drift-physics.js DRIFT_TUNE). Storage may be missing or throw.
 export const ARENA_KEY='opala99-arena-drift-v1';
 export function loadArenaSave(storage){
  let saved=null;try{saved=JSON.parse(storage?.getItem(ARENA_KEY)||'null');}catch{}
  const bests={};for(const [k,v] of Object.entries(saved?.bests??{}))if(typeof k==='string'&&Number.isFinite(v?.score))bests[k]={score:v.score,pilot:typeof v.pilot==='string'?v.pilot.slice(0,40):'',at:typeof v.at==='string'?v.at:''};
- return {layout:saved?.layout?cleanLayout(saved.layout):presetLayout('campeonato'),bests,bestDrift:Number.isFinite(saved?.bestDrift)?saved.bestDrift:0};
+ const t=saved?.tune,num=(v,lo,hi,d)=>Number.isFinite(v)?Math.min(hi,Math.max(lo,v)):d;
+ const tune={throttle:num(t?.throttle,.2,1,1),steer:num(t?.steer,10,49,49)};
+ return {layout:saved?.layout?cleanLayout(saved.layout):presetLayout('campeonato'),bests,bestDrift:Number.isFinite(saved?.bestDrift)?saved.bestDrift:0,tune};
 }
-export function storeArenaSave(storage,save){try{storage?.setItem(ARENA_KEY,JSON.stringify({layout:save.layout,bests:save.bests,bestDrift:save.bestDrift}));return true;}catch{return false;}}
+export function storeArenaSave(storage,save){try{storage?.setItem(ARENA_KEY,JSON.stringify({layout:save.layout,bests:save.bests,bestDrift:save.bestDrift,tune:save.tune}));return true;}catch{return false;}}

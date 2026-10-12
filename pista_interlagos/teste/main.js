@@ -1072,6 +1072,8 @@ const pressed=code=>keys.has(code)||mobile?.pressed.has(code)||code!=='Space'&&(
 // keys there only). Many keyboards drop a third key held with W and A or D (ghosting, user 10-12: W + D + N); Space and
 // Shift are the ones they keep; with the arrows ↑ + ← + N was dropped and ↑ + → + N kept, so B too (the user's pick; it
 // looks back elsewhere). Shift and B only on the arena: a controller's L3 (the headlights) sends a Shift, R3 a B.
+// The arena's own keys while driving: T its panel, 9 / 0 the throttle's map and − / = the wheel's (drift-arena-mode.js).
+const ARENA_KEYS=Object.freeze(['KeyT','Digit9','Digit0','Numpad9','Numpad0','Minus','Equal','NumpadSubtract','NumpadAdd']);
 const HANDBRAKE_HOLD=Object.freeze(['KeyN']),ARENA_HANDBRAKE=Object.freeze(['KeyN','KeyB','ShiftLeft','ShiftRight','Space']);
 const outOfFuel=()=>immersive&&!immersive.active&&immersive.freeFuel<=0&&!pitstop?.coffee;
 function input(step=0){
@@ -1541,8 +1543,8 @@ document.addEventListener('keydown',e=>{
  if(lapRecords.dialog.open||championshipDialog.dialog.open)return;
  if(pitstop?.opened&&!$('settings').open){if(e.code==='Escape')openSettings();else if(e.code==='KeyP')hold(!held);else if(!paused){if(pitstop.coffee&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){e.preventDefault();keys.add(e.code);}if(!e.repeat&&pitstop.handleKey(e.code))e.preventDefault();}return;}
  if($('settings').open){if(e.code==='KeyM'){carAudio.toggleMute();audioControls();}return;}
- // The arena's panel and editor take their keys; T opens the panel while driving.
- if(arenaMode&&sessionStarted&&ready&&(arenaMode.editing||arenaMode.panelOpen||!paused&&e.code==='KeyT')&&!e.repeat&&arenaMode.handleKey(e)){e.preventDefault();return;}
+ // The arena's panel and editor take their keys; T opens the panel while driving, 9 0 − = tune the car (ARENA_KEYS).
+ if(arenaMode&&sessionStarted&&ready&&(arenaMode.editing||arenaMode.panelOpen||!paused&&ARENA_KEYS.includes(e.code))&&arenaMode.handleKey(e)){e.preventDefault();return;}
  if(arenaMode?.editing||arenaMode?.panelOpen)return;
  // Without a race, Escape goes back from the track screen to the opening; P does nothing.
  if(!sessionStarted&&['Escape','KeyP'].includes(e.code)){if(e.code==='Escape'&&screen!=='opening'&&!loading)showScreen(screen==='tracks'&&carScreen()?'cars':'opening');return;}

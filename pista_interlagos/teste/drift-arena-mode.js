@@ -12,6 +12,8 @@ import {ArenaProps,FLOOR_Y} from './drift-arena-props.js';
 const fmt=n=>Math.round(n).toLocaleString('pt-BR');
 const html=(strings,...values)=>strings.reduce((out,s,i)=>out+s+(i<values.length?String(values[i]).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])):''),'');
 const ROTATE=Math.PI/12;
+// The keys that tune the car while driving: [which, step].
+const TUNE_KEYS=Object.freeze({Digit9:['throttle',-.05],Digit0:['throttle',.05],Numpad9:['throttle',-.05],Numpad0:['throttle',.05],Minus:['steer',-2],NumpadSubtract:['steer',-2],Equal:['steer',2],NumpadAdd:['steer',2]});
 
 export class ArenaMode{
  // scene: the game's scene; view: the canvas; storage: the pilot's localStorage; pilot(): the pilot's name;
@@ -27,7 +29,7 @@ export class ArenaMode{
   this.buildDom();this.bind();this.renderHud(true);
  }
  // The player's car on the arena (drift-physics.js DriftCar): the world under its wheels and round it.
- attach(car){this.car=car;car.world=this.world;}
+ attach(car){this.car=car;car.world=this.world;car.tune?.(this.save.tune);}
  // Where the car comes in (a fresh start, R): the west end, at rest; every cone back in place.
  spawn(car=this.car){
   const s=this.challenge?.def.spawn??DRIFT_ARENA.spawn;car.relocate(s.x,s.y,NaN,s.heading);car.vx=car.vy=car.yaw=0;car.settle();car.awaitingStart=false;
@@ -90,6 +92,10 @@ export class ArenaMode{
 <div id="arenaHandbrake" hidden role="status">FREIO DE MÃO</div>
 <div id="arenaToast" role="status" aria-live="polite"></div>
 <button id="arenaButton" type="button" title="Arena: layouts, desafios e editor (T)">Arena <kbd>T</kbd></button>
+<section id="arenaTune" aria-label="Ajuste do carro">
+ <label class="arena-tune-row" title="Quanto ↑ / W acelera apertado até o fim · teclas 9 e 0"><span>Acelerador</span><input id="arenaThrottle" type="range" min="20" max="100" step="5"><output id="arenaThrottleValue"></output><kbd>9 0</kbd></label>
+ <label class="arena-tune-row" title="Quanto as rodas viram com o carro parado (com a velocidade, menos) · teclas − e ="><span>Volante</span><input id="arenaSteer" type="range" min="10" max="49" step="1"><output id="arenaSteerValue"></output><kbd>− =</kbd></label>
+</section>
 <div id="arenaPanel" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="arenaPanelTitle"><div class="arena-shell">
  <div class="arena-head"><div><span class="tracks-kicker">ARENA DE DRIFT · AUTO-POBRE RACING</span><h2 id="arenaPanelTitle">O que vamos fazer?</h2></div><button id="arenaClose" type="button">Voltar a dirigir (T)</button></div>
  <div class="arena-cols">
@@ -118,6 +124,14 @@ export class ArenaMode{
  }
  bind(){
   this.$('arenaButton').onclick=()=>this.togglePanel();
+  // The player's map of the keys: kept as it moves, on the car at once (drift-physics.js tune).
+  const tuned=()=>{const t=this.save.tune;this.$('arenaThrottle').value=String(Math.round(t.throttle*100));this.$('arenaSteer').value=String(Math.round(t.steer));
+   this.$('arenaThrottleValue').textContent=`${Math.round(t.throttle*100)}%`;this.$('arenaSteerValue').textContent=`${Math.round(t.steer)}°`;this.car?.tune?.(t);};
+  this.$('arenaThrottle').oninput=e=>{this.save.tune.throttle=+e.target.value/100;tuned();this.persist();};
+  this.$('arenaSteer').oninput=e=>{this.save.tune.steer=+e.target.value;tuned();this.persist();};
+  // Let go of the slider, the keys drive again (a focused range input would take the arrows).
+  for(const id of ['arenaThrottle','arenaSteer']){this.$(id).addEventListener('change',e=>e.target.blur());this.$(id).addEventListener('pointerup',e=>e.target.blur());}
+  this.showTune=tuned;tuned();
   this.$('arenaClose').onclick=()=>this.closePanel();
   this.$('arenaFree').onclick=()=>{this.freeDrive();this.closePanel();};
   this.$('arenaEdit').onclick=()=>{this.closePanel(false);this.openEditor();};
@@ -141,16 +155,23 @@ export class ArenaMode{
  }
  // Keys while the panel or the editor is open (main.js asks first). true: handled.
  handleKey(e){
-  if(e.code==='KeyT'){if(this.editing)this.closeEditor();else this.togglePanel();return true;}
+  if(e.code==='KeyT'){if(!e.repeat){if(this.editing)this.closeEditor();else this.togglePanel();}return true;}
+  // Driving: 9 / 0 the throttle's map, − / = the wheel's (held, they repeat).
+  const nudge=!this.editing&&!this.panelOpen&&TUNE_KEYS[e.code];if(nudge){this.nudge(...nudge);return true;}
   if(this.panelOpen){if(e.code==='Escape'){this.closePanel();return true;}return false;}
   if(!this.editing)return false;
   const map={KeyQ:()=>this.turn(-ROTATE),KeyE:()=>this.turn(ROTATE),Equal:()=>this.resize(1),NumpadAdd:()=>this.resize(1),Minus:()=>this.resize(-1),NumpadSubtract:()=>this.resize(-1),Delete:()=>this.removeSelected(),Backspace:()=>this.removeSelected(),Escape:()=>this.closeEditor(),KeyZ:()=>{if(e.ctrlKey||e.metaKey)this.undoLast();}};
   const fn=map[e.code];if(fn){e.preventDefault();fn();}
   return true;
  }
+ // One step of the player's map: the throttle by 5%, the wheel by 2°.
+ nudge(which,step){
+  const t=this.save.tune;if(which==='throttle')t.throttle=Math.min(1,Math.max(.2,Math.round((t.throttle+step)*100)/100));else t.steer=Math.min(49,Math.max(10,t.steer+step));
+  this.showTune();this.persist();const box=this.$('arenaTune');box.classList.remove('nudged');void box.offsetWidth;box.classList.add('nudged');
+ }
  togglePanel(){if(this.panelOpen)this.closePanel();else this.openPanel();}
  openPanel(){if(this.editing)return;this.panelOpen=true;this.renderChallenges();this.$('arenaPanel').classList.remove('hidden');this.onPause(true);this.$('arenaFree').focus({preventScroll:true});}
- closePanel(resume=true){if(!this.panelOpen)return;this.panelOpen=false;this.$('arenaPanel').classList.add('hidden');if(resume)this.onPause(false);}
+ closePanel(resume=true){if(!this.panelOpen)return;this.panelOpen=false;if(this.root.contains(document.activeElement))document.activeElement.blur();this.$('arenaPanel').classList.add('hidden');if(resume)this.onPause(false);}
  // --- Editor
  openEditor(){
   if(this.mode!=='livre')this.freeDrive();
@@ -257,7 +278,7 @@ export class ArenaMode{
   for(const p of this.world.props){const [x,y]=project(p.x,p.y);ctx.beginPath();ctx.arc(x,y,p.kind==='cone'?1.6:2,0,Math.PI*2);ctx.fillStyle=p.kind==='cone'?(p.down?'#ff8a3a66':'#ff8a3a'):'#111';ctx.fill();}
   const [x,y]=project(car.x,car.y);ctx.save();ctx.translate(x,y);ctx.rotate(-car.heading);ctx.beginPath();ctx.moveTo(7,0);ctx.lineTo(-5,-4);ctx.lineTo(-3,0);ctx.lineTo(-5,4);ctx.closePath();ctx.fillStyle='#e2fb57';ctx.shadowBlur=10;ctx.shadowColor='#d6fa4b';ctx.fill();ctx.restore();
  }
- info(){return {mode:this.mode,setup:this.car?.setup?this.car.mechanics.name:null,drift:this.car?.info?.()??null,editing:this.editing,panel:this.panelOpen,layout:this.world.layout.items.length,world:this.world.info(),score:this.score.info(),challenge:this.challenge?.info()??null,props:this.props.info(),bests:structuredClone(this.save.bests),bestDrift:this.save.bestDrift,selected:this.selected,tool:this.tool,zoom:this.zoom};}
+ info(){return {tune:{...this.save.tune},carTune:this.car?{throttle:this.car.throttleMax,steer:+((this.car.steerMax??0)*180/Math.PI).toFixed(1)}:null,mode:this.mode,setup:this.car?.setup?this.car.mechanics.name:null,drift:this.car?.info?.()??null,editing:this.editing,panel:this.panelOpen,layout:this.world.layout.items.length,world:this.world.info(),score:this.score.info(),challenge:this.challenge?.info()??null,props:this.props.info(),bests:structuredClone(this.save.bests),bestDrift:this.save.bestDrift,selected:this.selected,tool:this.tool,zoom:this.zoom};}
  dispose(){
   const v=this.view;v.removeEventListener('pointerdown',this.onPointerDown,{capture:true});v.removeEventListener('pointermove',this.onPointerMove);window.removeEventListener('pointerup',this.onPointerUp);
   v.removeEventListener('wheel',this.onWheel,{capture:true});v.removeEventListener('contextmenu',this.onContext);

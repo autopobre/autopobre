@@ -48,6 +48,21 @@ with sync_playwright() as p:
     assert 'ARENA' in page.inner_text('.session')
     result['start'] = {'layout': a['layout'], 'world': a['world'], 'props': a['props']}
     shot(page, '01_entrada')
+    # The player's map of the keys, on screen under the Arena button: 9 / 0 the throttle, − / = the wheel.
+    assert page.is_visible('#arenaTune') and page.inner_text('#arenaThrottleValue') == '100%' and page.inner_text('#arenaSteerValue') == '49°'
+    page.mouse.click(800, 450)
+    for key in ('Digit9', 'Digit9', 'Minus', 'Minus', 'Minus', 'Equal'):
+        page.keyboard.press(key)
+    page.wait_for_timeout(200)
+    t = info(page)
+    assert t['tune'] == {'throttle': 0.9, 'steer': 45} and t['carTune'] == {'throttle': 0.9, 'steer': 45.0}, t
+    assert page.inner_text('#arenaThrottleValue') == '90%' and page.inner_text('#arenaSteerValue') == '45°'
+    assert page.evaluate("JSON.parse(localStorage.getItem('opala99-arena-drift-v1')).tune.steer") == 45
+    shot(page, '01b_ajuste')
+    for key in ('Digit0', 'Digit0', 'Equal', 'Equal'):
+        page.keyboard.press(key)
+    page.wait_for_timeout(200)
+    assert info(page)['tune'] == {'throttle': 1, 'steer': 49}
     # Drive: speed up, a flick of the handbrake into a left turn, then throttle and a little steering.
     page.mouse.click(800, 450)
     page.keyboard.down('KeyW'); page.wait_for_timeout(2300)

@@ -102,3 +102,16 @@ body.arena-editing #touchControls,body.arena-editing #arenaToast{display:none!im
 #arenaToast{top:160px}
 body.arena-editing #arenaHandbrake{display:none}
 @media(max-width:850px){#arenaHandbrake{top:96px;font-size:10px}#arenaToast{top:128px}}
+/* The player's map of the keys (drift-arena-mode.js), on screen under the Arena button: throttle and wheel. */
+#arenaTune{position:absolute;top:76px;right:34px;width:260px;padding:8px 12px;background:var(--glass);border:1px solid #fff2;border-radius:8px;z-index:3;transition:border-color .25s}
+#arenaTune.nudged{border-color:#f4ce39;animation:arenaNudge .5s}
+@keyframes arenaNudge{0%{box-shadow:0 0 0 2px #f4ce39aa}100%{box-shadow:0 0 0 0 #f4ce3900}}
+.arena-tune-row{display:grid;grid-template-columns:70px 1fr 40px auto;align-items:center;gap:8px;margin:2px 0;font-size:11px;color:#d5dfd3;cursor:pointer}
+.arena-tune-row input[type=range]{width:100%;margin:0;accent-color:#f4ce39;cursor:pointer}
+.arena-tune-row output{font-size:13px;font-weight:900;color:#f4ce39;font-variant-numeric:tabular-nums;text-align:right}
+.arena-tune-row kbd{padding:1px 5px;border-radius:3px;background:#ffffff18;color:#bfcdc1;font:inherit;font-size:10px;white-space:nowrap}
+#arenaChallenge{top:160px}
+body.arena-editing #arenaTune{display:none}
+.touch-device #arenaTune{top:126px;right:auto;left:50%;transform:translateX(-50%);width:230px}
+.touch-device .arena-tune-row kbd{display:none}
+.touch-device .arena-tune-row{grid-template-columns:62px 1fr 38px}

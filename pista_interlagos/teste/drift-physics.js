@@ -29,13 +29,19 @@ export const DRIFT_SETUPS=Object.freeze({
 });
 // Steering: the lock (rad), narrowing with speed alone: 49° at rest, 38° at 30 km/h, 33° at 50, 27° at 80.
 export const DRIFT_STEER=Object.freeze({lock:.85,narrow:30});
+// The player's own map of the keys (the arena's panel, user 10-12: the throttle and the wheel felt too sharp): how much
+// of the throttle a full press gives (20-100%) and the wheels' angle at rest for a full turn of the keys (10-49°, still
+// narrowing with speed in the same proportion). Analog pedals and sticks are mapped the same way.
+export const DRIFT_TUNE=Object.freeze({throttle:Object.freeze({min:.2,max:1,initial:1}),steer:Object.freeze({min:10,max:49,initial:49})});
 // Brakes as physics.js: 11 m/s² at most, 62% on the front; the handbrake a hard pull on the rear wheels.
 const BRAKE=11,BRAKE_FRONT=.62,HANDBRAKE=16000,REAR_BRAKE_TORQUE_SCALE=1;
 const smooth=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
 const ZERO={front:0,rear:0,loose:false};
 
 export class DriftCar extends TestCar{
- constructor(data){super(data);this.wheelSpeed=0;}
+ constructor(data){super(data);this.wheelSpeed=0;this.throttleMax=DRIFT_TUNE.throttle.initial;this.steerMax=DRIFT_STEER.lock;}
+ // The player's map (DRIFT_TUNE): throttle 0.2-1, the wheels' angle at rest in degrees.
+ tune({throttle,steer}={}){if(Number.isFinite(throttle))this.throttleMax=clamp(throttle,DRIFT_TUNE.throttle.min,DRIFT_TUNE.throttle.max);if(Number.isFinite(steer))this.steerMax=clamp(steer,DRIFT_TUNE.steer.min,DRIFT_TUNE.steer.max)*Math.PI/180;return this;}
  get setup(){return DRIFT_SETUPS[this.mechanics.name]??DRIFT_SETUPS.opala;}
  recover(index){super.recover(index);this.wheelSpeed=0;this.slip=0;}
  // The arena's floor (drift-arena-world.js): a planter's grass is loose ground, its kerbs a few centimetres proud.
@@ -51,14 +57,14 @@ export class DriftCar extends TestCar{
  step(input,dt){
   this.wallImpactSpeed=0;this.crashImpactSpeed=0;
   if(!(Math.hypot(this.x-this.stepX,this.y-this.stepY)<.5))this.settle();
-  const p=this.surface,m=this.mechanics,s=this.setup,condition=this.condition?.factors;
+  const p=this.surface,m=this.mechanics,s=this.setup,condition=this.condition?.factors,pedal=clamp(input.throttle||0,0,1)*this.throttleMax;
   const c=Math.cos(this.heading),sn=Math.sin(this.heading),u=this.vx*c+this.vy*sn,lat=-this.vx*sn+this.vy*c,speed=Math.hypot(this.vx,this.vy);
   // --- Steering. The keyboard's input eases in as in physics.js; a wheel or a pad's stick is where the hands put it.
   const command=clamp(input.left-input.right,-1,1),response=command*(this.steerInput??0)<0?20:12;
   this.steerInput=input.wheel?command:(this.steerInput??0)+(command-(this.steerInput??0))*(1-Math.exp(-dt*response));
   // The rear's slip angle (for the gearbox: it holds its gear sideways) and the wheels where the keys put them.
   const rearSlip=u>.5?Math.atan2(lat-B*this.yaw,u):0,sideways=speed>2?smooth((Math.abs(rearSlip)-.07)/.16):0;this.slip=rearSlip;
-  this.steer=this.steerInput*DRIFT_STEER.lock/(1+speed/DRIFT_STEER.narrow)*(condition?.steering??1);
+  this.steer=this.steerInput*this.steerMax/(1+speed/DRIFT_STEER.narrow)*(condition?.steering??1);
   this.steerVisual=this.steer;
   // --- Gearbox: automatic (holding its gear while sideways: a drifter never shifts mid-slide) or the player's.
   const manual=Number.isInteger(input.gear)&&input.gear>=-1&&input.gear<=5;this.manualGear=manual;
@@ -76,23 +82,23 @@ export class DriftCar extends TestCar{
   // --- Engine: its revs from the rear wheels (a clutch slipping from rest in first); its force at their tread.
   // A drifter pulls the hydraulic handbrake with the clutch in: the engine lets the rear wheels lock.
   const ratio=m.gears[Math.max(1,this.gear)],engaged=input.handbrake?0:!manual||input.reverse?1:this.gear===0?0:clamp((.85-(input.clutch||0))/.6,0,1);
-  const wheelRpm=Math.abs(this.wheelSpeed)*3.6*ratio,engineRpm=Math.max(wheelRpm,this.gear===1?IDLE_RPM+input.throttle*2600:IDLE_RPM);
-  const throttle=input.throttle,power=(this.engineScale??1)*(condition?.power??1);
+  const wheelRpm=Math.abs(this.wheelSpeed)*3.6*ratio,engineRpm=Math.max(wheelRpm,this.gear===1?IDLE_RPM+pedal*2600:IDLE_RPM);
+  const throttle=pedal,power=(this.engineScale??1)*(condition?.power??1);
   let drive=0;
   if(this.gear>0){
    drive=throttle*engineTorque(Math.min(engineRpm,REDLINE_RPM),m.torque)*s.torque*ratio*m.torqueToAccel*MASS*power*engaged;
    if(wheelRpm>=REDLINE_RPM)drive=0;if(this.shiftTimer>0)drive*=.12;
   }
-  const back=input.reverse?Math.min(1,input.reverse):manual&&this.gear<0?input.throttle*engaged:0;
+  const back=input.reverse?Math.min(1,input.reverse):manual&&this.gear<0?pedal*engaged:0;
   if(back)drive=-3*back*MASS*(condition?.power??1);
   // Lifting off, the engine holds the wheels back (more in the low gears).
-  const engineBrake=this.gear>0&&input.throttle<.05&&this.shiftTimer===0&&Math.abs(this.wheelSpeed)>1?(.18+.5*clamp(wheelRpm/REDLINE_RPM,0,1))*MASS*engaged:0;
+  const engineBrake=this.gear>0&&pedal<.05&&this.shiftTimer===0&&Math.abs(this.wheelSpeed)>1?(.18+.5*clamp(wheelRpm/REDLINE_RPM,0,1))*MASS*engaged:0;
   this.rpm=this.gear<0?IDLE_RPM+Math.abs(u)*3.6*110+back*400:clamp(engineRpm,IDLE_RPM,REDLINE_RPM+80);
-  if(engaged<1)this.rpm=this.rpm*engaged+(IDLE_RPM+input.throttle*(REDLINE_RPM-IDLE_RPM))*(1-engaged);
+  if(engaged<1)this.rpm=this.rpm*engaged+(IDLE_RPM+pedal*(REDLINE_RPM-IDLE_RPM))*(1-engaged);
   const brake=Math.max(0,input.brake||0)*BRAKE*(condition?.brakes??1)*MASS,mu=(p.onRoad?ROAD_MU*m.grip:GRASS_MU)*(condition?.grip??1)*this.weatherGrip;
   const tyres={drive,engineBrake,brake,handbrake:input.handbrake?HANDBRAKE:0,mu,rearMu:mu*(p.onRoad?s.rearMu:1),mass:this.wheelMass(ratio,this.gear===0?0:engaged)};
   // (Clutch in, the engine revs free.)
-  if(input.handbrake&&this.gear>0)this.rpm=IDLE_RPM+input.throttle*(REDLINE_RPM-IDLE_RPM)*.85;
+  if(input.handbrake&&this.gear>0)this.rpm=IDLE_RPM+pedal*(REDLINE_RPM-IDLE_RPM)*.85;
   // --- The body (physics.js), its own tyre forces switched off: the suspension, the shell, gravity and the air.
   const wild=this.wheelsDown<4||this.hullContact||this.upright<.9,count=dt>0?Math.max(1,Math.ceil(dt*(wild?360:120)-1e-6)):0,h=dt/count;
   const grounded=this.wheelsDown>0,hold=grounded&&speed<.3&&!!(input.brake||input.handbrake)&&!throttle;
