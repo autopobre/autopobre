@@ -25,7 +25,7 @@ export class MobileControls {
   this.steerPad.addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','Home'].includes(event.key)){event.preventDefault();event.stopPropagation();this.setSteering(event.key==='Home'?0:this.steeringPosition+(event.key==='ArrowLeft'?-.1:.1));}});
   this.steerPad.addEventListener('keyup',event=>{if(['ArrowLeft','ArrowRight'].includes(event.key))this.setSteering(0);});
   for(const button of this.root.querySelectorAll('[data-key]')){
-   button.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();if(!enabled||button.disabled)return;onUnlock();try{button.setPointerCapture(event.pointerId);}catch{}if(button.dataset.key==='Space'){this.setHandbrake(!this.handbrake);return;}this.pointers.set(event.pointerId,{key:button.dataset.key,button,seen:{x:event.clientX,y:event.clientY}});this.pressed.add(button.dataset.key);button.classList.add('held');});
+   button.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();if(!enabled||button.disabled)return;onUnlock();try{button.setPointerCapture(event.pointerId);}catch{}if(button.dataset.key==='Space'&&!this.handbrakeHold){this.setHandbrake(!this.handbrake);return;}if(button.dataset.key==='Space')this.setHandbrake(true);this.pointers.set(event.pointerId,{key:button.dataset.key,button,seen:{x:event.clientX,y:event.clientY}});this.pressed.add(button.dataset.key);button.classList.add('held');});
    const release=event=>this.releaseButton(event.pointerId);
    button.addEventListener('pointerup',release);button.addEventListener('pointercancel',release);button.addEventListener('lostpointercapture',release);
    button.addEventListener('contextmenu',event=>event.preventDefault());
@@ -51,7 +51,10 @@ export class MobileControls {
  }
  releaseSteering(){this.steerPointer=null;this.steerSeen=null;this.steerPad.classList.remove('active');this.setSteering(0);}
  releasePedals(){this.pedalPointer=null;this.pedalSeen=null;this.pedalPad.classList.remove('active');this.setPedals(.65);}
- releaseButton(pointerId){const item=this.pointers.get(pointerId);if(!item)return;this.pointers.delete(pointerId);if(![...this.pointers.values()].some(x=>x.key===item.key)){this.pressed.delete(item.key);item.button.classList.remove('held');}}
+ releaseButton(pointerId){const item=this.pointers.get(pointerId);if(!item)return;this.pointers.delete(pointerId);if(![...this.pointers.values()].some(x=>x.key===item.key)){this.pressed.delete(item.key);item.button.classList.remove('held');if(item.key==='Space')this.setHandbrake(false);}}
+ // The Arena de Drift's handbrake button (main.js): pulled only while a finger is on it, as a drifter's lever; elsewhere
+ // a press pulls it and the next lets it go.
+ setHandbrakeHold(on){this.handbrakeHold=!!on;if(!on&&[...this.pointers.values()].some(x=>x.key==='Space')){for(const [id,x] of this.pointers)if(x.key==='Space')this.pointers.delete(id);}this.setHandbrake(false);}
  // fingers: where the fingers still on the screen are (client px).
  releaseStale(fingers){
   const alive=seen=>!!seen&&fingers.some(f=>Math.hypot(f.x-seen.x,f.y-seen.y)<70);
@@ -89,6 +92,6 @@ export class MobileControls {
   this.pedalThumb.textContent=percent?String(percent):'•';
   this.pedalThumb.style.top=`${22+this.pedalPosition*Math.max(1,(this.pedalPad.clientHeight||148)-44)}px`;
  }
- clear(){this.pressed.clear();for(const {button} of this.pointers.values())button.classList.remove('held');this.pointers.clear();this.releaseSteering();this.releasePedals();this.setHandbrake(this.handbrake);}
+ clear(){this.pressed.clear();for(const {button} of this.pointers.values())button.classList.remove('held');this.pointers.clear();this.releaseSteering();this.releasePedals();this.setHandbrake(this.handbrake&&!this.handbrakeHold);}
  update(paused,phase){this.root.classList.toggle('hidden',!this.enabled||paused||['podium','complete','disqualified'].includes(phase));if(phase===this.phase)return;this.phase=phase;const walking=phase==='crowd';if(walking||['podium','complete','disqualified'].includes(phase))this.setHandbrake(false);document.getElementById('touchGasLabel').textContent=walking?'ANDAR':'ACELERAR';document.getElementById('touchBrakeLabel').textContent=walking?'VOLTAR':'FREAR';document.getElementById('touchHandbrake').hidden=walking;document.getElementById('touchReverse').hidden=walking;document.getElementById('touchReset').hidden=walking;}
 }

@@ -158,7 +158,8 @@ const lampLoop=`
    vec3 upLamp=normalize(upView-axis*dot(upView,axis));
    float elevation=dot(-l,upLamp)/along,side=length(-l-axis*along-upLamp*dot(-l,upLamp))/along;
    shape=beamShape(elevation,side,.75);tint=vec3(1.0,.98,.95);
-  }else{shape=smoothstep(-ld.w,min(1.0,-ld.w+.25),along);tint=vec3(1.0,.04,.015);}
+  // A wide cone (-ld.w its edge): a red tail lamp (negative strength) or a floodlight mast, warm white (floodlights.js).
+  }else{shape=smoothstep(-ld.w,min(1.0,-ld.w+.25),along);tint=lp.w>0.0?vec3(1.0,.93,.82):vec3(1.0,.04,.015);}
   if(shape<=0.0)continue;
   // The road is lit at a grazing angle: the eye sees its pool brighter than the bare cosine gives (a film camera's
   // night look), so the far road shows without flooding what stands up in the beam.

@@ -1,0 +1,104 @@
+/* Arena de Drift (drift-arena-mode.js): the drift score, the challenge card, the arena's panel and the editor. */
+#arenaUi{display:none}
+body.arena-mode #arenaUi{display:block}
+/* The race's lap, position, fuel and slope readings mean nothing on the arena's floor. */
+body.arena-mode #timing,body.arena-mode #fuelGauge,body.arena-mode .sensors,body.arena-mode #lapBanner,body.arena-mode #ghostButton,body.arena-mode #touchGhost{display:none!important}
+
+#arenaHud{position:absolute;top:26px;left:50%;transform:translateX(-50%);min-width:300px;padding:12px 22px 12px;text-align:center;background:var(--glass);border:1px solid #fff2;border-radius:10px;pointer-events:none;z-index:3;transition:border-color .2s,box-shadow .2s}
+#arenaHud .arena-drift{display:flex;align-items:baseline;justify-content:center;gap:12px}
+#arenaPoints{font-size:44px;line-height:1;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:#f5f6ed}
+#arenaCombo{font-size:13px;font-weight:800;letter-spacing:.06em;color:#bfcdc1}
+#arenaHud.drifting #arenaPoints{color:var(--lime)}
+#arenaHud.drifting #arenaCombo{color:#f4ce39}
+#arenaHud.zone{border-color:#f6ce26;box-shadow:0 0 0 2px #f6ce2655,0 0 26px #f6ce2633}
+.arena-meter{height:5px;margin:9px 0 6px;background:#ffffff18;border-radius:3px;overflow:hidden}
+.arena-meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,#86d36a,#f4ce39 55%,#ff6a3a);transition:width .1s linear}
+#arenaLine{margin:0;font-size:11px;color:#bfcdc1;font-variant-numeric:tabular-nums}
+
+#arenaChallenge{position:absolute;top:82px;right:34px;width:250px;padding:14px 16px;background:var(--glass);border:1px solid #f4ce3966;border-radius:8px;z-index:3;pointer-events:none}
+#arenaChallenge h4{margin:0 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#f4ce39}
+#arenaChallenge p{margin:4px 0;font-size:11px;color:#d5dfd3}
+#arenaChallenge .arena-now{font-size:24px;font-weight:900;color:#f5f6ed;font-variant-numeric:tabular-nums}
+.arena-medals span{display:inline-block;min-width:26px;margin-right:4px;padding:1px 6px;border-radius:9px;font-weight:800;font-size:10px;text-align:center;color:#171c15}
+.arena-medals .bronze{background:#c98a4b}.arena-medals .prata{background:#c8d0d4}.arena-medals .ouro{background:#f4ce39}
+.arena-sheet{color:#f4ce39!important}
+
+#arenaToast{position:absolute;top:128px;left:50%;transform:translate(-50%,-6px);padding:8px 18px;border-radius:20px;font-size:15px;font-weight:900;letter-spacing:.05em;background:#101b17e6;color:#f5f6ed;opacity:0;pointer-events:none;z-index:4;transition:opacity .2s,transform .2s;white-space:nowrap}
+#arenaToast.show{opacity:1;transform:translate(-50%,0)}
+#arenaToast.bank{color:var(--lime)}#arenaToast.record,#arenaToast.ouro{background:#f4ce39;color:#171c15}#arenaToast.prata{background:#c8d0d4;color:#171c15}#arenaToast.bronze{background:#c98a4b;color:#171c15}
+#arenaToast.lost{color:#ff7a5c}#arenaToast.clip{color:#ff9d7d}#arenaToast.combo{color:#f4ce39}
+
+#arenaButton{position:absolute;right:34px;top:30px;width:auto;margin:0;padding:10px 16px;font-size:12px;background:#f4ce39;color:#171c15;border:0;border-radius:6px;z-index:3;cursor:pointer}
+#arenaButton kbd{margin-left:6px;padding:0 5px;border-radius:3px;background:#171c1522;font:inherit;font-size:10px}
+body.arena-editing #arenaButton,body.arena-editing #arenaHud,body.arena-editing #arenaChallenge,body.arena-editing #arenaToast{display:none}
+
+#arenaPanel{z-index:30;align-items:stretch;justify-content:center;padding:26px 4vw;overflow:auto}
+#arenaPanel.hidden{display:none!important}
+.arena-shell{width:min(1180px,100%);margin:auto 0;display:flex;flex-direction:column;gap:18px}
+.arena-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}
+.arena-shell h2{margin:4px 0 0;font-size:30px;font-weight:900}
+.arena-head button{width:auto;margin:0;padding:10px 14px;background:#102823e8;border:1px solid #88978c60;border-radius:6px;color:#e6ecdf;font-size:12px}
+.arena-cols{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:22px}
+.arena-cols>section{padding:18px;background:#0d1a16d9;border:1px solid #ffffff1c;border-radius:10px}
+.arena-cols h3{margin:0 0 6px;font-size:16px;color:#f4ce39;letter-spacing:.04em}
+.arena-cols h4{margin:18px 0 8px;font-size:12px;color:#e6ecdf}.arena-cols h4 small{color:#93a397;font-weight:500}
+.arena-note{font-size:12px;color:#bfcdc1;line-height:1.45}
+#arenaPanel button{cursor:pointer}
+#arenaPanel .primary,#arenaEditor .primary{background:#f4ce39;color:#171c15;border:0;padding:12px 14px;border-radius:6px;font-size:13px}
+#arenaEdit{background:#152d29eb;color:#f4ce39;border:1px solid #d9b93c;padding:11px 14px;border-radius:6px;font-size:12px}
+.arena-presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.arena-presets button{margin:0;padding:10px 12px;text-align:left;background:#102823e8;border:1px solid #88978c50;border-radius:6px;color:#e6ecdf;white-space:normal}
+.arena-presets button b{display:block;font-size:12px}.arena-presets button small{font-size:10px;color:#93a397;font-weight:500}
+.arena-presets button:hover{border-color:#f4ce39}
+.arena-challenges{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+#arenaPanel .arena-card{width:auto;min-width:0;margin:0;padding:14px;background:#102823e8;border:1px solid #88978c50;border-radius:8px;display:flex;flex-direction:column}
+.arena-card h4{margin:0 0 6px;font-size:14px;color:#f5f6ed}
+.arena-card p{margin:4px 0;font-size:11px;color:#bfcdc1;line-height:1.4}
+.arena-card .arena-best{color:#e2fb57;margin-top:auto;padding-top:6px}
+.arena-card button{margin:8px 0 0}
+
+#arenaEditor{position:absolute;inset:0;z-index:20;pointer-events:none}
+#arenaEditor[hidden]{display:none}
+#arenaEditor aside{position:absolute;left:20px;top:20px;bottom:20px;width:268px;padding:16px;overflow:auto;background:#0d1a16eb;border:1px solid #ffffff22;border-radius:10px;pointer-events:auto}
+#arenaEditor h3{margin:0 0 10px;font-size:16px;color:#f4ce39}
+.arena-tools{display:flex;flex-direction:column;gap:5px}
+.arena-tools button{display:flex;align-items:center;gap:9px;margin:0;padding:8px 10px;text-align:left;background:#102823e8;border:1px solid #88978c40;border-radius:6px;color:#e6ecdf;font-size:12px;white-space:normal;cursor:pointer}
+.arena-tools button[aria-pressed=true]{border-color:#f4ce39;background:#2a3b22;color:#fff}
+.arena-icon{flex:none;width:18px;height:18px;border-radius:3px;background:#555}
+.arena-icon-mover{background:transparent;border:2px solid #37e0ff;border-radius:50%}
+.arena-icon-cone{background:linear-gradient(transparent 0 0);border-left:9px solid transparent;border-right:9px solid transparent;border-bottom:18px solid #ff5a1a;width:0;height:0;border-radius:0}
+.arena-icon-pneus{background:radial-gradient(circle,#555 0 30%,#111 31% 68%,transparent 69%)}
+.arena-icon-ilha{background:radial-gradient(circle,#5f8f45 0 55%,#c81a14 56% 70%,#eee 71% 80%,transparent 81%)}
+.arena-icon-meia_lua{background:radial-gradient(circle at 100% 50%,transparent 0 48%,#f6ce26 49% 60%,#5f8f45 61% 85%,transparent 86%)}
+.arena-icon-zona{background:repeating-linear-gradient(45deg,#f6ce26 0 3px,transparent 3px 6px);border:2px solid #f6ce26;height:10px}
+.arena-icon-clip{background:repeating-linear-gradient(90deg,#c81a14 0 4px,#eee 4px 8px);height:8px}
+.arena-icon-muro{background:repeating-linear-gradient(90deg,#111 0 5px,#333 5px 6px);height:10px}
+.arena-icon-bloco{background:linear-gradient(#ddd,#999);height:9px}
+.arena-icon-largada{background:repeating-conic-gradient(#111 0 25%,#eee 0 50%) 0 0/8px 8px}
+.arena-edit-actions{display:flex;gap:5px;margin-top:8px}
+.arena-edit-actions button{flex:1;margin:0;padding:8px 6px;background:#102823e8;border:1px solid #88978c50;border-radius:6px;color:#e6ecdf;font-size:13px;cursor:pointer}
+#arenaDone{margin-top:12px}
+.arena-keys{font-size:10px;color:#93a397}
+.arena-count{position:absolute;right:20px;bottom:16px;margin:0;padding:6px 12px;background:#0d1a16cc;border-radius:12px;font-size:11px;color:#bfcdc1;pointer-events:none}
+body.arena-editing #view{cursor:crosshair}
+body.arena-editing header,body.arena-editing footer,body.arena-editing #cameraTools,body.arena-editing #menuButton,body.arena-editing #telemetry,body.arena-editing #mapcard{visibility:hidden}
+
+@media(max-width:850px){
+ #arenaHud{top:14px;min-width:200px;padding:8px 14px}#arenaPoints{font-size:30px}
+ #arenaChallenge{top:auto;bottom:150px;right:12px;width:200px;padding:10px 12px}
+ #arenaButton{right:12px;top:14px}
+ .arena-challenges{grid-template-columns:1fr}
+ .arena-cols{grid-template-columns:1fr}
+ #arenaEditor aside{top:auto;left:8px;right:8px;bottom:8px;width:auto;max-height:46vh}
+ .arena-tools{flex-direction:row;flex-wrap:wrap}.arena-tools button{flex:1 1 45%}
+}
+/* Phones: the pedals and the wheel make way for the editor; the arena's button sits clear of the touch toolbar. */
+body.arena-editing #touchControls,body.arena-editing #arenaToast{display:none!important}
+.touch-device #arenaButton{top:auto;bottom:auto;right:auto;left:50%;transform:translateX(-50%);top:86px;padding:7px 12px;font-size:11px}
+.touch-device #arenaButton kbd{display:none}
+/* The handbrake's lamp (drift-arena-mode.js frame), under the drift score. */
+#arenaHandbrake{position:absolute;top:122px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:14px;background:#c81a14;color:#fff;font-size:12px;font-weight:900;letter-spacing:.08em;box-shadow:0 0 18px #ff3b2a88;pointer-events:none;z-index:3;white-space:nowrap}
+#arenaHandbrake[hidden]{display:none}
+#arenaToast{top:160px}
+body.arena-editing #arenaHandbrake{display:none}
+@media(max-width:850px){#arenaHandbrake{top:96px;font-size:10px}#arenaToast{top:128px}}

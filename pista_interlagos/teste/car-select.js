@@ -246,7 +246,7 @@ export class CarSelect {
   const fusca=this.model==='fusca',entry=carEntry(this.value,this.model),$=id=>this.root.querySelector('#'+id),own=entry.number==='99'&&!fusca,name=MODEL_NAMES[this.model];
   this.studio.wanted=`${this.model}:${entry.number}`;
   for(const tab of this.tabs.querySelectorAll('[data-model]')){const on=tab.dataset.model===this.model;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;}
-  $('carsTitle').textContent=`Com qual ${name} você vai correr?`;$('carsMode').textContent=fusca?'MODO CORRIDA · COPA FUSCA':'MODO CORRIDA · OLD STOCK RACE';$('carsKicker').textContent=fusca?'O GRID · 15 FUSCAS':'O GRID · 15 OPALAS';
+  $('carsTitle').textContent=`Com qual ${name} você vai correr?`;$('carsMode').textContent=this.drift?`ARENA DE DRIFT · ${fusca?'FUSCA':'OPALA'} COM ACERTO DE DRIFT`:fusca?'MODO CORRIDA · COPA FUSCA':'MODO CORRIDA · OLD STOCK RACE';$('carsKicker').textContent=fusca?'O GRID · 15 FUSCAS':'O GRID · 15 OPALAS';
   for(const b of this.cards.children){
    const on=b.dataset.car===entry.number,holder=this.taken.get(b.dataset.car),label=b.querySelector('span');b.setAttribute('aria-checked',String(on));b.tabIndex=on?0:-1;
    b.classList.toggle('taken',!!holder);b.setAttribute('aria-disabled',String(!!holder));label.textContent=holder??carEntry(b.dataset.car,this.model).shortName;
@@ -266,8 +266,8 @@ export class CarSelect {
   // for a guest, the host's race (once let in: waiting for it, or not).
   const next=$('carsNext'),g=this.guest;
   if(this.room){next.disabled=!!g&&!g.admitted;if(g)next.setAttribute('aria-pressed',String(g.admitted&&g.waiting));else next.removeAttribute('aria-pressed');}
-  const label=!g?'Escolher a pista →':!g.admitted?'Esperando o anfitrião aceitar você…':g.waiting?'Aguardando o início da corrida':'Aguardar início da corrida →';
-  const hint=!g?`Com o ${name} #${entry.number} · corrida única, treino, 1x1 ou campeonato`:!g.admitted?'':g.waiting?'O anfitrião escolhe a pista e dá a largada · clique para cancelar':`Com o ${name} #${entry.number} · o anfitrião escolhe a pista e dá a largada`;
+  const label=!g?(this.drift?'Entrar na arena →':'Escolher a pista →'):!g.admitted?'Esperando o anfitrião aceitar você…':g.waiting?'Aguardando o início da corrida':'Aguardar início da corrida →';
+  const hint=!g?(this.drift?`Com o ${name} #${entry.number} · treino livre, editor e desafios de drift`:`Com o ${name} #${entry.number} · corrida única, treino, 1x1 ou campeonato`):!g.admitted?'':g.waiting?'O anfitrião escolhe a pista e dá a largada · clique para cancelar':`Com o ${name} #${entry.number} · o anfitrião escolhe a pista e dá a largada`;
   if(next.dataset.label!==label+hint){
    next.dataset.label=label+hint;const span=document.createElement('span'),small=document.createElement('small');span.className='mode-label';span.textContent=label;small.id='carsNextDetail';small.textContent=hint;
    next.replaceChildren(span,...hint?[small]:[]);

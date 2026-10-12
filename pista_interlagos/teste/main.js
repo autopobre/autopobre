@@ -84,6 +84,10 @@ import {carContact} from './contact-shadows.js';
 import {prepareWheels,setTyreDetail} from './car-wheels.js';
 import {createSpeedEffects,releaseWakeCars} from './speed-particles.js';
 import {rideKerbs,kerbSound} from './kerb-contact.js';
+import {DRIFT_ARENA,createArenaData,floorOutline} from './drift-arena.js';
+import {ArenaMode} from './drift-arena-mode.js';
+import {DriftCar} from './drift-physics.js';
+import {createArenaScene,arenaLandscape,oldStockPicture} from './drift-arena-scene.js';
 const $=id=>document.getElementById(id);
 const touchDevice=matchMedia('(pointer:coarse)').matches||navigator.maxTouchPoints>0;let mobile;
 const preferences=new PlayerPreferences();
@@ -134,7 +138,7 @@ const chosenDuel=model=>model==='fusca'?preferences.values.fuscaDuelRival:prefer
 const menuCar=()=>menuMode==='historia'?'99':multiplayer?.car()??chosenCar(menuModel());
 // Its model: Modo Corrida's Fusca tab (fusca.js) or the Opala; the story and a room's race are Opalas.
 const menuModel=()=>menuMode==='historia'||roomWanted?'opala':preferences.values.carModel;
-const carScreen=()=>menuMode==='corrida';
+const carScreen=()=>menuMode==='corrida'||menuMode==='drift';
 // The settings' grid list: the field racing now or, between races, the next one. Rebuilt each time
 // the settings open (openSettings).
 function showRoster(){
@@ -241,7 +245,8 @@ let explosions=null;
 // What a circuit adds to the world and moves every frame (the sea's chop, Floripa's bridges and landmarks).
 let circuitExtras=[];
 // Look-back (B or the touch button): driving from the cockpit only, not on foot, in the pit stop or menus.
-const lookBackAllowed=()=>mode==='cockpit'&&ready&&!paused&&!cockpitView&&!pitstop?.opened&&!immersive?.onFoot()&&!gridPreview()&&!$('settings').open;
+// (On the arena B is a handbrake key, ARENA_HANDBRAKE: no looking back there.)
+const lookBackAllowed=()=>!arenaMode&&mode==='cockpit'&&ready&&!paused&&!cockpitView&&!pitstop?.opened&&!immersive?.onFoot()&&!gridPreview()&&!$('settings').open;
 // Sky light comes mostly from the environment map (sky.js); the hemisphere lifts the shade a little more.
 // Clear early-afternoon key light: a strong, barely warm sun against the open sky's fill, about 5:1 on
 // the ground like a sunny day (the fill was half that and a car's shadow went black), so shade under cars
@@ -550,7 +555,10 @@ let pitstop,immersive,car,data,roadSurface,roadRails,roadCurbs,driver,wheels=[],
 // The car raced now ('99', or Modo Corrida's choice), the car at the back of its grid whose driver
 // sits out (the same, or a multiplayer host's: seatCar), whether it is the recon lap, its paint on
 // the player's model, and the track branding's Old Stock ads that car 70 carries on its doors.
-let raceCar='99',raceModel='opala',raceGrid='99',reconLap=false,oldStockMaterial=null,modelLoading=null;const carLivery=new CarLivery();
+let raceCar='99',raceModel='opala',raceGrid='99',reconLap=false,oldStockMaterial=null,modelLoading=null;
+// The Arena de Drift under way (drift-arena-mode.js, drift-arena-scene.js): its stadium, layout, score, challenges and
+// editor; null on a circuit.
+let arenaMode=null,arenaScene=null;const carLivery=new CarLivery();
 // clone(model) with the player's model as loaded: the paint it may wear (car-livery.js) comes off for
 // the clone and goes back on after it.
 function withCleanModel(clone){
@@ -674,12 +682,13 @@ async function cycleLivery(){
 // hand shuts as the car moves off.
 function updateOpenings(dt){if(Math.hypot(car.vx,car.vy)>1.5)openings.release('manual');openings.update(dt);showTrunkInside(trunkInterior,openings);}
 // nearest (R key): only the player's car goes back on track; rivals, laps and fuel carry on.
-function reset(nearest=false){car.fall=null;if(fallMode){setCameraMode(fallMode);fallMode=null;}fallView.stop(camera);if(!nearest)explosions?.reset();action.reset();mobile?.setHandbrake(false);openings.closeAll(true);if(nearest)car.recover();else{ghostRecorder.reset();car.resetGrid(playerGridSlot(immersive?.lineup?.length));if(immersive&&!immersive.active)immersive.resetField();cockpit.resetPhone();}driver?.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();automatic=false;followInitialized=false;cameraReturn.reset(performance.now());headLook.yaw=headLook.pitch=0;lookBack.reset();updateCar(1);updateCamera(1);}
+function reset(nearest=false){car.fall=null;if(fallMode){setCameraMode(fallMode);fallMode=null;}fallView.stop(camera);if(!nearest)explosions?.reset();action.reset();mobile?.setHandbrake(false);openings.closeAll(true);if(nearest&&arenaMode)arenaMode.spawn(car);else if(nearest)car.recover();else{ghostRecorder.reset();car.resetGrid(playerGridSlot(immersive?.lineup?.length));arenaMode?.spawn(car);if(immersive&&!immersive.active)immersive.resetField();cockpit.resetPhone();}driver?.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();automatic=false;followInitialized=false;cameraReturn.reset(performance.now());headLook.yaw=headLook.pitch=0;lookBack.reset();updateCar(1);updateCamera(1);}
 const names=[[0,'Reta dos boxes'],[280,'S do Senna · T1–T2'],[490,'Curva do Sol · T3'],[700,'Reta Oposta'],[1500,'Descida do Lago · T4–T5'],[1810,'Subida para a Ferradura'],[1990,'Ferradura · T6–T7'],[2230,'Laranjinha · T8'],[2430,'Pinheirinho · T9'],[2660,'Bico de Pato · T10'],[2840,'Mergulho · T11'],[3120,'Junção · T12'],[3250,'Subida dos boxes · T13'],[3570,'Café · T14'],[3960,'T15 · Reta dos boxes']];
 function location(s){const sections=data.meta.sections||names;let name=sections[0][1];for(const [d,n] of sections)if(s>=d)name=n;return name;}
 const fmt=t=>{if(t===null)return '—';const m=Math.floor(t/60),s=t%60;return `${String(m).padStart(2,'0')}:${s.toFixed(3).padStart(6,'0')}`;};
 function drawMap(){
  const ctx=$('map').getContext('2d'),w=260,h=$('map').height;ctx.clearRect(0,0,w,h);
+ if(arenaMode){arenaMode.drawMap(ctx,projectMap,car);return;}
  const xy=p=>projectMap(p[1],p[2]);
  ctx.beginPath();data.samples.forEach((p,i)=>{const [x,y]=xy(p);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.closePath();ctx.lineWidth=8;ctx.strokeStyle='#ffffff16';ctx.stroke();ctx.lineWidth=2;ctx.strokeStyle='#b6c5b5';ctx.stroke();
  if(immersive&&(!immersive.active||['starting','grid','race'].includes(immersive.state.phase))){for(const [i,r] of immersive.rivals.entries()){const [x,y]=projectMap(r.car.x,r.car.y);ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);ctx.fillStyle=cssColor(r.entry.mark);ctx.fill();ctx.strokeStyle='#0c1c17';ctx.lineWidth=1.2;ctx.stroke();}}
@@ -689,7 +698,7 @@ function drawMap(){
  if(ghostOnTrack){const [gx,gy]=projectMap(ghostPose.x,ghostPose.y);ctx.beginPath();ctx.arc(gx,gy,4,0,Math.PI*2);ctx.fillStyle='#7fdcff66';ctx.fill();ctx.strokeStyle='#c8f6ff';ctx.lineWidth=1.5;ctx.stroke();}
  const [x,y]=projectMap(car.x,car.y);ctx.save();ctx.translate(x,y);ctx.rotate(-car.heading);ctx.beginPath();ctx.moveTo(7,0);ctx.lineTo(-5,-4);ctx.lineTo(-3,0);ctx.lineTo(-5,4);ctx.closePath();ctx.fillStyle='#e2fb57';ctx.shadowBlur=10;ctx.shadowColor='#d6fa4b';ctx.fill();ctx.restore();
 }
-const roughRotation=new THREE.Quaternion(),roughEuler=new THREE.Euler(),chaseForward=new THREE.Vector3(1,0,0),chaseTarget=new THREE.Vector3(1,0,0);let roughRide=0;
+const roughRotation=new THREE.Quaternion(),roughEuler=new THREE.Euler(),chaseForward=new THREE.Vector3(1,0,0),chaseTarget=new THREE.Vector3(1,0,0),driftView=new THREE.Vector3();let roughRide=0;
 function updateCar(dt){
  cabinVisibility();
  // A paused race holds the car still (dt 1, a placement, still snaps): a sprung body still settling would
@@ -722,7 +731,10 @@ function updateCar(dt){
  // swing slowly toward the direction of travel instead of tumbling with it.
  const tumbling=car.upright<.6;
  if(!tumbling)chaseTarget.copy(forward);else if(speed>2)chaseTarget.set(car.vx,0,-car.vy).normalize();
- chaseForward.lerp(chaseTarget,dt>=1?1:1-Math.exp(-dt*(tumbling?2.5:30))).normalize();
+ // On the arena the follow cameras look between the nose and the way the car travels, and swing more slowly: a drift
+ // is seen from its side instead of the camera turning with the car.
+ const drifting=arenaMode&&!tumbling&&speed>4&&driftView.set(car.vx,0,-car.vy).normalize().dot(forward)>-.2;if(drifting)chaseTarget.lerp(driftView,.5).normalize();
+ chaseForward.lerp(chaseTarget,dt>=1?1:1-Math.exp(-dt*(tumbling?2.5:drifting?7:30))).normalize();
  for(const w of fuscaBody.active?fuscaBody.wheels:wheels){
   // Fisica: angulo positivo aponta para a esquerda. No GLB: frente +X,
   // cima +Y e esquerda -Z. Construir o eixo de rodagem evita inverter
@@ -968,6 +980,8 @@ function ridingCars(subjectObj,subjectCar){
 }
 function updateCamera(dt){
  if(pitstop?.opened)return;
+ // The arena's editor looks down on the whole floor (drift-arena-mode.js).
+ if(arenaMode?.editing){arenaMode.editorCamera(camera);placeSun(carRoot.position,null,dt);return;}
  if(immersive?.active&&['crowd','podium'].includes(immersive.state.phase)&&!immersive.inCar){const p=immersive.visual.hero.getWorldPosition(new THREE.Vector3());placeSun(p,null,dt);return;}
  const rival=watchedRival(),subject=rival?.car??car,p=rival?rival.obj.position:carRoot.position,vel=Math.hypot(subject.vx,subject.vy);
  // A watched rival's nose, smoothed as chaseForward is for the player's car.
@@ -1054,11 +1068,16 @@ const pressed=code=>keys.has(code)||mobile?.pressed.has(code)||code!=='Space'&&(
 // accelerates. A wheel with no centring spring rests anywhere: on foot it turns the pilot only past a
 // quarter of its lock. The physics loop passes its step, which alone moves the brake-to-reverse latch on.
 // Modo Corrida out of fuel: nothing drives, Q included.
+// Keys that hold the handbrake only while held (the drifter's way): N; on the arena Shift and Space too (Space enters
+// keys there only). Many keyboards drop a third key held with W and A or D (ghosting, user 10-12: W + D + N); Space and
+// Shift are the ones they keep; with the arrows ↑ + ← + N was dropped and ↑ + → + N kept, so B too (the user's pick; it
+// looks back elsewhere). Shift and B only on the arena: a controller's L3 (the headlights) sends a Shift, R3 a B.
+const HANDBRAKE_HOLD=Object.freeze(['KeyN']),ARENA_HANDBRAKE=Object.freeze(['KeyN','KeyB','ShiftLeft','ShiftRight','Space']);
 const outOfFuel=()=>immersive&&!immersive.active&&immersive.freeFuel<=0&&!pitstop?.coffee;
 function input(step=0){
  const afoot=pitstop?.coffee||immersive?.onFoot(),walk=afoot?gamepad.walk:0;
  const steer=afoot?Math.sign(wheel.steering)*Math.max(0,Math.abs(wheel.steering)-.25)/.75:wheel.steering;
- const command={ignition:pressed('KeyI')?1:0,throttle:Math.max(pressed('KeyW')||pressed('ArrowUp')?1:0,mobile?.throttle??0,gamepad.throttle,wheel.throttle,walk),brake:Math.max(pressed('KeyS')||pressed('ArrowDown')?1:0,mobile?.brake??0,gamepad.brake,wheel.brake,-walk),left:Math.max(pressed('KeyA')||pressed('ArrowLeft')?1:0,-(mobile?.steering??0),-gamepad.steering,-steer),right:Math.max(pressed('KeyD')||pressed('ArrowRight')?1:0,mobile?.steering??0,gamepad.steering,steer),reverse:pressed('KeyQ')?1:0,handbrake:pressed('Space')?1:0};
+ const command={ignition:pressed('KeyI')?1:0,throttle:Math.max(pressed('KeyW')||pressed('ArrowUp')?1:0,mobile?.throttle??0,gamepad.throttle,wheel.throttle,walk),brake:Math.max(pressed('KeyS')||pressed('ArrowDown')?1:0,mobile?.brake??0,gamepad.brake,wheel.brake,-walk),left:Math.max(pressed('KeyA')||pressed('ArrowLeft')?1:0,-(mobile?.steering??0),-gamepad.steering,-steer),right:Math.max(pressed('KeyD')||pressed('ArrowRight')?1:0,mobile?.steering??0,gamepad.steering,steer),reverse:pressed('KeyQ')?1:0,handbrake:pressed('Space')||!automatic&&!afoot&&(arenaMode?ARENA_HANDBRAKE:HANDBRAKE_HOLD).some(code=>keys.has(code))?1:0};
  // The wheel alone steering: physics turns the road wheels where it is, with no smoothing.
  if(!afoot&&wheel.steers&&command.left+command.right===Math.abs(steer))command.wheel=true;
  // Câmbio manual: the gear the player put in, and a wheel's clutch pedal (the keyboard has none).
@@ -1168,7 +1187,7 @@ function runFrame(){const rawDt=clock.getDelta(),dt=Math.min(rawDt,.08);gamepad.
  // The sound is heard from the rival the recon lap watches (N), otherwise from the player's car.
  const heard=watchedRival()?.car??car;
  if(automatic&&!paused&&(mobile?.throttle||mobile?.brake||mobile?.steering||gamepad.driving||wheel.driving))takeWheel();
- if(!paused&&!frozen){if(automatic)immersive.recordAssisted=true;accumulator+=dt*fallView.timeScale;while(accumulator>=1/120){const command=automatic?pilot(1/120):input(1/120);if(outOfFuel()){command.throttle=0;command.reverse=0;}if(car.fall)Object.assign(command,{throttle:0,brake:0,left:0,right:0,reverse:0,handbrake:0});if(!pitstop?.beforeStep(command,1/120)&&!immersive?.step(command,1/120)){const before=Math.hypot(car.vx,car.vy);car.step(command,1/120);const impact=Math.max(car.wallImpactSpeed??0,car.crashImpactSpeed??0,before-Math.hypot(car.vx,car.vy));if(impact>4){if(heard===car)carAudio.effect('collision');if(!car.fall)immersive?.wallImpact(impact);frameImpact=Math.max(frameImpact,impact);}const heardBefore=Math.hypot(heard.vx,heard.vy);immersive?.stepFree(1/120,command);if(heard!==car&&Math.max(heard.wallImpactSpeed??0,heard.crashImpactSpeed??0,heardBefore-Math.hypot(heard.vx,heard.vy))>4)carAudio.effect('collision');}lakeContact?.step(car,1/120);skidMarks.update(car,command,1/120);recordGhost();accumulator-=1/120;if(!immersive.active&&immersive.freeResultReady&&!multiplayer?.holdResults()){menu(true);break;}}}
+ if(!paused&&!frozen){if(automatic)immersive.recordAssisted=true;accumulator+=dt*fallView.timeScale;while(accumulator>=1/120){const command=automatic?pilot(1/120):input(1/120);if(outOfFuel()){command.throttle=0;command.reverse=0;}if(car.fall)Object.assign(command,{throttle:0,brake:0,left:0,right:0,reverse:0,handbrake:0});if(!pitstop?.beforeStep(command,1/120)&&!immersive?.step(command,1/120)){const before=Math.hypot(car.vx,car.vy);arenaMode?.beforeStep();car.step(command,1/120);const impact=Math.max(car.wallImpactSpeed??0,car.crashImpactSpeed??0,before-Math.hypot(car.vx,car.vy));arenaMode?.step(1/120,impact,{handbrake:!!command.handbrake,latched:!!mobile?.handbrake});if(impact>4){if(heard===car)carAudio.effect('collision');if(!car.fall)immersive?.wallImpact(impact);frameImpact=Math.max(frameImpact,impact);}const heardBefore=Math.hypot(heard.vx,heard.vy);immersive?.stepFree(1/120,command);if(heard!==car&&Math.max(heard.wallImpactSpeed??0,heard.crashImpactSpeed??0,heardBefore-Math.hypot(heard.vx,heard.vy))>4)carAudio.effect('collision');}lakeContact?.step(car,1/120);skidMarks.update(car,command,1/120);recordGhost();accumulator-=1/120;if(!immersive.active&&immersive.freeResultReady&&!multiplayer?.holdResults()){menu(true);break;}}}
  if(car.cliff&&!paused&&!frozen)playerFall(trackFall(car,dt*fallView.timeScale));
  // Any car meeting the ground below the wall goes up (the player's, a rival's): heard from afar, fainter.
  if(explosions&&!paused&&!frozen){
@@ -1191,7 +1210,7 @@ function runFrame(){const rawDt=clock.getDelta(),dt=Math.min(rawDt,.08);gamepad.
  const braking=driveCommand.engineOff?0:driveCommand.brake;brakeLamps.userData.set(model?.visible?braking:0,!!model?.visible&&playerLamps.lit);fuscaBody.brake(braking,playerLamps.lit);
  carAudio.update(heard,rivalSound?.command??driveCommand,rivalSound?.skid??skid,paused||frozen,mode);
  carAudio.updateScene({...immersive?.audioScene(heard),speed:Math.hypot(heard.vx,heard.vy),onRoad:heard.surface.onRoad,rain:weather.drops,wet:weather.wetness,...speedFx?.sound(heard===car?car:null),camera:mode},immersive?.state.takeSounds()??[],dt);
- sky.update(paused?0:dt);landscape?.update(paused?0:dt,camera);for(const extra of circuitExtras)extra.update?.(paused?0:dt,camera);
+ sky.update(paused?0:dt);landscape?.update(paused?0:dt,camera);arenaMode?.frame(paused?0:dt);for(const extra of circuitExtras)extra.update?.(paused?0:dt,camera);
  // A watched rival is posed by immersive.update below: its camera follows after that.
  updateOpenings(paused?0:dt);updateCar(dt);if(!watchedRival())updateCamera(dt);const dash=cockpit.update(car,paused?0:dt,heard===car?carAudio.state:null),phoneArrived=dash.phoneArrived;if(phoneArrived)carAudio.notifyPhone();fuscaBody.update(dash.speed,dash.rpm,(immersive?.active?immersive.state.fuel:immersive?.freeFuel??12)/12);driver.update(car,paused?0:dt,{command:driveCommand,impact:frameImpact,phoneArrived});gamepad.bump(actionImpact);frameImpact=0;lapBanner(paused?0:dt);lastHud+=dt;if(lastHud>.07){hud();lastHud=0;}
  if(immersive?.visual)immersive.visual.renderAhead=renderAhead();immersive?.update(paused?0:dt,camera);if(watchedRival())updateCamera(dt);
@@ -1300,8 +1319,8 @@ function updateMenuLabels(){
  document.querySelector('#menu .eyebrow').textContent=finished?'BANDEIRADA / RESULTADO FINAL':`${immersive?.active?'MODO HISTÓRIA':'MODO CORRIDA'} · ${championshipRace?`${championshipRace.championship.info.label} · ETAPA ${championshipRace.round+1}/${championshipRace.championship.total}`:freeRaceTitle()} / PAUSA`;
  // Opening: Modo Corrida or Modo História. Paused: back to the track, restart, change track.
  // A finished single race can be run again; a scored championship round goes on from the result sheet.
- $('start').hidden=$('storyStart').hidden=sessionStarted;if(!$('start').disabled)$('start').textContent='Modo Corrida →';
- $('resume').hidden=!resume;$('leaveRace').hidden=!sessionStarted;
+ $('start').hidden=$('storyStart').hidden=$('driftStart').hidden=sessionStarted;if(!$('start').disabled)$('start').textContent='Modo Corrida →';
+ $('resume').hidden=!resume;$('leaveRace').hidden=!sessionStarted;$('leaveRace').textContent=circuit.arena?'Sair da arena':'Trocar de pista';
  $('restartRace').hidden=!(resume||finished&&!scored&&!multiplayer?.guest());$('restartRace').textContent=finished?'Correr novamente →':immersive?.practice?'Recomeçar treino':'Recomeçar corrida';
  // The track screen races in the mode chosen at the opening.
  const story=menuMode==='historia',laps=preferences.values.laps;
@@ -1326,6 +1345,7 @@ function updateMenuLabels(){
 // The free race under way as the pause menu names it: a single race, the solo practice (its laps and
 // best so far) or the 1x1 and its rival.
 function freeRaceTitle(){
+ if(circuit.arena)return 'ARENA DE DRIFT';
  const lineup=immersive?.active?null:immersive?.freeLineup;
  if(!lineup)return 'CORRIDA ÚNICA';
  if(!lineup.length)return `TREINO SOLO · ${car.laps} VOLTA${car.laps===1?'':'S'}${car.best?` · MELHOR ${fmt(car.best)}`:''}`;
@@ -1350,7 +1370,8 @@ $('pauseBadge').onclick=()=>hold(false);
 function menu(show){held=false;$('pauseBadge').hidden=true;if(!show&&!immersive?.active&&immersive?.freeResultReady)show=true;paused=show;updateMenuLabels();carAudio.setPaused(show);if(!show)carAudio.unlock();if(show&&document.pointerLockElement===$('view'))document.exitPointerLock();cameraReturn.reset(performance.now());updateScreens();keys.clear();mobile?.clear();status('');}
 function updateScreens(){
  const free=paused&&!sessionStarted,tracks=free&&screen==='tracks',cars=free&&screen==='cars';
- $('menu').classList.toggle('hidden',!paused||tracks||cars);$('tracks').classList.toggle('hidden',!tracks);$('cars').classList.toggle('hidden',!cars);
+ // The arena's panel and editor pause the car without the menu (drift-arena-mode.js).
+ $('menu').classList.toggle('hidden',!paused||tracks||cars||!!(arenaMode?.editing||arenaMode?.panelOpen));$('tracks').classList.toggle('hidden',!tracks);$('cars').classList.toggle('hidden',!cars);
  // The car screen is the canvas's window: the race's HUD steps aside (carros.css).
  document.body.classList.toggle('cars-open',cars);
  if(tracks)renderTracks();if(cars)openCarScreen();
@@ -1363,7 +1384,7 @@ const pilotLine=()=>[pilotPicker.profiles.selected&&`Piloto: ${pilotPicker.profi
 // kept for the race. A multiplayer guest does not pick the track: its button waits for the host's race.
 const carSelect=new CarSelect({root:$('cars'),values:{opala:preferences.values.car,fusca:preferences.values.fuscaCar},model:preferences.values.carModel,carRoot,quality:()=>graphics.values.reflections,
  onModel:model=>{preferences.update({carModel:model});updateMenuLabels();if(model==='fusca')fuscaInStudio();},
- onPick:(number,model)=>{preferences.update({[model==='fusca'?'fuscaCar':'car']:number});multiplayer?.choose(number);updateMenuLabels();if(ready)showRoster();},onNext:()=>{if(multiplayer?.guest())multiplayer.wait();else showScreen('tracks');},onBack:()=>showScreen('opening')});
+ onPick:(number,model)=>{preferences.update({[model==='fusca'?'fuscaCar':'car']:number});multiplayer?.choose(number);updateMenuLabels();if(ready)showRoster();},onNext:()=>{if(multiplayer?.guest())multiplayer.wait();else if(menuMode==='drift')beginArena();else showScreen('tracks');},onBack:()=>showScreen('opening')});
 // The Fusca tab's studio needs the Fusca's model.
 function fuscaInStudio(){ensureFusca().then(template=>{if(template)carSelect.setFusca(template);else carSelect.failed('fusca');});}
 function openCarScreen(){
@@ -1520,10 +1541,13 @@ document.addEventListener('keydown',e=>{
  if(lapRecords.dialog.open||championshipDialog.dialog.open)return;
  if(pitstop?.opened&&!$('settings').open){if(e.code==='Escape')openSettings();else if(e.code==='KeyP')hold(!held);else if(!paused){if(pitstop.coffee&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){e.preventDefault();keys.add(e.code);}if(!e.repeat&&pitstop.handleKey(e.code))e.preventDefault();}return;}
  if($('settings').open){if(e.code==='KeyM'){carAudio.toggleMute();audioControls();}return;}
+ // The arena's panel and editor take their keys; T opens the panel while driving.
+ if(arenaMode&&sessionStarted&&ready&&(arenaMode.editing||arenaMode.panelOpen||!paused&&e.code==='KeyT')&&!e.repeat&&arenaMode.handleKey(e)){e.preventDefault();return;}
+ if(arenaMode?.editing||arenaMode?.panelOpen)return;
  // Without a race, Escape goes back from the track screen to the opening; P does nothing.
  if(!sessionStarted&&['Escape','KeyP'].includes(e.code)){if(e.code==='Escape'&&screen!=='opening'&&!loading)showScreen(screen==='tracks'&&carScreen()?'cars':'opening');return;}
  if(['INPUT','SELECT'].includes(e.target.tagName)&&!['Escape','KeyP'].includes(e.code))return;
- if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();if(e.code!=='Space')keys.add(e.code);if(e.repeat||!ready)return;
+ if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();if(e.code!=='Space'||arenaMode)keys.add(e.code);if(e.repeat||!ready)return;
  // The key that skips the opening (intro-cinematic.js) does nothing else: not the story's first card, not the handbrake.
  if(e.introKey)return;
  if(!paused&&immersive?.handleKey(e.code)){e.preventDefault();return;}
@@ -1532,8 +1556,9 @@ document.addEventListener('keydown',e=>{
  // The controller's D-pad sends 1 2 3 too (synthetic), and on foot the numbers answer: only the
  // keyboard's numbers, in the car, pick a view.
  if(e.code in CAMERA_KEYS&&e.isTrusted&&!immersive?.onFoot()&&!pitstop?.coffee)setCameraMode(CAMERA_KEYS[e.code],true);
- // Space pulls the handbrake and leaves it pulled until the next press, like the touch button.
- if(e.code==='Space'&&!paused)mobile.setHandbrake(!mobile.handbrake);
+ // Space pulls the handbrake and leaves it pulled until the next press, like the touch button; N holds it only while
+ // held (input, HANDBRAKE_HOLD), the drifter's way, and on the arena Space and Shift do too.
+ if(e.code==='Space'&&!paused&&!arenaMode)mobile.setHandbrake(!mobile.handbrake);
  if(e.code==='KeyC')setCameraMode(nextCameraMode(),true);
  if(e.code==='KeyN')watchNext(e.shiftKey?-1:1);
  if(e.code==='KeyR'&&!immersive.finishing)reset(true);
@@ -1577,14 +1602,16 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  raceCar=preferences.values.immersive||tour?'99':multiplayer?.car()??chosenCar(raceModel);reconLap=tour;
  immersive.lineup=preferences.values.immersive||raceKind==='grid'?null:raceKind==='solo'?[]:[duelRivalFor(raceCar,chosenDuel(raceModel),raceModel)];
  seatCar();
- document.querySelector('.session').childNodes[1].textContent=championshipRace?` ${championshipRace.championship.info.label} · ETAPA ${championshipRace.round+1}/${championshipRace.championship.total} `:immersive.lineup?.length===0?' TREINO SOLO ':immersive.lineup?` 1x1 · #${immersive.lineup[0]} `:' PISTA LIVRE ';
+ // On the arena the car meets the arena's floor and items (drift-arena-mode.js attach).
+ arenaMode?.attach(car);
+ document.querySelector('.session').childNodes[1].textContent=championshipRace?` ${championshipRace.championship.info.label} · ETAPA ${championshipRace.round+1}/${championshipRace.championship.total} `:circuit.arena?' ARENA DE DRIFT ':immersive.lineup?.length===0?' TREINO SOLO ':immersive.lineup?` 1x1 · #${immersive.lineup[0]} `:' PISTA LIVRE ';
  // The story's paddock names the round ahead under its map (immersive.css .story-paddock): season, round, place and dates.
  {const r=championshipRace,row=r?.championship.schedule[r.round];$('mapRound').hidden=!r;if(r)$('mapRound').innerHTML=`<b>${r.championship.info.label} · ETAPA ${r.round+1} DE ${r.championship.total}</b>${[row?.place??circuit.name,row?.date].filter(Boolean).join(' · ')}`;}
  pitstop?.reset();automatic=false;watched=0;
  if(preferences.values.immersive){immersive.start();}
  else{if(immersive.active)immersive.disable();reset();setCameraMode(preferences.values.camera);updateCar(1);updateCamera(1);}
  paintCar();
- if(!immersive.active&&!tour)immersive.beginCountdown();
+ if(!immersive.active&&!tour&&!circuit.arena)immersive.beginCountdown();
  startLights();
  sessionStarted=true;automatic=tour&&!immersive.active;menu(false);
 }
@@ -1600,7 +1627,10 @@ function returnToMainMenu(){
  carLivery.clear();showFusca(null);if(ready){immersive.disable();reset();}
  // A multiplayer guest has no track to pick: Modo Corrida brings it back to the car screen, where it
  // waits for the host's next race (or, having left this one early, picks again).
- sessionStarted=false;automatic=false;watched=0;championshipRace=storyRound=null;raceResults.root.hidden=true;screen=multiplayer?.guest()&&carScreen()?'cars':'tracks';menu(true);showCircuitSelection();
+ sessionStarted=false;automatic=false;watched=0;championshipRace=storyRound=null;raceResults.root.hidden=true;screen=multiplayer?.guest()&&carScreen()?'cars':'tracks';
+ // Out of the arena: back to its car screen, the circuit chosen before on the track screen again.
+ if(circuit.arena){screen='cars';restoreCircuit();}
+ menu(true);showCircuitSelection();
 }
 // Scores the championship round when its race is over (once, before the result sheet shows):
 // Modo Corrida at the flag, Modo História when the podium comes, finished or towed in.
@@ -1634,7 +1664,21 @@ function nextStoryRound(){
  if(championship.active)startChampionshipRound(championship.mode);else championshipDialog.open(championship);
 }
 // The opening picks the mode; the track screen then the circuit and a single race or the championship.
-function chooseMode(mode){if(sessionStarted||loading||!pilotPicker.commit())return;menuMode=mode;showScreen(carScreen()?'cars':'tracks');}
+function chooseMode(mode){if(sessionStarted||loading||!pilotPicker.commit())return;menuMode=mode;carSelect.drift=mode==='drift';carSelect.show();showScreen(carScreen()?'cars':'tracks');}
+// The Arena de Drift (drift-arena.js): its own place, never one of CIRCUITS (no championship, records, ghosts or
+// room), driven alone in the car screen's car. Leaving it brings back the circuit chosen before.
+async function beginArena(){
+ if(sessionStarted||loading)return;
+ circuit=DRIFT_ARENA;championshipRace=null;pendingMode='solo';await beginRace(false,false,false);
+ if(!sessionStarted)restoreCircuit();
+}
+function restoreCircuit(){if(circuit.arena){circuit=selectedCircuit(preferences.values.circuit);showCircuitSelection();}}
+// The arena's panel and editor stop the car and free the mouse, as the menu does, without showing it.
+function arenaPause(on){
+ if(on){held=false;$('pauseBadge').hidden=true;paused=true;carAudio.setPaused(true);keys.clear();mobile?.clear();if(document.pointerLockElement===$('view')){mouseFreed=true;document.exitPointerLock();}}
+ else{paused=false;carAudio.setPaused(false);carAudio.unlock();keys.clear();mobile?.clear();cameraReturn.reset(performance.now());followInitialized=false;}
+ updateScreens();
+}
 // The chosen car on track: the field with the 99 in its seat (RaceField's roster, the rivals' models)
 // and the player's result rows under its number; set before the grid. The model goes back to the 99
 // first, since the 99 that Stevan Gaipo races is cloned from it. In a Fusca race the whole field races
@@ -1656,6 +1700,7 @@ function paintCar(){
 }
 $('start').onclick=()=>chooseMode('corrida');
 $('storyStart').onclick=()=>chooseMode('historia');
+$('driftStart').onclick=()=>chooseMode('drift');
 $('pilotName').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('start').disabled){e.preventDefault();$(menuMode==='historia'?'storyStart':'start').click();}});
 $('tracksBack').onclick=()=>{if(!loading)showScreen(carScreen()?'cars':'opening');};
 // For the browser checks: a Modo História race on the chosen circuit outside the season (players race
@@ -1690,6 +1735,7 @@ $('tour').onclick=()=>{$('settings').close();beginRace(true,true,false);};$('men
 // Keep the car and audio session; release the previous circuit before loading another.
 function clearCircuit(){
  explosions=null;circuitExtras=[];fallView.stop(camera);
+ if(arenaMode)mobile?.setHandbrakeHold(false);arenaMode?.dispose();arenaMode=null;arenaScene=null;document.body.classList.remove('arena-mode');if(car)car.world=null;
  action.reset();actionNotice.update(0,null,false);intro.stop();const retired=[];
  if(pitstop){pitstop.reset();pitstop.panel.remove();pitstop.hud.remove();pitstop.walkHud.remove();pitstop.markers.removeFromParent();retired.push(pitstop.markers);pitstop=null;}
  camera.clearViewOffset();
@@ -1724,9 +1770,11 @@ async function loadCircuit(){
  const sceneryLevel=graphics.values.scenery,scenery=SCENERY_LEVELS[sceneryLevel];
 
  // Track files live in dados/, beside teste/ here and beside index.html once published (preparar_publicacao.py).
- data=circuit.id==='curvelo'?createCurveloData():await (await fetch('../dados/'+(circuit.data??'pista.json'))).json();data.meta.id=circuit.id;data.meta.name=circuit.name;
+ data=circuit.id==='curvelo'?createCurveloData():circuit.arena?createArenaData():await (await fetch('../dados/'+(circuit.data??'pista.json'))).json();data.meta.id=circuit.id;data.meta.name=circuit.name;
  // The circuit name sits in the top band of the map (#mapTitle); phones hide it and keep the whole canvas.
- projectMap=mapProjection(data.samples,260,300,touchDevice?0:40);$('map').height=projectMap.height??300;car=new TestCar(data);ghostRecorder.reset();
+ projectMap=mapProjection(circuit.arena?floorOutline(0,6).map(([x,y])=>[0,x,y]):data.samples,260,300,touchDevice?0:40);$('map').height=projectMap.height??300;
+ // The arena's car drives on a drift physics of its own (drift-physics.js); the circuits' cars are physics.js's own.
+ car=circuit.arena?new DriftCar(data):new TestCar(data);ghostRecorder.reset();
  roadSurface=await createTrackSurface(renderer,data,{quality:graphics.values.materials});
  if(!driver){driver=await createDriver(cockpit);carBody.add(driver.root);}
  terrainTextures??=await loadTerrainTextures(renderer);landscapeField=buildTrackField(data);let standTops=[];tyreSmoke.soft=null;smearRiders.length=0;releaseWakeCars();
@@ -1734,6 +1782,12 @@ async function loadCircuit(){
   const groundMaterial=terrainMaterial(terrainTextures,landscapeField,{mobile:scenery.mobile});groundMaterial.userData.terrain=true;
   standTops=flattenStatic(createCurveloScene(data,roadSurface,{groundMaterial,gravelMap:terrainTextures.gravel}));
   landscape=createLandscape({data,field:landscapeField,mobile:scenery.mobile,density:scenery.density,lod:scenery.lod,lean:sceneryLevel==='basico',style:'cerrado'});
+ }else if(circuit.arena){
+  // The Arena de Drift: the stadium (drift-arena-scene.js) round a flat floor; what stands on the floor is the layout's
+  // (drift-arena-mode.js). No woods, no rails, no trackside: the stadium is all there is.
+  arenaScene=await createArenaScene({renderer,roadSurface,textures:terrainTextures,mobile:scenery.mobile});
+  scene.add(arenaScene.root);cameraObstacles.push(...arenaScene.obstacles);standTops=arenaScene.crowdSteps;
+  landscape=arenaLandscape();
  }else if(data.scenery){
   // Cascavel, ECPA: terrain, asphalt and gantry from the open-data track file (open-circuit.js);
   // woods from the land-cover grid and the real building footprints (landscape.js).
@@ -1779,21 +1833,22 @@ async function loadCircuit(){
  }
  scene.add(landscape.root);
  const crowd=createCrowd(standTops,{mobile:scenery.mobile});scene.add(crowd.root);landscape.stats.fans=crowd.count;await ensureCarModel();await fuscaWanted();
- roadRails=createGuardrails(data,{quality:graphics.values.materials});scene.add(roadRails.root);cameraObstacles.push(roadRails.rails);
- roadCurbs=createCurbs(data,{quality:graphics.values.materials});scene.add(roadCurbs);
+ if(circuit.arena){roadRails={root:new THREE.Group(),rails:null,setQuality(){}};roadCurbs=new THREE.Group();roadCurbs.userData.setQuality=()=>{};}
+ else{roadRails=createGuardrails(data,{quality:graphics.values.materials});scene.add(roadRails.root);cameraObstacles.push(roadRails.rails);
+ roadCurbs=createCurbs(data,{quality:graphics.values.materials});scene.add(roadCurbs);}
  // Surveyed pit lane: entry after the Cafe, garages, exit around the S do Senna.
  let pitLayout=null;if(data.pit){const pitLaneScene=createInterlagosPit(data,roadSurface,terrainTextures,circuit.track?{label:`${circuit.track} · BOX 99`,title:circuit.boxTitle,name:`Box 99 de ${circuit.name}`,track:circuit.track}:undefined);scene.add(pitLaneScene.root);cameraObstacles.push(...pitLaneScene.obstacles);pitLayout=pitLaneScene.box;}
  // Curvelo: the same garage row and Box 99, on the infield behind its service lane.
  else if(circuit.id==='curvelo'){const pitScene=createCurveloPit(data,terrainTextures);scene.add(pitScene.root);cameraObstacles.push(...pitScene.obstacles);pitLayout=pitScene.box;}
  // Floodlight masts along the pit wall, lit by the weather after dark (floodlights.js).
- floods=createFloodlights(data);if(floods)scene.add(floods.root);
+ floods=circuit.arena?arenaScene.floods:createFloodlights(data);if(floods)scene.add(floods.root);
  recordTvs=pitLayout?.showRecords?pitLayout:null;recordTvsKey='';recordTvsAt=0;
- const branding=await createTrackBranding(data);scene.add(branding.root);
+ const branding=circuit.arena?{root:new THREE.Group(),oldStock:await oldStockPicture()}:await createTrackBranding(data);scene.add(branding.root);
  // Race-day dressing: sponsor banners on the rails, marshal posts and TV towers (trackside.js).
- trackside=createTrackside(data);scene.add(trackside.root);landscape.clearAround(trackside.clearings);landscape.stats.trackside=trackside.stats;
+ trackside=circuit.arena?{root:new THREE.Group(),towers:arenaScene.towers(data),clearings:[],stats:{}}:createTrackside(data);scene.add(trackside.root);landscape.clearAround(trackside.clearings);landscape.stats.trackside=trackside.stats;
  // Flags, corner rods and brake boards: built at every level (before the compile below), shown per Sensação de velocidade.
  // A pole flicking past is heard from the riding cameras only, muffled inside the car.
- flags=createFlagField(data,{level:graphics.values.speedEffects,onWhoosh:e=>{if(isInside()||mode==='chase'||mode==='close')carAudio.effect('passBy',{pan:e.pan,strength:e.strength*(isInside()?.55:1)});}});scene.add(flags.root);landscape.clearAround(flags.clearings);landscape.stats.flags=flags.stats;
+ flags=circuit.arena?{root:new THREE.Group(),clearings:[],stats:{},setQuality(){},update(){}}:createFlagField(data,{level:graphics.values.speedEffects,onWhoosh:e=>{if(isInside()||mode==='chase'||mode==='close')carAudio.effect('passBy',{pan:e.pan,strength:e.strength*(isInside()?.55:1)});}});scene.add(flags.root);landscape.clearAround(flags.clearings);landscape.stats.flags=flags.stats;
  // Broadcast view: the towers and low verge cameras film the car with a long lens.
  const tvProbe=new TestCar(data),tvObstacles=[...cameraObstacles];branding.root.traverse(o=>{if(o.isMesh)tvObstacles.push(o);});
  tvCamera=new TvCamera(data,trackside.towers,(x,y,i)=>{tvProbe.index=i;return tvProbe.sample(x,y).z;},tvObstacles);
@@ -1829,6 +1884,11 @@ async function loadCircuit(){
  // Box 99: Curvelo's service lane, or the surveyed garage at Interlagos.
  if(circuit.id==='curvelo'||pitLayout)pitstop=new PitStop({scene,car,carRoot,driver,mode:immersive,data,roadSurface,layout:pitLayout,obstacles:cameraObstacles,openings,onOpen:()=>{automatic=false;keys.clear();mobile?.clear();mobile?.setHandbrake(false);setCameraMode('chase');if(document.pointerLockElement)document.exitPointerLock();},onClose:()=>{keys.clear();mobile?.clear();followInitialized=false;},onSettings:openSettings});
  syncDamage(true);
+ if(circuit.arena){
+  arenaMode=new ArenaMode({scene,view:$('view'),textures:terrainTextures,mobile:scenery.mobile,storage:pilotStorage(),stadium:arenaScene,pilot:()=>immersive?.pilotName||typedPilot(),
+   sound:(name,options)=>carAudio.effect(name,options),onPause:arenaPause});
+  arenaMode.attach(car);document.body.classList.add('arena-mode');mobile?.setHandbrakeHold(true);
+ }
  landscape.setRealisticWater(graphics.values.water==='realista');
  const kleber=immersive.visual.rivals.find(o=>o.userData.entry.number==='70');
  // Car 70's Old Stock ads sit on its doors, bent onto the body.
@@ -1887,6 +1947,8 @@ async function loadCircuit(){
   wheelSnapshot:()=>{carRoot.updateMatrixWorld(true);const inverse=carRoot.getWorldQuaternion(new THREE.Quaternion()).invert();return wheels.map(w=>{const axle=new THREE.Vector3(0,0,1).applyQuaternion(w.obj.getWorldQuaternion(new THREE.Quaternion())).applyQuaternion(inverse);return {name:w.obj.name,front:w.front,angle:Math.atan2(axle.x,axle.z),axle:axle.toArray()};});},
   get state(){return {paused,automatic,mode,livery:activeLivery,wheels:wheels.length,drawCalls:renderer.info.render.calls};}};
  window.interlagos.carPaintInfo=carPaintInfo;
+ // The Arena de Drift's state for the checks (verificar_arena_drift.py): layout, score, challenge, editor.
+ window.interlagos.arenaInfo=()=>arenaMode?.info()??null;
  window.interlagos.speedInfo=()=>({...speedFx.info(),particles:tyreSmoke.info().speedFx,kerb:kerbSound(car),kerbWheels:car.kerbWheels??0,kerbTilt:car.kerbTilt??0});
  return true;
  }catch(err){console.error(err);ready=false;clearCircuit();status('Não foi possível carregar a pista. Clique em começar para tentar novamente.');return false;}

@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prévia do estádio da Arena de Drift</title><link rel="icon" href="data:,">
+<!-- Dev only (never published): the drift arena's stadium alone, from a camera picked in the address:
+ ?vista=cima|piso|arquibancada|canto|muro|tunel|telao|noite  &noite=1  &mobile=1  &torcida=0 -->
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100%;height:100%}#info{position:fixed;left:8px;bottom:6px;color:#fff;font:12px/1.3 monospace;text-shadow:0 0 3px #000;white-space:pre}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+</head><body><canvas id="view"></canvas><div id="info"></div>
+<script type="module" src="./arena-previa.js"></script>
+</body></html>
