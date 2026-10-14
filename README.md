@@ -118,6 +118,12 @@ Os carros dos humanos batem entre si e nos bots. Se o anfitrião der F5, ele vol
 
 Opções no endereço: `&carro=73` escolhe o carro do convidado, `&auto=1` liga o piloto automático daquela janela, `&fantasmas=1` (no anfitrião) faz os humanos passarem uns pelos outros, `&local=1` usa só as janelas deste navegador, `&servidor=local` usa o servidor das salas rodando neste PC (`wrangler dev`), e `&lag=150&perda=5` simulam 150 ms de atraso e 5% de mensagens perdidas. O código fica em `teste/multiplayer.js`, `teste/net-room.js`, `teste/net-link.js` e `teste/net-cars.js`. Os testes são `scripts/testar_multiplayer.mjs` (Node), `scripts/verificar_multiplayer.py [porta] [--servidor]` e `scripts/verificar_sala_secreta.py [porta]` (navegador).
 
+### Bancada de som (versão de teste)
+
+O som do motor vem de gravações reais em loop (`teste/engine-loops.js`): o Opala acelera com um seis em linha e tem a marcha lenta de um Opala 1978 de verdade; o Fusca acelera com uma Kombi (o mesmo motor a ar) e tem a lenta de um Fusca 1977. A **bancada de som**, `…/autopobre/dev/bancada-som.html`, toca o mesmo áudio do jogo com um carrinho simulado (acelerar, frear, ré, ponto morto, curva no limite e uma demonstração de 34 s) para os pilotos ajustarem o ronco de ouvido: abas **Opala** e **Fusca**, cada uma com volume, tom, graves, médios, agudos, aspereza, lenta, pé embaixo, pé fora, trocas, corte de giro, estouros, pneus, câmera interna e adversários, e **Marcha por marcha** (ponto morto, 1ª a 5ª e ré: volume, tom, graves, agudos e onde o som da marcha começa na barra). Cada controle explica o que faz. Os ajustes ficam no navegador; **Copiar ajustes** e **Colar ajustes** levam de um piloto para outro, e **Usar estes ajustes no jogo** faz o jogo daquele navegador tocar com eles (só nas versões que têm a bancada). No jogo, a aba Áudio do `/dev/` tem o link para a bancada.
+
+Como o multiplayer, a bancada só é publicada em `/dev/` (`preparar_publicacao.py --multiplayer`), e o fluxo de publicação falha se o link principal, `/apr_v1/` ou `/apr_v2/` a trouxer. Localmente, `servidor.py` a serve em `…/pista_interlagos/teste/bancada-som.html`. Os ajustes, com os textos e os valores padrão aprovados pela equipe, ficam em `teste/sound-tuning.js`; os testes são `scripts/testar_ajustes_som.mjs` (Node) e `scripts/verificar_bancada_som.py [porta]` (navegador).
+
 ## O que entra no Git
 
 Código do jogo e scripts, documentação, `package.json`/`package-lock.json`, as imagens em `teste/assets/`, a pista em `dados/pista.json` e `exports/interlagos_pista.glb`.

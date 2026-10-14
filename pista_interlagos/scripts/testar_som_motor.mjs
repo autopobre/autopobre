@@ -9,7 +9,8 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {clickOffset,firstGearRevs,SHIFT_UP,COUNTER} from '../teste/engine-loops.js';
-import {TUNING} from '../teste/car-audio.js';
+import {soundDefaults} from '../teste/sound-tuning.js';
+const TUNING=soundDefaults();
 
 const here=path.dirname(fileURLToPath(import.meta.url)),audio=path.join(here,'../teste/assets/audio'),SR=44100;
 const ffmpeg=()=>{
@@ -60,8 +61,8 @@ for(const idle of ['lenta_opala','lenta_fusca']){
  check(`${idle}: a long real idle (${((b-a)/SR).toFixed(1)} s)`,b-a>SR*10);
  const s=seam(samples,a,b);check(`${idle}: loops into itself`,s>.4&&s<2.5,s.toFixed(2));
 }
-// First gear: from firstFrom of the counter at a standstill to the upshift point, climbing with the wheels.
-const first=110,curve=[0,10,20,30,40,50,SHIFT_UP/first].map(k=>firstGearRevs(k,first,TUNING.firstFrom));
-check('first gear starts at the set share of the counter',Math.abs(curve[0]-TUNING.firstFrom*COUNTER)<1,`${Math.round(curve[0])} rpm`);
+// First gear: from its "Começo do som" (m1From) of the counter at a standstill to the upshift point, climbing with the wheels.
+const first=110,curve=[0,10,20,30,40,50,SHIFT_UP/first].map(k=>firstGearRevs(k,first,TUNING.m1From));
+check('first gear starts at the set share of the counter',Math.abs(curve[0]-TUNING.m1From*COUNTER)<1,`${Math.round(curve[0])} rpm`);
 check('first gear climbs with the wheels to the upshift',curve.every((v,i)=>!i||v>curve[i-1])&&Math.abs(curve.at(-1)-SHIFT_UP)<1,curve.map(Math.round).join(' → '));
 console.log(failures?`${failures} failed`:'all passed');process.exitCode=failures?1:0;

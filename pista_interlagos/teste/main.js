@@ -562,6 +562,10 @@ let sessionStarted=false,loading=false,loadedCircuit=null;
 // #sala= and #corrida= links open no room); no menu leads there.
 // Only /dev/ publishes it: the main link's build (preparar_publicacao.py without --multiplayer) turns this off.
 const MULTIPLAYER=true;
+// The sound bench is published only with the /dev/ build (with the multiplayer): its link in Áudio, and only there
+// may the bench's own sets play in the game.
+if(!MULTIPLAYER)carAudio.useDefaultSound();
+$('soundBench').hidden=!MULTIPLAYER;$('soundBenchState').textContent=carAudio.tuningSource==='bancada'?'Os seus ajustes da bancada estão tocando no jogo (desligue lá e recarregue o jogo para voltar ao padrão).':'Ajuste o ronco do Opala e do Fusca, marcha por marcha, e escolha se o jogo toca os seus ajustes.';
 const roomWanted=MULTIPLAYER&&new URLSearchParams(window.location.hash.slice(1)).has('desafio');let multiplayer=null;
 let pitstop,immersive,car,data,roadSurface,roadRails,roadCurbs,driver,wheels=[],trunkInterior=[],model,carStructure,paused=true,automatic=false,mode='chase',ready=false,loadToken=0,activeLivery='';
 // The car raced now ('99', or Modo Corrida's choice), the car at the back of its grid whose driver

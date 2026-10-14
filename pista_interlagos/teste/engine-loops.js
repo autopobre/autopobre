@@ -16,11 +16,13 @@ export const SHIFT_UP=6650,COUNTER=7400;
 // away in first the heard revs start at `share` of the rev counter and climb to the upshift point as the wheels'
 // revs in first (km/h times the gear's rpm per km/h) climb from idle to it.
 export const firstGearRevs=(kmh,perKmh,share)=>{const from=Math.min(share*COUNTER,SHIFT_UP);return from+(Math.max(GAME_IDLE,kmh*perKmh)-GAME_IDLE)*(SHIFT_UP-from)/(SHIFT_UP-GAME_IDLE);};
+// The same for second to fifth, when a pilot sets where a gear's sound starts (sound-tuning.js "Começo do som"):
+// from `low` (the revs an upshift lands the gear at) to the upshift point, the heard revs run from `share` of the
+// counter to it.
+export const gearRevs=(rpm,low,share)=>{const from=Math.min(share*COUNTER,SHIFT_UP-1);return Math.max(GAME_IDLE,from+(rpm-low)*(SHIFT_UP-from)/(SHIFT_UP-low));};
 // The throttle-shut layer with no loop within this ratio of the wanted revs borrows the throttle-open loops (never
 // the other way: borrowed shut loops made the engine sound as if lifting while pulling away in first).
 const BORROW=Math.log(1.3);
-// How fast a voice's revs may rise and fall (rpm/s): an engine has inertia, the physics' revs may jump.
-const RISE=9000,FALL=18000;
 
 // Where a decoded recording's content sits against the file it was made from: the MP3 encoder adds a delay
 // the decoder may or may not remove, so each of these files starts with a click in silence (at `click`
@@ -97,16 +99,17 @@ export class LoopEngine{
  }
  // rpm: the game's revs; load: throttle 0-1; gain: the voice's level.
  set(i,rpm,load,gain){const v=this.values[i];if(v)Object.assign(v,{rpm:Math.max(200,rpm),load:clamp(load,0,1),gain});}
- // loopSpan: how far up the idle loop reaches; onFrom: throttle-open loops under these revs are left out (the
- // team found the bank's low open loops poor; the lowest one left plays slower instead).
- // idleGains: each car's idle loop level ({opala, fusca}, the choice's kind).
- shape(tuning){this.loopSpan=Math.max(1.05,tuning.loopSpan??1.5);this.onFrom=tuning.onFrom??0;this.idleGains={opala:tuning.idleOpala??1,fusca:tuning.idleFusca??1};}
+ // The car's settings (sound-tuning.js): loopSpan, how far up the idle loop reaches; onFrom/offFrom, loops of
+ // each layer under these revs are left out (the team found the bank's low open loops poor; the lowest one left
+ // plays slower instead); idleLoop and idlePitch, the idle loop's level and speed; revRise/revFall, how fast a
+ // voice's revs may rise and fall (an engine has inertia, the physics' revs may jump).
+ shape(t){Object.assign(this,{loopSpan:Math.max(1.05,t.loopSpan??1.5),onFrom:t.onFrom??0,offFrom:t.offFrom??0,idleLoop:t.idleLoop??1,idlePitch:t.idlePitch??1,revRise:t.revRise??9000,revFall:t.revFall??18000});}
  flush(){
   if(!this.ready)return;
   const t=this.ctx.currentTime;
   this.voices.forEach((voice,i)=>{
    const v=this.values[i],dt=v.at===null?0:clamp(t-v.at,0,.1);v.at=t;
-   v.heard=v.rpm>v.heard?Math.min(v.rpm,v.heard+RISE*dt):Math.max(v.rpm,v.heard-FALL*dt);
+   v.heard=v.rpm>v.heard?Math.min(v.rpm,v.heard+this.revRise*dt):Math.max(v.rpm,v.heard-this.revFall*dt);
    if(dt===0)v.heard=v.rpm;
    this.play(voice,v.heard,v.load,v.gain,t);
   });
@@ -114,8 +117,9 @@ export class LoopEngine{
  play(voice,rpm,load,gain,t){
   // The idle loop: all of it at the game's idle, none from loopSpan times idle up, less with the throttle open.
   const idle=voice.idle?clamp((this.loopSpan*GAME_IDLE-rpm)/((this.loopSpan-1)*GAME_IDLE),0,1)*(1-.55*load):0,rest=Math.sqrt(1-idle);
-  let on=voice.layers.on.filter(l=>l.rpm>=this.onFrom),off=voice.layers.off;
+  let on=voice.layers.on.filter(l=>l.rpm>=this.onFrom),off=voice.layers.off.filter(l=>l.rpm>=this.offFrom);
   if(!on.length)on=voice.layers.on.slice(-1);
+  if(!off.length)off=voice.layers.off.slice(-1);
   if(!off.length||distance(off,rpm)>BORROW&&distance(on,rpm)<distance(off,rpm))off=on;
   const share=new Map();
   for(const [list,part] of [[on,Math.sqrt(load)*rest],[off,Math.sqrt(1-load)*rest]])
@@ -126,9 +130,9 @@ export class LoopEngine{
    if(level>0||loop.level>0){loop.gain.gain.setTargetAtTime(level,t,.03);loop.level=level;}
   }
   if(voice.idle){
-   const level=Math.sqrt(idle)*gain*(this.idleGains[this.choice?.kind]??1);
+   const level=Math.sqrt(idle)*gain*this.idleLoop;
    if(level>0||voice.idle.level>0){voice.idle.gain.gain.setTargetAtTime(level,t,.03);voice.idle.level=level;}
-   voice.idle.source.playbackRate.setTargetAtTime(clamp(rpm/GAME_IDLE,.7,1.8),t,.02);
+   voice.idle.source.playbackRate.setTargetAtTime(clamp(rpm/GAME_IDLE*this.idlePitch,.4,3),t,.02);
   }
  }
  info(){

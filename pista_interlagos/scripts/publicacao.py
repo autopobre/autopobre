@@ -17,7 +17,7 @@ MODULES = (
     'race-roster.js', 'car-select.js', 'car-garage.js', 'car-livery.js', 'fusca.js', 'fusca-cockpit.js', 'carros.css',
     'car-finish.js', 'car-reflections.js',
     "sound-effects.js", "game-music.js", "recorded-music.js", "race-field.js", "crash-parts.js", "settings.js", "settings.css", 'graphics-settings.js', 'graphics-panel.js', 'debug-overlay.js', 'graficos.css', "mobile-controls.js", "mobile.css", "gamepad-controls.js", "wheel-controls.js", "wheel-panel.js", "manual-gearbox.js", "brake-reverse.js",
-    'main.js', 'player-preferences.js', 'physics.js', 'camera-return.js', 'car-audio.js', 'engine-loops.js', 'tyre-sounds.js', 'car-openings.js', 'cockpit.js', 'cockpit-materials.js', 'cockpit-instruments.js', 'cockpit-rear.js', 'cockpit-equipment.js',
+    'main.js', 'player-preferences.js', 'physics.js', 'camera-return.js', 'car-audio.js', 'engine-loops.js', 'tyre-sounds.js', 'sound-tuning.js', 'car-openings.js', 'cockpit.js', 'cockpit-materials.js', 'cockpit-instruments.js', 'cockpit-rear.js', 'cockpit-equipment.js',
     'driver.js', 'driver-rig.js', 'driver-controls.js', 'driver-helmet.js', 'rival-driver.js', 'family-phone.js',
     'camera-rig.js',
     'immersive-mode.js', 'immersive-state.js', 'immersive-visuals.js', 'story-career.js', 'story-scene.js',
@@ -30,6 +30,8 @@ MODULES = (
 # The multiplayer test room is published only under /dev/ (preparar_publicacao.py --multiplayer);
 # the main link's build leaves these files and the room server out. The local preview serves them.
 MULTIPLAYER = ('multiplayer.js', 'multiplayer.css', 'net-room.js', 'net-cars.js', 'net-link.js', 'net-verify.js')
+# The sound bench, where the pilots tune the engines by ear: also only under /dev/ (the same --multiplayer build).
+BANCADA = ('bancada-som.html', 'bancada-som.js')
 ASSETS = (
     'branding/old_stock_preparada_v1.jpg',
     'branding/patrocinio_omp_v1.webp', 'branding/patrocinio_rtj_v1.webp', 'branding/patrocinio_eletric_v1.webp',
@@ -67,7 +69,7 @@ THREE = (
     'examples/jsm/utils/BufferGeometryUtils.js', 'examples/jsm/utils/SkeletonUtils.js',
     'LICENSE',
 )
-PUBLIC_FILES = {name: GAME + name for name in MODULES + MULTIPLAYER}
+PUBLIC_FILES = {name: GAME + name for name in MODULES + MULTIPLAYER + BANCADA}
 PUBLIC_FILES.update({'assets/' + name: GAME + 'assets/' + name for name in ASSETS})
 PUBLIC_FILES.update({'vendor/three/' + name: GAME + 'node_modules/three/' + name for name in THREE})
 PUBLIC_FILES.update({

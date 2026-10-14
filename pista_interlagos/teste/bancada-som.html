@@ -6,65 +6,88 @@
 <title>Bancada de som</title>
 <link rel="icon" href="favicon.svg">
 <style>
-:root{--bg:#14161a;--panel:#1d2026;--line:#2c3038;--text:#e8e9ec;--muted:#9aa0aa;--accent:#f2b134;--accent2:#e2553f;--good:#5cc28a}
+:root{--bg:#14161a;--panel:#1d2026;--panel2:#23272e;--line:#2c3038;--text:#e8e9ec;--muted:#9aa0aa;--accent:#f2b134;--accent2:#e2553f;--good:#5cc28a;--changed:#7fc4ff}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,Segoe UI,Roboto,sans-serif}
-header{padding:16px 22px;border-bottom:1px solid var(--line);display:flex;gap:16px;align-items:baseline;flex-wrap:wrap}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+header{padding:14px 20px 0;border-bottom:1px solid var(--line)}
+header .top{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
 header h1{margin:0;font-size:20px}
 header p{margin:0;color:var(--muted)}
-main{display:grid;grid-template-columns:300px 1fr 360px;gap:16px;padding:16px 22px;align-items:start}
-@media (max-width:1100px){main{grid-template-columns:1fr}}
+.cartabs{display:flex;gap:4px;margin-top:12px}
+.cartabs button{border:1px solid var(--line);border-bottom:none;border-radius:10px 10px 0 0;background:var(--panel);color:var(--muted);padding:10px 22px;font:700 16px system-ui;cursor:pointer}
+.cartabs button.on{background:var(--panel2);color:var(--accent);border-color:var(--accent)}
+.cartabs small{display:block;font:400 11px system-ui;color:var(--muted)}
+main{display:grid;grid-template-columns:minmax(300px,420px) 1fr;gap:16px;padding:16px 20px;align-items:start}
+@media (max-width:900px){main{grid-template-columns:1fr;padding:12px}}
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
-h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
-.engine{display:block;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer}
-.engine:hover{border-color:#444a55}
-.engine.on{border-color:var(--accent);background:#2a2618}
-.engine b{display:block}
-.engine span{color:var(--muted);font-size:13px;display:block}
-.engine small{color:#767c86;font-size:11px}
-.engine kbd{float:right}
-kbd{background:#2b2f37;border:1px solid #3a3f49;border-bottom-width:2px;border-radius:4px;padding:0 5px;font:12px ui-monospace,monospace;color:var(--text)}
+.carpanel{position:sticky;top:12px}
+@media (max-width:900px){.carpanel{position:static}}
+h2{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
 .gauge{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap}
-.big{font:700 54px/1 ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
-.unit{color:var(--muted);font-size:13px}
-.bar{height:14px;background:#2b2f37;border-radius:7px;overflow:hidden;margin:12px 0 4px}
-.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--good),var(--accent) 70%,var(--accent2));transition:width .05s}
-.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
-button{background:#2b2f37;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:12px 8px;font:600 14px system-ui;cursor:pointer;user-select:none;touch-action:none}
+.big{font:700 46px/1 ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
+.unit{color:var(--muted);font-size:12px}
+.bar{height:12px;background:#2b2f37;border-radius:6px;overflow:hidden;margin:12px 0 4px;position:relative}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--good),var(--accent) 70%,var(--accent2))}
+.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:12px}
+button{background:#2b2f37;color:var(--text);border:1px solid #3a3f49;border-radius:8px;padding:10px 8px;font:600 14px system-ui;cursor:pointer;user-select:none;touch-action:none}
 button:hover{border-color:#555b66}
 button.held,button.on{background:var(--accent);color:#1a1a1a;border-color:var(--accent)}
 button.wide{grid-column:span 3}
-.status{color:var(--muted);font-size:13px;margin-top:10px;min-height:20px}
-.demo{margin-top:12px}
-.demo .bar i{background:var(--accent)}
-.row{margin-bottom:12px}
-.row label{display:flex;justify-content:space-between;gap:8px;font-size:13px}
-.row output{font:12px ui-monospace,monospace;color:var(--accent)}
-input[type=range]{width:100%;accent-color:var(--accent)}
-.meters{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;font-size:13px;color:var(--muted);margin-top:12px}
+.status{color:var(--muted);font-size:13px;margin-top:8px;min-height:18px}
+.meters{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12px;color:var(--muted);margin-top:10px}
 .meters b{color:var(--text);font-weight:600}
-.help{font-size:13px;color:var(--muted)}
-.help li{margin-bottom:4px}
-.start{position:fixed;inset:0;background:rgba(10,11,13,.86);display:flex;align-items:center;justify-content:center}
-.start button{font-size:20px;padding:18px 34px;background:var(--accent);color:#1a1a1a;border:none}
+.keys{font-size:12px;color:var(--muted);margin-top:10px}
+kbd{background:#2b2f37;border:1px solid #3a3f49;border-bottom-width:2px;border-radius:4px;padding:0 5px;font:12px ui-monospace,monospace;color:var(--text)}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.toolbar button{padding:8px 12px}
+.ingame{display:flex;gap:10px;align-items:flex-start;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:10px 0 0}
+.ingame input{width:20px;height:20px;accent-color:var(--accent);margin-top:2px}
+.ingame b{display:block}
+.ingame span{color:var(--muted);font-size:13px}
+.intro{color:var(--muted);font-size:13px;margin:10px 0 0}
+.gears{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 10px}
+.gears button{min-width:44px;padding:8px 10px}
+.gears button.live{box-shadow:0 0 0 2px var(--good) inset}
+.gearhelp{color:var(--muted);font-size:13px;margin:0 0 8px}
+details.group{border:1px solid var(--line);border-radius:8px;margin-top:10px;background:var(--panel2)}
+details.group>summary{cursor:pointer;padding:10px 12px;font-weight:700;list-style:none;display:flex;justify-content:space-between;gap:8px}
+details.group>summary::-webkit-details-marker{display:none}
+details.group>summary small{color:var(--muted);font-weight:400}
+details.group>summary .count{color:var(--changed);font-weight:600;font-size:12px}
+details.group .body{padding:0 12px 6px}
+.row{padding:8px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:none}
+.row .head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.row .name{font-size:14px;font-weight:600}
+.row output{font:13px ui-monospace,monospace;color:var(--accent);white-space:nowrap}
+.row.changed .name{color:var(--changed)}
+.row .reset{padding:2px 7px;font-size:12px;border-radius:6px;visibility:hidden}
+.row.changed .reset{visibility:visible}
+.row p{margin:2px 0 4px;color:var(--muted);font-size:12.5px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.start{position:fixed;inset:0;background:rgba(10,11,13,.88);display:flex;align-items:center;justify-content:center;padding:20px;text-align:center}
+.start div{max-width:520px}
+.start p{color:var(--muted)}
+.start button{font-size:20px;padding:16px 32px;background:var(--accent);color:#1a1a1a;border:none;margin-top:10px}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;max-width:560px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog textarea{width:100%;min-height:150px;background:#111317;color:var(--text);border:1px solid var(--line);border-radius:6px;font:12px ui-monospace,monospace;padding:8px}
+dialog .toolbar{margin-top:10px;justify-content:flex-end}
+.note{color:var(--muted);font-size:12.5px}
+.copied{color:var(--good);font-size:13px;min-height:18px;margin-top:6px;word-break:break-all}
 </style>
 </head>
 <body>
-<header><h1>Bancada de som · Auto Pobre Racing</h1><p>Escolha um motor, acelere e compare. Nada aqui mexe no jogo.</p></header>
+<header>
+ <div class="top"><h1>Bancada de som · Auto Pobre Racing</h1><p>Acelere, escute e ajuste o ronco de cada carro até ficar como você imagina. Os ajustes ficam salvos neste navegador.</p></div>
+ <nav class="cartabs" role="tablist" aria-label="Carro">
+  <button id="tabOpala" role="tab" data-car="opala">Opala<small>seis em linha</small></button>
+  <button id="tabFusca" role="tab" data-car="fusca">Fusca<small>motor a ar</small></button>
+ </nav>
+</header>
 <main>
- <section>
-  <h2>Motor</h2>
-  <div id="engines"></div>
-  <h2 style="margin-top:16px">Teclas</h2>
-  <ul class="help">
-   <li><kbd>W</kbd> ou <kbd>↑</kbd> acelerar · <kbd>S</kbd> ou <kbd>↓</kbd> frear</li>
-   <li><kbd>Espaço</kbd> freio de mão (derrapar) · <kbd>A</kbd> curva no limite</li>
-   <li><kbd>N</kbd> ponto morto · <kbd>C</kbd> câmera dentro/fora</li>
-   <li><kbd>1</kbd>–<kbd>3</kbd> trocar de motor · <kbd>D</kbd> demonstração</li>
-  </ul>
- </section>
- <section>
-  <h2>Carro</h2>
+ <section class="carpanel">
+  <h2 id="carTitle">Opala</h2>
   <div class="gauge">
    <div><div class="big" id="rpm">0</div><div class="unit">rpm</div></div>
    <div><div class="big" id="gear">N</div><div class="unit">marcha</div></div>
@@ -76,29 +99,42 @@ input[type=range]{width:100%;accent-color:var(--accent)}
    <button id="brake">Frear</button>
    <button id="hand">Freio de mão</button>
    <button id="corner">Curva no limite</button>
+   <button id="reverse">Ré</button>
    <button id="neutral">Ponto morto</button>
    <button id="camera">Câmera: fora</button>
-   <button id="demo" class="wide">▶ Volta de demonstração (34 s, igual para todos os motores)</button>
+   <button id="synth">Som antigo</button>
+   <button id="demo">▶ Demonstração</button>
   </div>
-  <div class="demo" id="demoBox" hidden><div class="bar"><i id="demoBar"></i></div><div class="status" id="demoStep"></div></div>
+  <div class="status" id="demoStep"></div>
   <div class="meters">
    <div>Pé no acelerador <b id="mLoad">0</b></div><div>Volume na saída <b id="mRms">0</b></div>
    <div>Pneu cantando <b id="mSing">0</b></div><div>Pneu arrastando <b id="mScreech">0</b></div>
-   <div>Estouros <b id="mPops">0</b></div><div>Tocando <b id="mReady">…</b></div>
+   <div>Estouros <b id="mPops">0</b></div><div>Tocando <b id="mPlaying">…</b></div>
   </div>
   <div class="status" id="status"></div>
+  <div class="keys"><kbd>W</kbd>/<kbd>↑</kbd> acelerar · <kbd>S</kbd>/<kbd>↓</kbd> frear · <kbd>Espaço</kbd> freio de mão · <kbd>A</kbd> curva · <kbd>Q</kbd> ré · <kbd>N</kbd> ponto morto · <kbd>C</kbd> câmera · <kbd>D</kbd> demonstração (34 s, igual para os dois carros) · <kbd>1</kbd>/<kbd>2</kbd> Opala/Fusca</div>
  </section>
  <section>
-  <h2>Ajustes</h2>
-  <div id="sliders"></div>
-  <div class="controls" style="grid-template-columns:1fr 1fr">
-   <button id="reset">Voltar ao padrão</button>
+  <h2 id="settingsTitle">Ajustes do Opala</h2>
+  <div class="toolbar">
    <button id="copy">Copiar ajustes</button>
+   <button id="paste">Colar ajustes</button>
+   <button id="resetCar">Voltar o <span id="resetName">Opala</span> ao padrão</button>
   </div>
-  <div class="status" id="copied"></div>
+  <div class="copied" id="copied"></div>
+  <label class="ingame"><input id="useInGame" type="checkbox"><div><b>Usar estes ajustes no jogo</b><span>Ligado, o jogo aberto neste navegador (nesta versão de testes) toca o motor do Opala e do Fusca com os seus ajustes. Desligado, o jogo usa o som padrão da equipe. Os ajustes continuam salvos aqui de qualquer jeito.</span></div></label>
+  <p class="intro">Cada controle explica o que faz. Mexa enquanto acelera para ouvir na hora. O que você mudou fica em azul, com um ↺ para voltar aquele item ao padrão. Gostou? Use <b>Copiar ajustes</b> e mande para a equipe ou para outro piloto, que cola em <b>Colar ajustes</b>.</p>
+  <details class="group" id="gearGroup" open><summary><span>Marcha por marcha <small>volume, tom, graves, agudos e onde o som de cada marcha começa</small></span><span class="count" id="gearCount"></span></summary><div class="body">
+   <div class="gears" id="gearChips"></div>
+   <p class="gearhelp" id="gearHelp"></p>
+   <label class="note"><input id="followGear" type="checkbox" checked> Seguir a marcha do carro (a marcha engatada fica marcada em verde)</label>
+   <div id="gearSliders"></div>
+  </div></details>
+  <div id="groups"></div>
  </section>
 </main>
-<div class="start" id="start"><button id="startButton">Ligar o som</button></div>
+<dialog id="pasteDialog"><h2>Colar ajustes</h2><p class="note">Cole aqui o texto copiado na bancada (por você ou por outro piloto). Ele traz os ajustes do Opala e do Fusca.</p><textarea id="pasteText" spellcheck="false"></textarea><div class="copied" id="pasteError"></div><div class="toolbar"><button id="pasteCancel">Cancelar</button><button id="pasteApply" class="on">Aplicar</button></div></dialog>
+<div class="start" id="start"><div><h2>Bancada de som</h2><p>Aqui você testa o som do motor sem entrar na corrida: acelere com o botão ou com <kbd>W</kbd>, escute e mexa nos ajustes. Use fone ou caixa de som para ouvir os graves.</p><button id="startButton">Ligar o som</button></div></div>
 <script type="module" src="./bancada-som.js"></script>
 </body>
 </html>

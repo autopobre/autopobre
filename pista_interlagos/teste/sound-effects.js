@@ -166,10 +166,12 @@ export class SoundEffects {
   // Doppler: the car's speed towards the listener, from its change of distance since the last frame.
   if(v.ref===r.ref&&t>v.at){const radial=clamp((v.distance-r.distance)/(t-v.at),-90,90);v.radial+=(radial-v.radial)*.3;}else v.radial=0;
   Object.assign(v,{ref:r.ref,distance:r.distance,at:t});
-  // A rival pulling away in first sounds as the car heard does (car-audio.js).
-  const car=r.ref,first=car?.mechanics?.gears?.[1]??110,kmh=r.speed*3.6,pulling=car?.gear===1&&(r.throttle??0)>.2&&kmh*first<SHIFT_UP;
-  const rpm=pulling?firstGearRevs(kmh,first,this.tuning?.firstFrom??.5):r.rpm??1000+r.speed*90,load=clamp(r.throttle??.35,0,1);
-  this.engines.set(i+1,rpm*clamp(343/(343-v.radial),.8,1.3),load,engineLevel(rpm,load)*Math.max(0,1-r.distance/140)**2*.75*factor);
+  // A rival pulling away in first sounds as the car heard does (car-audio.js), with the car's settings
+  // (sound-tuning.js: first gear's start, the adversaries' level and reach).
+  const k=this.tuning??{},car=r.ref,first=car?.mechanics?.gears?.[1]??110,kmh=r.speed*3.6,share=k.m1From??.5;
+  const pulling=share>0&&car?.gear===1&&(r.throttle??0)>.2&&kmh*first<SHIFT_UP;
+  const rpm=pulling?firstGearRevs(kmh,first,share):r.rpm??1000+r.speed*90,load=clamp(r.throttle??.35,0,1);
+  this.engines.set(i+1,rpm*clamp(343/(343-v.radial),.8,1.3),load,engineLevel(rpm,load,k.idle,k.lift)*Math.max(0,1-r.distance/(k.rivalReach??140))**2*(k.rivalVolume??.75)*factor);
   v.filter.frequency.setTargetAtTime(900+9000*Math.max(0,1-r.distance/90)**1.5,t,.1);v.pan.pan.setTargetAtTime(r.pan||0,t,.07);
  }
   if(!audible)return;
