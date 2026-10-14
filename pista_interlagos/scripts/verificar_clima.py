@@ -1,6 +1,7 @@
 """Browser check of the weather (weather.js): the Horário and Clima selects in the race settings and on the track
 screen, the night with the headlights (H, the cockpit's FAROL switch, the rivals' lamps), the rain (drops, wet road,
-everyone's grip) and the way back to the clear day; the story starts with the lamps off.
+everyone's grip) and the way back to the clear day; the story starts with the lamps off; Aleatório draws a real
+weather for every race and restart.
 
 Uso: python scripts/verificar_clima.py [porta]   (servidor local em execucao; padrao 8799; honra INTERLAGOS_URL)
 """
@@ -10,7 +11,7 @@ import sys
 import tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import GAME_URL, browser_executable, browser_args, open_menu, race_options, enter_track, wait_race_start, wait_js
+from browser_config import GAME_URL, browser_executable, browser_args, open_menu, race_options, enter_track, wait_race_start, wait_js, pause_race
 
 PORT = sys.argv[1] if len(sys.argv) > 1 else '8799'
 URL = os.environ.get('INTERLAGOS_URL') or GAME_URL.replace(':8799', ':' + PORT)
@@ -38,9 +39,9 @@ with sync_playwright() as p:
     page = browser.new_page(viewport={'width': 1280, 'height': 720})
     page.on('pageerror', lambda e: errors.append(str(e)))
     open_menu(page, URL + ('&' if '?' in URL else '?') + 'circuito=interlagos')
-    # The selects: three choices each, day and dry by default, the two places kept in step.
+    # The selects: three choices each and Aleatório, day and dry by default, the two places kept in step.
     options = page.evaluate('''(()=>Object.fromEntries(['timeOfDay','rainLevel','tracksTime','tracksRain'].map(id=>{const s=document.getElementById(id);return [id,s?{value:s.value,options:[...s.options].map(o=>o.value)}:null];})))()''')
-    check('selects_in_settings_and_track_screen', all(options.values()) and options['timeOfDay']['options'] == ['dia', 'fim_de_tarde', 'noite'] and options['rainLevel']['options'] == ['seco', 'garoa', 'chuva'], options)
+    check('selects_in_settings_and_track_screen', all(options.values()) and options['timeOfDay']['options'] == options['tracksTime']['options'] == ['dia', 'fim_de_tarde', 'noite', 'aleatorio'] and options['rainLevel']['options'] == options['tracksRain']['options'] == ['seco', 'garoa', 'chuva', 'aleatorio'], options)
     check('day_and_dry_by_default', options['timeOfDay']['value'] == 'dia' and options['rainLevel']['value'] == 'seco', options)
     choose(page, 'timeOfDay', 'noite')
     synced = page.evaluate('({tracks:document.getElementById("tracksTime").value,saved:JSON.parse(localStorage.getItem("opala99-preferences-v1")).timeOfDay})')
@@ -148,6 +149,46 @@ with sync_playwright() as p:
     page.keyboard.press('KeyJ')
     page.wait_for_timeout(1600)
     check('j_parks_the_fusca_wipers', info(page)['fuscaWipers']['angles'] == [0, 0], info(page)['fuscaWipers'])
+    page.close()
+    # Aleatório (pedido #7): kept in both selects; the first race races the draw the menu showed, every restart a
+    # new one (a real time and rain, the world as they have it), and the opening's line names the draw.
+    page = browser.new_page(viewport={'width': 1280, 'height': 720})
+    page.on('pageerror', lambda e: errors.append(str(e)))
+    page.add_init_script("""(p=>{try{const k='opala99-preferences-v1',v=JSON.parse(localStorage.getItem(k)||'{}');Object.assign(v,p);localStorage.setItem(k,JSON.stringify(v));}catch(e){}})(%s)""" % json.dumps({'timeOfDay': 'aleatorio', 'rain': 'aleatorio', 'carModel': 'opala'}))
+    open_menu(page, URL + ('&' if '?' in URL else '?') + 'circuito=interlagos')
+    shown = page.evaluate("['timeOfDay','tracksTime','rainLevel','tracksRain'].map(id=>document.getElementById(id).value)")
+    check('random_kept_in_both_places', shown == ['aleatorio'] * 4, shown)
+    menu_draw = info(page)['draw']
+    race_options(page, camera='chase')
+    enter_track(page, 'Piloto sorteio')
+    wait_race_start(page)
+    races = []
+    for n in range(6):
+        if n:
+            pause_race(page)
+            page.click('#restartRace')
+            wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused')
+            wait_race_start(page)
+        wait_js(page, '!window.interlagosClima.info().compiling', timeout=90000)
+        page.wait_for_timeout(300)
+        races.append(info(page))
+    first = races[0]
+    check('first_race_takes_the_menu_draw', {'time': first['time'], 'rain': first['rain']} == menu_draw, [menu_draw, first['time'], first['rain']])
+    real = all(r['choice'] == {'time': 'aleatorio', 'rain': 'aleatorio'} and r['time'] in ('dia', 'fim_de_tarde', 'noite') and r['rain'] in ('seco', 'garoa', 'chuva')
+               and r['draw'] == {'time': r['time'], 'rain': r['rain']} and r['sky']['weather'] == f"{r['time']}/{r['rain']}" for r in races)
+    check('every_race_a_real_weather', real, [(r['choice'], r['time'], r['rain'], r['draw'], r['sky']['weather']) for r in races])
+    check('world_as_drawn', all((r['wetness'] > 0) == (r['rain'] != 'seco') and (r['grip'] < 1) == (r['rain'] != 'seco') and r['lamps']['installed'] == (r['time'] != 'dia' or r['rain'] != 'seco') for r in races),
+          [(r['time'], r['rain'], r['wetness'], r['grip'], r['lamps']['installed']) for r in races])
+    check('restarts_draw_again', len({(r['time'], r['rain']) for r in races}) > 1, [(r['time'], r['rain']) for r in races])
+    check('opening_names_the_draw', all(r['caption'].startswith('São Paulo · ') and r['caption'].endswith(' · sorteio: ' + {'dia': 'dia', 'fim_de_tarde': 'fim de tarde', 'noite': 'noite'}[r['time']] + ', ' + {'seco': 'tempo seco', 'garoa': 'garoa', 'chuva': 'chuva forte'}[r['rain']]) for r in races),
+          [r['caption'] for r in races])
+    # Picked again mid-race: a fresh draw for that part alone, raced at once; a fixed choice is no draw.
+    before = info(page)
+    page.evaluate("window.interlagosClima.set({time:'noite',rain:'aleatorio'})")
+    wait_js(page, '!window.interlagosClima.info().compiling', timeout=90000)
+    after = info(page)
+    check('fixed_time_with_random_rain', after['time'] == 'noite' and after['rain'] == after['draw']['rain'] and after['draw']['time'] == before['draw']['time'] and after['caption'].endswith(' · sorteio: ' + {'seco': 'tempo seco', 'garoa': 'garoa', 'chuva': 'chuva forte'}[after['rain']]), [before['draw'], after['draw'], after['time'], after['rain'], after['caption']])
+    page.evaluate("window.interlagosClima.set({time:'dia',rain:'seco'})")
     browser.close()
 
 check('no_page_errors', not errors, errors[:5])

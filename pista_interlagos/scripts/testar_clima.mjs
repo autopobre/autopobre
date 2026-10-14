@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
-import {weatherProfile,weatherCaption,timeOfDay,rainLevel,TIMES_OF_DAY,RAIN_LEVELS,TIME_PROFILES,skyDirection} from '../teste/weather.js';
+import {weatherProfile,weatherCaption,timeOfDay,rainLevel,TIMES_OF_DAY,RAIN_LEVELS,TIME_PROFILES,skyDirection,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,timeChoice,rainChoice,drawWeather,chosenWeather} from '../teste/weather.js';
 import {SUN_DIRECTION} from '../teste/sky.js';
 import {LOOK} from '../teste/cinematic.js';
 import {beamShape,BEAM_LOW,BEAM_HIGH,LAMP_SETS,ROAD_LAMPS,ROAD_LAMPS_MAX,updateRoadLamps,lampPatch,PlayerHeadlights} from '../teste/headlights.js';
@@ -47,6 +47,23 @@ assert.equal(weatherCaption(caption,day),caption);
 assert.equal(weatherCaption(caption,weatherProfile('noite','chuva')),'São Paulo · 21h30 · 15 °C · chuva forte · pista molhada');
 assert.equal(weatherCaption(caption,dusk),'São Paulo · 17h50 · 24 °C · pista seca');
 assert.ok(Object.isFrozen(TIME_PROFILES));
+// Aleatório: the selects' last choice, kept by the preference; a profile never races it (it falls back to day and
+// dry), a draw is always a real time and rain, the nine pairs as likely; the caption names what was drawn.
+assert.deepEqual(TIME_CHOICES.map(([v])=>v),['dia','fim_de_tarde','noite',RANDOM_WEATHER]);
+assert.deepEqual(RAIN_CHOICES.map(([v])=>v),['seco','garoa','chuva',RANDOM_WEATHER]);
+assert.deepEqual([timeChoice(RANDOM_WEATHER),rainChoice(RANDOM_WEATHER),timeChoice('madrugada'),rainChoice('neve')],[RANDOM_WEATHER,RANDOM_WEATHER,'dia','seco']);
+assert.deepEqual([timeOfDay(RANDOM_WEATHER),weatherProfile(RANDOM_WEATHER,RANDOM_WEATHER).time,weatherProfile(RANDOM_WEATHER,RANDOM_WEATHER).rain],['dia','dia','seco']);
+{const sequence=[0,.99,.5,.4,.999999,0];let i=0;const random=()=>sequence[i++];
+ assert.deepEqual([drawWeather(random),drawWeather(random),drawWeather(random)],[{time:'dia',rain:'chuva'},{time:'fim_de_tarde',rain:'garoa'},{time:'noite',rain:'seco'}]);}
+{const counts={};for(let n=0;n<9000;n++){const {time,rain}=drawWeather();counts[`${time}/${rain}`]=(counts[`${time}/${rain}`]??0)+1;}
+ assert.equal(Object.keys(counts).length,9,'every pair comes');assert.ok(Object.values(counts).every(c=>c>800&&c<1200),JSON.stringify(counts));}
+assert.deepEqual(chosenWeather(RANDOM_WEATHER,'garoa',{time:'noite',rain:'chuva'}),{time:'noite',rain:'garoa'});
+assert.deepEqual(chosenWeather('dia',RANDOM_WEATHER,{time:'noite',rain:'chuva'}),{time:'dia',rain:'chuva'});
+assert.deepEqual(chosenWeather('madrugada','neve',{time:'noite',rain:'chuva'}),{time:'dia',rain:'seco'});
+assert.equal(weatherCaption(caption,weatherProfile('noite','garoa'),{time:true,rain:true}),'São Paulo · 21h30 · 17 °C · garoa · pista úmida · sorteio: noite, garoa');
+assert.equal(weatherCaption(caption,day,{time:false,rain:true}),'São Paulo · 16h40 · 27 °C · pista seca · sorteio: tempo seco');
+assert.equal(weatherCaption(caption,dusk,{time:true,rain:false}),'São Paulo · 17h50 · 24 °C · pista seca · sorteio: fim de tarde');
+assert.equal(weatherCaption(caption,day,{time:false,rain:false}),caption);
 
 // The beam (headlights.js beamShape): full on the road from about 20 m on, thinner close to the bumper, full a degree
 // either side of the axis (the body's pitch), dimmer over it, softer to the sides.

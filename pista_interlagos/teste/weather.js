@@ -12,6 +12,22 @@ export const RAIN_LEVELS=Object.freeze([['seco','Seco (padrão)'],['garoa','Garo
 export const TIME_DEFAULT='dia',RAIN_DEFAULT='seco';
 export const timeOfDay=value=>TIMES_OF_DAY.some(([v])=>v===value)?value:TIME_DEFAULT;
 export const rainLevel=value=>RAIN_LEVELS.some(([v])=>v===value)?value:RAIN_DEFAULT;
+// "Aleatório", the selects' last choice: the preference keeps it, and main.js draws a real time or rain for each race
+// (drawWeather: a new race or a restart draws again) and races that one to the flag.
+export const RANDOM_WEATHER='aleatorio';
+export const TIME_CHOICES=Object.freeze([...TIMES_OF_DAY,[RANDOM_WEATHER,'Aleatório']]);
+export const RAIN_CHOICES=Object.freeze([...RAIN_LEVELS,[RANDOM_WEATHER,'Aleatório']]);
+export const timeChoice=value=>value===RANDOM_WEATHER?value:timeOfDay(value);
+export const rainChoice=value=>value===RANDOM_WEATHER?value:rainLevel(value);
+// A draw: every time of day and every rain level as likely, the two drawn apart.
+export function drawWeather(random=Math.random){
+ const pick=list=>list[Math.min(list.length-1,Math.floor(random()*list.length))][0];
+ return {time:pick(TIMES_OF_DAY),rain:pick(RAIN_LEVELS)};
+}
+// The weather the chosen time and rain race: the draw where they say Aleatório.
+export function chosenWeather(time,rain,draw){
+ return {time:time===RANDOM_WEATHER?draw.time:timeOfDay(time),rain:rain===RANDOM_WEATHER?draw.rain:rainLevel(rain)};
+}
 
 // A direction from the compass bearing (degrees from north, clockwise) and the height over the horizon.
 export function skyDirection(bearing,elevation){
@@ -135,11 +151,14 @@ export function weatherProfile(time=TIME_DEFAULT,rain=RAIN_DEFAULT){
 }
 
 // The opening's caption ('São Paulo · 16h40 · 27 °C · pista seca', circuits.js weather): the hour, the temperature
-// and the track as the weather has them.
+// and the track as the weather has them; drawn ({time,rain}: which of them Aleatório drew) names the draw at the end.
 const CLOCK={dia:null,fim_de_tarde:'17h50',noite:'21h30'};
 const COOLER={dia:0,fim_de_tarde:3,noite:7};
 const TRACK={seco:'pista seca',garoa:'garoa · pista úmida',chuva:'chuva forte · pista molhada'};
-export function weatherCaption(text,profile){
+const DRAWN={time:{dia:'dia',fim_de_tarde:'fim de tarde',noite:'noite'},rain:{seco:'tempo seco',garoa:'garoa',chuva:'chuva forte'}};
+export function weatherCaption(text,profile,drawn=null){
  const clock=CLOCK[profile.time],cooler=COOLER[profile.time]+(profile.rain==='chuva'?5:profile.rain==='garoa'?3:0);
- return String(text).replace(/\d{1,2}h\d{2}/,hour=>clock??hour).replace(/(-?\d+) °C/,(_,t)=>`${Number(t)-cooler} °C`).replace(/pista seca/,TRACK[profile.rain]);
+ const caption=String(text).replace(/\d{1,2}h\d{2}/,hour=>clock??hour).replace(/(-?\d+) °C/,(_,t)=>`${Number(t)-cooler} °C`).replace(/pista seca/,TRACK[profile.rain]);
+ const draw=['time','rain'].filter(k=>drawn?.[k]).map(k=>DRAWN[k][profile[k]]);
+ return draw.length?`${caption} · sorteio: ${draw.join(', ')}`:caption;
 }

@@ -57,6 +57,9 @@ assert.equal(denied.values.immersive,false);
 // The weather: day and dry unless picked; anything unknown falls back to them.
 preferences.update({timeOfDay:'noite',rain:'chuva'});assert.deepEqual([new PlayerPreferences(storage).values.timeOfDay,new PlayerPreferences(storage).values.rain],['noite','chuva']);
 preferences.update({timeOfDay:'madrugada',rain:'neve'});assert.deepEqual([preferences.values.timeOfDay,preferences.values.rain],['dia','seco']);
+// Aleatório is kept as it is (main.js draws a real one for each race).
+preferences.update({timeOfDay:'aleatorio',rain:'aleatorio'});assert.deepEqual([new PlayerPreferences(storage).values.timeOfDay,new PlayerPreferences(storage).values.rain],['aleatorio','aleatorio']);
+preferences.update({timeOfDay:'dia',rain:'seco'});
 // Race length: 3 laps unless the player picks another whole number from 1 to 20.
 preferences.update({laps:5});assert.equal(new PlayerPreferences(storage).values.laps,5);
 preferences.update({laps:1});assert.equal(new PlayerPreferences(storage).values.laps,1);

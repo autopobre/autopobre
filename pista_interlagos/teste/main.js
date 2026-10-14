@@ -52,7 +52,7 @@ import {setupSettings} from './settings.js';
 import {CarAudio} from './car-audio.js?v=20260913-immersive';
 import {PlayerPreferences,CAMERA_MODES,LAPS} from './player-preferences.js';
 import {createSky,SUN_DIRECTION} from './sky.js';
-import {weatherProfile,weatherCaption,TIMES_OF_DAY,RAIN_LEVELS,EFFECT_LIGHT} from './weather.js';
+import {weatherProfile,weatherCaption,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,drawWeather,chosenWeather,EFFECT_LIGHT} from './weather.js';
 import {createCinematic,SMEAR_CARS} from './cinematic.js';
 import {SunPlacement} from './sun-light.js';import {CarShadow} from './car-shadow.js';
 import {createLandscape,loadTerrainTextures,buildTrackField,readOrtho,looseGround,terrainMaterial,structureMaterial,createCrowd} from './landscape.js';
@@ -162,10 +162,13 @@ $('retirements').onchange=()=>{preferences.update({retirements:$('retirements').
 for(const laps of [$('raceLaps'),$('tracksLaps')]){for(let n=LAPS.min;n<=LAPS.max;n++)laps.add(new Option(`${n} volta${n>1?'s':''}${n===LAPS.standard?' (padrão)':''}`,String(n)));laps.value=String(preferences.values.laps);
  laps.onchange=()=>{preferences.update({laps:Number(laps.value)});$('raceLaps').value=$('tracksLaps').value=String(preferences.values.laps);if(immersive)immersive.laps=preferences.values.laps;updateMenuLabels();};}
 // The weather (weather.js): the time of day and the rain, in the race settings and on the track screen, like the
-// laps. One preference each; a race under way takes it at once (applyWeather).
-for(const [key,choices,ids] of [['timeOfDay',TIMES_OF_DAY,['timeOfDay','tracksTime']],['rain',RAIN_LEVELS,['rainLevel','tracksRain']]])for(const id of ids){
+// laps. One preference each; a race under way takes it at once (applyWeather). Aleatório picked draws that part
+// afresh: the race under way races it, or else the next race does (the menu showed it).
+for(const [key,part,choices,ids] of [['timeOfDay','time',TIME_CHOICES,['timeOfDay','tracksTime']],['rain','rain',RAIN_CHOICES,['rainLevel','tracksRain']]])for(const id of ids){
  const select=$(id);for(const [value,label] of choices)select.add(new Option(label,value));select.value=preferences.values[key];
- select.onchange=()=>{preferences.update({[key]:select.value});for(const other of ids)$(other).value=preferences.values[key];applyWeather();};
+ select.onchange=()=>{preferences.update({[key]:select.value});for(const other of ids)$(other).value=preferences.values[key];
+  if(select.value===RANDOM_WEATHER)redrawWeather(part);
+  applyWeather();};
 }
 // The 1x1's rival, on the track screen: any driver of the field the chosen car races in (options and
 // labels in updateMenuLabels).
@@ -259,8 +262,17 @@ const sunOffset=SUN_DIRECTION.clone().multiplyScalar(140);
 const sunPlacement=new SunPlacement(SUN_DIRECTION),sunView=new THREE.Vector3(),carShadow=new CarShadow(SUN_DIRECTION),shadowRoots=[];
 // The race's weather (weather.js; the Corrida tab's Horário and Clima): the key light's direction (the day's sun,
 // a low sun at dusk, the moon at night) and everything applyWeather puts on the world.
-// weatherOverride: a multiplayer room's (the host's weather, multiplayer.js), not saved.
-let weather=weatherProfile(),weatherOverride=null;const sunDirection=SUN_DIRECTION.clone();
+// weatherOverride: a multiplayer room's (the host's weather, multiplayer.js), not saved. weatherDraw: what Aleatório
+// races (weather.js drawWeather); weatherDrawRaced: a race took it, so the next one (or a restart) draws again.
+let weather=weatherProfile(),weatherOverride=null,weatherDraw=drawWeather(),weatherDrawRaced=false;const sunDirection=SUN_DIRECTION.clone();
+function playerWeather(){return chosenWeather(preferences.values.timeOfDay,preferences.values.rain,weatherDraw);}
+// Aleatório just picked: that part drawn afresh, raced by the race under way, or else by the next one.
+function redrawWeather(part){weatherDraw={...weatherDraw,[part]:drawWeather()[part]};weatherDrawRaced=sessionStarted;}
+// The opening's weather line (weather.js weatherCaption), naming what Aleatório drew (a room's weather is the host's).
+function weatherLine(){
+ const drawn=weatherOverride?null:{time:preferences.values.timeOfDay===RANDOM_WEATHER,rain:preferences.values.rain===RANDOM_WEATHER};
+ return weatherCaption(circuit.id==='interlagos'?'São Paulo · 16h40 · 27 °C · pista seca':circuit.weather??'Fim de tarde · 26 °C · pista seca',weather,drawn);
+}
 function placeSun(p,view=null,dt=1){const c=sunPlacement.place(p,view,{reach:sun.shadow.camera.right,size:sun.shadow.mapSize.x,dt});sun.target.position.copy(c);sun.position.copy(c).add(sunOffset);sun.target.updateMatrixWorld();}
 // The followed car (the watched rival in the recon lap) first, then the nearest cars within 30 m of it;
 // none when the camera is far from it (TV camera, the pilot on foot away from the car).
@@ -445,7 +457,7 @@ function precompileGraphics(){
 // headlights and every car's grip. Taken at once (a paused race too): the next frames show it. A change that brings
 // lights in or takes them out (headlights.js) needs new programs, compiled in slices like the Gráficos tab's.
 function applyWeather(){
- weather=weatherProfile(weatherOverride?.time??preferences.values.timeOfDay,weatherOverride?.rain??preferences.values.rain);
+ const own=playerWeather();weather=weatherProfile(weatherOverride?.time??own.time,weatherOverride?.rain??own.rain);
  sunDirection.fromArray(weather.sun.direction).normalize();sunOffset.copy(sunDirection).multiplyScalar(140);sunPlacement.setDirection(sunDirection);carShadow.direction.copy(sunDirection);
  sun.color.set(weather.sun.color);sun.intensity=weather.sun.intensity;sun.shadow.bias=weather.shadowBias.bias;sun.shadow.normalBias=weather.shadowBias.normalBias;
  skyFill.color.set(weather.fill.sky);skyFill.groundColor.set(weather.fill.ground);skyFill.intensity=weather.fill.intensity;
@@ -1116,7 +1128,7 @@ function introContext(){
  const center=k=>{const t=((s+k)%L+L)%L,i=Math.max(0,a.findIndex(q=>q[0]>=t)),p=a[i];probe.index=i;return new THREE.Vector3(p[1],probe.sample(p[1],p[2]).z,-p[2]);};
  const here=center(0),position=immersive.active?immersive.state.position:immersive.freePosition;
  return {car:carRoot.position.clone(),number:raceCar,model:raceModel,forward:forward.clone(),inward:here.sub(carRoot.position),center,pilot:immersive.pilotName||'Stevan',position,grid:immersive.fieldSize,laps:immersive.active?immersive.storyLaps:immersive.freeTotalLaps,practice:immersive.practice,duel:!immersive.active&&immersive.freeLineup?.length===1?carEntry(immersive.freeLineup[0]):null,
-  circuit:circuit.name,venue:circuit.id==='interlagos'?'Autódromo José Carlos Pace':circuit.venue??circuit.label,weather:weatherCaption(circuit.id==='interlagos'?'São Paulo · 16h40 · 27 °C · pista seca':circuit.weather??'Fim de tarde · 26 °C · pista seca',weather),
+  circuit:circuit.name,venue:circuit.id==='interlagos'?'Autódromo José Carlos Pace':circuit.venue??circuit.label,weather:weatherLine(),
   hero:immersive.visual?.hero?immersive.visual.hero.getWorldPosition(new THREE.Vector3()):carRoot.position.clone(),
   // People face their local +x.
   heroForward:immersive.visual?.hero?new THREE.Vector3(1,0,0).applyQuaternion(immersive.visual.hero.getWorldQuaternion(new THREE.Quaternion())):forward.clone()};
@@ -1453,8 +1465,8 @@ window.interlagosLuz={
 // The weather for checks and photos (weather.js): what is in force, set({time, rain}) as the selects do (saved),
 // settle() lets the eye adapt at once (a held frame has no time to adapt).
 window.interlagosClima={
- info:()=>({time:weather.time,rain:weather.rain,floods:floods?.info()??null,falling:rain?.info()??null,wipers:windscreen.info(),fuscaWipers:fuscaScreen.info(),limp:limpSwitch?+limpSwitch.rotation.x.toFixed(3):null,compiling:!!graphicsCompiling,lamps:playerLamps.info(),farol:farolSwitch?+farolSwitch.rotation.x.toFixed(3):null,glow:!!playerGlow?.visible,rivalGlow:!!immersive?.visual?.rivals?.some(o=>o.userData.headlights?.visible),tail:TAIL_LIGHTS.on,roadLamps:ROAD_LAMPS.roadLampCount.value,wetness:roadSurface?.stats.wetness??0,grip:car?.weatherGrip??null,fieldGrip:immersive?.field.weatherGrip??null,rivalGrip:immersive?.rivals?.[0]?.car.weatherGrip??null,sun:{intensity:sun.intensity,color:'#'+sun.color.getHexString(),direction:sunDirection.toArray()},fog:scene.fog?[scene.fog.near,scene.fog.far]:null,sky:sky?.info()??null,exposure:renderer?.toneMappingExposure??null,look:cinematic?{exposure:cinematic.look.exposure,adaptRange:cinematic.look.adaptRange,hazeDensity:cinematic.look.hazeDensity}:null}),
- set:({time,rain}={})=>{const patch={};if(time)patch.timeOfDay=time;if(rain)patch.rain=rain;preferences.update(patch);for(const [id,key] of [['timeOfDay','timeOfDay'],['tracksTime','timeOfDay'],['rainLevel','rain'],['tracksRain','rain']])$(id).value=preferences.values[key];applyWeather();return window.interlagosClima.info();},
+ info:()=>({time:weather.time,rain:weather.rain,choice:{time:preferences.values.timeOfDay,rain:preferences.values.rain},draw:{...weatherDraw},caption:circuit?weatherLine():null,floods:floods?.info()??null,falling:rain?.info()??null,wipers:windscreen.info(),fuscaWipers:fuscaScreen.info(),limp:limpSwitch?+limpSwitch.rotation.x.toFixed(3):null,compiling:!!graphicsCompiling,lamps:playerLamps.info(),farol:farolSwitch?+farolSwitch.rotation.x.toFixed(3):null,glow:!!playerGlow?.visible,rivalGlow:!!immersive?.visual?.rivals?.some(o=>o.userData.headlights?.visible),tail:TAIL_LIGHTS.on,roadLamps:ROAD_LAMPS.roadLampCount.value,wetness:roadSurface?.stats.wetness??0,grip:car?.weatherGrip??null,fieldGrip:immersive?.field.weatherGrip??null,rivalGrip:immersive?.rivals?.[0]?.car.weatherGrip??null,sun:{intensity:sun.intensity,color:'#'+sun.color.getHexString(),direction:sunDirection.toArray()},fog:scene.fog?[scene.fog.near,scene.fog.far]:null,sky:sky?.info()??null,exposure:renderer?.toneMappingExposure??null,look:cinematic?{exposure:cinematic.look.exposure,adaptRange:cinematic.look.adaptRange,hazeDensity:cinematic.look.hazeDensity}:null}),
+ set:({time,rain}={})=>{const patch={};if(time)patch.timeOfDay=time;if(rain)patch.rain=rain;preferences.update(patch);for(const [part,value] of [['time',time],['rain',rain]])if(value===RANDOM_WEATHER)redrawWeather(part);for(const [id,key] of [['timeOfDay','timeOfDay'],['tracksTime','timeOfDay'],['rainLevel','rain'],['tracksRain','rain']])$(id).value=preferences.values[key];applyWeather();return window.interlagosClima.info();},
  settle:()=>{cinematic?.resetAdaptation();return true;},
  // The follow cameras placed afresh round the car where it stands now (a photo after moving it by hand).
  snap:()=>{followInitialized=false;car.settle?.();updateCar(1);updateCamera(1);return true;},
@@ -1593,6 +1605,9 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  if(pendingMode)raceKind=['solo','duel'].includes(pendingMode)?pendingMode:'grid';if(tour)raceKind='grid';
  const continuing=sessionStarted&&!restart&&!tour&&story===immersive.active&&!(!immersive.active&&immersive.freeResultReady);
  const pilot=continuing?immersive.pilotName:pilotPicker.commit();if(!pilot)return;
+ // Aleatório (weather.js): a new race or a restart races a new draw; the first race after the choice takes the
+ // one the menu showed. loadCircuit puts it on the world.
+ if(!continuing){if(weatherDrawRaced)weatherDraw=drawWeather();weatherDrawRaced=true;}
  if(story!==preferences.values.immersive)chooseImmersive(story);
  if(!await loadCircuit())return;
  const same=sessionStarted&&preferences.values.immersive===immersive.active&&!(!immersive.active&&immersive.freeResultReady);
@@ -1980,8 +1995,9 @@ if(roomWanted)import('./multiplayer.js').then(({startMultiplayer})=>{multiplayer
  command:()=>automatic?pilot():input(),
  autopilot:on=>{if(on!==undefined&&ready&&sessionStarted&&!immersive.active){if(on)automatic=true;else takeWheel();}return automatic;},
  hasCircuit:id=>Object.hasOwn(CIRCUITS,id),
- // The weather a host announces with its race (weather.js), and a guest racing it (null: its own again).
- weather:()=>({time:preferences.values.timeOfDay,rain:preferences.values.rain}),
+ // The weather a host announces with its race (weather.js; Aleatório's draw, never 'aleatorio'), and a guest racing
+ // it (null: its own again).
+ weather:()=>playerWeather(),
  setWeather:w=>{const key=JSON.stringify(w??null);if(key===JSON.stringify(weatherOverride))return;weatherOverride=w??null;applyWeather();},
  // A race the host announced: its track as a single race, from whatever screen or race this window is on.
  startRace:id=>{
