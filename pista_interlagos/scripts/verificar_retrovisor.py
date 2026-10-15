@@ -18,6 +18,19 @@ GLASS_JS='''()=>import('three').then(THREE=>new Promise(resolve=>{
    for(let i=0;i<mask.w*mask.h;i++){const a=mask.buf[i*4+3];if(a>=0xb800&&a<0xfc00){marked++;const x=i%mask.w,y=Math.floor(i/mask.w);sum+=px[(Math.floor(y*h/mask.h)*w+Math.floor(x*w/mask.w))*4]/255;}}
    resolve({marked,ao:marked?sum/marked:null,level:interlagos.cinematicInfo().level});}
   old?.call(this,renderer,scene,camera);};}))'''
+# The next frame's mirror pictures (the wide, short targets that are not the main view: the door mirrors' and, with
+# the trunk lid open, the rear-view mirror's own), each as the mean brightness in an 8 x 4 grid (rows from the top).
+MIRROR_GRID_JS='''()=>import('three').then(THREE=>new Promise(resolve=>{
+ const proto=THREE.Scene.prototype,old=proto.onAfterRender,pictures=[];
+ proto.onAfterRender=function(renderer,scene,camera){const t=renderer.getRenderTarget();
+  if((!t||t.isMainView)&&pictures.length){proto.onAfterRender=old;resolve(pictures);}
+  if(t&&!t.isMainView&&t.width>4*t.height){const w=t.width,h=t.height,type=t.texture.type;
+   const buf=type===THREE.HalfFloatType?new Uint16Array(w*h*4):type===THREE.FloatType?new Float32Array(w*h*4):new Uint8Array(w*h*4);renderer.readRenderTargetPixels(t,0,0,w,h,buf);
+   const v=i=>type===THREE.HalfFloatType?THREE.DataUtils.fromHalfFloat(buf[i]):type===THREE.FloatType?buf[i]:buf[i]/255,grid=new Array(32).fill(0),n=new Array(32).fill(0);
+   for(let y=0;y<h;y+=2)for(let x=0;x<w;x+=2){const i=(y*w+x)*4,g=Math.floor((h-1-y)/h*4)*8+Math.floor(x/w*8);grid[g]+=(v(i)+v(i+1)+v(i+2))/3;n[g]++;}
+   pictures.push(grid.map((s,i)=>s/n[i]));}
+  old?.call(this,renderer,scene,camera);};}))'''
+TRUNK='Tampa_porta_malas_DOBRADICA'
 with sync_playwright() as p:
  browser=p.chromium.launch(executable_path=browser_executable(),headless=True,args=browser_args())
  page=browser.new_page(viewport={'width':1440,'height':900});page.set_default_timeout(90000)
@@ -45,6 +58,19 @@ with sync_playwright() as p:
   # The occlusion read the glass sunk in its housing as a deep corner (players: mirrors far too dark).
   glass=page.evaluate(GLASS_JS);report['door_glass']=glass
   check('door_mirrors_escape_occlusion',glass['level']!='full' or (glass['marked']>2000 and glass['ao']>.9))
+  # The trunk lid left open stands in the back window (user, 2026-10-15): the rear-view mirror gets a picture of its own
+  # where the lid covers nearly all of it; the door mirrors look past the flanks and keep the picture without it.
+  shut=page.evaluate(MIRROR_GRID_JS);page.wait_for_timeout(300);still=page.evaluate(MIRROR_GRID_JS)
+  page.evaluate(f"interlagos.holdOpening('{TRUNK}',true)");wait_js(page,f"interlagos.openingsInfo()['{TRUNK}'].open===1",timeout=15000)
+  lid=page.evaluate(MIRROR_GRID_JS);lid_shown=page.evaluate('interlagos.cockpitInfo().lidMirror')
+  page.evaluate(f"interlagos.holdOpening('{TRUNK}',false)");wait_js(page,f"interlagos.openingsInfo()['{TRUNK}'].open===0",timeout=15000)
+  again=page.evaluate(MIRROR_GRID_JS)
+  change=lambda a,b,cells:sum(abs(a[i]-b[i]) for i in cells)/len(cells)
+  middle=[r*8+c for r in range(4) for c in range(3,5)];wide=[r*8+c for r in range(4) for c in range(1,7)]
+  report['mirror_trunk']={'pictures':[len(shut),len(lid),len(again)],'still':round(change(shut[0],still[0],middle),4),'door_mirrors':round(change(shut[0],lid[0],middle),4),'lid':round(change(lid[0],lid[-1],wide),4)}
+  check('door_mirrors_never_see_the_trunk_lid',len(shut)==1 and change(shut[0],still[0],middle)<.01 and change(shut[0],lid[0],middle)<.01)
+  check('rear_view_mirror_covered_by_the_open_lid',len(lid)==2 and lid_shown and change(lid[0],lid[1],wide)>.1)
+  check('lid_shut_one_picture_again',len(again)==1 and not page.evaluate('interlagos.cockpitInfo().lidMirror'))
   wait_race_start(page);page.evaluate('()=>{interlagos.reposition(600);const c=interlagos.car;c.vx=Math.cos(c.heading)*15;c.vy=Math.sin(c.heading)*15;}')
   page.keyboard.down('KeyA');frames=sample(12);page.keyboard.up('KeyA')
   check('moving_and_turning_stays_synchronized',synced(frames) and frames[-1]['clock']>frames[0]['clock'])

@@ -31,6 +31,8 @@ export class CarOpenings {
  release(reason){for(const p of this.parts.values()){p.reasons.delete(reason);p.timers.delete(reason);}}
  closeAll(instant=false){for(const p of this.parts.values()){p.reasons.clear();p.timers.clear();if(instant){p.open=0;this.pose(p);}}}
  isOpen(name){return (this.parts.get(name)?.open??0)>.02;}
+ // How far open, as posed (0 shut, 1 open).
+ amount(name){return ease(this.parts.get(name)?.open??0);}
  update(dt){
   for(const p of this.parts.values()){
    for(const [reason,left] of p.timers){if(left<=dt){p.timers.delete(reason);p.reasons.delete(reason);}else p.timers.set(reason,left-dt);}
@@ -52,6 +54,14 @@ export function carSpot(local){
  return null;
 }
 export const SPOT_OPENING=Object.freeze({capo:OPENINGS.hood,porta_malas:OPENINGS.trunk});
+// Of the model under root, only the part named (and what rides it) left shown: the rear-view mirror's own picture
+// (main.js) draws none of the player's car but its open trunk lid, which fills the back window as it would (user,
+// 2026-10-15). Returns how to show the rest again (null: no such part).
+export function showOnly(root,name){
+ const part=root.getObjectByName(name);if(!part)return null;const hidden=[];
+ for(let o=part;o!==root;o=o.parent)for(const s of o.parent.children)if(s!==o&&s.visible){s.visible=false;hidden.push(s);}
+ return ()=>{for(const o of hidden)o.visible=true;};
+}
 // Copies for other cars (rivals, the Opala parked in the paddock) keep every hinge shut: the
 // exporter saves the hinge empties without rotation, so rest is the identity.
 export function shutOpenings(root){root.traverse(o=>{if(hinged(o))o.quaternion.identity();});}

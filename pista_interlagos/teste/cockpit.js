@@ -322,11 +322,12 @@ export function createCockpit(renderer){
  buildPassengerSide(kit);
  buildWindscreenNumber(kit);
  buildRearCabin(kit);
- // Functional rear-view mirror: the texture is filled by the game renderer.
- const mirrorTarget=new THREE.WebGLRenderTarget(1020,170);
+ // Functional rear-view mirror: the texture is filled by the game renderer (main.js: with the trunk lid open, a picture
+ // of its own, the door mirrors keep this one).
+ const mirrorTarget=new THREE.WebGLRenderTarget(1020,170),mirrorMaterial=new THREE.MeshBasicMaterial({map:mirrorTarget.texture,toneMapped:false});
  const mirror=panel([.34,1.33,.035]);box([0,0,0],[.58,.107,.023],m.plastic,mirror);
  const mirrorGeo=new THREE.PlaneGeometry(.555,.092);const uv=mirrorGeo.attributes.uv;for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));
- mesh(mirrorGeo,new THREE.MeshBasicMaterial({map:mirrorTarget.texture,toneMapped:false}),[0,0,.014],mirror);
+ mesh(mirrorGeo,mirrorMaterial,[0,0,.014],mirror);
  const rearCamera=new THREE.PerspectiveCamera(36,6,.1,2200);
  // Cabin reflections turn with the car; the hood and boot lid keep the sky.
  const reflective=new Set();
@@ -379,7 +380,7 @@ export function createCockpit(renderer){
    const holder=part.parent;if(holder===root)continue;
    const c=part.clone(true);if(holder){holder.updateMatrix();c.applyMatrix4(holder.matrix);c.position.y+=V06.drop-holder.position.y;}copy.add(c);
   }
-  copy.traverse(o=>{if(o.material?.map===mirrorTarget.texture)o.material=stillMirror;});
+  copy.traverse(o=>{if(o.material===mirrorMaterial)o.material=stillMirror;});
   setView(was);copy.name='Interior_Opala_99_parado';return copy;
  }
  root.userData.outsideCopy=outsideCopy;
@@ -395,7 +396,7 @@ export function createCockpit(renderer){
   const shown=o=>{for(let q=o;q;q=q.parent){if(q===root)return true;if(!q.visible)return false;}return false;};
   root.traverse(o=>{
    if(!(o.isMesh||o.isLine||o.isPoints)||!shown(o))return;
-   const material=o.material?.map===mirrorTarget.texture?stillMirror:o.material;
+   const material=o.material===mirrorMaterial?stillMirror:o.material;
    if(!o.isMesh||o.isInstancedMesh||o.isSkinnedMesh||Array.isArray(material)){loose.push(o);return;}
    // Plain opaque parts (most switches, brackets, bolts each had a material of their own) go into one mesh of vertex
    // colours: through the tinted windows their sheen does not show. Textured, see-through and patched ones keep theirs.
@@ -417,7 +418,7 @@ export function createCockpit(renderer){
    const merged=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());if(!merged)continue;
    const mesh=new THREE.Mesh(merged,material);mesh.renderOrder=list[0].renderOrder;mesh.castShadow=list.some(o=>o.castShadow);mesh.receiveShadow=list.some(o=>o.receiveShadow);batch.add(mesh);
   }
-  for(const o of loose){const c=o.clone(false);c.matrixAutoUpdate=false;c.matrix.multiplyMatrices(inverse,o.matrixWorld);if(c.material?.map===mirrorTarget.texture)c.material=stillMirror;batch.add(c);}
+  for(const o of loose){const c=o.clone(false);c.matrixAutoUpdate=false;c.matrix.multiplyMatrices(inverse,o.matrixWorld);if(c.material===mirrorMaterial)c.material=stillMirror;batch.add(c);}
   setView(was);batch.visible=false;root.parent.add(batch);return batch;
  }
  function update(car,dt,powertrain){
@@ -436,7 +437,7 @@ export function createCockpit(renderer){
   return {speed,rpm,gear,steering:wheelTurn.rotation.z,phoneArrived};
  }
  // drop: how far setView lowered the cabin; the driver (driver.js) and photo poses follow it.
- return {root,wheel,wheelTurn,controls,eye,update,setView,outsideBatch,drop:()=>root.position.y,mirrorTarget,rearCamera,resetPhone:()=>phone.reset(),
+ return {root,wheel,wheelTurn,controls,eye,update,setView,outsideBatch,drop:()=>root.position.y,mirrorTarget,mirrorMaterial,rearCamera,resetPhone:()=>phone.reset(),
   info:()=>({reference:INTERIOR_REFERENCES,steering:wheelTurn.rotation.z,speed:display.speed,mirror:[mirrorTarget.width,mirrorTarget.height],visible:root.visible||!!batch?.visible,batched:!!batch?.visible,phone:phone.info(),controls:controls.info(),
    materials:reflective.size,cabinReflections:!!m.envMap,seat:seat.children.length,view:{classic:classic.visible,cabin:cabin.visible,fillers:fillers.visible,drop:root.position.y,eye:eye.toArray(),mirrorY:mirror.position.y}})};
 }

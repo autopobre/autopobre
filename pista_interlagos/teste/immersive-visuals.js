@@ -94,7 +94,8 @@ export function bodyTriangles(detail,body){
 // A sticker grid bent onto a car body (bodyTriangles): from center (car frame), w along right and h
 // along up in nx×ny cells, each vertex cast inward from 1.5 m out (1.8 m reach) and kept 6 mm off
 // the face it lands on. A vertex whose ray misses the body takes its row's hits: in between them over
-// a gap, the nearest past the body's edge, so the sticker ends on the paint, not on a flap in the air.
+// a gap, the nearest past the body's edge, so the sticker ends on the paint, not on a flap in the air;
+// a row that misses altogether (past the car's end) folds onto the nearest row that landed.
 const stickerRay=new THREE.Ray(),stickerHit=new THREE.Vector3(),stickerOffset=new THREE.Vector3();
 export function bendOnBody(body,center,right,up,w,h,nx=12,ny=6){
  const normal=right.clone().cross(up),lift=1.5,reach=1.8,slack=1e-4,near=[],d=new THREE.Vector3(),points=[],hits=[],uv=[],index=[];
@@ -120,11 +121,13 @@ export function bendOnBody(body,center,right,up,w,h,nx=12,ny=6){
   points.push(p);hits.push(!!face);uv.push(i/nx,j/ny);
   if(i&&j){const a=(j-1)*(nx+1)+i-1,c=j*(nx+1)+i-1;index.push(a,a+1,c+1,a,c+1,c);}
  }
+ const rows=[];
  for(let j=0;j<=ny;j++){
-  const row=j*(nx+1),landed=[];for(let i=0;i<=nx;i++)if(hits[row+i])landed.push(i);if(!landed.length)continue;
+  const row=j*(nx+1),landed=[];for(let i=0;i<=nx;i++)if(hits[row+i])landed.push(i);if(!landed.length)continue;rows.push(j);
   for(let i=0;i<=nx;i++){if(hits[row+i])continue;const before=landed.findLast(k=>k<i),after=landed.find(k=>k>i);
    if(before!==undefined&&after!==undefined)points[row+i].lerpVectors(points[row+before],points[row+after],(i-before)/(after-before));else points[row+i].copy(points[row+(before??after)]);}
  }
+ if(rows.length)for(let j=0;j<=ny;j++){if(rows.includes(j))continue;const k=rows.reduce((a,b)=>Math.abs(b-j)<Math.abs(a-j)?b:a);for(let i=0;i<=nx;i++)points[j*(nx+1)+i].copy(points[k*(nx+1)+i]);}
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(points.flatMap(p=>[p.x,p.y,p.z]),3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(index);g.computeVertexNormals();return g;
 }
 const leanRotation=new THREE.Quaternion(),leanEuler=new THREE.Euler(),poseForward=new THREE.Vector3(),poseUp=new THREE.Vector3(),poseSide=new THREE.Vector3(),poseMatrix=new THREE.Matrix4();

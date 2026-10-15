@@ -26,7 +26,7 @@ import {CarReflections} from './car-reflections.js';
 import {FuscaBody,prepareFusca,FUSCA_URL,FUSCA_SEAT,FUSCA_EYE,FUSCA_HOOD_EYE,FUSCA_WHEEL_TRAVEL,FUSCA_WHEEL_BUMP} from './fusca.js';
 import {createTrackSurface,createGuardrails,createCurbs,createTrackBranding} from './track-surface.js';
 import {createCockpit} from './cockpit.js?v=20260927-omp-retrovisores';
-import {CarOpenings} from './car-openings.js';
+import {CarOpenings,OPENINGS,showOnly} from './car-openings.js';
 import {SideMirrors} from './side-mirrors.js';
 import {createBrakeLights,lampUVs,TAIL_LIGHTS} from './brake-lights.js';
 import {PlayerHeadlights,createHeadlights,lampSetFor,setGlare,lampPatch,updateRoadLamps,ROAD_LAMPS} from './headlights.js';
@@ -761,9 +761,9 @@ async function cycleLivery(){
  try{await setLivery(activeLivery==='assinaturas_omp'?'seiva_danilo':'assinaturas_omp');}
  catch(err){status('Não foi possível trocar a pintura. Tente novamente.');console.error(err);}
 }
-// At the box the crew and the pilot on foot (action key) open the hinged parts; what was opened by
-// hand shuts as the car moves off.
-function updateOpenings(dt){if(Math.hypot(car.vx,car.vy)>1.5)openings.release('manual');openings.update(dt);showTrunkInside(trunkInterior,openings);}
+// At the box the crew and the pilot on foot (action key) open the hinged parts; what he opened by
+// hand stays open as the car moves off, until he shuts it again (user, 2026-10-15: "não fecha automático").
+function updateOpenings(dt){openings.update(dt);showTrunkInside(trunkInterior,openings);}
 // nearest (R key): only the player's car goes back on track; rivals, laps and fuel carry on.
 function reset(nearest=false){walker?.reset();car.fall=null;if(fallMode){setCameraMode(fallMode);fallMode=null;}fallView.stop(camera);if(!nearest)explosions?.reset();action.reset();mobile?.setHandbrake(false);openings.closeAll(true);if(nearest&&arenaMode)arenaMode.spawn(car);else if(nearest)car.recover();else{ghostRecorder.reset();car.resetGrid(playerGridSlot(immersive?.lineup?.length));arenaMode?.spawn(car);if(immersive&&!immersive.active)immersive.resetField();cockpit.resetPhone();}driver?.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();automatic=false;followInitialized=false;cameraReturn.reset(performance.now());headLook.yaw=headLook.pitch=0;lookBack.reset();updateCar(1);updateCamera(1);}
 const names=[[0,'Reta dos boxes'],[280,'S do Senna · T1–T2'],[490,'Curva do Sol · T3'],[700,'Reta Oposta'],[1500,'Descida do Lago · T4–T5'],[1810,'Subida para a Ferradura'],[1990,'Ferradura · T6–T7'],[2230,'Laranjinha · T8'],[2430,'Pinheirinho · T9'],[2660,'Bico de Pato · T10'],[2840,'Mergulho · T11'],[3120,'Junção · T12'],[3250,'Subida dos boxes · T13'],[3570,'Café · T14'],[3960,'T15 · Reta dos boxes']];
@@ -1244,6 +1244,9 @@ let hazeData=null,hazeLevel=0;
 // A circuit over a valley gives its own (the valley floor: data.meta.haze_base_m), or the valley would vanish in the haze.
 function hazeBase(){if(hazeData!==data){hazeData=data;const z=data?.terrain?.z;hazeLevel=data?.meta?.haze_base_m??(z?.length?z.reduce((a,b)=>a+b,0)/z.length:0);}return hazeLevel;}
 let accumulator=0,lastHud=0,renderedFrame=0,mirrorFrame=0,frameImpact=0;
+// The rear-view mirror's picture with the trunk lid open (made on first use) and its lens: 16 degrees high in the 6:1
+// picture, about 80 across where the usual one spans 126, so the open lid covers nearly all of the glass.
+let lidMirror=null;const LID_MIRROR_FOV=16;
 // Time since the last 1/120 s physics step: cars are drawn where they are at this frame.
 const renderAhead=()=>clamp(accumulator,0,1/120);
 // Adaptive resolution: slower GPUs trade sharpness for a steady frame rate, between the Gráficos
@@ -1438,19 +1441,29 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(
  if(mode==='cockpit'&&!gridPreview()&&!watchedCar&&MIRROR_SIZES[graphics.values.mirrors]){
   // The mirror sees the road behind, not the body round it (the classic view hides it anyway).
   const bodyShown=!!model?.visible,cockpitShown=cockpit.root.visible;cockpit.root.visible=false;driver.root.visible=false;if(model)model.visible=false;if(fuscaBody.car)fuscaBody.car.visible=false;
-  const mirrorHeight=fuscaBody.active?1.28:1.14;
-  cockpit.rearCamera.position.set(-.65,mirrorHeight,0).applyMatrix4(carBody.matrixWorld);
+  const mirrorHeight=fuscaBody.active?1.28:1.14,rear=cockpit.rearCamera,mirrorTarget=cockpit.mirrorTarget;
+  rear.position.set(-.65,mirrorHeight,0).applyMatrix4(carBody.matrixWorld);
   look.set(-30,mirrorHeight,0).applyMatrix4(carBody.matrixWorld);
-  cockpit.rearCamera.up.set(0,1,0).transformDirection(carBody.matrixWorld);cockpit.rearCamera.lookAt(look);
+  rear.up.set(0,1,0).transformDirection(carBody.matrixWorld);rear.lookAt(look);
   const oldShadowUpdate=renderer.shadowMap.autoUpdate;renderer.shadowMap.autoUpdate=false;
-  tyreSmoke.material.uniforms.viewport.value=cockpit.mirrorTarget.height;
-  renderer.setRenderTarget(cockpit.mirrorTarget);renderer.render(scene,cockpit.rearCamera);renderer.setRenderTarget(null);
-  tyreSmoke.material.uniforms.viewport.value=renderer.domElement.height;
-  mirrorFrame=renderedFrame;
+  tyreSmoke.material.uniforms.viewport.value=mirrorTarget.height;
+  renderer.setRenderTarget(mirrorTarget);renderer.render(scene,rear);
   // The door mirrors look up this picture in the main pass below.
-  mirrors.show(true);mirrors.update(camera.position,carBody,cockpit.rearCamera);
+  mirrors.show(true);mirrors.update(camera.position,carBody,rear);
+  // The Opala's trunk lid left open stands in the back window: the rear-view mirror gets a picture of its own with it
+  // (car-openings.js showOnly), narrowing as the lid rises until the lid fills nearly all of it; the door mirrors look
+  // past the flanks and keep the picture without it (user, 2026-10-15).
+  const lid=model&&!fuscaBody.active?openings.amount(OPENINGS.trunk):0,lidOnly=lid>.02?showOnly(model,OPENINGS.trunk):null;
+  if(lidOnly){
+   lidMirror??=mirrorTarget.clone();if(lidMirror.width!==mirrorTarget.width||lidMirror.height!==mirrorTarget.height)lidMirror.setSize(mirrorTarget.width,mirrorTarget.height);
+   model.visible=true;const fov=rear.fov;rear.fov+=(LID_MIRROR_FOV-fov)*lid;rear.updateProjectionMatrix();
+   renderer.setRenderTarget(lidMirror);renderer.render(scene,rear);rear.fov=fov;rear.updateProjectionMatrix();lidOnly();
+  }
+  cockpit.mirrorMaterial.map=lidOnly?lidMirror.texture:mirrorTarget.texture;
+  renderer.setRenderTarget(null);tyreSmoke.material.uniforms.viewport.value=renderer.domElement.height;
+  mirrorFrame=renderedFrame;
   renderer.shadowMap.autoUpdate=oldShadowUpdate;cockpit.root.visible=cockpitShown;driver.root.visible=true;if(model)model.visible=bodyShown;if(fuscaBody.car)fuscaBody.car.visible=true;
- }else mirrors.show(false);
+ }else{mirrors.show(false);if(cockpit)cockpit.mirrorMaterial.map=cockpit.mirrorTarget.texture;}
  // The cars take the race's reflections back (the car screen's studio lends them its own) and the probe
  // redraws its next faces round the player's car; in the story's paddock the grid's picture would lie.
  carReflections.update(scene,probeAt.copy(carRoot.position).setY(carRoot.position.y+1),{onTrack:!(immersive?.active&&immersive.state.phase==='crowd'),hide:reflectionHide(),rivals:immersive?.visual?.rivals,data});
@@ -2171,7 +2184,7 @@ async function loadCircuit(){
   surfaceInfo:()=>({...roadSurface.stats,material:roadSurface.material.name,drawCalls:renderer.info.render.calls}),
   // Interior cameras ride on the sprung body, so report them in its frame.
   cockpitInfo:()=>({...cockpit.info(),eyeLocal:carBody.worldToLocal(camera.position.clone()).toArray(),fov:camera.fov,externalVisible:model.visible,
-   renderedFrame,mirrorFrame,mirrorEyeLocal:carBody.worldToLocal(cockpit.rearCamera.position.clone()).toArray(),sideMirrors:(fuscaBody.active?fuscaMirrors:sideMirrors).info(),fusca:fuscaBody.info()?.cabin??null}),
+   renderedFrame,mirrorFrame,mirrorEyeLocal:carBody.worldToLocal(cockpit.rearCamera.position.clone()).toArray(),lidMirror:cockpit.mirrorMaterial.map!==cockpit.mirrorTarget.texture,sideMirrors:(fuscaBody.active?fuscaMirrors:sideMirrors).info(),fusca:fuscaBody.info()?.cabin??null}),
   viewControls:()=>({pointerLocked,lockPending,lockUnavailable,yaw:headLook.yaw,pitch:headLook.pitch,centering:cameraReturn.active,recalled:cameraReturn.recalled,movingSince:cameraReturn.movingSince,lastInput:cameraReturn.lastInput,delayMs:cameraReturn.delayMs,
    lookBack:{held:lookBack.held,allowed:lookBackAllowed(),amount:lookBack.amount,side:lookBack.side,viewYaw:headView.yaw,viewPitch:headView.pitch,eyeShift:[...twist]},photo:cockpitView&&structuredClone(cockpitView)}),
   // Interior photography: a fixed cockpit-local pose {eye:[x,y,z],yaw,pitch,fov,hideDriver,roll?} replaces the

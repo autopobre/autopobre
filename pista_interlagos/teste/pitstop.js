@@ -133,12 +133,13 @@ export class PitStop {
  // Realism setting: with damage off the immersive story keeps its own simple health.
  setDamage(on){this.condition.setEnabled(on);this.mode.state.condition=on?this.condition:null;}
  reset(){this.service.cancel();this.close();this.condition.reset();this.bank=450;this.departing=false;this.stationary=0;this.message='';}
- close(){if(this.cameraRef){this.cameraRef.clearViewOffset();this.viewShifted=false;if(this.savedFov!==undefined){this.cameraRef.fov=this.savedFov;this.cameraRef.updateProjectionMatrix();this.savedFov=undefined;}}this.opened=false;this.coffee=null;this.hero.visible=false;this.driver.root.visible=true;this.panel.hidden=true;this.walkHud.hidden=true;this.markers.visible=false;this.cafePrompt.visible=false;document.body.classList.remove('pit-open','pit-walking','pit-cafe-menu','pit-repairs');this.openings?.release('manual');this.syncOpenings();this.onClose?.();}
+ close(){if(this.cameraRef){this.cameraRef.clearViewOffset();this.viewShifted=false;if(this.savedFov!==undefined){this.cameraRef.fov=this.savedFov;this.cameraRef.updateProjectionMatrix();this.savedFov=undefined;}}this.opened=false;this.coffee=null;this.hero.visible=false;this.driver.root.visible=true;this.panel.hidden=true;this.walkHud.hidden=true;this.markers.visible=false;this.cafePrompt.visible=false;document.body.classList.remove('pit-open','pit-walking','pit-cafe-menu','pit-repairs');this.openings?.hold(OPENINGS.driverDoor,'manual',false);this.syncOpenings();this.onClose?.();}
  leave(){if(this.coffee){this.returnCar();return;}const refund=this.service.cancel();this.message=refund?`Serviços interrompidos. ${money(refund)} devolvidos.`:'';this.close();this.departing=true;this.stationary=0;}
  // Hinged parts (car-openings.js): the crew opens what it works on (the hood for the engine,
  // the trunk lid for the fuel cell, the filler caps while refuelling); on foot, the action key at
- // the nose or the tail lifts the hood or the lid for a look; the driver's door swings open as he
- // gets out or back in.
+ // the nose or the tail lifts the hood or the lid for a look (left open, they stay open as the car
+ // goes); the driver's door stays open while he is out (E at it shuts or opens it) and shuts
+ // behind him as he gets back in (user, 2026-10-15).
  syncOpenings(){const o=this.openings;if(!o)return;const at=id=>this.opened&&this.service.jobs.some(job=>job.id===id);o.hold(OPENINGS.hood,'equipe',at('motor'));o.hold(OPENINGS.trunk,'equipe',at('tanque'));o.hold(OPENINGS.fuelCaps,'equipe',at('fuel'));}
  toggleOpening(which){const o=this.openings,name=OPENINGS[which];if(!this.opened||!o?.has(name))return false;o.toggle(name);this.render();return true;}
  get touch(){return document.body.classList.contains('touch-device');}
@@ -146,7 +147,7 @@ export class PitStop {
  visitCafe(){if(!this.opened||this.coffee)return;
   // In the story he walks out in the overalls of his stage (Kléber's loaned ones until he buys his own).
   {const kind=this.mode.active?outfitOf(this.mode.state.profile.career):'proprio';if(this.hero.userData.outfit!==STEVAN_OUTFITS[kind])dressPerson(this.hero,STEVAN_OUTFITS[kind]);}
- this.openings?.pulse(OPENINGS.driverDoor,1.6);const yaw=this.layout?.heroHeading??this.station.rotation.y+Math.PI/2;this.coffee=footState(yaw,snackState({elapsed:0,menu:false,repairs:!this.touch,floor:this.heroStart().y}));this.hero.visible=true;this.hero.position.copy(this.heroStart());this.hero.rotation.y=yaw;this.message='Passeio grátis. Chegue perto da Tia para ver o cardápio.';this.onClose?.();this.captureMouse();this.render();}
+ this.openings?.hold(OPENINGS.driverDoor,'manual');const yaw=this.layout?.heroHeading??this.station.rotation.y+Math.PI/2;this.coffee=footState(yaw,snackState({elapsed:0,menu:false,repairs:!this.touch,floor:this.heroStart().y}));this.hero.visible=true;this.hero.position.copy(this.heroStart());this.hero.rotation.y=yaw;this.message='Passeio grátis. Chegue perto da Tia para ver o cardápio.';this.onClose?.();this.captureMouse();this.render();}
  captureMouse(){const view=document.getElementById('view');if(this.touch||!view?.requestPointerLock||document.pointerLockElement===view)return;try{view.requestPointerLock()?.catch?.(()=>{});}catch{}}
  releaseMouse(){if(document.pointerLockElement)document.exitPointerLock();}
  turnView(dx,dy){if(this.coffee)turnFootView(this.coffee,dx,dy);}
@@ -155,11 +156,11 @@ export class PitStop {
  orbitView(dx,dy){const v=this.view;v.angle-=dx*.005;v.elev=clamp(v.elev+dy*.004,.08,1.35);}
  jump(){const s=this.coffee;if(s&&!s.menu)footJump(s);}
  // Keys on foot, as in GTA: F gets out of the Opala or back in beside it; E uses what
- // the driver holds, otherwise talks to the Tia (or gets in the car).
+ // the driver holds, otherwise talks to the Tia (at the driver's door: shuts or opens it).
  handleKey(code){
   if(!this.opened)return false;const s=this.coffee;
   if(code==='KeyF'){if(!s){this.visitCafe();return true;}return !s.menu&&this.returnCar();}
-  if(code==='KeyE'&&s&&!s.menu){if(s.held.length)this.useSnack();else this.interact();return true;}
+  if(code==='KeyE'&&s&&!s.menu){if(s.held.length)this.useSnack();else if(this.interaction()!=='car'||!this.toggleOpening('driverDoor'))this.interact();return true;}
   // Tab frees the mouse to click the repairs panel (and takes it back); Space jumps, C crouches.
   if(code==='Tab'&&s&&!s.menu){s.repairs=true;if(document.pointerLockElement)this.releaseMouse();else this.captureMouse();this.render();return true;}
   if(code==='Space'&&s&&!s.menu){this.jump();return true;}
@@ -174,7 +175,7 @@ export class PitStop {
  openingLabel(spot){const crew=this.service.jobs.some(j=>j.id===(spot==='capo'?'motor':'tanque')),open=this.openings.held(SPOT_OPENING[spot],'manual');
   return spot==='capo'?(crew?'Ver o motor · equipe trabalhando':open?'Fechar o capô':'Abrir o capô · ver o motor'):(crew?'Ver o tanque · equipe trabalhando':open?'Fechar o porta-malas':'Abrir o porta-malas');}
  interact(){if(!this.coffee||this.coffee.menu)return;const action=this.interaction();if(action==='car')this.returnCar();else if(SPOT_OPENING[action])this.toggleOpening(action==='capo'?'hood':'trunk');else if(action==='cafe'){this.coffee.menu=true;this.releaseMouse();this.onClose?.();this.mode.state.emitSound('paper');this.render();}}
- returnCar(){if(!this.coffee||this.interaction()!=='car')return false;this.openings?.pulse(OPENINGS.driverDoor,1.2);this.coffee=null;this.mode.state.emitSound('engineCatch');this.leave();return true;}
+ returnCar(){if(!this.coffee||this.interaction()!=='car')return false;this.openings?.hold(OPENINGS.driverDoor,'manual',false);this.openings?.pulse(OPENINGS.driverDoor,1.2);this.coffee=null;this.mode.state.emitSound('engineCatch');this.leave();return true;}
  // What is bought goes into a free hand (one item per hand) until it is eaten or drunk.
  buySnack(id){
   const s=this.coffee;if(!s?.menu||this.interaction()!=='cafe')return false;
@@ -237,7 +238,7 @@ export class PitStop {
    const action=this.interaction(),touch=this.touch,s=this.coffee,first=s.held[0],firstItem=first&&CAFE_MENU.find(m=>m.id===first.id),hud=id=>this.walkHud.querySelector('#'+id);
    hud('pitWalkJob').textContent=busy?'Equipe: '+jobs.map(j=>`${jobName(j)} ${Math.ceil(j.seconds-j.elapsed)} s`).join(' · ')+(this.service.queue.length?` · +${this.service.queue.length} na fila`:''):'Opala pronto. Volte quando quiser.';
    hud('pitWalkHold').hidden=!first;hud('pitWalkHold').textContent='Na mão: '+snackLabel(s);
-   const lid=SPOT_OPENING[action]?this.openingLabel(action):'',eText=firstItem?`${firstItem.verb} ${firstItem.name.toLowerCase()}`:action==='cafe'?'cardápio':action==='car'?'entrar no Opala':lid?lid[0].toLowerCase()+lid.slice(1):'interagir';
+   const lid=SPOT_OPENING[action]?this.openingLabel(action):'',eText=firstItem?`${firstItem.verb} ${firstItem.name.toLowerCase()}`:action==='cafe'?'cardápio':action==='car'?(!this.openings?.has(OPENINGS.driverDoor)?'entrar no Opala':this.openings.held(OPENINGS.driverDoor,'manual')?'fechar a porta':'abrir a porta'):lid?lid[0].toLowerCase()+lid.slice(1):'interagir';
    hud('pitWalkHint').textContent=`Saldo: ${money(this.wallet)} · `+(touch?'Caminhe até a Tia ou o carro.':`Mouse: câmera · W/A/S/D: andar · Shift: correr · Espaço: pular · C: agachar · E: ${eText} · F: ${action==='car'?'entrar no Opala':'sair/entrar no carro'} · Tab: mouse no menu`);
    hud('pitRepairs').textContent=s.repairs?'Esconder consertos':'Consertos do Opala';
    const use=hud('pitUse');use.hidden=!firstItem;if(firstItem)use.textContent=`${firstItem.verb[0].toUpperCase()+firstItem.verb.slice(1)} ${firstItem.name.toLowerCase()}`+(touch?'':' · E');use.disabled=!!s.using;

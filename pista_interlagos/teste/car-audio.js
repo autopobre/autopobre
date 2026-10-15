@@ -201,8 +201,12 @@ export class CarAudio {
   if(this.recorded?.ready){
    // The throttle picks open or closed loops (lifting at speed is the engine braking, not silence); a gear change
    // lifts it for a moment; at the limiter the ignition cuts in and out. Each gear (and neutral, reverse) has its
-   // own level, pitch, bass and highs over the car's (m<gear><part>).
-   const cutting=gas>.5&&rpm>k.limiterRpm&&Math.floor(t*k.limiterRate*2)%2===0,load=shifting||cutting?0:gas;
+   // own level, pitch, bass and highs over the car's (m<gear><part>). The last gear never stutters at the limiter:
+   // there it is the car's top speed (physics cuts the drive at its redline, 217 km/h for the Opala, 172 for a
+   // Fusca in a tow), and from the limiter's revs (6940, 212 km/h in an Opala's fifth) on the cut made the engine
+   // tremble; it pulls to the end on the open loops and holds its top note. Declutched it revs free and cuts.
+   const lastGear=gear===gears.length-1&&!(manual&&(command.clutch??0)>.25);
+   const cutting=!lastGear&&gas>.5&&rpm>k.limiterRpm&&Math.floor(t*k.limiterRate*2)%2===0,load=shifting||cutting?0:gas;
    const g=part=>k[`m${gear}${part}`]??(part==='Bass'?0:1);
    this.recorded.set(0,(rpm-(cutting?k.limiterDrop:0))*k.pitch*g('Pitch'),load,running*engineLevel(rpm,load,k.idle,k.lift));
    param(this.engineFilter.frequency,clamp((inside?k.cabinHighs*(1+gas*.73):k.highs*(1+gas*.8))*g('Highs'),200,20000));

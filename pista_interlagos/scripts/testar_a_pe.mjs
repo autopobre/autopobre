@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
 import {TestCar,OPALA_BODY,guardrailPresent,guardrailClearance} from '../teste/physics.js';
 import {takePeopleEvents,OUTFITS,STEVAN_OUTFITS} from '../teste/pit-crew.js';
+import {CarOpenings,OPENINGS} from '../teste/car-openings.js';
 
 // The pilot's overalls carry the 99 painted on a canvas: a do-nothing canvas is enough here.
 const ctx=new Proxy({},{get:(target,key)=>key in target?target[key]:()=>({width:0})});
@@ -17,9 +18,11 @@ const load=id=>{const d=JSON.parse(fs.readFileSync(new URL(`../dados/${id==='int
 const DT=1/120,FRAME=1/60;
 function setup(id){
  const data=load(id),car=new TestCar(data),scene=new THREE.Scene(),driver={root:{visible:true}},calls={out:0,in:0},sounds=[];
- const parts=new Map(),openings={has:()=>true,toggle:name=>{const on=!parts.get(name);parts.set(name,on);return on;},held:name=>!!parts.get(name),pulse:()=>{}};
+ // The car's hinges as the V06 GLB carries them (car-openings.js reads the glTF extras).
+ const model=new THREE.Group();for(const [name,peca] of [[OPENINGS.hood,'capo'],[OPENINGS.trunk,'porta_malas'],[OPENINGS.driverDoor,'porta'],[OPENINGS.passengerDoor,'porta']]){const o=new THREE.Object3D();o.name=name;o.userData={peca,eixo_gltf:[0,1,0],angulo_gltf_graus:60};model.add(o);}
+ const openings=new CarOpenings().attach(model);
  const walk=new FreeWalk({scene,car,driver,openings,hud:false,emit:name=>sounds.push(name),onOut:()=>calls.out++,onIn:()=>calls.in++});
- return {data,car,walk,driver,calls,sounds,parts};
+ return {data,car,walk,driver,calls,sounds,openings};
 }
 // A station on a straight with a guardrail on the left (the driver's side), far from the pit lane.
 function railStation(data,car,side=1){
@@ -39,7 +42,7 @@ const outAt=(data,car,walk)=>walk.side(walk.hero.position.x,-walk.hero.position.
 
 // 1. Interlagos: F at 110 km/h stops the car and he gets out by the driver's door.
 {
- const {data,car,walk,driver,calls,sounds}=setup('interlagos'),i=railStation(data,car);
+ const {data,car,walk,driver,calls,sounds,openings}=setup('interlagos'),i=railStation(data,car);
  car.recover(i);car.vx=Math.cos(car.heading)*30;car.vy=Math.sin(car.heading)*30;
  assert.equal(walk.request(),true,'F asks to get out');assert.equal(walk.stopping,true);
  const took=brakeOut(car,walk,12);
@@ -105,11 +108,20 @@ const outAt=(data,car,walk)=>walk.side(walk.hero.position.x,-walk.hero.position.
  assert.ok(!walk.active&&calls.in===1,`in the car again after ${t.toFixed(1)} s`);assert.equal(driver.root.visible,true,'back in his seat');
  const free={throttle:1,brake:0,left:0,right:0,reverse:0,handbrake:0};assert.equal(walk.drive(free),false,'the car is his again');assert.equal(free.throttle,1);
 
- // 6. E at the nose lifts the hood, at the door gets in.
+ // 6. Out, the driver's door stays open (user, 2026-10-15); E at the nose lifts the hood, at the door shuts and opens it;
+ // F there gets in, the door shuts behind him and the hood stays up, on the move too.
  car.vx=car.vy=0;walk.request();brakeOut(car,walk,1);assert.ok(walk.active,'at rest he is out at once');
+ const door=()=>openings.held(OPENINGS.driverDoor,'manual');assert.ok(door(),'the door stays open behind him');
+ for(let t=0;t<3;t+=FRAME)openings.update(FRAME);assert.ok(openings.isOpen(OPENINGS.driverDoor),'still open 3 s later');
  walk.hero.position.copy(walk.carPoint(3,0));s.floor=walk.hero.position.y;
  assert.equal(walk.spot(),'capo');assert.equal(walk.actionLabel(),'abrir o capô');walk.handleKey('KeyE');assert.equal(walk.actionLabel(),'fechar o capô','E lifts the hood');
- walk.hero.position.copy(walk.carPoint(.15,1.3));walk.handleKey('KeyE');assert.ok(!walk.active,'E at the door gets in');
+ walk.hero.position.copy(walk.carPoint(.15,1.3));assert.equal(walk.actionLabel(),'fechar a porta');
+ walk.handleKey('KeyE');assert.ok(walk.active&&!door(),'E at the door shuts it');assert.equal(walk.actionLabel(),'abrir a porta');
+ walk.handleKey('KeyE');assert.ok(walk.active&&door(),'E again opens it');
+ walk.handleKey('KeyF');assert.ok(!walk.active,'F at the door gets in');assert.ok(!door()&&openings.held(OPENINGS.driverDoor,'passagem'),'the door swings shut behind him');
+ for(let t=0;t<3;t+=FRAME)openings.update(FRAME);
+ assert.ok(!openings.isOpen(OPENINGS.driverDoor)&&openings.isOpen(OPENINGS.hood),'door shut, hood still up');
+ openings.toggle(OPENINGS.hood);for(let t=0;t<3;t+=FRAME)openings.update(FRAME);
 
  // 7. F again while it brakes stays in; reset puts him back at once.
  car.vx=Math.cos(car.heading)*20;car.vy=Math.sin(car.heading)*20;walk.request();walk.request();assert.equal(walk.stopping,false,'changed his mind');

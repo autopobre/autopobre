@@ -1,9 +1,10 @@
 """Opala V06 in the game: doors, hood, trunk lid and filler caps on their hinges (car-openings.js).
 
 At Curvelo's Box 99 the crew opens what it works on (engine: hood, fuel cell: trunk lid,
-refuelling: filler caps), the driver's door swings as the pilot gets out and back in, and
-everything shuts when the stop ends. On foot, one action key works GTA style by where the pilot
-stands: E at the nose lifts the hood, at the tail the trunk lid (the context button says which).
+refuelling: filler caps) and shuts it when the job ends; the driver's door stays open while the
+pilot is out and shuts behind him as he gets back in. On foot, one action key works GTA style by
+where the pilot stands: E at the nose lifts the hood, at the tail the trunk lid (the context button
+says which), at the driver's door shuts or opens it; what he left open stays open as the car goes.
 Rivals leave the engine and the fuel cell out. In story mode at Interlagos the same action key,
 by the Opala parked in Box 99, lifts the hood (engine) or the lid (fuel cell), or gets in at the door.
 
@@ -23,6 +24,10 @@ URL = os.environ.get('INTERLAGOS_URL', 'http://127.0.0.1:8799/pista_interlagos/t
 HOOD, TRUNK, DOOR = 'Capo_DOBRADICA', 'Tampa_porta_malas_DOBRADICA', 'Porta_Motorista_DOBRADICA'
 CAPS = ['Tampa_bocal_1_DOBRADICA', 'Tampa_bocal_2_DOBRADICA']
 errors, checks = [], {}
+
+
+def pit_coffee(page):
+    return page.evaluate('pit.coffee!==null')
 
 
 def check(name, value):
@@ -83,12 +88,20 @@ with sync_playwright() as p:
         wait_js(page, 'pit.service.jobs.length===0', timeout=60000)
         wait_js(page, "Object.values(interlagos.openingsInfo()).every(p=>p.open===0)", timeout=10000)
         check('parts_shut_after_jobs', True)
-        # The driver's door swings open as he gets out, then shuts behind him.
+        # The driver's door swings open as he gets out and stays open (user, 2026-10-15); E by it shuts and opens it.
         page.click('#pitCoffee')
         wait_js(page, 'pit.coffee!==null')
         wait_js(page, f"interlagos.openingsInfo()['{DOOR}'].open>.95")
+        page.wait_for_timeout(2500)
+        check('door_stays_open_while_pilot_is_out', opening(DOOR)['open'] == 1 and 'manual' in opening(DOOR)['reasons'])
+        wait_js(page, "pit.interaction()==='car'")
+        check('hint_offers_shutting_the_door', 'E: fechar a porta' in page.inner_text('#pitWalkHint'))
+        page.keyboard.press('e')
         wait_js(page, f"interlagos.openingsInfo()['{DOOR}'].open===0", timeout=10000)
-        check('door_opens_as_pilot_gets_out_and_shuts', True)
+        check('e_by_the_door_shuts_it', pit_coffee(page) and 'E: abrir a porta' in page.inner_text('#pitWalkHint'))
+        page.keyboard.press('e')
+        wait_js(page, f"interlagos.openingsInfo()['{DOOR}'].open===1", timeout=10000)
+        check('e_by_the_door_opens_it_again', pit_coffee(page))
         # GTA style, one action key where the pilot stands: at the nose E lifts the hood, at the tail the lid.
         page.evaluate("""window.standAt=ahead=>{const c=pit.car,h=c.heading;pit.hero.position.x=c.x+Math.cos(h)*ahead;pit.hero.position.z=-c.y-Math.sin(h)*ahead;
          pit.coffee.yaw=pit.hero.rotation.y=h+(ahead>0?Math.PI:0);pit.walkFollow=null;}""")
@@ -111,15 +124,20 @@ with sync_playwright() as p:
         page.wait_for_timeout(700)
         page.screenshot(path=str(ROOT / 'renders/aberturas_porta_malas_box.png'))
         check('e_opens_trunk_at_the_tail', True)
-        # By the driver's door (lid still open) F gets in: the door swings and the stop shuts everything.
+        # By the driver's door (lid still open) F gets in: the door shuts behind him, the lid stays up as he drives off.
         page.evaluate('pit.hero.position.copy(pit.heroStart())')
         wait_js(page, "pit.interaction()==='car'")
         page.keyboard.press('f')
         wait_js(page, '!pit.opened')
         wait_js(page, f"interlagos.openingsInfo()['{DOOR}'].open>.5")
         check('door_opens_as_pilot_gets_back_in', True)
-        wait_js(page, "Object.values(interlagos.openingsInfo()).every(p=>p.open===0&&!p.reasons.length)", timeout=10000)
-        check('all_shut_after_stop', True)
+        wait_js(page, f"interlagos.openingsInfo()['{DOOR}'].open===0&&!interlagos.openingsInfo()['{DOOR}'].reasons.length", timeout=10000)
+        check('door_shut_after_stop', True)
+        page.keyboard.down('ArrowUp')
+        page.wait_for_timeout(3000)
+        speed = page.evaluate('Math.hypot(interlagos.car.vx,interlagos.car.vy)')
+        page.keyboard.up('ArrowUp')
+        check(f'trunk_stays_open_on_the_move ({speed:.1f} m/s)', speed > 2 and opening(TRUNK)['open'] == 1 and opening(TRUNK)['reasons'] == ['manual'])
         # A livery swap loads the other GLB with its own hinges.
         livery = page.evaluate('interlagos.state.livery')
         page.keyboard.press('v')

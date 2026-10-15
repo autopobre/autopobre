@@ -80,5 +80,8 @@ for(const livery of ['seiva_danilo','assinaturas_omp']){
  hero.set(10,0,4-2.8);assert.equal(pit.interaction(),'capo');pit.interact();assert(o.held(OPENINGS.hood,'manual'),'E at the nose lifts the hood');
  hero.set(10,0,4+2.8);assert.equal(pit.interaction(),'porta_malas');pit.interact();assert(o.held(OPENINGS.trunk,'manual'));pit.interact();assert(!o.held(OPENINGS.trunk,'manual'),'E again shuts it');
  hero.set(10-1.6,0,4);assert.equal(pit.interaction(),'car','by the driver door: get in');
+ // E there shuts or opens the door (user, 2026-10-15); F gets in.
+ pit.coffee.held=[];assert.equal(pit.handleKey('KeyE'),true);assert(o.held(OPENINGS.driverDoor,'manual'),'E by the door opens it');
+ pit.handleKey('KeyE');assert(!o.held(OPENINGS.driverDoor,'manual'),'E again shuts it');assert.equal(pit.coffee.held.length,0);
  assert.equal(pit.openingLabel('capo'),'Fechar o capô');pit.service.jobs=[{id:'motor'}];assert.match(pit.openingLabel('capo'),/equipe/);}
 console.log('aberturas ok');

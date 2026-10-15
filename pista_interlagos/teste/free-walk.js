@@ -1,8 +1,10 @@
 // Out of the car anywhere, GTA style (user, 2026-10-15: "apertar F e poder sair do carro em qualquer parte do jogo").
 // F (the controller's Y, the touch button) brakes the car to a stop and the pilot gets out by the driver's door, as at
 // the pit stop (pitstop.js) and in the story's paddock, and walks the same way (on-foot.js): W/A/S/D along the camera,
-// Shift runs, Space jumps, C crouches, the mouse turns the camera and the wheel zooms; E at the nose or the tail lifts
-// the hood or the trunk lid (car-openings.js); F near the car walks him to the driver's door and in. The race goes on:
+// Shift runs, Space jumps, C crouches, the mouse turns the camera and the wheel zooms; the driver's door stays open
+// behind him and E at it shuts or opens it, E at the nose or the tail lifts or shuts the hood or the trunk lid
+// (car-openings.js; they stay as he leaves them, on the move too); F near the car walks him to the driver's door and
+// in, and the door shuts behind him (user, 2026-10-15). The race goes on:
 // the car waits on its brakes with the engine idling and the rivals race past; one that hits him throws him like the
 // marshals (pit-crew.js knockOver), and he gets up where he lands. Guardrails are jumped over (as the low pit walls), a
 // street circuit's walls are not; in a city zone open to roam (meta.roam) its edges and what stands in it stop him, and
@@ -87,7 +89,7 @@ export class FreeWalk {
   // Facing away from the car, the camera behind him looking where the car points.
   this.foot=footState(c.heading,{floor});this.hero.position.copy(spot).setY(floor);this.hero.rotation.set(0,Math.atan2(-spot.z-c.y,spot.x-c.x),0);this.hero.visible=true;
   this.tumble=this.goingIn=this.follow=null;this.message='';this.messageTime=0;
-  this.openings?.pulse(OPENINGS.driverDoor,1.6);this.emit('click');this.onOut();
+  this.openings?.hold(OPENINGS.driverDoor,'manual');this.emit('click');this.onOut();
  }
  // The driver's door, where he gets in: its distance from him (metres, on the ground).
  doorDistance(){const d=this.carPoint(.15,1.25),p=this.hero.position;return near(p.x,p.z,d.x,d.z);}
@@ -102,19 +104,21 @@ export class FreeWalk {
   this.say(`Seu carro está a ${Math.round(this.carDistance())} m: chegue perto dele para entrar.`);return false;
  }
  enter(){this.leave();this.openings?.pulse(OPENINGS.driverDoor,1.2);this.emit('click');}
- // Back in the car at once (a restart, the race ending, the circuit going), or to get in.
- leave(){this.stopping=false;if(!this.foot)return;this.foot=this.tumble=this.goingIn=this.follow=null;this.hero.visible=false;this.driver.root.visible=true;this.showHud(false);this.onIn();}
+ // Back in the car at once (a restart, the race ending, the circuit going), or to get in: the door he left open shuts.
+ leave(){this.stopping=false;if(!this.foot)return;this.openings?.hold(OPENINGS.driverDoor,'manual',false);this.foot=this.tumble=this.goingIn=this.follow=null;this.hero.visible=false;this.driver.root.visible=true;this.showHud(false);this.onIn();}
  reset(){this.leave();}
  say(text,seconds=3.5){this.message=text;this.messageTime=seconds;}
- // E on foot: the hood at the nose, the trunk lid at the tail, the car at the door.
+ // E on foot: the driver's door at the door (a car without hinges: in), the hood at the nose, the trunk lid at the tail.
+ opening(spot){return spot==='porta'?OPENINGS.driverDoor:SPOT_OPENING[spot]??null;}
  action(){
-  const spot=this.spot();if(spot==='porta'){this.getIn();return true;}
-  const part=SPOT_OPENING[spot];if(!part||!this.openings?.has(part))return false;this.openings.toggle(part);this.emit('click');return true;
+  const spot=this.spot(),part=this.opening(spot);
+  if(!part||!this.openings?.has(part))return spot==='porta'&&this.getIn();
+  this.openings.toggle(part);this.emit('click');return true;
  }
  actionLabel(){
-  const spot=this.spot();if(spot==='porta')return 'entrar no carro';
-  const part=SPOT_OPENING[spot];if(!part||!this.openings?.has(part))return '';const open=this.openings.held(part,'manual');
-  return spot==='capo'?(open?'fechar o capô':'abrir o capô'):(open?'fechar o porta-malas':'abrir o porta-malas');
+  const spot=this.spot(),part=this.opening(spot);if(!part)return '';
+  if(!this.openings?.has(part))return spot==='porta'?'entrar no carro':'';const open=this.openings.held(part,'manual');
+  return {porta:open?'fechar a porta':'abrir a porta',capo:open?'fechar o capô':'abrir o capô',porta_malas:open?'fechar o porta-malas':'abrir o porta-malas'}[spot];
  }
  handleKey(code){
   const s=this.foot;if(!s)return false;

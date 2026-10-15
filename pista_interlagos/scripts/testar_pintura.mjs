@@ -204,6 +204,10 @@ for(const file of ['car-finish.js','car-reflections.js'])assert.ok(published.inc
  assert.ok(!L.liveryParts('70').some(([slot])=>slot.startsWith('porta')),"car 70's doors keep the Old Stock ads");
  assert.equal(new Set(RIVAL_ROSTER.map(e=>L.LIVERY_PLANS[e.number].main)).size,RIVAL_ROSTER.length,'each car its own main sponsor');
  assert.ok(RIVAL_ROSTER.filter(e=>L.liveryLook(e.number).rim).length>=5&&RIVAL_ROSTER.filter(e=>L.liveryLook(e.number).tone).length>=4,'rims and two-tones vary the field');
+ // The twin stripes stay on their panel (V06: bonnet top 1.02 to 2.16 m, trunk lid -2.16 to -1.54 m): longer, they ran
+ // onto the windscreen and down the nose, and car 51's down the tail into the air (2026-10-15).
+ for(const [slot,[x0,x1]] of [['faixas_capo',[1.02,2.16]],['faixas_tampa',[-2.16,-1.54]]]){const S=L.LIVERY_SLOTS[slot],a=S.at[0]-S.h/2,b=S.at[0]+S.h/2;
+  assert.ok(a>=x0+.015&&b<=x1-.015&&S.h>(x1-x0)*.85,`${slot} ${a.toFixed(3)}..${b.toFixed(3)} inside its panel`);}
  const plane=()=>new THREE.PlaneGeometry(1,1,1,1),shapes=Object.fromEntries(Object.keys(L.LIVERY_SLOTS).map(k=>[k,plane()]));
  // The roof's shape of car 00: the number, then the bonnet's stripes (its stripe colour), then the sponsors over them.
  const roof=L.liveryPlates({number:'00',stripe:0x1f4fb5},[plane(),plane(),plane(),plane()],shapes).plates[2],colors=roof.attributes.color.array,blue=new THREE.Color(0x1f4fb5),tinted=[];

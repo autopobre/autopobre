@@ -23,7 +23,9 @@ export const SPONSORS=Object.freeze([
 // Where the sets go (car frame: x forward, y up, z right; immersive-visuals.js bendOnBody): plate is the number
 // sticker the shape is merged into (0 left side, 1 right, 2 roof, 3 tail), hinge the opening it rides on the player's
 // car; grid: the cells the shape is cast in (more along a curve). Sizes keep the canvas cells' 5:1 (the windscreen
-// banner a little wider).
+// banner a little wider). The twin stripes end 2-3 cm inside their panel's cut lines (V06: bonnet top 1.02 to 2.16 m,
+// trunk lid -2.16 to -1.54 m): longer, they ran over the cowl gap onto the windscreen and down the nose, and car 51's
+// went down the tail with their last rows hanging in the air behind it (user, 2026-10-15).
 export const LIVERY_SLOTS=Object.freeze({
  porta_e:{plate:0,hinge:'driverDoor',at:[.3,.5,-.9],right:[-1,0,0],up:[0,1,0],w:.84,h:.168},
  porta_d:{plate:1,hinge:'passengerDoor',at:[.3,.5,.9],right:[1,0,0],up:[0,1,0],w:.84,h:.168},
@@ -36,8 +38,8 @@ export const LIVERY_SLOTS=Object.freeze({
  capo:{plate:2,hinge:'hood',at:[1.66,.9,0],right:[0,0,-1],up:[-1,0,0],w:1.06,h:.212},
  parabrisa:{plate:2,at:[.2,1.31,0],right:[0,0,-1],up:[-.877,.481,0],w:1.02,h:.15,grid:[18,3]},
  tampa:{plate:3,hinge:'trunk',at:[-1.98,.9,0],right:[0,0,1],up:[1,0,0],w:.8,h:.16},
- faixas_capo:{plate:2,hinge:'hood',stripes:[-.2,.2],at:[1.58,.9,0],right:[0,0,-1],up:[-1,0,0],w:.13,h:1.32,grid:[2,30]},
- faixas_tampa:{plate:3,hinge:'trunk',stripes:[-.2,.2],at:[-1.98,.9,0],right:[0,0,1],up:[1,0,0],w:.13,h:.62,grid:[2,16]}
+ faixas_capo:{plate:2,hinge:'hood',stripes:[-.2,.2],at:[1.59,.9,0],right:[0,0,-1],up:[-1,0,0],w:.13,h:1.07,grid:[2,26]},
+ faixas_tampa:{plate:3,hinge:'trunk',stripes:[-.2,.2],at:[-1.85,.9,0],right:[0,0,1],up:[1,0,0],w:.13,h:.56,grid:[2,16]}
 });
 // Each car's sets: the main sponsor (SPONSORS index) on the bonnet, trunk lid and windscreen, the others on doors,
 // fenders and quarters; stripes in the team's stripe colour. Car 70 keeps its doors for the Old Stock ads. tone: a
