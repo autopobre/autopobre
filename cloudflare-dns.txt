@@ -1,0 +1,11 @@
+;; GitHub Pages records for autopobre.com.br (import in Cloudflare WITHOUT proxying).
+;; The null MX, SPF and DMARC records already in Cloudflare stay as they are.
+autopobre.com.br.	300	IN	A	185.199.108.153
+autopobre.com.br.	300	IN	A	185.199.109.153
+autopobre.com.br.	300	IN	A	185.199.110.153
+autopobre.com.br.	300	IN	A	185.199.111.153
+autopobre.com.br.	300	IN	AAAA	2606:50c0:8000::153
+autopobre.com.br.	300	IN	AAAA	2606:50c0:8001::153
+autopobre.com.br.	300	IN	AAAA	2606:50c0:8002::153
+autopobre.com.br.	300	IN	AAAA	2606:50c0:8003::153
+www.autopobre.com.br.	300	IN	CNAME	autopobre.github.io.

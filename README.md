@@ -2,7 +2,7 @@
 
 Página provisória do domínio oficial do Auto-Pobre Racing. Ela existe para que o domínio, o DNS no Cloudflare e o certificado HTTPS do GitHub Pages já estejam prontos e estáveis quando o jogo for migrado para este repositório.
 
-O repositório é `autopobre/autopobre`, da organization [autopobre](https://github.com/autopobre). Nos exemplos abaixo, troque `seudominio.com.br` pelo domínio oficial.
+O repositório é `autopobre/autopobre`, da organization [autopobre](https://github.com/autopobre). O domínio oficial é `autopobre.com.br`.
 
 ## Estrutura
 
@@ -22,7 +22,7 @@ Para ver localmente, sirva a pasta `site/` com qualquer servidor estático. O `4
 
 A ordem importa: o GitHub só emite o certificado HTTPS quando enxerga o DNS apontando direto para ele.
 
-1. **Verifique o domínio na organization** (protege contra outra pessoa publicar no seu domínio). Em **github.com/organizations/autopobre/settings → Pages → Add a domain** (as configurações da organization, não as do repositório), informe `seudominio.com.br`. O GitHub mostra um registro TXT; crie-o no Cloudflare e clique em **Verify**.
+1. **Verifique o domínio na organization** (protege contra outra pessoa publicar no seu domínio). Em **github.com/organizations/autopobre/settings → Pages → Add a domain** (as configurações da organization, não as do repositório), informe `autopobre.com.br`. O GitHub mostra um registro TXT; crie-o no Cloudflare e clique em **Verify**.
 2. No Cloudflare, em **DNS → Records**, crie os registros abaixo com o proxy **desligado** (nuvem cinza, "DNS only"):
 
    | Tipo  | Nome  | Conteúdo                |
@@ -37,8 +37,8 @@ A ordem importa: o GitHub só emite o certificado HTTPS quando enxerga o DNS apo
    | AAAA  | `@`   | `2606:50c0:8003::153`   |
    | CNAME | `www` | `autopobre.github.io`   |
 
-   Apague registros antigos de `@` e `www` que apontem para outro lugar (por exemplo, o estacionamento do registrador).
-3. No repositório, em **Settings → Pages → Custom domain**, informe `seudominio.com.br` e salve. O GitHub confere o DNS e pede o certificado; isso leva de alguns minutos a algumas horas. O `www` passa a redirecionar para o domínio principal sozinho.
+   O arquivo [cloudflare-dns.txt](cloudflare-dns.txt) tem esses nove registros para importar de uma vez em **Import DNS Records**, sem marcar a opção de proxy. Mantenha o MX `.`, o TXT `v=spf1 -all` e o `_dmarc` que o Cloudflare já trouxe: eles avisam que o domínio não usa e-mail e impedem e-mails falsos em nome dele.
+3. No repositório, em **Settings → Pages → Custom domain**, informe `autopobre.com.br` e salve. O GitHub confere o DNS e pede o certificado; isso leva de alguns minutos a algumas horas. O `www` passa a redirecionar para o domínio principal sozinho.
 4. Quando a opção liberar, marque **Enforce HTTPS**.
 
 ### Proxy do Cloudflare (opcional)
