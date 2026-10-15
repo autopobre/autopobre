@@ -31,6 +31,12 @@ CARS="()=>interlagosCarros.info()"
 PREFS="()=>JSON.parse(localStorage.getItem('opala99-preferences-v1'))"
 errors=[];result={}
 def shot(page,name):page.wait_for_timeout(500);page.screenshot(path=str(RENDERS/name))
+# The tab's grid in order, walked with the right arrow from the car shown (round to it again at the end).
+def walk(page):
+ start=int(page.inner_text('#carsKicker').split('·')[1].split()[0])-1;seen=[]
+ for _ in range(15):seen.append(page.evaluate(CARS)['value']);page.click('#carRight')
+ assert page.evaluate(CARS)['value']==seen[0],seen
+ return [seen[(k-start)%15] for k in range(15)]
 def camera(page,value):page.evaluate(f"(()=>{{const s=document.querySelector('#camera');s.value='{value}';s.dispatchEvent(new Event('change'));return true;}})()")
 with sync_playwright() as p:
  browser=p.chromium.launch(executable_path=browser_executable(),headless=True,args=browser_args())
@@ -42,34 +48,36 @@ with sync_playwright() as p:
  fuscas=[];page.on('request',lambda r:fuscas.append(r.url) if 'fusca_v2.glb' in r.url else None)
  page.goto(URL+'?intro=0',wait_until='domcontentloaded');wait_js(page,"window.interlagos&&!document.querySelector('#start').disabled")
 
- # The Opala tab first, the default: 15 cards, no Fusca downloaded.
+ # The Opala tab first, the default: 15 cars, no Fusca downloaded.
  page.fill('#pilotName','Piloto fusca');page.click('#start');assert page.is_visible('#cars')
- assert page.get_attribute('#carModels [data-model="opala"]','aria-selected')=='true' and page.locator('#carCards [data-car]').count()==15
+ assert page.get_attribute('#carModels [data-model="opala"]','aria-selected')=='true' and page.evaluate(CARS)['count']==15
  wait_js(page,"interlagosCarros.info().live&&interlagosCarros.info().built==='99'",timeout=180000);assert not fuscas,fuscas
 
  # The Fusca tab: the Copa Fusca's 15 cars, Fischer first, the 99 chosen (Cristiano's), then Moraes's 33.
  page.click('#carModels [data-model="fusca"]')
  assert page.get_attribute('#carModels [data-model="fusca"]','aria-selected')=='true'
- cards=page.eval_on_selector_all('#carCards [data-car]','b=>b.map(e=>e.dataset.car)');assert cards==FUSCAS,cards
- assert page.inner_text('#carCards [data-car="20"] span')=='Arthur Fischer' and page.inner_text('#carCards [data-car="49"] span')=='Robertão'
- assert page.get_attribute('#carCards [data-car="99"]','aria-checked')=='true' and 'Fusca' in page.inner_text('#carsTitle') and page.inner_text('#carsMode')=='MODO CORRIDA · COPA FUSCA'
- # Benício's card carries his lightning bolt.
- assert page.locator('#carCards [data-car="4"] svg polygon').count()==page.locator('#carCards [data-car="20"] svg polygon').count()+1
+ assert page.evaluate(CARS)['value']=='99' and 'Fusca' in page.inner_text('#carsTitle') and page.inner_text('#carsMode')=='MODO CORRIDA · COPA FUSCA'
+ assert page.inner_text('#carsKicker')==f"COPA FUSCA · {FUSCAS.index('99')+1} DE 15",page.inner_text('#carsKicker')
+ cards=walk(page);assert cards==FUSCAS,cards
+ # The plate has the driver's whole name, the arrows the short one.
+ page.evaluate("interlagosCarros.pick('49')");assert page.inner_text('#carDriver')=='Roberto “Robertão” Soares',page.inner_text('#carDriver')
+ page.evaluate(f"interlagosCarros.pick('{FUSCAS[FUSCAS.index('49')-1]}')");assert page.get_attribute('#carRight','title')=='Próximo: #49 · Robertão',page.get_attribute('#carRight','title')
+ page.evaluate("interlagosCarros.pick('99')")
  wait_js(page,"(i=>i.live&&i.builtModel==='fusca'&&i.built==='99')(interlagosCarros.info())",timeout=180000)
- assert 'Fusca 99 · Cristiano' in page.inner_text('#carName') and 'Cristiano Canto' in page.inner_text('#carDetail'),page.inner_text('#carDetail');shot(page,'fusca_99.png')
- page.click('#carCards [data-car="33"]');wait_js(page,"(i=>i.builtModel==='fusca'&&i.built==='33')(interlagosCarros.info())")
+ assert page.inner_text('#carDriver')=='Cristiano Canto' and page.inner_text('#carName')=='Fusca 99 · Super',page.inner_text('#carName');shot(page,'fusca_99.png')
+ page.evaluate("interlagosCarros.pick('33')");wait_js(page,"(i=>i.builtModel==='fusca'&&i.built==='33')(interlagosCarros.info())")
  prefs=page.evaluate(PREFS);assert prefs['carModel']=='fusca' and prefs['fuscaCar']=='33' and prefs['car']=='99',prefs
- assert 'Fusca 33 · Fernando Moraes' in page.inner_text('#carName') and 'Light' in page.inner_text('#carDetail') and 'Cristiano vai de Fusca 99' in page.inner_text('#carDetail'),page.inner_text('#carDetail')
+ assert page.inner_text('#carDriver')=='Fernando Moraes' and page.inner_text('#carName')=='Fusca 33 · Light' and 'Cristiano vai de Fusca 99' in page.inner_text('#carDetail'),page.inner_text('#carDetail')
  studio=page.evaluate(CARS);assert studio['meshes']>20,studio;shot(page,'fusca_33.png')
- page.click('#carCards [data-car="4"]');wait_js(page,"interlagosCarros.info().built==='4'");shot(page,'fusca_4.png')
- page.click('#carCards [data-car="20"]');wait_js(page,"interlagosCarros.info().built==='20'");shot(page,'fusca_20.png')
+ page.evaluate("interlagosCarros.pick('4')");wait_js(page,"interlagosCarros.info().built==='4'");shot(page,'fusca_4.png')
+ page.evaluate("interlagosCarros.pick('20')");wait_js(page,"interlagosCarros.info().built==='20'");shot(page,'fusca_20.png')
  # The tabs answer the arrows; the Opala tab keeps its own car (the 99) and its Old Stock field, then back to the Fusca.
  page.focus('#carModels [data-model="fusca"]');page.keyboard.press('ArrowLeft')
  wait_js(page,"(i=>i.model==='opala'&&i.builtModel==='opala'&&i.built==='99')(interlagosCarros.info())")
- cards=page.eval_on_selector_all('#carCards [data-car]','b=>b.map(e=>e.dataset.car)');assert cards==['99']+OLD_STOCK,cards
+ cards=walk(page);assert cards==['99']+OLD_STOCK,cards
  shot(page,'fusca_opala_aba.png');assert page.evaluate(PREFS)['carModel']=='opala'
  page.click('#carModels [data-model="fusca"]');wait_js(page,"(i=>i.model==='fusca'&&i.value==='20')(interlagosCarros.info())")
- page.click('#carCards [data-car="33"]');wait_js(page,"(i=>i.builtModel==='fusca'&&i.built==='33')(interlagosCarros.info())")
+ page.evaluate("interlagosCarros.pick('33')");wait_js(page,"(i=>i.builtModel==='fusca'&&i.built==='33')(interlagosCarros.info())")
  assert len(fuscas)==1,fuscas
 
  # The track screen names the Fusca; a single race in it.
@@ -133,7 +141,7 @@ with sync_playwright() as p:
 
  # The Fusca 99: Cristiano's car, the player in it and the Copa Fusca's other 14; the 99's paint button is the Opala's, so it hides.
  page.click('#tracksBack');page.click('#start');wait_js(page,"(i=>i.live&&i.model==='fusca')(interlagosCarros.info())")
- page.click('#carCards [data-car="99"]');page.click('#carsNext');assert 'Fusca #99' in page.inner_text('#tracksPilot')
+ page.evaluate("interlagosCarros.pick('99')");page.click('#carsNext');assert 'Fusca #99' in page.inner_text('#tracksPilot')
  page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000);page.wait_for_timeout(600)
  own=page.evaluate(CARS);field99=page.evaluate(FIELD)
  assert own['raceModel']=='fusca' and own['raceCar']=='99' and own['fusca']['number']=='99' and not own['skin'] and not own['touchSkin'] and not own['opalaShown'],own
@@ -148,7 +156,7 @@ with sync_playwright() as p:
  small=phone.new_page();small.on('pageerror',lambda e:(errors.append(str(e)),print(str(e),flush=True)))
  small.goto(URL,wait_until='domcontentloaded');wait_js(small,"window.interlagos&&!document.querySelector('#start').disabled")
  small.fill('#pilotName','Piloto celular');small.tap('#start');wait_js(small,"(i=>i.live&&i.builtModel==='fusca'&&i.built==='4')(interlagosCarros.info())",timeout=180000)
- assert small.locator('#carCards [data-car]').count()==15
+ assert small.evaluate(CARS)['count']==15
  fit=small.evaluate("""()=>{const c=document.querySelector('#cars'),r=s=>document.querySelector(s).getBoundingClientRect();return {width:document.documentElement.scrollWidth<=innerWidth,scroll:c.scrollHeight-c.clientHeight,next:r('#carsNext').bottom,tabs:r('#carModels').height,stage:r('#carStage').height,height:innerHeight}}""")
  shot(small,'fusca_celular.png')
  assert fit['width'] and fit['scroll']<=2 and fit['next']<=fit['height'] and fit['stage']>150,fit

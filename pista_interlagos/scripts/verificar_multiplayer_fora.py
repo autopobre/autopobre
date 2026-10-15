@@ -68,7 +68,7 @@ def check(context, host):
 
     # The host takes the 73 and holds Corrida única on the grid; the guest is seated and loads it.
     host.click('#start')
-    host.click('#carCards [data-car="73"]')
+    host.evaluate("interlagosCarros.pick('73')")
     wait_js(host, "interlagosSala.info().number==='73'", timeout=10000)
     host.click('#carsNext')
     host.click('#singleRace')

@@ -177,16 +177,19 @@ def race_room(context, host, pages):
     host.fill('#pilotName', PILOTS['host'][0])
     guest = guest_window(context, host, pages, 'guest', PILOTS['guest'][1])
     wait_js(host, f"interlagosSala.info().members.some(m=>m.name==={PILOTS['guest'][0]!r})", timeout=10000)
-    # Modo Corrida's car screen: the guest's 64 under her name, out of reach; the host takes the 73.
+    # Modo Corrida's car screen: the guest's 64 out of reach, under her name in the room's note (the arrows pass over
+    # it); the host takes the 73.
     host.click('#start')
     wait_js(host, f"interlagosCarros.info().taken['64']==={PILOTS['guest'][0]!r}", timeout=30000)
-    card = host.locator('#carCards [data-car="64"]')
-    assert 'taken' in card.get_attribute('class') and card.locator('span').inner_text() == PILOTS['guest'][0], card.inner_text()
-    # (aria-disabled: Playwright would wait for it to be enabled; a mouse still clicks it)
-    card.click(force=True)
-    assert host.evaluate('interlagosCarros.info().value') == '99', 'a taken car is not picked'
+    assert f"#64 com {PILOTS['guest'][0]}" in host.inner_text('#cars .car-note'), host.inner_text('#cars .car-note')
+    assert host.evaluate("interlagosCarros.pick('64')") == '99', 'a taken car is not picked'
     assert PILOTS['guest'][0] in host.inner_text('#cars .car-note'), host.inner_text('#cars .car-note')
-    host.click('#carCards [data-car="73"]')
+    host.evaluate("interlagosCarros.pick('7')")
+    assert host.get_attribute('#carRight', 'title').startswith('Próximo: #2 '), host.get_attribute('#carRight', 'title')
+    host.click('#carRight')
+    assert host.evaluate('interlagosCarros.info().value') == '2', 'the arrows pass over a taken car'
+    wait_js(host, "interlagosSala.info().number==='2'", timeout=10000)
+    host.evaluate("interlagosCarros.pick('73')")
     wait_js(host, "interlagosSala.info().number==='73'&&interlagosCarros.info().value==='73'", timeout=10000)
     wait_js(guest, "interlagosSala.info().hostNumber==='73'", timeout=10000)
     assert host.is_visible('#mpRoom'), 'the room card shows on the car screen'

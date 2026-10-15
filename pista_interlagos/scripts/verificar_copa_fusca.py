@@ -26,9 +26,9 @@ SEED="""if(!sessionStorage.getItem('seeded')){sessionStorage.setItem('seeded','1
  localStorage.setItem('opala99-preferences-v1',JSON.stringify({circuit:'interlagos',immersive:false,car:'73',carModel:'opala'}));}"""
 HOOK="""async()=>{const {ImmersiveMode}=await import('./immersive-mode.js');const old=ImmersiveMode.prototype.info;ImmersiveMode.prototype.info=function(){window.fixture=this;return old.call(this)};interlagos.immersiveInfo();return true;}"""
 FIELD="""()=>{interlagos.immersiveInfo();const v=fixture.visual;return {models:v.rivals.map(o=>o.userData.fusca?'fusca':'opala'),bodies:fixture.rivals.map(r=>r.car.body.name),playerBody:interlagos.car.body.name,rivals:fixture.rivals.map(r=>r.entry.number)}}"""
-# The car screen's way on: first in the side panel, above the cards and as wide as them, inside the window.
-NEXT="""()=>{const r=s=>document.querySelector(s).getBoundingClientRect(),c=document.querySelector('#cars');return {first:document.querySelector('.cars-side').firstElementChild?.id==='carsNext',cardsWidth:r('#carCards').width,detail:document.querySelector('#carsNextDetail')?.textContent??null,
- next:r('#carsNext').toJSON(),stage:r('#carStage').top,cards:r('#carCards').top,height:innerHeight,width:document.documentElement.scrollWidth<=innerWidth,scroll:c.scrollHeight-c.clientHeight}}"""
+# The car screen's way on: under the stage beside the car's plate, inside the window; the arrows on the stage's sides.
+NEXT="""()=>{const r=s=>document.querySelector(s).getBoundingClientRect().toJSON(),c=document.querySelector('#cars');return {detail:document.querySelector('#carsNextDetail')?.textContent??null,
+ next:r('#carsNext'),plate:r('.car-plate'),stage:r('#carStage'),left:r('#carLeft'),right:r('#carRight'),height:innerHeight,width:document.documentElement.scrollWidth<=innerWidth,scroll:c.scrollHeight-c.clientHeight}}"""
 # Served circuits.js with a Goiânia entry appended, as the track will land (the cup's round 8).
 GOIANIA=" goiania:{id:'goiania',name:'Goiânia',label:'AUTÓDROMO AYRTON SENNA · GOIÂNIA, GO',length:3835,description:'3.835 m · 14 curvas · horário · Goiânia, GO',intro:'',source:'',fuel:'',altitude:740},\n"
 errors=[];result={}
@@ -47,7 +47,9 @@ def with_goiania(route):
 def car_screen(page,name):
  wait_js(page,"interlagosCarros.info().live",timeout=180000)
  fit=page.evaluate(NEXT);shot(page,name)
- assert fit['first'] and fit['next']['bottom']<=fit['cards']+1 and fit['next']['bottom']<=fit['height'] and abs(fit['next']['width']-fit['cardsWidth'])<=1,fit
+ st,nx=fit['stage'],fit['next']
+ assert nx['top']>=st['bottom']-1 and nx['bottom']<=fit['height'] and nx['left']>=fit['plate']['right'] and st['height']>150,fit
+ assert fit['left']['left']>=st['left']-1 and fit['right']['right']<=st['right']+1 and st['top']<fit['left']['top']<fit['left']['bottom']<st['bottom'],fit
  assert fit['detail']=='Com o Opala #73 · corrida única, treino, 1x1 ou campeonato',fit['detail']
  assert fit['width'] and fit['scroll']<=2,fit
  assert page.inner_text('#carsNext').startswith('Escolher a pista')

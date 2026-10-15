@@ -1236,6 +1236,18 @@ function adaptResolution(rawDt){
  const next=resolutionPace.decide(current,adaptivePixelRatio(current,{min:resolution.min,max:resolution.max,frameSeconds:resolution.frame,gpuSeconds:gpu,targetFps:target,tight:graphics.level==='baixo'}),{far:(gpu??resolution.frame)*Math.max(1,target)>1.6});
  if(Math.abs(next-current)>.001){renderer.setPixelRatio(next);renderer.setSize(innerWidth,innerHeight,false);resolution.changes++;device.ratios[graphics.level]=+next.toFixed(3);saveDevice();}
 }
+// The car screen's garage drawn sharper than the race (there the player admires the car): computers up to twice the
+// screen's pixels by Gráficos level (STUDIO_DENSITY, at most ~8 MP: a 4K picture), phones up to their own density.
+// Slow frames once the car shows (over 1/40 s for a while) step it down; the race's density comes back as the screen goes.
+const STUDIO_DENSITY=Object.freeze({baixo:1,medio:1.5,alto:2,ultra:2}),studioView={saved:null,ratio:1,slow:0};
+function studioDensity(on,rawDt=0){
+ if(!renderer)return;
+ if(!on){if(studioView.saved!==null){const back=clamp(studioView.saved,resolution.min,resolution.max);studioView.saved=null;if(Math.abs(renderer.getPixelRatio()-back)>.001){renderer.setPixelRatio(back);renderer.setSize(innerWidth,innerHeight,false);}}return;}
+ if(studioView.saved===null){const top=STUDIO_DENSITY[graphics.level]??1.5;studioView.saved=renderer.getPixelRatio();studioView.ratio=touchDevice?Math.min(devicePixelRatio,top):Math.max(Math.min(devicePixelRatio,2),top);studioView.slow=0;}
+ if(carSelect.live&&!carSelect.studio.next&&rawDt<.25){studioView.slow=Math.max(0,studioView.slow+(rawDt>1/40?rawDt:-rawDt/2));if(studioView.slow>1.5&&studioView.ratio>1){studioView.ratio=Math.max(1,studioView.ratio-.25);studioView.slow=0;}}
+ const want=Math.min(studioView.ratio,Math.sqrt(8.3e6/Math.max(1,innerWidth*innerHeight)));
+ if(Math.abs(renderer.getPixelRatio()-want)>.001){renderer.setPixelRatio(want);renderer.setSize(innerWidth,innerHeight,false);}
+}
 // The Gráficos tab's FPS limit (graphics-settings.js FrameLimiter).
 const frameCap=new FrameLimiter();
 // The cars on track and the picture's size for this frame's effects (speed-particles.js, rain.js): lists kept and
@@ -1303,7 +1315,7 @@ function frame(now=performance.now()){requestAnimationFrame(frame);
  if(!document.hidden)displayCadence.observe(now,!sessionStarted&&!loading&&screen!=='cars');
  if(frameCap.skip(now,displayCadence.measured?displayCadence.hz:0))return;if(graphicsCompiling){clock.getDelta();return;}debugOverlay.begin(now);try{runFrame();}finally{debugOverlay.end();}}
 // One frame of the game: controls, physics steps, people, cameras and the picture.
-function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(),dt=Math.min(rawDt,.08);gamepad.suspended=wheel.learning;gamepad.poll(dt);wheel.poll(dt);if($('settings').open)wheelPanel.frame();multiplayer?.frame(dt);mobile?.update(paused,pitstop?.coffee?'crowd':immersive?.active?immersive.state.phase:'race');if(touchDevice)document.body.classList.toggle('can-look-back',lookBackAllowed());updateCountdown();if(!ready||!sessionStarted){action.update(0,{active:false});actionNotice.update(0,null,false);carAudio.updateScene({},[],dt);if(renderer&&!sessionStarted&&!$('cars').classList.contains('hidden'))carSelect.render(renderer,dt);return;}
+function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(),dt=Math.min(rawDt,.08);gamepad.suspended=wheel.learning;gamepad.poll(dt);wheel.poll(dt);if($('settings').open)wheelPanel.frame();multiplayer?.frame(dt);mobile?.update(paused,pitstop?.coffee?'crowd':immersive?.active?immersive.state.phase:'race');if(touchDevice)document.body.classList.toggle('can-look-back',lookBackAllowed());updateCountdown();if(!ready||!sessionStarted){action.update(0,{active:false});actionNotice.update(0,null,false);carAudio.updateScene({},[],dt);const onCars=renderer&&!sessionStarted&&!$('cars').classList.contains('hidden');studioDensity(onCars,rawDt);if(onCars)carSelect.render(renderer,dt);return;}studioDensity(false);
  renderedFrame++;if(!paused&&!document.hidden){adaptResolution(rawDt);if(!intro.active&&!navigator.webdriver)watchFrames(rawDt);}
  if(intro.active&&automatic)intro.stop();
  if(intro.active&&!immersive.active&&immersive.freeCountdown>0){immersive.freeCountdown=3;$('raceCountdown').hidden=true;}
@@ -1512,7 +1524,7 @@ function updateScreens(){
  if(tracks)renderTracks();if(cars)openCarScreen();
 }
 // A multiplayer guest back at the opening no longer waits for the host's race (multiplayer.js wait).
-function showScreen(name){screen=name;if(name==='opening')multiplayer?.wait(false);updateScreens();updateMenuLabels();if(name==='tracks')$('singleRace').focus({preventScroll:true});if(name==='cars')$('carCards').querySelector('[aria-checked=true]')?.focus({preventScroll:true});}
+function showScreen(name){screen=name;if(name==='opening')multiplayer?.wait(false);updateScreens();updateMenuLabels();if(name==='tracks')$('singleRace').focus({preventScroll:true});if(name==='cars')$('carsNext').focus({preventScroll:true});}
 // Who races, as the track and car screens show it: the pilot and, in Modo Corrida, the car.
 const pilotLine=()=>[pilotPicker.profiles.selected&&`Piloto: ${pilotPicker.profiles.selected}`,menuMode==='corrida'&&`${MODEL_NAMES[menuModel()]} #${menuCar()}`].filter(Boolean).join(' · ');
 // Modo Corrida's car screen (car-select.js): the studio needs the renderer and the car's model, both
@@ -1533,7 +1545,11 @@ window.interlagosCarros={info:()=>({...carSelect.info(),raceCar,painted:carLiver
  // Stevan's Opala 99 built from the model as loaded now (null: not built on this circuit).
  stevanCurrent:immersive?.visual?.opala99?immersive.visual.opala99Template===model:null,
  // The model raced, the player's Fusca (fusca.js) and whether the Opala's body shows.
- raceModel,fusca:fuscaBody.info(),fuscaLoaded:!!fuscaTemplate,opalaShown:opalaShell.visible,seatShift:seatShift.toArray()})};
+ raceModel,fusca:fuscaBody.info(),fuscaLoaded:!!fuscaTemplate,opalaShown:opalaShell.visible,seatShift:seatShift.toArray(),
+ // The screen's pixel density now (the garage draws sharper than the race: studioDensity).
+ pixelRatio:renderer?.getPixelRatio()??null,studioRatio:studioView.saved===null?null:studioView.ratio}),
+ // Takes a car of the tab shown as the arrows would (a taken one only gets the room's note); gives the car chosen after it.
+ pick:number=>{carSelect.pick(String(number));return carSelect.value;}};
 // The track screen: the pilot, each circuit's best lap and the championship panel.
 function renderTracks(){
  const pilot=pilotPicker.profiles.selected||'';$('tracksPilot').textContent=pilotLine();

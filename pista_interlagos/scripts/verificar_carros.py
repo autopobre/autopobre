@@ -1,5 +1,5 @@
-"""Modo Corrida's car screen (#cars, car-select.js): the 15 Opalas, the garage (car-garage.js) turning the
-chosen one, zooming on it and tilting over it, the choice kept, and on track the player's car in that team's colours with
+"""Modo Corrida's car screen (#cars, car-select.js): the 15 Opalas one at a time (arrows, ← →), the garage (car-garage.js) turning the
+chosen one drawn sharper than the race, zooming on it and tilting over it, the choice kept, and on track the player's car in that team's colours with
 the Opala 99 (Stevan Gaipo) in its seat. Modo História stays the 99's. Usage: verificar_carros.py [porta]
 Screens in renders/: carros_99.png, carros_73.png, carros_19.png, carros_zoom.png, carros_por_cima.png,
 carros_pistas.png,
@@ -36,26 +36,34 @@ with sync_playwright() as p:
  # Modo Corrida opens the car screen; the story goes straight to the tracks.
  page.fill('#pilotName','Piloto carros');page.click('#start')
  assert page.is_visible('#cars') and not page.is_visible('#tracks') and not page.is_visible('#menu')
- assert page.locator('#carCards [data-car]').count()==15
- assert page.get_attribute('#carCards [data-car="99"]','aria-checked')=='true'
+ assert page.evaluate(CARS)['count']==15 and page.evaluate(CARS)['value']=='99'
+ assert page.evaluate("document.activeElement.id")=='carsNext' and not page.locator('#carCards').count() and not page.locator('#carHint').count()
  wait_js(page,"interlagosCarros.info().live&&interlagosCarros.info().built==='99'",timeout=180000)
  page.wait_for_timeout(600);page.screenshot(path=str(RENDERS/'carros_99.png'))
  first=page.evaluate(CARS);assert first['meshes']>20,first
- # The screen is the canvas's window: the studio draws there, the cards stay in the page.
+ # The car's driver is the plate's big line; the grid's place above it; the arrows name the cars they bring (round the ends).
+ assert page.inner_text('#carDriver')=='Stevan Gaipo / Edu Neves' and page.inner_text('#carsKicker')=='O GRID · 1 DE 15',page.inner_text('#carsKicker')
+ assert page.get_attribute('#carLeft','title')=='Anterior: #42 · Rodrigo Battistel' and page.get_attribute('#carRight','title').startswith('Próximo: #73'),page.get_attribute('#carLeft','title')
+ # The garage draws sharper than the race (Alto: twice the pixels); the race's density comes back on the tracks screen.
+ assert first['studioRatio'] and first['pixelRatio']==first['studioRatio']>=1.5,first
+ # The screen is the canvas's window: the studio draws there, the plate and the button stay in the page.
  assert page.evaluate("getComputedStyle(document.querySelector('#cars')).backgroundImage.includes('linear-gradient')")
  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
 
- # Picking a card: the studio builds that car, the choice is kept.
- page.click('#carCards [data-car="73"]');wait_js(page,"interlagosCarros.info().built==='73'")
- assert '#73' in page.inner_text('#carNumber') and 'Konrad' in page.inner_text('#carDetail') and 'Stevan' in page.inner_text('#carDetail')
+ # The right arrow: the studio builds the next car, the choice is kept.
+ page.click('#carRight');wait_js(page,"interlagosCarros.info().built==='73'")
+ assert '#73' in page.inner_text('#carNumber') and page.inner_text('#carDriver')=='Konrad Viehmann' and 'Stevan' in page.inner_text('#carDetail')
+ assert page.inner_text('#carsKicker')=='O GRID · 2 DE 15'
  assert page.evaluate("JSON.parse(localStorage.getItem('opala99-preferences-v1')).car")=='73'
  page.wait_for_timeout(500);page.screenshot(path=str(RENDERS/'carros_73.png'))
- # Arrows walk the cards; dragging turns the car.
- page.focus('#carCards [data-car="73"]');page.keyboard.press('ArrowRight');assert page.get_attribute('#carCards [data-car="00"]','aria-checked')=='true'
+ # ← and → walk the grid from anywhere on the screen; dragging turns the car.
+ page.keyboard.press('ArrowRight');assert page.evaluate(CARS)['value']=='00'
+ page.keyboard.press('ArrowLeft');page.keyboard.press('ArrowLeft');page.keyboard.press('ArrowLeft');assert page.evaluate(CARS)['value']=='42'
+ page.click('#carRight');page.click('#carRight');page.click('#carRight');assert page.evaluate(CARS)['value']=='00'
  yaw=page.evaluate(CARS)['yaw'];box=page.locator('#carStage').bounding_box()
  page.mouse.move(box['x']+box['width']*.4,box['y']+box['height']*.4);page.mouse.down();page.mouse.move(box['x']+box['width']*.7,box['y']+box['height']*.4,steps=8);page.mouse.up()
  assert abs(page.evaluate(CARS)['yaw']-yaw)>1,'dragging turns the car'
- page.click('#carCards [data-car="19"]');wait_js(page,"interlagosCarros.info().built==='19'");page.wait_for_timeout(500);page.screenshot(path=str(RENDERS/'carros_19.png'))
+ page.evaluate("interlagosCarros.pick('19')");wait_js(page,"interlagosCarros.info().built==='19'");page.wait_for_timeout(500);page.screenshot(path=str(RENDERS/'carros_19.png'))
  # The garage (car-garage.js): its screens and the box number show the car on the turntable, the floor mirrors the room (Alto). The wheel, the
  # buttons, + and - and a double click zoom while the car keeps turning; the page itself never scrolls.
  garage=page.evaluate(CARS)['garage'];assert garage['screen']=='OPALA #19' and garage['box']=='19' and garage['mirror'] and garage['tyres']>20,garage
@@ -78,17 +86,18 @@ with sync_playwright() as p:
  high=tilt(260);assert high['elevation']>1,high
  page.screenshot(path=str(RENDERS/'carros_por_cima.png'))
  page.mouse.dblclick(box['x']+box['width']*.5,box['y']+box['height']*.5);page.wait_for_timeout(300)
- page.click('#carCards [data-car="73"]');wait_js(page,"interlagosCarros.info().built==='73'")
+ page.evaluate("interlagosCarros.pick('73')");wait_js(page,"interlagosCarros.info().built==='73'")
 
  # On to the tracks: the car named there, the way back leads to it, the 1x1 is against the 99 now.
  page.click('#carsNext');assert page.is_visible('#tracks') and not page.is_visible('#cars')
+ page.wait_for_timeout(300);back=page.evaluate(CARS);assert back['studioRatio'] is None and back['pixelRatio']<first['studioRatio'],back
  assert 'Opala #73' in page.inner_text('#tracksPilot'),page.inner_text('#tracksPilot')
  assert page.inner_text('#tracksBack')=='← Carro'
  options=page.eval_on_selector_all('#duelRival option','os=>os.map(o=>o.value)');assert '99' in options and '73' not in options and len(options)==14,options
  assert page.input_value('#duelRival')=='99' and '#99' in page.inner_text('#duelRaceDetail'),page.inner_text('#duelRaceDetail')
  page.screenshot(path=str(RENDERS/'carros_pistas.png'))
- # Escape goes back to the cars; Enter on a card goes on to the tracks.
- page.keyboard.press('Escape');assert page.is_visible('#cars');page.focus('#carCards [data-car="73"]');page.keyboard.press('Enter');assert page.is_visible('#tracks')
+ # Escape goes back to the cars; Enter (the way on has the focus) goes on to the tracks.
+ page.keyboard.press('Escape');assert page.is_visible('#cars');page.keyboard.press('Enter');assert page.is_visible('#tracks')
 
  # Corrida única in #73: Stevan Gaipo races the 99 in Konrad's seat, the player's Opala is orange.
  page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
@@ -135,7 +144,7 @@ with sync_playwright() as p:
  page.evaluate('interlagos.immersiveInfo();fixture.onMainMenu();true');wait_js(page,"!document.querySelector('#tracks').classList.contains('hidden')")
 
  # Back to Modo Corrida in the 99.
- page.click('#tracksBack');page.click('#start');wait_js(page,"interlagosCarros.info().live");page.click('#carCards [data-car="99"]');wait_js(page,"interlagosCarros.info().built==='99'")
+ page.click('#tracksBack');page.click('#start');wait_js(page,"interlagosCarros.info().live");page.click('#carLeft');wait_js(page,"interlagosCarros.info().built==='99'")
  page.wait_for_timeout(400);page.screenshot(path=str(RENDERS/'carros_99_depois.png'))
  page.click('#carsNext');page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
  back=page.evaluate(FIELD);own=page.evaluate(CARS)
@@ -146,7 +155,7 @@ with sync_playwright() as p:
  page.evaluate('interlagos.immersiveInfo();fixture.onMainMenu();true');wait_js(page,"!document.querySelector('#tracks').classList.contains('hidden')")
 
  # #73 again on the same circuit: Stevan's Opala 99 is built again from the model in the new paint.
- page.click('#tracksBack');wait_js(page,"interlagosCarros.info().live");page.click('#carCards [data-car="73"]');wait_js(page,"interlagosCarros.info().built==='73'")
+ page.click('#tracksBack');wait_js(page,"interlagosCarros.info().live");page.click('#carRight');wait_js(page,"interlagosCarros.info().built==='73'")
  page.click('#carsNext');page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
  again=page.evaluate(CARS);field2=page.evaluate(FIELD)
  assert again['raceCar']=='73' and again['livery']==other and again['stevanCurrent'] is True,again
@@ -165,6 +174,7 @@ with sync_playwright() as p:
  fit=small.evaluate("""()=>{const c=document.querySelector('#cars'),r=s=>document.querySelector(s).getBoundingClientRect();return {width:document.documentElement.scrollWidth<=innerWidth,scroll:c.scrollHeight-c.clientHeight,next:r('#carsNext').bottom,stage:r('#carStage').height,height:innerHeight}}""")
  small.wait_for_timeout(400);small.screenshot(path=str(RENDERS/'carros_celular.png'))
  assert fit['width'] and fit['scroll']<=2 and fit['next']<=fit['height'] and fit['stage']>150,fit
+ small.tap('#carRight');wait_js(small,"interlagosCarros.info().built==='93'")
  result['phone']=fit
  assert not errors,errors
  print(json.dumps({'passed':True,**result},ensure_ascii=False),flush=True)

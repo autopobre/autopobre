@@ -1,15 +1,15 @@
-/* Car screen (Modo Corrida, before the track screen): the chosen car turning in the team's garage on the
-   left, drawn by the game's canvas behind this screen's open middle (car-select.js, car-garage.js), and the
-   grid's cars on the right. */
+/* Car screen (Modo Corrida, before the track screen): the chosen car turning in the middle of the team's garage,
+   drawn by the game's canvas behind this screen's open middle (car-select.js, car-garage.js), an arrow on each side
+   for the grid's other cars, and under it the car's plate and the way on to the tracks. */
 /* Only the canvas (the studio) and this screen show (and a multiplayer room's card); the race's HUD
    and tools hide meanwhile. */
 body.cars-open>:not(#view):not(#cars):not(#rotatePhone):not(#mpRoom):not(dialog){visibility:hidden!important}
 #cars{z-index:30;align-items:stretch;justify-content:center;padding:22px 4vw;overflow:auto;backdrop-filter:none;
- background:radial-gradient(ellipse at 34% 58%,#20403a 0,#10231f 48%,#060d0c 100%)}
-/* With the studio drawn, only the edges darken (the head and the cards keep their own backgrounds). */
-#cars.live{background:linear-gradient(180deg,#060d0cd9 0,#060d0c8c 18%,transparent 30%),linear-gradient(90deg,transparent 0,transparent 55%,#060d0ca6 75%)}
-.cars-shell{width:min(1240px,100%);display:flex;flex-direction:column;gap:14px;margin:auto 0;min-height:min(640px,100%)}
-#carsPilot{margin:0;font-size:12px;color:#c9d3c4;font-weight:700}
+ background:radial-gradient(ellipse at 50% 58%,#20403a 0,#10231f 48%,#060d0c 100%)}
+/* With the studio drawn, only the top and the bottom darken, under the title and the plate. */
+#cars.live{background:linear-gradient(180deg,#060d0cd9 0,#060d0c8c 16%,transparent 30%,transparent 70%,#060d0cb3 100%)}
+.cars-shell{width:min(1240px,100%);display:flex;flex-direction:column;gap:14px;min-height:min(560px,100%)}
+#carsPilot{margin:0;font-size:clamp(16px,1.6vw,21px);color:#fff6dc;font-weight:800;letter-spacing:.01em;text-shadow:0 1px 6px #000b}
 /* The model tabs on top: the Opala (the grid's 15) or the Fusca (the teams' colours, fusca.js). */
 .car-models{display:flex;gap:4px;align-self:flex-start;padding:3px;border-radius:8px;background:#0a1824b8;border:1px solid #9fb3c633}
 .car-models[hidden]{display:none}
@@ -18,41 +18,44 @@ body.cars-open>:not(#view):not(#cars):not(#rotatePhone):not(#mpRoom):not(dialog)
 .car-models button:hover{color:#fff6dc;background:#ffffff12}
 .car-models button[aria-selected=true]{background:#f4ce39;color:#171c15;box-shadow:0 2px 8px #0006}
 .car-models button:focus-visible{outline:2px solid #f4ce39;outline-offset:2px}
-.cars-body{flex:1;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(330px,1fr);gap:22px;align-items:stretch}
-.car-stage{position:relative;min-height:360px;border-radius:12px;cursor:grab;touch-action:none;user-select:none}
+/* The stage: the whole middle of the screen, the car framed in it (car-select.js), dragged to turn and tilt. */
+.car-stage{position:relative;flex:1;min-height:300px;cursor:grab;touch-action:none;user-select:none}
 .car-stage.dragging{cursor:grabbing}
 .car-stage-status{position:absolute;inset:0;display:grid;place-items:center;margin:0;font-size:13px;font-weight:700;color:#c9d3c4;letter-spacing:.04em}
 .car-stage-status[hidden]{display:none}
-.car-plate{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:0 0 12px 12px;background:linear-gradient(0deg,#060d0cdd,#060d0c00)}
-#carNumber{flex-shrink:0;min-width:74px;padding:6px 10px;border-radius:7px;text-align:center;font-size:30px;font-style:italic;font-weight:900;line-height:1;color:#f4f3ee;
- background:linear-gradient(180deg,var(--body,#17191b) 0 58%,var(--stripe,#f0cd1f) 58% 72%,var(--body,#17191b) 72%);border:1px solid #ffffff40;
- text-shadow:-2px 0 #101314,2px 0 #101314,0 -2px #101314,0 2px #101314,0 3px 8px #000a}
-.car-plate h3{margin:0;font-size:clamp(17px,2vw,23px);font-weight:900;color:#fff6dc}
-.car-plate p{margin:3px 0 0;font-size:12px;line-height:1.45;color:#d3ddd0;max-width:560px}
-/* Top right of the stage: how to turn and zoom, and the zoom buttons (car-select.js; wheel, pinch and +/- too). */
-.car-zoom{position:absolute;top:10px;right:12px;display:flex;align-items:center;gap:6px;padding:3px 3px 3px 12px;border-radius:20px;background:#0a0d0f99}
-.car-hint{margin-right:4px;font-size:9px;line-height:1.35;letter-spacing:.06em;text-align:right;white-space:pre-line;text-transform:uppercase;color:#c9d3c4e6;text-shadow:0 1px 3px #000c;pointer-events:none}
+/* The arrows on both sides: the grid's previous and next car (also ← and → on the keyboard). */
+.car-arrow{position:absolute;top:50%;z-index:1;display:grid;place-items:center;width:58px;height:58px;margin:-29px 0 0;padding:0;border-radius:50%;border:1px solid #ffffff38;
+ background:#0a0d0fb3;color:#f4ce39;font-size:42px;font-weight:400;line-height:1;cursor:pointer;box-shadow:0 6px 18px #0008;transition:background .15s,color .15s,transform .15s}
+.car-arrow span{margin-top:-6px}
+.car-arrow-left{left:0}.car-arrow-left span{margin-right:3px}
+.car-arrow-right{right:0}.car-arrow-right span{margin-left:3px}
+.car-arrow:hover{background:#f4ce39;color:#171c15;transform:scale(1.06)}
+.car-arrow:active{transform:scale(.96)}
+.car-arrow:focus-visible{outline:2px solid #f4ce39;outline-offset:3px}
+.car-arrow[hidden]{display:none}
+@media(prefers-reduced-motion:reduce){.car-arrow{transition:none}.car-arrow:hover,.car-arrow:active{transform:none}}
+/* Top right of the stage: the zoom buttons (car-select.js; the wheel, a pinch, a double click and +/- too). */
+.car-zoom{position:absolute;top:0;right:0;z-index:1;display:flex;gap:6px}
 .car-zoom button{width:34px;height:34px;margin:0;padding:0;border-radius:50%;border:1px solid #ffffff40;background:#0c1012c4;color:#f4f3ee;font-size:20px;font-weight:700;line-height:1;cursor:pointer}
 .car-zoom button:hover{border-color:#f4ce39;color:#f4ce39}
 .car-zoom button:focus-visible{outline:2px solid #f4ce39;outline-offset:2px}
-.cars-side{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:12px;background:#0b1a18e8;border:1px solid #88978c40}
-.car-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.car-cards button{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;margin:0;padding:8px 6px 7px;border:1px solid #88978c45;border-radius:8px;
- background:linear-gradient(160deg,#16332de8,#0e211ee8);color:#dce6d7;cursor:pointer;white-space:normal}
-.car-cards button:hover{border-color:#d9b93c99;background:linear-gradient(160deg,#1c3c35ee,#11271fe8)}
-.car-cards button[aria-checked=true]{border-color:#f4ce39;background:linear-gradient(160deg,#2a4a3cf2,#17302af0);box-shadow:inset 0 -3px #f4ce39,0 8px 24px #0006}
-.car-cards button:focus-visible{outline:2px solid #f4ce39;outline-offset:2px}
-.car-cards svg{width:100%;max-width:120px;height:auto;aspect-ratio:100/34}
-.car-cards span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:700;color:#e6ecdf}
-.car-cards button[aria-checked=true] span{color:#f4d055}
-/* In a multiplayer room: a car another pilot has, under that pilot's name (lime, as on the track). */
-.car-cards button.taken{cursor:not-allowed;border-style:dashed;background:#0b1715e0}
-.car-cards button.taken:hover{border-color:#88978c45;background:#0b1715e0}
-.car-cards button.taken svg{opacity:.45}
-.car-cards button.taken span{color:#e2fb57}
-.car-note{margin:0;font-size:11px;line-height:1.45;color:#aebdb2}
-/* The way on atop the cards, big as the track screen's Corrida única: the label, then a line with the car. */
-#cars .primary{margin:0;padding:14px 16px;border-radius:8px;border:0;background:#f4ce39;color:#171c15;font-size:15px;font-weight:900;text-align:left;white-space:normal}
+/* Under the stage: the car's plate on the left, the way on to the tracks on the right. */
+.cars-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:22px}
+.car-plate{display:flex;align-items:center;gap:14px;min-width:0}
+.car-plate .tracks-kicker{margin-bottom:2px}
+#carNumber{flex-shrink:0;min-width:84px;padding:7px 12px;border-radius:7px;text-align:center;font-size:34px;font-style:italic;font-weight:900;line-height:1;color:#f4f3ee;
+ background:linear-gradient(180deg,var(--body,#17191b) 0 58%,var(--stripe,#f0cd1f) 58% 72%,var(--body,#17191b) 72%);border:1px solid #ffffff40;
+ text-shadow:-2px 0 #101314,2px 0 #101314,0 -2px #101314,0 2px #101314,0 3px 8px #000a}
+/* The car's driver, the highlight under the car; then the car and its season. */
+.car-plate h3{margin:0;font-size:clamp(24px,3vw,40px);line-height:1.05;font-weight:900;letter-spacing:-.01em;color:#fff6dc;text-shadow:0 2px 10px #000c}
+#carName{display:block;margin-top:4px;font-size:14px;font-weight:800;color:#f4d055;text-shadow:0 1px 4px #000c}
+.car-plate p{margin:2px 0 0;font-size:12px;line-height:1.45;color:#d3ddd0;max-width:600px;text-shadow:0 1px 4px #000c}
+.cars-go{flex:0 0 min(360px,40%);display:flex;flex-direction:column;gap:8px}
+/* In a multiplayer room: how the cars are shared and whose they are. */
+.car-note{margin:0;padding:8px 10px;border-radius:8px;background:#0b1a18e0;font-size:11px;line-height:1.45;color:#c9d6cc}
+.car-note[hidden]{display:none}
+/* The way on, big as the track screen's Corrida única: the label, then a line with the car. */
+#cars .primary{margin:0;padding:14px 16px;border-radius:8px;border:0;background:#f4ce39;color:#171c15;font-size:15px;font-weight:900;text-align:left;white-space:normal;box-shadow:0 8px 24px #0007}
 #cars .primary:hover{background:#ffe574}
 #cars .primary small{display:block;margin-top:3px;font-size:11px;font-weight:600;opacity:.85}
 /* A multiplayer guest's way on (car-select.js): at the door, greyed; waiting for the host's race,
@@ -62,20 +65,18 @@ body.cars-open>:not(#view):not(#cars):not(#rotatePhone):not(#mpRoom):not(dialog)
 #cars .primary[aria-pressed=true]::before{content:'';display:inline-block;width:9px;height:9px;margin:0 9px 1px 0;border-radius:50%;background:#171c15;vertical-align:middle;animation:car-wait 1.3s ease-in-out infinite}
 @keyframes car-wait{50%{opacity:.2}}
 @media(prefers-reduced-motion:reduce){#cars .primary[aria-pressed=true]::before{animation:none}}
-@media(max-width:900px){.cars-body{grid-template-columns:minmax(0,1fr) minmax(280px,1fr);gap:14px}.car-cards{gap:6px}.car-cards button{padding:6px 4px}}
+@media(max-width:900px){.cars-foot{gap:14px}.car-plate p{display:none}}
 /* Phones in landscape: the whole choice on one screen. */
 @media(max-height:520px){
  #cars{padding:8px max(14px,env(safe-area-inset-right)) 8px max(14px,env(safe-area-inset-left))}
  .cars-shell{gap:6px;min-height:100%}
- .cars-body{grid-template-columns:minmax(0,1fr) minmax(300px,1.15fr);gap:10px}
  .car-stage{min-height:0}
- .car-plate{padding:6px 8px;gap:8px}#carNumber{min-width:50px;font-size:19px;padding:4px 6px}.car-plate h3{font-size:13px}.car-plate p{display:none}
- .car-hint{display:none}.car-zoom{top:6px;right:6px}.car-zoom button{width:30px;height:30px;font-size:17px}
- .cars-side{gap:6px;padding:8px}.cars-side>.tracks-kicker,.car-note{display:none}
- .car-cards{grid-template-columns:repeat(5,minmax(0,1fr));gap:4px}
- .car-cards button{padding:4px 2px 3px;gap:1px}.car-cards span{font-size:8px}
+ .car-arrow{width:44px;height:44px;margin-top:-22px;font-size:32px}.car-arrow span{margin-top:-4px}
+ .car-plate{gap:8px}#carNumber{min-width:52px;font-size:20px;padding:4px 7px}.car-plate h3{font-size:18px}#carName{margin-top:1px;font-size:11px}.car-plate p,.car-plate .tracks-kicker{display:none}
+ .car-zoom button{width:30px;height:30px;font-size:17px}
+ .cars-go{gap:4px}.car-note{padding:4px 8px;font-size:9px}
  #cars .primary{padding:8px 10px;font-size:12px;min-height:40px}#cars .primary small{font-size:9px;margin-top:1px}
- #carsPilot{font-size:10px}
+ #carsPilot{font-size:13px}
  .car-models{padding:2px}.car-models button{padding:4px 12px;font-size:11px}.car-models button small{display:none}
 }
-@media(max-width:700px) and (orientation:portrait){.cars-body{grid-template-columns:1fr}.car-stage{min-height:38vh}.cars-head{grid-template-columns:1fr;gap:6px}}
+@media(max-width:700px) and (orientation:portrait){.car-stage{min-height:42vh}.cars-head{grid-template-columns:1fr;gap:6px}.cars-foot{flex-direction:column;align-items:stretch}.cars-go{flex-basis:auto}}
