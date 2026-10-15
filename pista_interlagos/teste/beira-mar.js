@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {onDeck} from './physics.js';
+import {onDeck,addRoamSolids,roamWorld} from './physics.js';
 import {sceneryBands} from './track-clearance.js';
 import {canvasTexture} from './pit-textures.js';
 import {createPeople} from './pit-crew.js';
@@ -580,6 +580,7 @@ export async function createBeiraMar(data,{mobile=false,lean=false,ground=null,m
  const geoOf=s=>{let g=tiles.get(s.tile);if(!g)tiles.set(s.tile,g=new Geo());return g;};
  const nearest=(x,y)=>{let best=runs[0][0],d=Infinity;for(const s of okStations){const e=(s.x-x)**2+(s.y-y)**2;if(e<d){d=e;best=s;}}return best;};
  const geoNear=(x,y)=>geoOf(nearest(x,y));
+ const solids=[];
  const stats={rocks:0,palms:0,lamps:0,benches:0,bins:0,kiosks:0,gyms:0,decks:0,piers:0,boats:0,railing_m:0,wall_m:0,people:0,crew:0,walkers:0,joggers:0,cyclists:0,stations:0,shore_m:0};
  const atlas=signAtlas();
  const idle=[],clearings=[];
@@ -792,7 +793,7 @@ export async function createBeiraMar(data,{mobile=false,lean=false,ground=null,m
  }
 
  // ---------------------------------------------------------------- kiosks and gyms
- for(const k of kiosks){const geo=geoOf(k.s);kiosk(geo,k.x,k.y,g0(k.x,k.y)??k.s.zc,k.h,k.k,atlas,rand,idle);clearings.push({x:k.x,y:k.y,r:6});stats.kiosks++;}
+ for(const k of kiosks){const geo=geoOf(k.s);kiosk(geo,k.x,k.y,g0(k.x,k.y)??k.s.zc,k.h,k.k,atlas,rand,idle);clearings.push({x:k.x,y:k.y,r:6});solids.push({x:k.x,y:k.y,h:k.h,hu:1.5,hv:1.35});stats.kiosks++;}
  for(const q of gyms){const geo=geoOf(q.s);gym(geo,q.x,q.y,g0(q.x,q.y)??q.s.zc,q.h,atlas,rand);clearings.push({x:q.x,y:q.y,r:8});stats.gyms++;
   for(let j=0;j<1+Math.floor(rand()*2);j++){const f=frame(q.x,q.y,g0(q.x,q.y)??q.s.zc,q.h),p=f(.9,(rand()-.5)*6);idle.push({x:p[0],y:p[1],z:p[2],yaw:q.h+Math.PI+(rand()-.5),pose:'stand',idle:'stand'});}}
 
@@ -804,13 +805,13 @@ export async function createBeiraMar(data,{mobile=false,lean=false,ground=null,m
    const s=run[i];if(!s.ok)continue;const S=s.S,geo=geoOf(s),sea=Math.atan2(-s.ny,-s.nx),edge=S.edge==='mureta'?.45:.25;
    if(!light&&S.lamp&&s.s>=nextLamp){
     const P=at(s,s.oc+edge+.75),z=g0(...P);
-    if(z!=null&&onPromenade(...P,.3)&&standOk(...P,.5,true)){lamp(geo,P[0],P[1],z,sea,S.lamp,rand);pools.push([P[0],P[1],z,LAMPS[S.lamp].pool]);placed.circle(...P,.6);stats.lamps++;nextLamp=s.s+S.lampGap[0]+rand()*(S.lampGap[1]-S.lampGap[0]);}
+    if(z!=null&&onPromenade(...P,.3)&&standOk(...P,.5,true)){lamp(geo,P[0],P[1],z,sea,S.lamp,rand);pools.push([P[0],P[1],z,LAMPS[S.lamp].pool]);placed.circle(...P,.6);solids.push({x:P[0],y:P[1],r:.16});stats.lamps++;nextLamp=s.s+S.lampGap[0]+rand()*(S.lampGap[1]-S.lampGap[0]);}
     else nextLamp=s.s+2;
    }
    if(!light&&S.benches&&s.s>=nextBench){
     nextBench=s.s+6+rand()*10;
     if(rand()<S.benches){const P=at(s,s.oc+edge+1.45),z=g0(...P);
-     if(z!=null&&onPromenade(...P,.4)&&standOk(...P,1,false)){const kind=S.concrete&&rand()<.5?'concreto':rand()<.25?'sem_encosto':'madeira',hb=sea+(rand()-.5)*.08;bench(geo,P[0],P[1],z,hb,kind,rand);placed.circle(...P,1.05);benches.push({x:P[0],y:P[1],z,h:hb,s});stats.benches++;
+     if(z!=null&&onPromenade(...P,.4)&&standOk(...P,1,false)){const kind=S.concrete&&rand()<.5?'concreto':rand()<.25?'sem_encosto':'madeira',hb=sea+(rand()-.5)*.08;bench(geo,P[0],P[1],z,hb,kind,rand);placed.circle(...P,1.05);benches.push({x:P[0],y:P[1],z,h:hb,s});solids.push({x:P[0],y:P[1],h:hb,hu:.3,hv:.85});stats.benches++;
       if(rand()<.4){const B=at(run[Math.min(run.length-1,i+2)],s.oc+edge+1.2),zb=g0(...B);if(zb!=null&&standOk(...B,.35,false)){bin(geo,B[0],B[1],zb,sea,rand);placed.circle(...B,.35);stats.bins++;}}}}
    }
    if(s.s>=nextPalm){
@@ -821,7 +822,7 @@ export async function createBeiraMar(data,{mobile=false,lean=false,ground=null,m
      const P=at(s,o);if(j){P[0]+=(rand()-.5)*5;P[1]+=(rand()-.5)*5;}const z=g0(...P);
      if(z==null||!(S.natural?(map?surface(...P)!=='road'&&map.at(...P).road>2:true):onPromenade(...P,.8))||!standOk(...P,1.2,true))continue;
      let r=rand(),kind=S.palms[0][0];for(const [name,w] of S.palms){if(r<w){kind=name;break;}r-=w;}
-     if(light&&rand()<.3)continue;palm(geo,P[0],P[1],z,kind,sea,rand,light);placed.circle(...P,1.4);stats.palms++;
+     if(light&&rand()<.3)continue;palm(geo,P[0],P[1],z,kind,sea,rand,light);placed.circle(...P,1.4);solids.push({x:P[0],y:P[1],r:kind==='imperial'?.3:.2});stats.palms++;
     }
    }
   }
@@ -981,8 +982,9 @@ vColor.rgb*=mix(vec3(1.),instanceColor,paint);
      const p=movers[k],L=p.lane,f=clamp(p.u,0,L.length-1.001),i=Math.floor(f),t=f-i,a=L[i],b=L[i+1];
      const o=(a.oc+(b.oc-a.oc)*t)+(p.kind===2?(a.cyc+(b.cyc-a.cyc)*t)-p.dir*p.off:p.off),x=a.x+(b.x-a.x)*t+(a.nx+(b.nx-a.nx)*t)*o,y=a.y+(b.y-a.y)*t+(a.ny+(b.ny-a.ny)*t)*o;
      if(eye&&Math.hypot(eye.x-x,-eye.z-y)>700){im.setMatrixAt(k,M.compose(V.set(x,0,-y),Q.identity(),ZERO));continue;}
-     const h=Math.atan2(a.ty+(b.ty-a.ty)*t,a.tx+(b.tx-a.tx)*t)+(p.dir<0?Math.PI:0);
-     im.setMatrixAt(k,M.compose(V.set(x,g0(x,y)??level,-y),Q.setFromAxisAngle(Y,h),SC));
+     const h=Math.atan2(a.ty+(b.ty-a.ty)*t,a.tx+(b.tx-a.tx)*t)+(p.dir<0?Math.PI:0);p.wx=x;p.wy=y;
+     const dx=p.dg?x+p.dg[0]:x,dy=p.dg?y+p.dg[1]:y;
+     im.setMatrixAt(k,M.compose(V.set(dx,g0(dx,dy)??level,-dy),Q.setFromAxisAngle(Y,h),SC));
     }
     im.instanceMatrix.needsUpdate=true;
    };
@@ -990,7 +992,15 @@ vColor.rgb*=mix(vec3(1.),instanceColor,paint);
    im.onBeforeRender=renderer=>{const t=renderer.getRenderTarget();im.count=t&&(t.isWebGLCubeRenderTarget||t.width<64)?0:count;};
    place(null);root.add(im);
    stats.walkers=movers.filter(p=>p.kind===0).length;stats.joggers=movers.filter(p=>p.kind===1).length;stats.cyclists=movers.filter(p=>p.kind===2).length;stats.still=still.length;stats.people+=count;
-   folk={update(dt,eye){for(const p of movers){p.u+=p.dir*p.speed*dt/STEP;if(p.u>p.lane.length-1.001||p.u<0){p.dir*=-1;p.u=clamp(p.u,0,p.lane.length-1.001);}}if(movers.length)place(eye);}};
+   // A car roaming the Aterro (meta.roam, physics.js RoamWorld): the walkers, joggers and cyclists ahead of it or beside it
+   // move across, away from its axis, and back to their line once it has passed (as city-life.js's walkers).
+   const roam=data.meta.roam?roamWorld(data):null;
+   const dodge=dt=>{const car=roam?.player,live=!!car?.roamZone,k=Math.min(1,dt*6);
+    const sp=live?Math.hypot(car.vx,car.vy):0,fx=live?Math.cos(car.heading):0,fy=live?Math.sin(car.heading):0,ahead=3.5+sp*1.4,clear=live?car.body.halfWidth+1.1:0;
+    for(const p of movers){if(p.wx===undefined)continue;let want=0;
+     if(live){const ex=p.wx-car.x,ey=p.wy-car.y;if(ex*ex+ey*ey<(ahead+8)**2){const al=ex*fx+ey*fy,c=-ex*fy+ey*fx;if(al>-car.body.rear-1&&al<car.body.front+ahead&&Math.abs(c)<clear)want=(c>=0?1:-1)*(clear-Math.abs(c));}}
+     if(!want&&!p.dg)continue;p.dg??=[0,0];p.dg[0]+=(-fy*want-p.dg[0])*k;p.dg[1]+=(fx*want-p.dg[1])*k;if(!want&&Math.abs(p.dg[0])+Math.abs(p.dg[1])<.01)p.dg=null;}};
+   folk={update(dt,eye){for(const p of movers){p.u+=p.dir*p.speed*dt/STEP;if(p.u>p.lane.length-1.001||p.u<0){p.dir*=-1;p.u=clamp(p.u,0,p.lane.length-1.001);}}if(roam)dodge(dt);if(movers.length)place(eye);}};
   }
   // One crowd, one draw.
   const list=[...crew];
@@ -1019,6 +1029,8 @@ vColor.rgb*=mix(vec3(1.),instanceColor,paint);
  let instanced=0,crowd=0;root.traverse(o=>{if(o.isSkinnedMesh)crowd+=(o.geometry.index?o.geometry.index.count:o.geometry.attributes.position.count)/3;if(o.isInstancedMesh)instanced+=(o.geometry.index?o.geometry.index.count:o.geometry.attributes.position.count)/3*o.count;});
  const spot=l=>l.map(q=>[Math.round(q.x),Math.round(q.y)]);
  Object.assign(stats,{spots:{decks:spot(decks),kiosks:spot(kiosks),gyms:spot(gyms),ramp:ramp?[[Math.round(ramp.s.x),Math.round(ramp.s.y),+ramp.s.nx.toFixed(2),+ramp.s.ny.toFixed(2)]]:[],boats:boatSpots},drawCalls,tiles:tiles.size,triangles,instancedTriangles:instanced,crowdTriangles:crowd,meshes:meshes.length,buildMs:Math.round(performance.now()-t0)});
+ // In a zone of the city open to roam (meta.roam, physics.js RoamWorld) the palms, lamps, benches and kiosks are solid.
+ if(data.meta.roam)stats.roamSolids=addRoamSolids(data,solids);
  return {root,stats,clearings,obstacles:[],
   setNight(level){U.bmNight.value=level;if(glow){glow.visible=level>.05;glow.material.opacity=.38*level;}},
   update(dt,camera){

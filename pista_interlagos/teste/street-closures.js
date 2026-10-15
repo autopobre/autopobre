@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import {canvasTexture} from './pit-textures.js';
-import {sceneryBands,bandClearance} from './track-clearance.js';
-import {billboardSpots} from './track-surface.js';
+import {sceneryBands,bandClearance,standLayout} from './track-clearance.js';
+import {billboardSpots,billboardFormat} from './track-surface.js';
 import {marshalSpots,towerSpots} from './trackside.js';
 import {createPeople} from './pit-crew.js';
 import {Shape,CityBatch,cityMaterial,cityCarTemplate,carFrame,frameAt,pickCarType,carPaint,rimColor,random,lin,FINISH,GLOW,ROLE,CITY_CAR_SIZE} from './city-cars.js';
+import {addRoamSolids} from './physics.js';
 
 // A real city closed for a race weekend, like Monaco (Floripa, data.scenery.city.closures from gerar_cidade_floripa.py): where
 // each real street meets the walls of the circuit, a few metres out along it, a line of improvised barriers across the
@@ -19,7 +20,7 @@ import {Shape,CityBatch,cityMaterial,cityCarTemplate,carFrame,frameAt,pickCarTyp
 // shown within NEAR metres of the camera (shortened by a long lens), and per GROUP x GROUP tiles into a far one that leaves
 // out the tiles drawn near; so a dozen draw calls at most cover the city.
 
-const TILE=250,GROUP=3,QUEUE_NEAR=42,LENS_REF=Math.tan(29*Math.PI/180);
+const TILE=250,GROUP=3,QUEUE_NEAR=42,PARK_FULL=450,LOD_NEAR=80,LENS_REF=Math.tan(29*Math.PI/180);
 // Sign atlas (1024 px square): the white corner the plain parts sample, the boards, banners and a bus's destination, the
 // cloth banner strung across a street (and its back, the print seen through the cloth), and a strip per named street
 // (512 x 56 from y 448, two to a row). [x0, y0, x1, y1] in pixels.
@@ -181,9 +182,9 @@ const PANTS=[0x2a3346,0x3b4a66,0x1c1d20,0x5b5246,0x7d7466,0x2f3a2c,0xc9b996];
 export async function createStreetClosures(data,{mobile=false,lean=false,ground=null,map=null}={}){
  const root=new THREE.Group();root.name='Bloqueios_ruas';const started=performance.now();
  const city=data.scenery?.city,list=city?.closures??[];
- const stats={closures:0,skipped:0,underDeck:0,pieces:0,flashers:0,signs:0,queueCars:0,buses:0,motos:0,parked:0,parkedNear:0,parkedDropped:0,people:0,tiles:0,meshes:0,trianglesNear:0,trianglesFar:0,drawCalls:0,visibleTriangles:0};
+ const stats={zoneClosures:0,closures:0,skipped:0,underDeck:0,pieces:0,flashers:0,signs:0,queueCars:0,buses:0,motos:0,parked:0,parkedNear:0,parkedDropped:0,people:0,tiles:0,meshes:0,trianglesNear:0,trianglesFar:0,drawCalls:0,visibleTriangles:0};
  if(!list.length||!ground)return {root,stats};
- const a=data.samples,N=a.length;
+ const a=data.samples,N=a.length,roam=!!data.meta.roam?.zones?.length,roamSolids=[];
  // ---- What must stay clear ----
  // The walls' corridor (asphalt, wall gap, the block and a metre: gerar_cidade_floripa.py's), from the nearest stretch of the lap.
  const CELL=24,grid=new Map(),cellOf=(x,y,c=CELL)=>Math.floor(x/c)+','+Math.floor(y/c);
@@ -194,7 +195,7 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
    const px=p[1]+dx*u,py=p[2]+dy*u,lat=(x-px)*p[9]+(y-py)*p[10],half=(p[4]+(q[4]-p[4])*u)/2+(lat>0?p[16]:p[15])+1;best=Math.min(best,Math.hypot(x-px,y-py)-half);}
   return best;};
  // Distance to the lap's centreline (coarse): which parked cars a player can see from the car.
- const FAR_CELL=160,farGrid=new Map();a.forEach((p,i)=>{if(i%3)return;const k=cellOf(p[1],p[2],FAR_CELL);if(!farGrid.has(k))farGrid.set(k,[]);farGrid.get(k).push(p);});
+ const FAR_CELL=460,farGrid=new Map();a.forEach((p,i)=>{if(i%3)return;const k=cellOf(p[1],p[2],FAR_CELL);if(!farGrid.has(k))farGrid.set(k,[]);farGrid.get(k).push(p);});
  const trackDistance=(x,y)=>{let best=Infinity;const cx=Math.floor(x/FAR_CELL),cy=Math.floor(y/FAR_CELL);for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(const p of farGrid.get((cx+i)+','+(cy+j))??[])best=Math.min(best,Math.hypot(x-p[1],y-p[2]));return best;};
  // The pit lane, the garages and the grandstands (track-clearance.js; the bridges' wide band is for the bay, not for the
  // streets under their viaducts), and the trackside furniture standing behind the walls.
@@ -205,6 +206,8 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
  const onBoard=(x,y,r)=>boards.some(b=>{const dx=x-b.x,dy=y-b.y,al=dx*b.tx+dy*b.ty;return Math.abs(al)<7.6+r&&Math.abs(dx*-b.ty+dy*b.tx)<1.2+r;});
  // (The pit lane is driven on: a metre and a half more of room from its asphalt.)
  const free=(x,y,r=0)=>{const b=bandClearance(bands,x,y);return b.distance>r+(b.band==='pit_lane'?1.8:.3)&&!posts.some(q=>Math.hypot(q.x-x,q.y-y)<q.r+r)&&!onBoard(x,y,r);};
+ // (A zone's edge across the avenue behind the grandstands, meta.roam: past their end, it closes the street all the same.)
+ const standsBand=bands.filter(b=>b.name!=='arquibancada'),freeOfStands=(x,y,r)=>bandClearance(standsBand,x,y).distance>r+.3&&!posts.some(q=>Math.hypot(q.x-x,q.y-y)<q.r+r)&&!onBoard(x,y,r);
  // Buildings: the cadastre's footprints (data.scenery.city.buildings rings) or the landscape's rectangles, and the landmarks'
  // outlines (the Rodoviária, the TICEN, the market...).
  const polys=[],BCELL=40,bgrid=new Map();
@@ -229,32 +232,51 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
    t.far={add:(tpl,f,o)=>t.group.batch.add(tpl,f,{...o,tile:t.id})};tiles.set(k,t);}
   return tiles.get(k);};
  const T=pieceTemplates(),names=[...new Set(list.map(c=>c.name).filter(Boolean))].slice(0,NAMES_MAX),atlas=drawAtlas(names);
- const material=cityMaterial(atlas),farMaterial=cityMaterial(atlas,{hide:true,uniforms:material.userData.uniforms});
+ // (Off the cheap levels the near meshes switch their cars between the full build and the box by the camera's distance.)
+ const lod=!mobile&&!lean,material=cityMaterial(atlas,{lod}),farMaterial=cityMaterial(atlas,{hide:true,uniforms:material.userData.uniforms});
  const signUv=Object.fromEntries(Object.entries(R).map(([k,r])=>[k,uvRect(r)])),nameUv=n=>{const k=names.indexOf(n);return k<0?null:uvRect(nameRect(k));};
  const clearings=[],skip=(why,ci)=>{stats.skipped++;(stats.skippedWhy[why]??=[]).push(ci);};stats.skippedWhy={};
+ // The queued vehicles [x, y, closure], for the checks (not enumerable: the stats print stays short).
+ const queued=[];Object.defineProperty(stats,'queued',{value:queued});
 
  // ---- The streets' centrelines: the queue follows the street it waits in ----
- const streets=city.streets??[];
+ // Its own street (the closure's OSM way, c.street; without one, the nearest street along the closure's heading), walked
+ // out from the line to the way's end and a few metres on at most; and stopped short of any other street as big as it or
+ // bigger, where the path would reach that street's carriageway: a queue never spills onto the avenue it waits to leave.
+ const streets=city.streets??[],SEG=24,sgrid=new Map();
+ const RANK={motorway:9,trunk:8,primary:7,secondary:6,tertiary:5,busway:5,unclassified:4,residential:4,living_street:3,service:2};
+ const rankOf=s=>(RANK[(s.kind??'').replace('_link','')]??3)-((s.kind??'').endsWith('_link')?.5:0);
+ streets.forEach((st,si)=>{const Q=st.points;for(let i=0;i<Q.length-1;i++){const x0=Math.min(Q[i][0],Q[i+1][0])-12,x1=Math.max(Q[i][0],Q[i+1][0])+12,y0=Math.min(Q[i][1],Q[i+1][1])-12,y1=Math.max(Q[i][1],Q[i+1][1])+12;
+  for(let gx=Math.floor(x0/SEG);gx<=Math.floor(x1/SEG);gx++)for(let gy=Math.floor(y0/SEG);gy<=Math.floor(y1/SEG);gy++){const k=gx+','+gy;if(!sgrid.has(k))sgrid.set(k,[]);sgrid.get(k).push(si,i);}}});
+ // On another street's carriageway (half its width and a little), that street ranking at least `rank`.
+ const onBigger=(x,y,own,rank)=>{const list=sgrid.get(cellOf(x,y,SEG));if(!list)return false;
+  for(let n=0;n<list.length;n+=2){const si=list[n];if(si===own)continue;const st=streets[si];if(rankOf(st)<rank)continue;const Q=st.points,i=list[n+1],dx=Q[i+1][0]-Q[i][0],dy=Q[i+1][1]-Q[i][1],l2=dx*dx+dy*dy||1e-9;
+   let u=((x-Q[i][0])*dx+(y-Q[i][1])*dy)/l2;u=u<0?0:u>1?1:u;if(Math.hypot(x-Q[i][0]-dx*u,y-Q[i][1]-dy*u)<(Q[i][2]+(Q[i+1][2]-Q[i][2])*u)/2+.6)return true;}
+  return false;};
  function streetPath(c){
-  let best=null;const hx=Math.cos(c.heading),hy=Math.sin(c.heading);
-  streets.forEach((s,si)=>{const Q=s.points;for(let i=0;i<Q.length-1;i++){
+  let best=null;const hx=Math.cos(c.heading),hy=Math.sin(c.heading),own=c.street!=null?streets.findIndex(st=>st.id===c.street):-1;
+  streets.forEach((st,si)=>{if(own>=0&&si!==own)return;const Q=st.points;for(let i=0;i<Q.length-1;i++){
    const dx=Q[i+1][0]-Q[i][0],dy=Q[i+1][1]-Q[i][1],l=Math.hypot(dx,dy);if(l<1e-6)continue;
-   let u=((c.x-Q[i][0])*dx+(c.y-Q[i][1])*dy)/(l*l);u=Math.max(0,Math.min(1,u));const d=Math.hypot(c.x-Q[i][0]-dx*u,c.y-Q[i][1]-dy*u);if(d>7)continue;
-   const al=(dx*hx+dy*hy)/l;if(Math.abs(al)<.7)continue;const score=d+(s.name===c.name?0:4);
+   let u=((c.x-Q[i][0])*dx+(c.y-Q[i][1])*dy)/(l*l);u=Math.max(0,Math.min(1,u));const d=Math.hypot(c.x-Q[i][0]-dx*u,c.y-Q[i][1]-dy*u);if(own<0&&d>7)continue;
+   const al=(dx*hx+dy*hy)/l;if(own<0&&Math.abs(al)<.7)continue;const score=d+(own<0&&st.name!==c.name?4:0);
    if(!best||score<best.score)best={score,si,i,u,dir:al>0?1:-1};}});
-  // Walking out from the closure: the street's points in that direction, past its end straight on.
-  const pts=[];let flow=null;
-  if(best){const s=streets[best.si],Q=s.points,{i,u,dir}=best;const at=(k)=>Q[k];
+  const pts=[];let flow=null,rank=2;
+  if(best){const st=streets[best.si],Q=st.points,{i,u,dir}=best;rank=rankOf(st);
    pts.push([Q[i][0]+(Q[i+1][0]-Q[i][0])*u,Q[i][1]+(Q[i+1][1]-Q[i][1])*u,Q[i][2]+(Q[i+1][2]-Q[i][2])*u]);
-   if(dir>0)for(let k=i+1;k<Q.length;k++)pts.push(at(k));else for(let k=i;k>=0;k--)pts.push(at(k));
-   // A one-way street runs in the order of its points (OpenStreetMap's way): walking out along it, the traffic goes away.
-   flow=s.oneway?-dir:0;}
+   if(dir>0)for(let k=i+1;k<Q.length;k++)pts.push(Q[k]);else for(let k=i;k>=0;k--)pts.push(Q[k]);
+   // A one-way street runs in the order of its points (OpenStreetMap's way): walking out along it, the traffic goes away
+   // (-1, gerar_cidade_floripa.py's flow) or comes to the line (+1).
+   flow=st.oneway?-dir:0;}
   else pts.push([c.x,c.y,c.width-.6]);
-  if(pts.length<2)pts.push([pts[0][0]+hx*100,pts[0][1]+hy*100,pts[0][2]]);
-  const last=pts.at(-1),prev=pts.at(-2),ex=last[0]-prev[0],ey=last[1]-prev[1],el=Math.hypot(ex,ey)||1;pts.push([last[0]+ex/el*120,last[1]+ey/el*120,last[2]]);
+  if(pts.length<2)pts.push([pts[0][0]+hx*20,pts[0][1]+hy*20,pts[0][2]]);
+  // Past the way's end a few metres straight on (its last point may stop short of the curb line), no more.
+  const last=pts.at(-1),prev=pts.at(-2),ex=last[0]-prev[0],ey=last[1]-prev[1],el=Math.hypot(ex,ey)||1;pts.push([last[0]+ex/el*3,last[1]+ey/el*3,last[2]]);
   const acc=[0];for(let k=1;k<pts.length;k++)acc.push(acc[k-1]+Math.hypot(pts[k][0]-pts[k-1][0],pts[k][1]-pts[k-1][1]));
-  return {flow,at(u){let k=1;while(k<pts.length-1&&acc[k]<u)k++;const p=pts[k-1],q=pts[k],f=Math.max(0,Math.min(1,(u-acc[k-1])/((acc[k]-acc[k-1])||1)));
-   return {x:p[0]+(q[0]-p[0])*f,y:p[1]+(q[1]-p[1])*f,w:p[2]+(q[2]-p[2])*f,h:Math.atan2(q[1]-p[1],q[0]-p[0])};}};
+  const at=u=>{let k=1;while(k<pts.length-1&&acc[k]<u)k++;const p=pts[k-1],q=pts[k],f=Math.max(0,Math.min(1,(u-acc[k-1])/((acc[k]-acc[k-1])||1)));
+   return {x:p[0]+(q[0]-p[0])*f,y:p[1]+(q[1]-p[1])*f,w:p[2]+(q[2]-p[2])*f,h:Math.atan2(q[1]-p[1],q[0]-p[0])};};
+  // Where the path first reaches a street as big as its own (past the first metres, the junction the line stands in).
+  let end=acc.at(-1);for(let u=4;u<end;u+=1){const q=at(u);if(onBigger(q.x,q.y,best?best.si:-1,rank)){end=u;break;}}
+  return {flow:c.flow??flow,end,at};
  }
 
  // ---- One closure ----
@@ -275,18 +297,18 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
   // Out along the street until the whole line (with a metre in front of it) is clear of the walls' corridor.
   let push=0;while(!crossing(c,P)&&push<14){push+=.5;ox+=ux*.5;oy+=uy*.5;if(push%2===0){c.left=scan(1);c.right=scan(-1);}}
   // (Skipped: a street the line cannot cross clear of the walls, one inside the pits or the grandstands, under a billboard.)
-  if(!crossing(c,P))return skip('walls',ci);if(!free(ox,oy,2))return skip(bandClearance(bands,ox,oy).distance<2.3?bandClearance(bands,ox,oy).band:'trackside',ci);
+  if(!crossing(c,P))return skip('walls',ci);if(!(c0.zone?freeOfStands(ox,oy,2):free(ox,oy,2)))return skip(bandClearance(bands,ox,oy).distance<2.3?bandClearance(bands,ox,oy).band:'trackside',ci);
   const g0=ground(ox,oy);if(g0==null)return skip('ground',ci);
   // The lap runs overhead here (a bridge's viaduct): the street is closed under it all the same.
   const near=a.reduce((b,p)=>Math.hypot(p[1]-ox,p[2]-oy)<Math.hypot(b[1]-ox,b[2]-oy)?p:b,a[0]),under=near[3]-g0>4;if(under)stats.underDeck++;
-  stats.closures++;
+  stats.closures++;if(c0.zone){stats.zoneClosures++;stats.zonePush=Math.max(stats.zonePush??0,push);}
   const tile=tileAt(ox,oy),room=c0.room-push,lanes=Math.max(1,c0.lanes|0),width=c.left.curb+c.right.curb;
   const big=(['trunk','primary','secondary','busway'].includes(c0.kind)&&(lanes>=3||width>=11)),small=!big&&(c0.kind==='service'||width<=5.2);
   let farthest=0;
   // Puts a piece at (u, v) of the closure, turned `turn` from the line's direction (its +y then faces the track), on the
   // ground; far: its far version (null: none).
   const put=(tpl,far,u,v,turn,opts={},{lift=0,pitch=0,roll=0,s=[1,1,1]}={})=>{const o={shade:.86+rand()*.14,...opts};
-   const [x,y]=P(u,v),z=ground(x,y);if(z==null||!free(x,y,.3)||corridor(x,y)<.3)return false;
+   const [x,y]=P(u,v),z=ground(x,y);if(z==null||!(c0.zone?freeOfStands(x,y,.3):free(x,y,.3))||corridor(x,y)<.3)return false;
    const f=frameAt(x,y,z+lift,H+Math.PI/2+turn,{pitch,roll,s});tile.near.add(tpl,f,o);if(far)tile.far.add(far,f,o);stats.pieces++;farthest=Math.max(farthest,u);take(x,y,.9);return true;};
   // ---- The barrier line ----
   const pair=rand()<.55?['orange','white']:rand()<.8?['red','white']:['orange','red'];
@@ -398,25 +420,25 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
   clearings.push({x:ox+ux*1.5,y:oy+uy*1.5,r:Math.max(cL,cR)+2.5});
   // ---- The traffic held back: a queue in each lane that runs toward the closure ----
   if(room<10)return;
-  const path=streetPath({...c0,x:ox,y:oy}),flow=path.flow;
-  if(flow===1)return;
+  const path=streetPath({...c0,x:ox,y:oy}),flow=path.flow,qEnd=Math.min(room,path.end-1.5);
+  if(flow===-1||qEnd<10)return;
   const cap=mobile?3:lean?5:8,lanesHere=[];
   {const w=Math.max(3,path.at(queueFrom).w);
-   if(flow===-1||(flow===null&&rand()<.5)){const n=Math.min(lanes,Math.max(1,Math.round(w/3.1)));for(let k=0;k<n;k++)lanesHere.push(-w/2+w/n*(k+.5));}
+   if(flow===1||(flow===null&&rand()<.5)){const n=Math.min(lanes,Math.max(1,Math.round(w/3.1)));for(let k=0;k<n;k++)lanesHere.push(-w/2+w/n*(k+.5));}
    else{const n=Math.max(1,Math.min(Math.floor(lanes/2)||1,Math.round(w/2/3.1)));for(let k=0;k<n;k++)lanesHere.push(w/2/n*(k+.5));}}
   // A city bus held in the outer lane of the avenues the lines run on, second or third in its queue.
   const busLane=(big||c0.kind==='primary'||c0.kind==='secondary')&&rand()<.55?lanesHere.length-1:-1,busAt=1+Math.floor(rand()*2);
   // Motoboys squeezed to the front between the lanes (or by the curb on a one-lane street).
   if(rand()<(lanesHere.length>1?.65:.3)){const n=1+Math.floor(rand()*(lanesHere.length>1?3:2));for(let k=0;k<n;k++){
-   const u=queueFrom-1.2+k*(1.5+rand()*.8),q=path.at(u),lv=lanesHere.length>1?(lanesHere[0]+lanesHere[1])/2:lanesHere[0]+1.1,x=q.x-Math.sin(q.h)*(lv+(rand()-.5)*.3),y=q.y+Math.cos(q.h)*(lv+(rand()-.5)*.3);
+   const u=queueFrom-1.2+k*(1.5+rand()*.8);if(u>qEnd)break;const q=path.at(u),lv=lanesHere.length>1?(lanesHere[0]+lanesHere[1])/2:lanesHere[0]+1.1,x=q.x-Math.sin(q.h)*(lv+(rand()-.5)*.3),y=q.y+Math.cos(q.h)*(lv+(rand()-.5)*.3);
    const d=surface(x,y);if(d&&d.road>-.3)continue;const f=carFrame('moto',x,y,q.h+Math.PI+(rand()-.5)*.25,ground);if(!f||isTaken(x,y,.6)||inBuilding(x,y))continue;
    const o={paint:lin([0xf2f2ef,0xc81d25,0x1d1f22,0xd8b21a,0x2a5aa8][Math.floor(rand()*5)]),rim:lin([0x1d1f24,0x2b3346,0x50555a,0xa8c43a,0x7a1d22][Math.floor(rand()*5)]),accent:lin([0xc81d25,0xf4f1ea,0x1d1f22,0xe07a1a][Math.floor(rand()*4)]),brake:rand()<.6};
-   tile.near.add(cityCarTemplate('moto'),f,o);tile.far.add(cityCarTemplate('moto',true),f,o);take(x,y,.7);stats.motos++;stats.queueCars++;}}
+   tile.near.add(cityCarTemplate('moto'),f,o);tile.far.add(cityCarTemplate('moto',true),f,o);take(x,y,.7);queued.push([x,y,ci]);stats.motos++;stats.queueCars++;}}
   lanesHere.forEach((lv,li)=>{
    let u=queueFrom+(lanesHere.length>1?rand()*3:0),count=0;
    while(count<cap){
     const type=li===busLane&&count===busAt?'bus':pickCarType(rand),L=CITY_CAR_SIZE[type].L*(1+(rand()-.5)*.06);
-    if(u+L>room)break;
+    if(u+L>qEnd)break;
     // In its lane, or a little to either side where the lane runs over a curb or into the car ahead; else a little further on.
     const q=path.at(u+L/2),lat=lv+(rand()-.5)*.35,W=CITY_CAR_SIZE[type].W/2;let x,y,ok=false;
     for(const shift of [0,-.5,.5,-1,1]){const off=lat+shift;x=q.x-Math.sin(q.h)*off;y=q.y+Math.cos(q.h)*off;
@@ -425,8 +447,10 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
     const f=ok&&carFrame(type,x,y,q.h+Math.PI+(rand()-.5)*.05,ground,{s:(z=>[z,z,z*(1+(rand()-.5)*.04)])(1+(rand()-.5)*.06),lift:(rand()-.5)*.03});
     if(!f){u+=1.5;continue;}
     const o={paint:type==='bus'?lin(0xf2f2ee):carPaint(rand),rim:rimColor(rand),accent:lin([0x1f5fb0,0x2f8a3c,0xe06a14,0xc8202a,0x6b3fa0][Math.floor(rand()*5)]),brake:rand()<.4,signA:rand()<.5?signUv.destino:signUv.destino2};
-    // (Down the street, past QUEUE_NEAR metres from the line, the far build: a box at that distance from the track.)
-    tile.near.add(cityCarTemplate(type,u>QUEUE_NEAR),f,o);tile.far.add(cityCarTemplate(type,true),f,o);stats.queueCars++;if(type==="bus")stats.buses++;
+    // (Down the street, past QUEUE_NEAR metres from the line, the box at a distance and the full build when the camera comes
+    // near: from the street's sidewalks; on the cheap levels the box.)
+    if(u<=QUEUE_NEAR)tile.near.add(cityCarTemplate(type),f,o);else if(lod)tile.near.add(cityCarTemplate(type),f,{...o,lod:1}).add(cityCarTemplate(type,true),f,{...o,lod:-1});else tile.near.add(cityCarTemplate(type,true),f,o);
+    tile.far.add(cityCarTemplate(type,true),f,o);queued.push([x,y,ci]);stats.queueCars++;if(type==="bus")stats.buses++;
     for(let k=-L/2+1.1;k<L/2;k+=1.6)take(x+Math.cos(q.h)*k,y+Math.sin(q.h)*k,1.1);count++;
     u+=L+(rand()<.12?3+rand()*4:.9+rand()*2.2);
    }
@@ -436,7 +460,7 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
 
  // ---- Parked cars along the curbs of the side streets ----
  {const pk=city.parked,cols=Object.fromEntries((pk?.columns??[]).map((k,i)=>[k,i])),cand=[];
-  const rand=random(2417),nearReach=mobile?0:lean?50:100;
+  const rand=random(2417),nearReach=mobile?0:lean?50:PARK_FULL;
   for(const it of pk?.items??[]){
    const x=it[cols.x],y=it[cols.y],h=it[cols.heading],dt=trackDistance(x,y);
    const type=rand()<.04?'van':pickCarType(rand),L=CITY_CAR_SIZE[type].L,W=CITY_CAR_SIZE[type].W,c=Math.cos(h),s=Math.sin(h);
@@ -453,15 +477,55 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
    const r=random(Math.round(p.x*97)^Math.round(p.y*61)),s=1+(r()-.5)*.06,lat=(r()-.5)*.16,x=p.x-Math.sin(p.h)*lat,y=p.y+Math.cos(p.h)*lat;
    const f=carFrame(p.type,x,y,p.h+(r()-.5)*.05,ground,{s:[s,s,s*(1+(r()-.5)*.04)],lift:(r()-.5)*.025});if(!f){stats.parkedDropped++;continue;}
    const tile=tileAt(x,y),o={paint:carPaint(r),rim:rimColor(r),lamps:false,shade:.92+r()*.1},nearOne=p.dt<nearReach;
-   tile.near.add(cityCarTemplate(p.type,!nearOne),f,o);tile.far.add(cityCarTemplate(p.type,true),f,o);stats.parked++;if(nearOne)stats.parkedNear++;
+   // Both builds (switched by the camera's distance, cityMaterial lod) within PARK_FULL of the lap; beyond, where only a
+   // high view sees them, and on the cheap levels, the box (lean: the full build within 50 m of the lap).
+   if(lod&&nearOne)tile.near.add(cityCarTemplate(p.type),f,{...o,lod:1}).add(cityCarTemplate(p.type,true),f,{...o,lod:-1});else tile.near.add(cityCarTemplate(p.type,!nearOne),f,o);
+   tile.far.add(cityCarTemplate(p.type,true),f,o);stats.parked++;if(nearOne)stats.parkedNear++;
+   if(roam)roamSolids.push({x,y,h:p.h,hu:CITY_CAR_SIZE[p.type].L*s/2,hv:CITY_CAR_SIZE[p.type].W*s/2});
   }
+ }
+ // ---- The zones of the city open to roam (meta.roam: physics.js RoamWorld) ----
+ // Where a zone's edge crosses open ground (a square, a lawn, a wide sidewalk: its `fences`, gerar_cidade_floripa.py) a
+ // line of galvanized crowd fences, each panel a little out of line, set 0.3 m out from the edge so the car stops at their
+ // feet; the closures across its streets are the ones above. The parked cars in a zone are solid for the car driving there.
+ if(roam){
+  const rand=random(5303);
+  for(const z of data.meta.roam.zones)for(const line of z.fences??[]){
+   const pts=[];for(let k=0;k+1<line.length;k+=2)pts.push([line[k],line[k+1]]);
+   const acc=[0];for(let k=1;k<pts.length;k++)acc.push(acc[k-1]+Math.hypot(pts[k][0]-pts[k-1][0],pts[k][1]-pts[k-1][1]));
+   const at=u=>{let k=1;while(k<pts.length-1&&acc[k]<u)k++;const [ax,ay]=pts[k-1],[bx,by]=pts[k],l=acc[k]-acc[k-1]||1,f=Math.max(0,Math.min(1,(u-acc[k-1])/l));return {x:ax+(bx-ax)*f,y:ay+(by-ay)*f,h:Math.atan2(by-ay,bx-ax)};};
+   let u=rand()*.2,k=0;
+   while(u<acc.at(-1)-.8){
+    const pick=T.gradil[Math.floor(rand()*T.gradil.length)],q=at(Math.min(u+pick.l/2,acc.at(-1))),out=.3+(rand()-.5)*.06,x=q.x+Math.sin(q.h)*out,y=q.y-Math.cos(q.h)*out,zz=ground(x,y);
+    if(zz!=null&&!inBuilding(x,y)){const tile=tileAt(x,y),f=frameAt(x,y,zz,q.h+(k%2?.05:-.05)+(rand()-.5)*.04),o={paint:lin(rand()<.08?0x9a8a74:0xffffff,.86+rand()*.16),shade:.88+rand()*.14};
+     tile.near.add(pick.near,f,o);tile.far.add(pick.far,f,o);stats.pieces++;stats.roamFences=(stats.roamFences??0)+1;}
+    u+=pick.l+.03+rand()*.1;k++;
+   }
+  }
+  // At each gap a DESVIO board on a tall stand just behind the wall's end before it, turned to the cars coming, its arrow
+  // into the side street: the way out to the city.
+  for(const z of data.meta.roam.zones)for(const g of z.gaps){
+   let lo=0,hi=N-1;const s=g.s0-2.5;while(lo<hi){const m=(lo+hi+1)>>1;if(a[m][0]<=s)lo=m;else hi=m-1;}
+   const p=a[lo],t=Math.hypot(p[7],p[8])||1,tx=p[7]/t,ty=p[8]/t,off=g.side*(p[4]/2+(g.side<0?p[15]:p[16])+.75+.7),x=p[1]-ty*off,y=p[2]+tx*off,zz=ground(x,y);
+   if(zz==null)continue;const f=frameAt(x,y,zz,Math.atan2(-ty,-tx)-Math.PI/2),o={signA:g.side>0?signUv.desvioL:signUv.desvioR,accent:lin(0xe8e4da)};
+   tileAt(x,y).near.add(T.standTall,f,o);tileAt(x,y).far.add(T.standTallFar,f,o);stats.signs++;stats.roamSigns=(stats.roamSigns??0)+1;roamSolids.push({x,y,r:.12});
+  }
+  // The race's own things behind the walls, where a zone takes in the sidewalk or the avenue behind them: the covered
+  // grandstands (track-clearance.js standLayout: from their parapet to the back of the roof), the boards' legs (as
+  // track-surface.js stands them, turned to the approaching driver), the marshals' shelters and the TV towers' scaffolds.
+  for(const b of standLayout(data)){const d0=b.front,d1=b.back+.6;roamSolids.push({x:b.x+b.rx*(d0+d1)/2,y:b.y+b.ry*(d0+d1)/2,h:Math.atan2(b.ty,b.tx),hu:b.length/2+.2,hv:(d1-d0)/2});}
+  for(const spot of billboardSpots(data)){const {p,side,x,y}=spot,f=billboardFormat(data,spot),t=Math.atan2(-p[7]*.8+p[8]*side*.6,p[8]*.8+p[7]*side*.6)+f.turn;
+   for(const u of f.legs)roamSolids.push({x:x+u*Math.cos(t),y:y+u*Math.sin(t),r:f.legs.length===1?.25:.13});}
+  for(const m of marshalSpots(data)){const yaw=Math.atan2(-m.side*m.p[7],m.side*m.p[8]);roamSolids.push({x:m.x-1.6*Math.cos(yaw),y:m.y-1.6*Math.sin(yaw),h:yaw,hu:1,hv:1.2});}
+  for(const t of towerSpots(data))roamSolids.push({x:t.x,y:t.y,h:0,hu:1,hv:1});
+  stats.roamSolids=addRoamSolids(data,roamSolids);
  }
 
  // ---- Meshes ----
  const people=stats.people?createPeople():null;
  const mesh=(geometry,mat,name,shadow,parent)=>{const m=new THREE.Mesh(geometry,mat);m.name=name;m.castShadow=shadow;m.receiveShadow=true;m.matrixAutoUpdate=false;m.updateMatrix();m.visible=false;parent.add(m);stats.meshes++;return m;};
  for(const t of tiles.values()){
-  if(t.near.items.length){t.mesh=mesh(t.near.geometry(WHITE_UV),material,'Bloqueios_perto_'+t.key,!mobile&&!lean,root);t.triangles=t.near.triangles;stats.trianglesNear+=t.triangles;}
+  if(t.near.items.length){t.mesh=mesh(t.near.geometry(WHITE_UV,false,lod),material,'Bloqueios_perto_'+t.key,!mobile&&!lean,root);t.triangles=t.near.triangles;stats.trianglesNear+=t.triangles;}
   if(people&&t.people.length){t.crowd=people.crowd(t.people,{name:'Pessoas_bloqueio_'+t.key,cell:4*TILE,seed:t.people.length*.37+t.box[0]*.001});if(t.crowd){t.crowd.visible=false;root.add(t.crowd);stats.crowds=(stats.crowds??0)+1;}}
   t.near=null;stats.tiles++;
  }
@@ -474,9 +538,12 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
  const boxDistance=([x0,y0,x1,y1],x,y)=>Math.hypot(Math.max(x0-x,0,x-x1),Math.max(y0-y,0,y-y1));
  function update(dt,camera){
   uniforms.cityTime.value=(uniforms.cityTime.value+dt)%3600;
+  // The cars' builds follow the eye every frame (the near meshes' lod), the tiles every third.
+  if(camera)uniforms.cityEye.value.setFromMatrixPosition(camera.matrixWorld);
   if(!camera||(tick=(tick+1)%3)&&dt>0)return;
   eye.setFromMatrixPosition(camera.matrixWorld);const ex=eye.x,ey=-eye.z;
   const zoom=camera.isPerspectiveCamera?Math.min(1,Math.tan(camera.fov*Math.PI/360)/(camera.zoom||1)/LENS_REF):1;
+  uniforms.cityLodDist.value=LOD_NEAR/zoom;
   for(const t of order)t.d=boxDistance(t.box,ex,ey)*zoom;
   order.sort((p,q)=>p.d-q.d);
   let calls=0,tris=0,n=0;hide.fill(-1);

@@ -78,6 +78,9 @@ import {createBeiraMar} from './beira-mar.js';
 import {loadCityMap} from './city-map.js';
 import {createCityBuildings} from './city-buildings.js';
 import {citySpectators} from './city-crowd.js';
+import {createCityLife} from './city-life.js';
+import {createCityTraffic} from './city-traffic.js';
+import {createCityRace} from './city-race.js';
 import {Explosions} from './explosion.js';
 import {trackPoint as podiumPoint} from './immersive-visuals.js';
 import {CinematicIntro} from './intro-cinematic.js';
@@ -519,7 +522,7 @@ function applyWeather(){
  // (new programs: compiled in slices when a race already shows), lit as the start decides (startLights) or H.
  TAIL_LIGHTS.on=weather.lights;setGlare(weather.lamps);playerLamps.setStrength(weather.lamps);
  floods?.setLevel(weather.night?1:weather.time==='fim_de_tarde'?.45:0);
- for(const extra of circuitExtras)extra.setNight?.(weather.night?1:weather.time==='fim_de_tarde'?.45:0);
+ for(const extra of circuitExtras){extra.setNight?.(weather.night?1:weather.time==='fim_de_tarde'?.45:0);extra.setRain?.(weather.wetness);}
  // At night the cars reflect the night sky only (car-reflections.js setSkyOnly): another map size, other programs.
  const programs=playerLamps.install(weather.lights)|carReflections.setSkyOnly(weather.night);
  if(programs&&ready)precompileGraphics();
@@ -1727,9 +1730,10 @@ document.addEventListener('keydown',e=>{
  if(e.code==='KeyG'&&(e.isTrusted||!immersive.onFoot()))toggleGhost();
 if(e.code==='KeyH')toggleHeadlights();
 if(e.code==='KeyJ')toggleWipers();
- // P pauses on the track (from the menu it resumes, as before); Escape opens the menu.
+ // P pauses on the track (from the menu it resumes, as before); Escape opens the menu and, pressed again there, goes back
+ // to the track (the team's request, 10-15).
  if(e.code==='KeyP'){if(held||!paused)hold(!held);else menu(false);}
- if(e.code==='Escape')menu(true);
+ if(e.code==='Escape'){if(paused&&!held)resumeRace();else menu(true);}
  if(automatic&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))takeWheel();
  // The arena's AI demonstration hands the car back at the first driving key (drift-arena-mode.js stopDemo).
  if(arenaMode?.demo&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))arenaMode.stopDemo('VOCÊ ASSUMIU O CARRO');
@@ -1982,14 +1986,16 @@ async function loadCircuit(){
   // streets blocked where they meet the walls (with the traffic held behind and the parked cars), the poles, wires,
   // traffic lights, bus stops and street signs, and the seafront promenades. The streets themselves are the ground's
   // (landscape.js LAND_CITY, from the city map).
-  if(cityMap){const city={mobile:scenery.mobile,lean:sceneryLevel==='basico',ground:groundAt,map:cityMap};circuitExtras.push(...await Promise.all([createCityBuildings(data,city),createCityStreets(data,city),createStreetClosures(data,city),createCityFurniture(data,city),createBeiraMar(data,city)]));}
+  if(cityMap){const city={mobile:scenery.mobile,lean:sceneryLevel==='basico',ground:groundAt,map:cityMap};circuitExtras.push(...await Promise.all([createCityBuildings(data,city),createCityStreets(data,city),createStreetClosures(data,city),createCityFurniture(data,city),createBeiraMar(data,city),createCityLife(data,city),createCityTraffic(data,city),createCityRace(data,city)]));}
   for(const extra of circuitExtras){scene.add(extra.root);if(extra.obstacles)cameraObstacles.push(...extra.obstacles);}
-  landscape=createLandscape({data,field:landscapeField,ground:(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y),cover:data.scenery.cover,buildings:data.scenery.city?.buildings?null:data.scenery.buildings,cityAngle:data.meta.city_angle??Math.PI/2,mobile:scenery.mobile,density:scenery.density,lod:scenery.lod,lean:sceneryLevel==='basico',style:'urban'});
+  landscape=createLandscape({data,field:landscapeField,ground:(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y),cover:data.scenery.cover,buildings:data.scenery.city?.buildings?null:data.scenery.buildings,city:cityMap,cityAngle:data.meta.city_angle??Math.PI/2,mobile:scenery.mobile,density:scenery.density,lod:scenery.lod,lean:sceneryLevel==='basico',style:'urban'});
   // The trees the land cover put where a landmark's yard or apron is (floripa-landmarks.js) go.
   for(const extra of circuitExtras)if(extra.clearings)landscape.clearAround(extra.clearings);
   const stands=createGrandstands(data,terrainTextures,(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y));scene.add(stands.root);fixed.push(stands.root);cameraObstacles.push(...stands.obstacles);standTops=stands.rows;
   // A city's own sidewalks fill with people behind the fences (city-crowd.js): standing fans, with the stands' in one draw.
   if(cityMap)standTops=[...standTops,...citySpectators(data,{map:cityMap,ground:groundAt,lean:sceneryLevel==='basico',mobile:scenery.mobile})];
+  // An extra's own rows of fans (temporary stands, balconies) sit with them, in the same draw.
+  for(const extra of circuitExtras)if(extra.standTops)standTops=[...standTops,...extra.standTops];
   Object.assign(landscape.stats,{ground:groundFit.stats,stands:stands.stats,circuit:open.stats,far:far?.stats,extras:Object.fromEntries(circuitExtras.map(e=>[e.root.name,e.stats]))});
  }else{
   const track=await loader.loadAsync('../exports/interlagos_pista.glb');let ortho=null;

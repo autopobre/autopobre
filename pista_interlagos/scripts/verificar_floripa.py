@@ -70,7 +70,7 @@ with sync_playwright() as p:
     sc = info['scenery']
     print(json.dumps({k: sc.get(k) for k in ('trees', 'houses', 'chunks', 'fans', 'circuit', 'ground')}, ensure_ascii=False), flush=True)
     extras = sc.get('extras') or {}
-    for nome in ('Predios_cidade', 'Pintura_cidade', 'Bloqueios_ruas', 'Mobiliario_urbano', 'Beira_mar', 'Pontes_Floripa', 'Marcos_Floripa', 'Mar'):
+    for nome in ('Predios_cidade', 'Pintura_cidade', 'Bloqueios_ruas', 'Mobiliario_urbano', 'Beira_mar', 'Vida_cidade', 'Transito_cidade', 'Corrida_na_cidade', 'Pontes_Floripa', 'Marcos_Floripa', 'Mar'):
         assert nome in extras and not extras[nome].get('stub'), (nome, list(extras))
     print(json.dumps({k: {q: v for q, v in extras[k].items() if not isinstance(v, (dict, list))} for k in extras}, ensure_ascii=False)[:3000], flush=True)
     foto(page, 'largada')

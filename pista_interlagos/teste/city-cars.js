@@ -254,15 +254,20 @@ export class CityBatch{
  constructor(){this.items=[];this.vertices=0;this.indices=0;}
  add(tpl,frame,o={}){this.items.push([tpl,frame,o]);this.vertices+=tpl.count;this.indices+=tpl.index.length;return this;}
  get triangles(){return this.indices/3;}
- geometry(whiteUv=[0,0],tiles=false){
-  const V=this.vertices,Tl=tiles?new Uint16Array(V):null,P=new Float32Array(V*3),N=new Int8Array(V*3),Cl=new Uint16Array(V*3),T=new Uint16Array(V*2),S=new Uint8Array(V*4),I=V>65535?new Uint32Array(this.indices):new Uint16Array(this.indices);
+ geometry(whiteUv=[0,0],tiles=false,lod=false){
+  const V=this.vertices,Tl=tiles?new Uint16Array(V):null,Ld=lod?new Float32Array(V*4):null,P=new Float32Array(V*3),N=new Int8Array(V*3),Cl=new Uint16Array(V*3),T=new Uint16Array(V*2),S=new Uint8Array(V*4),I=V>65535?new Uint32Array(this.indices):new Uint16Array(this.indices);
   const wu=Math.round(whiteUv[0]*65535),wv=Math.round(whiteUv[1]*65535);let v=0,k=0;
   for(const [t,f,o] of this.items){
    const {o:O,x:ax,y:ay,z:az,n:[nx,ny,nz]}=f,paint=o.paint??C.white,rim=o.rim??C.white,acc=o.accent??C.white,shade=o.shade??1,regions={2:o.signA,3:o.signB,7:o.signC},phase=o.phase??0;
    if(Tl)Tl.fill(o.tile??0,v,v+t.count);
+   // The copy's anchor (its frame's origin) and its own draw for where it switches, the same numbers on every vertex of it:
+   // one decision for the whole car. (Stored as offsets from each vertex they differed by rounding, and a car longer than the
+   // offsets' reach split: some of its vertices folded away, the others stretched out to them across the screen.)
+   const anchor=Ld&&o.lod?[O[0],O[2],-O[1],o.lod*(1+.999*((Math.sin(k*12.9898+v*.0001)*43758.5453)%1+1)%1)]:null;
    for(let i=0;i<t.count;i++){
     const p0=t.pos[i*3],p1=t.pos[i*3+1],p2=t.pos[i*3+2],q=v*3;
     const X=O[0]+p0*ax[0]+p1*ay[0]+p2*az[0],Y=O[1]+p0*ax[1]+p1*ay[1]+p2*az[1],Z=O[2]+p0*ax[2]+p1*ay[2]+p2*az[2];P[q]=X;P[q+1]=Z;P[q+2]=-Y;
+    if(anchor)Ld.set(anchor,v*4);
     const m0=t.nor[i*3],m1=t.nor[i*3+1],m2=t.nor[i*3+2],a=m0*nx[0]+m1*ny[0]+m2*nz[0],b=m0*nx[1]+m1*ny[1]+m2*nz[1],c=m0*nx[2]+m1*ny[2]+m2*nz[2];
     N[q]=Math.round(a*127);N[q+1]=Math.round(c*127);N[q+2]=Math.round(-b*127);
     const role=t.role[i],kind=t.surf[i*4+2],lit=kind>0,tint=role===1?paint:role===4?rim:role===5?acc:null,sh=lit?1:shade;
@@ -276,7 +281,7 @@ export class CityBatch{
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.BufferAttribute(P,3));g.setAttribute('normal',new THREE.BufferAttribute(N,3,true));g.setAttribute('color',new THREE.BufferAttribute(Cl,3,true));
-  g.setAttribute('uv',new THREE.BufferAttribute(T,2,true));g.setAttribute('surf',new THREE.BufferAttribute(S,4,true));if(Tl)g.setAttribute('cityTile',new THREE.BufferAttribute(Tl,1));g.setIndex(new THREE.BufferAttribute(I,1));g.computeBoundingSphere();g.computeBoundingBox();
+  g.setAttribute('uv',new THREE.BufferAttribute(T,2,true));g.setAttribute('surf',new THREE.BufferAttribute(S,4,true));if(Tl)g.setAttribute('cityTile',new THREE.BufferAttribute(Tl,1));if(Ld)g.setAttribute('cityLod',new THREE.BufferAttribute(Ld,4));g.setIndex(new THREE.BufferAttribute(I,1));g.computeBoundingSphere();g.computeBoundingBox();
   return g;
  }
 }
@@ -285,14 +290,19 @@ export class CityBatch{
 // sign point at a white corner of it), each vertex's own roughness and metalness, and its lamp: flashers blinking each on
 // its own clock, headlamps and tail lamps lit at night, brake lamps and lit signs always. setTime/setNight drive it.
 // hide: a far batch's material (geometry(whiteUv, true)): its copies of the tiles listed in userData.hide (their numbers,
-// -1 for none) collapse out of view, those tiles being drawn near.
-export function cityMaterial(map=null,{hide=false,uniforms=null}={}){
- uniforms??={cityTime:{value:0},cityNight:{value:0}};
+// -1 for none) collapse out of view, those tiles being drawn near. lod: a near batch's material (geometry(whiteUv, false,
+// true)) whose cars come in two builds: the full one within cityLodDist of cityEye (the main camera, set by the caller;
+// each car a few metres either way of it, so a street of them never switches at once), the box beyond.
+export function cityMaterial(map=null,{hide=false,lod=false,uniforms=null}={}){
+ uniforms??={cityTime:{value:0},cityNight:{value:0},cityEye:{value:new THREE.Vector3(0,1e5,0)},cityLodDist:{value:80}};
  const hidden={value:new Float32Array(8).fill(-1)};
  const m=new THREE.MeshStandardMaterial({name:hide?'Cidade_veiculos_bloqueios_longe':'Cidade_veiculos_bloqueios',vertexColors:true,map,roughness:1,metalness:0});
  m.onBeforeCompile=shader=>{
   Object.assign(shader.uniforms,uniforms);if(hide)shader.uniforms.cityHide=hidden;
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute vec4 surf;varying vec4 vSurf;'+(hide?'attribute float cityTile;uniform float cityHide[8];':'')).replace('#include <begin_vertex>','#include <begin_vertex>\nvSurf=surf;');
+  if(lod)shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute vec4 cityLod;uniform vec3 cityEye;uniform float cityLodDist;').replace('#include <project_vertex>',`#include <project_vertex>
+if(cityLod.w!=0.){vec3 anchor=(modelMatrix*vec4(cityLod.xyz,1.)).xyz;float d=distance(anchor,cityEye)+(fract(abs(cityLod.w))-.5)*8.;
+ if((cityLod.w>0.)!=(d<cityLodDist))gl_Position=vec4(0.,0.,-2.,1.);}`);
   if(hide)shader.vertexShader=shader.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\nfor(int i=0;i<8;i++)if(abs(cityTile-cityHide[i])<.5)gl_Position=vec4(0.,0.,-2.,1.);');
   shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec4 vSurf;uniform float cityTime,cityNight;')
    .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=vSurf.x;')
@@ -307,7 +317,7 @@ else if(kind==4.)glow=cityNight*2.4;
 else if(kind==5.)glow=1.4+1.6*cityNight;
 totalEmissiveRadiance+=vColor.rgb*glow;}`);
  };
- m.customProgramCacheKey=()=>'city-vehicles-closures-v1'+(hide?'-far':'');
+ m.customProgramCacheKey=()=>'city-vehicles-closures-v1'+(hide?'-far':'')+(lod?'-lod':'');
  m.userData.uniforms=uniforms;m.userData.hide=hidden.value;
  return m;
 }

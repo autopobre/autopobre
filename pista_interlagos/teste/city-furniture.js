@@ -5,7 +5,7 @@ import {billboardSpots} from './track-surface.js';
 import {marshalSpots,towerSpots} from './trackside.js';
 import {flagSpots} from './trackside-flags.js';
 import {SPONSORS,BOARD_LINES} from './sponsors.js';
-import {TestCar} from './physics.js';
+import {TestCar,addRoamSolids} from './physics.js';
 
 // The street furniture of a real city closed for a race (Floripa, data.scenery.city, gerar_cidade_floripa.py): what makes
 // Florianópolis' centre and the Estreito read as a Brazilian city from the car and from above. Concrete utility poles
@@ -495,6 +495,9 @@ totalEmissiveRadiance+=diffuseColor.rgb*vLook.y*glowOn;`);
  return m;
 }
 
+// Where this module put its things (the Occupancy of discs), per track data: the city's walkers keep off every bin, kiosk
+// and rack (city-life.js, built after this one).
+export const FURNITURE_SPOTS=new WeakMap();
 export async function createCityFurniture(data,{mobile=false,lean=false,ground=null,map=null}={}){
  const root=new THREE.Group();root.name='Mobiliario_urbano';root.userData.noReflection=true;
  const city=data.scenery?.city;if(!city)return {root,stats:{}};
@@ -502,7 +505,7 @@ export async function createCityFurniture(data,{mobile=false,lean=false,ground=n
  const cols=t=>Object.fromEntries(t.columns.map((k,i)=>[k,i]));
  const gz=(x,y)=>{const z=ground?.(x,y);return Number.isFinite(z)?z:null;};
  const surface=(x,y)=>map?map.at(x,y):null;
- const clearance=clearanceIndex(data),buildings=buildingIndex(data),occ=new Occupancy(6);
+ const clearance=clearanceIndex(data),buildings=buildingIndex(data),occ=new Occupancy(6),solids=[];
  const skipped={poleRace:0,poleGround:0,plateSpot:0,plateGround:0,approach:0,shelter:0},where={};
  const stats={skipped,where,poles:0,trackPoles:0,lapPoles:0,spans:0,cables:0,drops:0,transformers:0,signals:0,signalPosts:0,signalHeads:0,trackSignals:0,shelters:0,trackShelters:0,busSigns:0,plates:0,
   bins:0,hydrants:0,bollards:0,parkingSigns:0,bikeRacks:0,benches:0,kiosks:0,orelhoes:0,chunks:0,meshes:0,triangles:0,vertices:0,shown:0,mobile,lean};
@@ -555,15 +558,16 @@ export async function createCityFurniture(data,{mobile=false,lean=false,ground=n
   const z=gz(x,y);if(z===null){skipped.poleGround++;return;}
   const R=random(7001+k*7919),st=degree[k]?styleOf(k):{pri:'none',sec:'multi',tel:light?0:Math.floor(R()*2),arm:'wood',ins:'polymer'};
   const K=kit('big',x,y);slots[k]=utilityPole(K,{x,y,z,h},st,R,fine);if(slots[k].trafo)stats.transformers++;
-  occ.add(x,y,.6);stats.poles++;if(track)stats.trackPoles++;note(track?'trackPole':'pole',x,y,[h]);
+  occ.add(x,y,.6);stats.poles++;if(track)stats.trackPoles++;note(track?'trackPole':'pole',x,y,[h]);solids.push({x,y,r:.16});
  });
  // The lap's own streets have their lines too: poles on its sidewalks behind the walls every 32-40 m where there is
  // room, on one side or both by stretch, joined into lines; none on the bridges, the seafront or by the data's own.
- const lapWires=[],dataLap=items.filter(it=>it[PC.track]).map(it=>[it[PC.x],it[PC.y]]);
+ const lapWires=[],dataLap=items.filter(it=>it[PC.track]).map(it=>[it[PC.x],it[PC.y]]),roamGaps=(data.meta.roam?.zones??[]).flatMap(z=>z.gaps);
  if(map)for(const side of [-1,1]){
   let prev=null,st=null,misses=0;const RL=random(side>0?8123:9157);
   for(let s=6+RL()*10;s<L-4;){
-   const i=station(s),p=A[i],want=random(Math.floor(s/240)*131+(side+1)*7)()<.62;let placed=null;
+   // (Not in the mouth of a side street opened to roam the city: meta.roam's gaps in the walls.)
+   const i=station(s),p=A[i],want=random(Math.floor(s/240)*131+(side+1)*7)()<.62&&!roamGaps.some(g=>g.side===side&&s>g.s0-5&&s<g.s1+5);let placed=null;
    if(want){const tl=Math.hypot(p[7],p[8]),tx=p[7]/tl,ty=p[8]/tl,lx=-ty*side,ly=tx*side,gap=side<0?p[15]:p[16],d0=p[4]/2+(Number.isFinite(gap)?gap:.6)+.75+.85;
     // Off the road and the cycleway (sidewalk, lawn or square), behind the wall's back, clear of what stands there.
     for(let d=d0;d<d0+3&&!placed;d+=.25){const x=p[1]+lx*d,y=p[2]+ly*d,q=surface(x,y);if(!q||q.road<.25||q.cycleway<.05)continue;
@@ -572,7 +576,7 @@ export async function createCityFurniture(data,{mobile=false,lean=false,ground=n
    if(!placed){if(++misses>3){prev=null;misses=0;}s+=4;continue;}
    if(!prev)st={...styleOf(-1-Math.floor(s)),pri:RL()<.55?'cross':RL()<.7?'compact':'none'};
    const k=slots.length,R=random(5003+k*7919);slots.push(utilityPole(kit('big',placed.x,placed.y),placed,st,R,fine));if(slots[k].trafo)stats.transformers++;
-   occ.add(placed.x,placed.y,.6);stats.poles++;stats.lapPoles++;note('lapPole',placed.x,placed.y,[placed.h]);
+   occ.add(placed.x,placed.y,.6);stats.poles++;stats.lapPoles++;note('lapPole',placed.x,placed.y,[placed.h]);solids.push({x:placed.x,y:placed.y,r:.16});
    if(prev!==null&&Math.hypot(slots[prev].at[0]-placed.x,slots[prev].at[1]-placed.y)<50)lapWires.push([prev,k]);
    prev=k;misses=0;s+=32+RL()*8;
   }
@@ -618,7 +622,7 @@ export async function createCityFurniture(data,{mobile=false,lean=false,ground=n
    const wide=w>=10&&R()<.88,target=it[SC.oneway]?w*.1:w*.25,arm=wide?Math.max(2.6,Math.min(8,spot.lat-target)):0;
    const heads=wide?(w>=15?[arm*.5,arm*.92]:[arm*.88]):[];
    signalPost(kit('big',spot.x,spot.y),{x:spot.x,y:spot.y,z,dir:[-rx,-ry],face:[-tx,-ty],arm,zArm:6.05+R()*.4,at:heads,repeat:wide&&R()<.7,beat,ped:fine&&R()<.45?[-rx,-ry]:null},R,fine);
-   occ.add(spot.x,spot.y,.6);stats.signalPosts++;note('signal',spot.x,spot.y,[-tx,-ty,w,-rx,-ry]);stats.signalHeads+=(heads.length||1);
+   occ.add(spot.x,spot.y,.6);solids.push({x:spot.x,y:spot.y,r:.1});stats.signalPosts++;note('signal',spot.x,spot.y,[-tx,-ty,w,-rx,-ry]);stats.signalHeads+=(heads.length||1);
   }
  });
  // On the lap: where the real street has its lights, a post behind the wall and its arm over the race track, the head
@@ -631,7 +635,7 @@ export async function createCityFurniture(data,{mobile=false,lean=false,ground=n
    if(!spot)continue;const z=gz(spot.x,spot.y);if(z===null)continue;const zArm=p[3]+7.05-z;if(zArm<4.5||zArm>11)continue;
    const arm=Math.max(3,spot.d-p[4]*.24),heads=p[4]>=12?[arm*.62,arm*.97]:[arm*.95];
    signalPost(kit('big',spot.x,spot.y),{x:spot.x,y:spot.y,z,dir:[-lx,-ly],face:[-tx,-ty],arm,zArm,at:heads,repeat:true,beat,ped:fine&&R()<.6?[-lx,-ly]:null},R,fine);
-   occ.add(spot.x,spot.y,.7);clearings.push({x:spot.x,y:spot.y,r:2.5});stats.trackSignals++;note('trackSignal',spot.x,spot.y,[i]);stats.signalPosts++;stats.signalHeads+=heads.length+1;done=true;break;
+   occ.add(spot.x,spot.y,.7);solids.push({x:spot.x,y:spot.y,r:.12});clearings.push({x:spot.x,y:spot.y,r:2.5});stats.trackSignals++;note('trackSignal',spot.x,spot.y,[i]);stats.signalPosts++;stats.signalHeads+=heads.length+1;done=true;break;
   }}
  }
 
@@ -655,7 +659,7 @@ export async function createCityFurniture(data,{mobile=false,lean=false,ground=n
     // The stop's sign by the curb, ahead of the shelter (or behind it).
     for(const e of [-1,1]){const sx=ox+e*ax*(Lh+.9)+bx*(back-.45),sy=oy+e*ay*(Lh+.9)+by*(back-.45);
      if(sidewalk(sx,sy)&&occ.free(sx,sy,.4)&&raceClear(sx,sy,.2)&&!buildings.inside(sx,sy,.2)){busSign(kit('small',sx,sy),sx,sy,gz(sx,sy)??z,[-ax,-ay]);occ.add(sx,sy,.4);stats.busSigns++;break;}}
-    for(const [px,py] of pts)occ.add(px,py,.5);clearings.push({x:ox+bx*D/2,y:oy+by*D/2,r:3.2});note('shelter',ox,oy,[ax,ay,bx,by]);
+    for(const [px,py] of pts)occ.add(px,py,.5);clearings.push({x:ox+bx*D/2,y:oy+by*D/2,r:3.2});note('shelter',ox,oy,[ax,ay,bx,by]);solids.push({x:ox+bx*D/2,y:oy+by*D/2,h:Math.atan2(ay,ax),hu:Lh,hv:D/2+.05});
     return true;
    }
   }
@@ -720,10 +724,10 @@ export async function createCityFurniture(data,{mobile=false,lean=false,ground=n
      // A kiosk or a phone shell on a wide sidewalk, far enough from the others of its kind.
      const ox=x+nx*1.9,oy=y+ny*1.9;
      if(kioskCount<6&&kioskSpots.every(p=>Math.hypot(p[0]-ox,p[1]-oy)>140)&&placeable(ox,oy,2.4)&&[[-1.5,0],[1.5,0],[-1.5,1.9],[1.5,1.9]].every(([a,b])=>sidewalk(ox+q.dx*a-nx*b,oy+q.dy*a-ny*b))){
-      const z=gz(ox,oy);if(z!==null){kiosk(kit('big',ox,oy),frame(ox,oy,z,Math.atan2(q.dy,q.dx)+(side>0?Math.PI:0)),random(kioskCount*71+3),kioskCount);take(ox,oy,2.6);kioskSpots.push([ox,oy]);note('kiosk',ox,oy,[-nx,-ny]);clearings.push({x:ox,y:oy,r:3.5});kioskCount++;stats.kiosks++;continue;}
+      const z=gz(ox,oy);if(z!==null){kiosk(kit('big',ox,oy),frame(ox,oy,z,Math.atan2(q.dy,q.dx)+(side>0?Math.PI:0)),random(kioskCount*71+3),kioskCount);take(ox,oy,2.6);kioskSpots.push([ox,oy]);note('kiosk',ox,oy,[-nx,-ny]);{const h=Math.atan2(q.dy,q.dx)+(side>0?Math.PI:0);solids.push({x:ox-Math.sin(h)*.95,y:oy+Math.cos(h)*.95,h,hu:1.5,hv:1});}clearings.push({x:ox,y:oy,r:3.5});kioskCount++;stats.kiosks++;continue;}
      }
      if(orelhaoCount<5&&orelhaoSpots.every(p=>Math.hypot(p[0]-x,p[1]-y)>160)&&placeable(x+nx*.35,y+ny*.35,.9)){
-      const z=gz(x,y);if(z!==null){const ox=x+nx*.35,oy=y+ny*.35;orelhao(kit('small',ox,oy),frame(ox,oy,z,Math.atan2(-ny,-nx)-Math.PI/2),random(orelhaoCount*17+5));take(ox,oy,1);orelhaoSpots.push([x,y]);note('orelhao',ox,oy,[-nx,-ny]);orelhaoCount++;stats.orelhoes++;continue;}
+      const z=gz(x,y);if(z!==null){const ox=x+nx*.35,oy=y+ny*.35;orelhao(kit('small',ox,oy),frame(ox,oy,z,Math.atan2(-ny,-nx)-Math.PI/2),random(orelhaoCount*17+5));take(ox,oy,1);solids.push({x:ox,y:oy,r:.45});orelhaoSpots.push([x,y]);note('orelhao',ox,oy,[-nx,-ny]);orelhaoCount++;stats.orelhoes++;continue;}
      }
     }
     if(!type||!placeable(x,y,type==='rack'?1.6:.5))continue;
@@ -739,7 +743,7 @@ export async function createCityFurniture(data,{mobile=false,lean=false,ground=n
   for(const end of [-1,1])for(const along of [-1,1]){if(Q()<.4)continue;
    for(let j=0;j<2+Math.floor(Q()*3);j++){const a=along*(2.6+j*1.25),bx=x+nx*end*(w/2+.45)+tx*a,by=y+ny*end*(w/2+.45)+ty*a,d=surface(bx,by);
     if(!d||d.road<.3||d.road>.8||!(d.sidewalk<-.05||d.plaza<-.05))break;if(!occ.free(bx,by,.25)||!raceClear(bx,by,.2)||buildings.inside(bx,by,.2))break;
-    const z=gz(bx,by);if(z===null)break;bollard(kit('small',bx,by),frame(bx,by,z,h),Q,kind);occ.add(bx,by,.25);stats.bollards++;note('bollard',bx,by,[-nx*end,-ny*end]);}}
+    const z=gz(bx,by);if(z===null)break;bollard(kit('small',bx,by),frame(bx,by,z,h),Q,kind);occ.add(bx,by,.25);solids.push({x:bx,y:by,r:.12});stats.bollards++;note('bollard',bx,by,[-nx*end,-ny*end]);}}
  });
  // Behind the lap's walls the city goes on: bins, hydrants, signs and a bike rack on its sidewalks, seen from the race.
  for(let s=R()*20;s<L;s+=(light?60:22)+R()*(light?60:30)){
@@ -758,7 +762,7 @@ export async function createCityFurniture(data,{mobile=false,lean=false,ground=n
    if(Q()>.4||!placeable(x,y,1.4)||nearestSample(x,y).d<12)continue;const z=gz(x,y);if(z===null)continue;
    // Its back to the nearest edge of the square, more or less.
    const e=.8,gx=map.distance(plaza?'plaza':'green',x+e,y)-map.distance(plaza?'plaza':'green',x-e,y),gy=map.distance(plaza?'plaza':'green',x,y+e)-map.distance(plaza?'plaza':'green',x,y-e),h=Math.atan2(gy,gx)+Math.PI/2+(Q()-.5)*.3;
-   bench(kit('small',x,y),frame(x,y,z,h),Q);take(x,y,1.4);stats.benches++;note('bench',x,y);
+   bench(kit('small',x,y),frame(x,y,z,h),Q);take(x,y,1.4);solids.push({x,y,h,hu:.9,hv:.3});stats.benches++;note('bench',x,y);
   }}
 
  // --- The meshes.
@@ -800,6 +804,10 @@ export async function createCityFurniture(data,{mobile=false,lean=false,ground=n
  }
  root.matrixAutoUpdate=false;
  const frustum=new THREE.Frustum(),view=new THREE.Matrix4();
+ FURNITURE_SPOTS.set(data,occ);
+ // In a zone of the city open to roam (meta.roam, physics.js RoamWorld) the poles, posts, shelters, kiosks, phones,
+ // bollards and benches are solid (those away from every zone are left out there).
+ if(data.meta.roam)stats.roamSolids=addRoamSolids(data,solids);
  return {root,stats,clearings,obstacles:[],
   update(dt,camera){
    uniforms.uTime.value+=dt;uniforms.uPixel.value=2/Math.max(240,innerHeight*Math.min(devicePixelRatio||1,mobile?1:1.5));

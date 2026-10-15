@@ -32,11 +32,19 @@ export const ROAD_WEATHER={roadWetness:{value:0},roadRain:{value:0},roadTime:{va
 // along the track up to 150 m. A slot with no clear place gets no board (slot keeps the
 // artwork alternating). It stands 5 m behind the guardrail line, further where its own build
 // (billboardFormat: the 14.4 m one, or any on a bend) would reach over a rail toward the cars.
+const boardCache=new WeakMap();
+// (Pure in the track data, asked for by many modules: worked out once per data.)
 export function billboardSpots(data){
+ if(!boardCache.has(data))boardCache.set(data,findBillboardSpots(data));
+ return boardCache.get(data);
+}
+function findBillboardSpots(data){
  const length=data.meta.reconstructed_xy_m,bands=sceneryBands(data),spots=[],shifts=[0];
  // In a real city (Floripa) a board never stands in the mouth of a side street closed for the race (data.scenery.city
  // closures, street-closures.js): the closure is the view there.
  const closures=data.scenery?.city?.closures??[];
+ // Nor in the mouth of a side street opened to roam the city (meta.roam's gaps in the walls): the way out stays clear.
+ const gaps=(data.meta.roam?.zones??[]).flatMap(z=>z.gaps);
  // A street circuit (Floripa) looks further: its line is on a bridge, and the city leaves few gaps behind the walls (and
  // the Minhocão's 1.3 km on its deck and in its tunnel have none).
  for(let d=12;d<=(data.meta.street?900:150);d+=12)shifts.push(d,-d);
@@ -48,7 +56,7 @@ export function billboardSpots(data){
    const near=p[4]/2+guardrailClearance(data,p[0],side)+(data.meta.street?6.4:5),reach=boardReach(data,index,side,f,near);if(!(reach<BOARD_REACH))continue;
    const offset=side*(near+reach),x=p[1]-p[8]*offset,y=p[2]+p[7]*offset;
    const clearance=bandClearance(bands,x,y).distance;
-   if(clearance>BOARD_CLEARANCE&&spots.every(b=>Math.hypot(b.x-x,b.y-y)>25)&&closures.every(c=>Math.hypot(c.x-x,c.y-y)>f.w/2+6)){spots.push({slot,index,p,side,x,y,clearance});break search;}
+   if(clearance>BOARD_CLEARANCE&&spots.every(b=>Math.hypot(b.x-x,b.y-y)>25)&&closures.every(c=>Math.hypot(c.x-x,c.y-y)>f.w/2+6)&&gaps.every(g=>g.side!==side||s<g.s0-f.w/2-8||s>g.s1+f.w/2+8)){spots.push({slot,index,p,side,x,y,clearance});break search;}
   }
  }
  return spots;

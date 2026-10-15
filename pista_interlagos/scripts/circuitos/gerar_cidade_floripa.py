@@ -14,7 +14,9 @@ este script acrescenta `scenery.city` e grava dados/pista_floripa.json:
 - as vias (eixo, largura, faixas, mao unica) para as pinturas de faixa, e as faixas da propria pista;
 - faixas de pedestre, semaforos e pontos de onibus (nos do OSM), placas de rua nas esquinas;
 - os bloqueios: onde cada rua de verdade encontra os muros da pista, uma linha de barreiras atravessada nela;
-- postes com fiacao, arvores de calcada e de praca, carros estacionados, a linha da costa (enrocamento, palmeiras).
+- postes com fiacao, arvores de calcada e de praca, carros estacionados, a linha da costa (enrocamento, palmeiras);
+- as zonas de passeio (meta.roam, PASSEIO): aberturas nos muros (meta.rails) para pedacos da cidade onde o carro pode
+  rodar no treino, com bloqueios e gradis na borda (physics.js RoamWorld).
 
 Tudo em coordenadas locais (x leste, y norte, m), como o resto do arquivo.
 """
@@ -56,6 +58,22 @@ EXPRESSA = {'motorway', 'motorway_link', 'trunk', 'trunk_link', 'busway'}
 ESTACIONA = {'secondary', 'tertiary', 'residential', 'unclassified', 'living_street'}
 PEDESTRE = {'footway': 2.0, 'pedestrian': 4.0, 'path': 1.6, 'steps': 2.4, 'corridor': 2.0}
 COSTA_CALCADAO = 20.0     # m de terra junto a linha da costa que viram calcadao (fora do leito e dos predios)
+# Zonas de passeio (pedido da equipe, 15/10/2026: "tem muita cidade e o jogo nao deixa o carro sair da pista; precisa de
+# uns pontos onde da para sair e passear pelo mapa, com um limite, nas areas mais detalhadas"). Em cada uma, onde uma rua de
+# verdade encontra os muros (`lado` da volta, procurada no trecho `janela` de s), o muro se abre na largura do leito; dali o
+# carro anda por um pedaco da cidade: o anel (`area`, contorno grosso tracado por dentro das quadras, cortado pelo mar e
+# pela faixa da corrida), fechado por bloqueios nas ruas que cruzam a sua borda (street-closures.js) e por gradis onde a
+# borda passa por praca, gramado ou terreno aberto. A fisica (physics.js, meta.roam) usa o anel como limite, os predios
+# como paredes e o muro pelo lado de fora. Aberturas longe das zonas de freada e das curvas rapidas: os rivais seguem a
+# linha deles e nunca entram (testar_circuitos_abertos.mjs floripa).
+PASSEIO = [
+    {'name': 'centro', 'label': 'Centro', 'lado': 1, 'janela': (1244, 1266),
+     'area': [676, -100, 678, -26, 640, 12, 600, 96, 590, 112, 640, 170, 706, 214, 800, 205, 842, 120, 846, 20, 818, -100]},
+    {'name': 'aterro', 'label': 'Aterro · Parque Náutico', 'lado': -1, 'janela': (879, 914),
+     'area': [400, 82, 340, 102, 272, 68, 222, 0, 222, -228, 336, -228, 426, -120, 442, -40, 408, 12]},
+    {'name': 'estreito', 'label': 'Estreito', 'lado': -1, 'janela': (3590, 3645),
+     'area': [-990, 95, -945, 165, -880, 198, -790, 178, -696, 150, -688, 40, -748, -62, -852, -68, -945, -60, -990, 0]},
+]
 
 
 def log(*a):
@@ -615,7 +633,7 @@ class Cidade:
                 hd = math.atan2(tv[1], tv[0])
                 lado = 1 if ((x - self.A[j, 1]) * self.A[j, 9] + (y - self.A[j, 2]) * self.A[j, 10]) > 0 else -1
                 out.append({'x': round(x, 2), 'y': round(y, 2), 'heading': round(hd, 3), 'width': round(w + .6, 2), 's': round(float(self.A[j, 0]), 1),
-                            'side': lado, 'name': r['nome'], 'kind': r['hw'], 'lanes': r['faixas'], 'oneway': r['mao'],
+                            'side': lado, 'name': r['nome'], 'kind': r['hw'], 'lanes': r['faixas'], 'oneway': r['mao'], 'street': r['id'],
                             # Mao unica: o transito vem para a pista (+1, a via do OSM entra no corredor) ou sai dela (-1); 0 nas duas maos.
                             'flow': (1 if sentido < 0 else -1) if r['mao'] else 0,
                             'room': round(float(min(resto - dist, 80)), 1)})
@@ -628,12 +646,176 @@ class Cidade:
         self.bloqueios_l = final
         log(f'bloqueios: {len(final)} ruas fechadas ({", ".join(sorted({b["name"] for b in final if b["name"]}))[:300]})')
 
+    def passeio(self):
+        """As zonas de passeio (PASSEIO): a abertura no muro, o anel, os bloqueios e gradis da borda, o gramado; tira os
+        bloqueios que ficariam dentro (a rua da abertura passa a ser da zona) e abre o muro nos trilhos (meta.rails)."""
+        import base64
+        a, n, L = self.A, len(self.A), self.L
+        # A faixa da corrida ate a face dos muros (sem o bloco): o anel de cada zona comeca nela.
+        quads = []
+        for i in range(n):
+            j = (i + 1) % n
+            if np.linalg.norm(a[j, 1:3] - a[i, 1:3]) > 6:
+                continue
+            f = lambda r, sd: r[1:3] + r[9:11] * sd * (r[4] / 2 + (r[16] if sd > 0 else r[15]))
+            quads.append(Polygon([f(a[i], -1), f(a[j], -1), f(a[j], 1), f(a[i], 1)]).buffer(.02))
+        faixa = unary_union(quads)
+        terra = self.grade.buffer(-6).difference(self.mar_u.buffer(1.2))
+        boca = self.leito.difference(self.asfalto_pista.buffer(.3))
+        leito_largo = prep(self.leito.buffer(4))
+        # (Fechado em 4 m: os canteiros e as faixas de terreno estreitas entre duas pistas, sem predio, tambem se passa.)
+        livre = unary_union([self.leito, self.calcada, self.praca, self.verde, self.ciclovia, self.estacionamento, self.ilhas]).buffer(4).buffer(-4)
+        fora_boxes = unary_union([self.boxes.buffer(2), self.garagens])
+        mar_largo = prep(self.mar_u.buffer(3))
+        S = a[:, 0]
+        arvore = cKDTree(a[:, 1:3])
+
+        def ponto(s, extra, lado):
+            """O ponto da face do muro em s (do lado `lado`), mais `extra` m para fora."""
+            s = s % L
+            i = int(np.searchsorted(S, s, side='right') - 1)
+            j = (i + 1) % n
+            u = (s - S[i]) / ((S[j] if j else L) - S[i])
+            r = a[i] + (a[j] - a[i]) * u
+            nl = r[9:11] / np.linalg.norm(r[9:11])
+            return r[1:3] + nl * lado * (r[4] / 2 + (r[16] if lado > 0 else r[15]) + extra)
+        rails = {k: [list(x) for x in v] for k, v in self.base['meta']['rails'].items()}
+        zonas, novos, tirar = [], [], set()
+        # A boca de cada abertura (pontos a cada 3 m, 3 m atras da face do muro): postes, arvores e carros parados longe dela.
+        self.bocas_l = []
+        for z in PASSEIO:
+            lado = z['lado']
+            # 1. A boca da rua: na linha do muro, onde o leito da rua que chega comeca logo atras dele (a 7 m e a 10 m para
+            # fora ja e leito, sem predio no caminho: a calcada e o canteiro entre o muro e a rua se atravessam).
+            ss = np.arange(z['janela'][0], z['janela'][1], .25)
+            ok = [boca.contains(Point(ponto(s, 7, lado))) and boca.contains(Point(ponto(s, 10, lado)))
+                  and not any(self.ocupado.contains(Point(ponto(s, e, lado))) for e in (.4, 2, 4, 6)) for s in ss]
+            runs, k = [], 0
+            while k < len(ss):
+                if ok[k]:
+                    e = k
+                    while e + 1 < len(ss) and ok[e + 1]:
+                        e += 1
+                    runs.append((ss[k], ss[e]))
+                    k = e + 1
+                else:
+                    k += 1
+            assert runs, f'passeio {z["name"]}: nenhuma rua encontra o muro entre s={z["janela"]}'
+            r0, r1 = max(runs, key=lambda r: r[1] - r[0])
+            s0, s1 = round(float(r0) - .4, 1), round(float(r1) + .4, 1)
+            self.bocas_l += [[float(v) for v in ponto(s, 3, lado)] for s in np.arange(s0, s1 + .01, 3)]
+            # 2. O anel: o chao aberto (leito, calcadas, pracas, gramados, ciclovias, estacionamentos) dentro da area grossa, na
+            # terra (sem o mar), fora da faixa da corrida, dos boxes, dos predios e dos marcos; mais a boca (um pouco para
+            # dentro da faixa: o carro que sai pela abertura ja esta dentro dele). As quadras ficam como buracos: as fachadas
+            # e os lotes sao o limite.
+            boca_q = Polygon([ponto(s0, -.4, lado), ponto(s1, -.4, lado), ponto(s1, 3, lado), ponto(s0, 3, lado)])
+            area_p = Polygon(np.array(z['area'], float).reshape(-1, 2))
+            area = area_p.intersection(terra).intersection(livre).difference(faixa).difference(fora_boxes).difference(self.ocupado)
+            area = unary_union([area, boca_q]).buffer(.05).buffer(-.05)
+            alvo = Point(ponto((s0 + s1) / 2, 3.5, lado))
+            partes = list(area.geoms) if hasattr(area, 'geoms') else [area]
+            anel = min(partes, key=lambda g: g.distance(alvo))
+            anel = Polygon(anel.exterior, [h for h in anel.interiors if Polygon(h).area > 3]).simplify(.15)
+            anel = shapely.geometry.polygon.orient(anel, 1.0)
+            borda = anel.boundary
+            corte = area_p.exterior.buffer(.6)
+            loops = [np.array(anel.exterior.coords)[:-1]] + [np.array(h.coords)[:-1] for h in anel.interiors]
+            segs = [(Lp[m], Lp[(m + 1) % len(Lp)]) for Lp in loops for m in range(len(Lp))]
+            # 3. As ruas que cruzam a borda (longe da corrida): um bloqueio sobre a borda, olhando para fora.
+            cruz = []
+            for r in self.ruas:
+                if r['pista'] or r['hw'] in ('motorway', 'motorway_link'):
+                    continue
+                e = r['P'] + r['N'] * r['cen'][:, None]
+                if len(e) < 2:
+                    continue
+                x = LineString(e).intersection(borda)
+                for p in ([x] if x.geom_type == 'Point' else list(getattr(x, 'geoms', []))):
+                    if p.geom_type != 'Point' or faixa.distance(p) < 8 or not corte.contains(p):
+                        continue
+                    # A borda ali: o segmento mais perto; para fora fica a direita do sentido (anti-horario por fora).
+                    q = int(np.argmin([LineString(sg).distance(p) for sg in segs]))
+                    u = segs[q][1] - segs[q][0]
+                    u = u / np.linalg.norm(u)
+                    fora = np.array([u[1], -u[0]])
+                    k = int(np.argmin(np.linalg.norm(e - [p.x, p.y], axis=1)))
+                    tv = r['T'][k]
+                    w = float(r['larg'][k]) / max(abs(float(tv @ fora)), .55) + .6
+                    sv = np.r_[0, np.cumsum(np.linalg.norm(np.diff(e, axis=0), axis=1))]
+                    sentido = 1 if tv @ fora > 0 else -1
+                    resto = (sv[-1] - sv[k]) if sentido > 0 else sv[k]
+                    xy = np.array([p.x, p.y]) + fora * .7
+                    _, j = arvore.query(xy)
+                    ld = 1 if ((xy[0] - a[j, 1]) * a[j, 9] + (xy[1] - a[j, 2]) * a[j, 10]) > 0 else -1
+                    cruz.append({'x': round(float(xy[0]), 2), 'y': round(float(xy[1]), 2), 'heading': round(math.atan2(fora[1], fora[0]), 3),
+                                 'width': round(w, 2), 's': round(float(a[j, 0]), 1), 'side': ld, 'name': r['nome'], 'kind': r['hw'],
+                                 'lanes': r['faixas'], 'oneway': r['mao'], 'street': r['id'],
+                                 'flow': (-sentido if r['mao'] else 0), 'room': round(float(min(max(resto - 1, 0), 30)), 1), 'zone': z['name']})
+            final = []
+            for b in sorted(cruz, key=lambda b: -b['width']):
+                if all(math.hypot(b['x'] - o['x'], b['y'] - o['y']) > 7 for o in final):
+                    final.append(b)
+            novos += final
+            # Os bloqueios de antes que ficam dentro da zona (a rua da abertura, as bocas de rua ao longo dos muros dela).
+            dentro = prep(anel.buffer(3))
+            for k, b in enumerate(self.bloqueios_l):
+                if dentro.contains(Point(b['x'], b['y'])):
+                    tirar.add(k)
+            # 4. Onde a borda passa por chao aberto (praca, gramado, calcada, terreno; nao predio, rua, mar nem a faixa da
+            # corrida): gradis, em trechos continuos.
+            aberto = []
+            ext = anel.exterior
+            for t in np.arange(0, ext.length, 1.0):
+                p = ext.interpolate(t)
+                ok_ = corte.contains(p) and not leito_largo.contains(p) and faixa.distance(p) > 1.5 and not mar_largo.contains(p)
+                aberto.append((p.x, p.y) if ok_ else None)
+            if aberto and aberto[0] is not None and aberto[-1] is not None:
+                k = next((m for m, q in enumerate(aberto) if q is None), None)
+                if k is not None:
+                    aberto = aberto[k:] + aberto[:k]
+            gradis, run = [], []
+            for q in aberto + [None]:
+                if q is None:
+                    if len(run) >= 3:
+                        gradis.append([round(float(v), 2) for xy in run for v in xy])
+                    run = []
+                else:
+                    run.append(q)
+            # 5. O gramado dentro do anel (2 m por celula, um bit cada): ali o carro roda na grama.
+            x0, y0, x1, y1 = anel.bounds
+            st = 2.0
+            nx, ny = int(math.ceil((x1 - x0) / st)), int(math.ceil((y1 - y0) / st))
+            gx, gy = np.meshgrid(x0 + (np.arange(nx) + .5) * st, y0 + (np.arange(ny) + .5) * st)
+            bits = shapely.contains_xy(self.verde, gx.ravel(), gy.ravel()).astype(np.uint8)
+            grama = {'x0': round(x0, 2), 'y0': round(y0, 2), 'step': st, 'nx': nx, 'ny': ny,
+                     'bits': base64.b64encode(np.packbits(bits).tobytes()).decode('ascii')}
+            # 6. A abertura nos muros.
+            chave = '1' if lado > 0 else '-1'
+            secs = []
+            for f0, f1 in rails[chave]:
+                if f1 <= s0 or f0 >= s1:
+                    secs.append([f0, f1])
+                    continue
+                if f0 < s0:
+                    secs.append([f0, s0])
+                if f1 > s1:
+                    secs.append([s1, f1])
+            rails[chave] = secs
+            zonas.append({'name': z['name'], 'label': z['label'], 'gaps': [{'side': lado, 's0': s0, 's1': s1}],
+                          'ring': [[round(float(v), 2) for xy in Lp for v in xy] for Lp in loops], 'fences': gradis, 'grass': grama})
+            log(f'passeio {z["name"]}: abertura {s0}-{s1} (lado {lado}, {s1 - s0:.1f} m), anel {anel.area:.0f} m2 ({sum(len(Lp) for Lp in loops)} vertices, {len(loops) - 1} quadras), '
+                f'{len(final)} bloqueios na borda, {len(gradis)} gradis ({sum(len(g) for g in gradis) // 2} m), grama {int(bits.sum()) * 4} m2')
+        self.bloqueios_l = sorted([b for k, b in enumerate(self.bloqueios_l) if k not in tirar] + novos, key=lambda b: b['s'])
+        self.passeio_l = zonas
+        self.rails = rails
+        log(f'passeio: {len(tirar)} bloqueios da volta tirados (ficam dentro das zonas), {len(novos)} novos nas bordas')
+
     def postes(self):
         """Postes de concreto com fiacao ao longo das vias (um lado de cada via), lampada no braco; nas avenidas grandes
         e na volta, postes de luz de aco."""
         rng = np.random.default_rng(7)
         out, fios = [], []
-        perto_bloq = cKDTree(np.array([[b['x'], b['y']] for b in self.bloqueios_l])) if self.bloqueios_l else None
+        perto_bloq = cKDTree(np.array([[b['x'], b['y']] for b in self.bloqueios_l] + self.bocas_l)) if self.bloqueios_l else None
         perto_fx = cKDTree(np.array([f[:2] for f in self.faixas_l])) if self.faixas_l else None
         for r in self.ruas:
             if r['hw'] in EXPRESSA or (r['hw'] == 'service' and not r['nome']):
@@ -675,7 +857,7 @@ class Cidade:
         """Arvores de calcada (largas o bastante) e de praca, longe dos postes, das faixas e dos bloqueios."""
         rng = np.random.default_rng(11)
         postes = cKDTree(np.array([p[:2] for p in self.postes_l])) if self.postes_l else None
-        evitar = [f[:2] for f in self.faixas_l] + [s[:2] for s in self.semaf_l] + [p[:2] for p in self.pontos_l] + [[b['x'], b['y']] for b in self.bloqueios_l]
+        evitar = [f[:2] for f in self.faixas_l] + [s[:2] for s in self.semaf_l] + [p[:2] for p in self.pontos_l] + [[b['x'], b['y']] for b in self.bloqueios_l] + self.bocas_l
         ev = cKDTree(np.array(evitar)) if evitar else None
         out = []
         for r in self.ruas:
@@ -719,7 +901,7 @@ class Cidade:
         rng = np.random.default_rng(23)
         evitar = [f[:2] for f in self.faixas_l] + [s[:2] for s in self.semaf_l] + [p[:2] for p in self.pontos_l]
         ev = cKDTree(np.array(evitar)) if evitar else None
-        bl = cKDTree(np.array([[b['x'], b['y']] for b in self.bloqueios_l])) if self.bloqueios_l else None
+        bl = cKDTree(np.array([[b['x'], b['y']] for b in self.bloqueios_l] + self.bocas_l)) if self.bloqueios_l else None
         out = []
         for r in self.ruas:
             if r['pista'] or r['hw'] not in ESTACIONA:
@@ -841,6 +1023,71 @@ class Cidade:
         self.edificios_l = out
         log(f'pegadas reais: {len(out)} de {len(kept)} retangulos (tipos do OSM em {sum(1 for e in out if e[2])})')
 
+    def lugares(self):
+        """Os lugares do OSM mapeados como contornos (amenity, shop, tourism, historic): o centro, o tipo, se e historico e os
+        andares. Sem os nomes (comercios de verdade nao aparecem no jogo); para as mesas de bar na calcada, as fachadas
+        antigas e o que mais a cidade souber de cada predio."""
+        out = []
+        for w in self.o['vias']:
+            tg = w.get('tags', {})
+            amenity = tg.get('amenity')
+            if amenity in ('parking', 'parking_entrance', 'bench', 'motorcycle_parking', 'bicycle_parking', 'fountain'):
+                amenity = None
+            tipo = amenity or (('shop:' + tg['shop']) if tg.get('shop') else None) or tg.get('tourism')
+            hist = tg.get('historic')
+            if not tipo and not hist:
+                continue
+            A = gf.linha_via(self.o, w)
+            if len(A) < 3:
+                continue
+            g = Polygon(A).buffer(0) if (w['nodes'][0] == w['nodes'][-1] and len(A) >= 4) else LineString(A)
+            c = g.centroid
+            if g.is_empty or not self.na_grade(c.x, c.y, 2):
+                continue
+            try:
+                andares = int(float(tg.get('building:levels', '0')))
+            except ValueError:
+                andares = 0
+            out.append([round(c.x, 2), round(c.y, 2), tipo or '', hist or '', andares])
+        self.lugares_l = out
+        log(f'lugares do OSM: {len(out)} ({sum(1 for x in out if x[3])} historicos)')
+
+    def pracas(self):
+        """As pracas e parques perto da volta (GeoFloripa e OSM, ate 400 m dela, mais de 300 m2): contorno, area, distancia e o
+        nome publico, para quem quiser por ali uma fan zone, bancos ou gente."""
+        lap = LineString(self.A[:, 1:3])
+        cands = []
+        for f in json.loads((self.pasta / 'geofloripa_parques.geojson').read_text(encoding='utf-8'))['features']:
+            g = affinity.translate(shape(f['geometry']), -self.origem[0], -self.origem[1]).buffer(0)
+            cands.append((g, f['properties'].get('nome_popular') or ''))
+        for w in self.o['vias']:
+            tg = w.get('tags', {})
+            if tg.get('leisure') in ('park', 'garden') or tg.get('place') == 'square' or (tg.get('highway') == 'pedestrian' and tg.get('area') == 'yes'):
+                A = gf.linha_via(self.o, w)
+                if len(A) >= 4 and w['nodes'][0] == w['nodes'][-1]:
+                    cands.append((Polygon(A).buffer(0), tg.get('name', '')))
+        out = []
+        for g, nome in cands:
+            for q in (list(g.geoms) if hasattr(g, 'geoms') else [g]):
+                if q.geom_type != 'Polygon' or q.area < 300:
+                    continue
+                q = q.difference(self.leito).difference(self.corredor.buffer(2))
+                for r in (list(q.geoms) if hasattr(q, 'geoms') else [q]):
+                    if r.geom_type != 'Polygon' or r.area < 300 or not self.na_grade(r.centroid.x, r.centroid.y, 2):
+                        continue
+                    dist = r.distance(lap)
+                    if dist > 400:
+                        continue
+                    if any(r.symmetric_difference(o_['_g']).area < .2 * r.area for o_ in out):
+                        continue
+                    anel = np.round(np.array(r.simplify(.5).exterior.coords)[:-1], 2).ravel().tolist()
+                    out.append({'_g': r, 'ring': anel, 'area': round(r.area), 'dist': round(dist, 1), 'name': nome})
+        out.sort(key=lambda o_: o_['dist'])
+        for o_ in out:
+            del o_['_g']
+        self.pracas_l = out
+        log(f'pracas perto da volta: {len(out)} ({", ".join(o_["name"] for o_ in out[:8] if o_["name"])})')
+
     def trapiches(self):
         """Trapiches e piers do OSM (man_made=pier) na grade: linha (largura da etiqueta ou 2,5 m) ou contorno fechado."""
         out = []
@@ -927,6 +1174,7 @@ def main():
     cid.preparar_pontos()
     cid.faixas_e_semaforos()
     cid.bloqueios()
+    cid.passeio()
     cid.postes()
     cid.arvores()
     cid.estacionados()
@@ -934,6 +1182,8 @@ def main():
     cid.faixas_da_pista()
     cid.trapiches()
     cid.edificios3d()
+    cid.lugares()
+    cid.pracas()
     if '--planta' in sys.argv:
         cid.planta(cid.pasta / 'planta_cidade_floripa.jpg')
     mapas = cid.mapa()
@@ -942,6 +1192,9 @@ def main():
     # Os muros de uma cidade fechada para a corrida: blocos de concreto cru, sem a pintura de autodromo (street-walls.js).
     meta['wall_paint'] = 'bare'
     meta['city'] = True
+    # As zonas de passeio (physics.js meta.roam) e os muros abertos nas bocas das ruas delas.
+    meta['roam'] = {'zones': cid.passeio_l}
+    meta['rails'] = cid.rails
     meta['caveat'] = meta['caveat'] + (' A cidade: as ruas, calçadas, praças, ciclovias, faixas de pedestre, semáforos e pontos de ônibus '
                                        'são os do OSM e do GeoFloripa; bloqueios, postes, árvores de calçada e carros parados são desenho de jogo.')
     city = {
@@ -957,6 +1210,8 @@ def main():
         'plates': {'columns': ['x', 'y', 'heading', 'name_a', 'name_b'], 'items': cid.placas_l},
         'coast': [np.round(c, 2).tolist() for c in cid.costa],
         'piers': cid.trapiches_l,
+        'pois': {'columns': ['x', 'y', 'kind', 'historic', 'levels'], 'items': cid.lugares_l},
+        'squares': cid.pracas_l,
         'buildings': {'columns': ['h', 'kind', 'type', 'ring', 'x', 'y'], 'items': cid.edificios_l},
         'track': {'lanes': {'columns': ['s', 'lanes', 'oneway'], 'items': cid.pista_faixas_trechos},
                   'crossings': [list(x) for x in cid.pista_faixas], 'signals': cid.pista_semaf, 'stops': [p_[0] for p_ in cid.pista_pontos],

@@ -160,8 +160,10 @@ export function guardrailClearance(data,s,side){
  if(data.meta.id!=='curvelo'){
   const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L,section=guardrailSections(data,side).find(([from,to])=>t>=from&&t<=to),gap=wallGap(data,t,side),base=gap??GUARDRAIL_CLEARANCE;
   if(!section)return base;
-  // Flare exposed ends away from the driving line; the timing-line seam stays joined.
-  const edge=Math.min(section[0]<=0?Infinity:t-section[0],section[1]>=L-1e-6?Infinity:section[1]-t),u=clamp(edge/24,0,1);
+  // Flare exposed ends away from the driving line; the timing-line seam stays joined. A city's side street opened to
+  // roam (meta.roam's gaps) keeps its walls straight to the curbs: the walls end square at the street's mouth.
+  const open=x=>!!data.meta.roam&&roamGapEnd(data,side,x);
+  const edge=Math.min(section[0]<=0||open(section[0])?Infinity:t-section[0],section[1]>=L-1e-6||open(section[1])?Infinity:section[1]-t),u=clamp(edge/24,0,1);
   return base+5*(1-u*u*(3-2*u));
  }
  if(side>=0){const lane=pitLane(data,s);return lane?Math.max(5,lane.offset*1.8+lane.halfWidth+2-7):5;}
@@ -180,19 +182,20 @@ function bodyAxes(heading,pitch,roll,axes){
 }
 const renderAxes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};
 export class TestCar {
- constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.cliff=cliffEdge(data);this.decks=!!data.meta?.decks?.length;this.tunnels=!!data.meta?.tunnels?.length;this.edgeHit={};this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.weatherGrip=1;this.reset();}
+ constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.cliff=cliffEdge(data);this.decks=!!data.meta?.decks?.length;this.tunnels=!!data.meta?.tunnels?.length;this.roam=roamWorld(data);this.edgeHit={};this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.weatherGrip=1;this.reset();}
  // The body it meets the world with (OPALA_BODY, FUSCA_BODY), with its mechanics; the next reset or settle seats
  // it on its own shell.
  setBody(body){if(body!==this.body){this.body=body;this.shell=null;}return this;}
  get mechanics(){return this.body.mechanics??OPALA_MECHANICS;}
  // The grid spot: back metres before the line, lane metres across (race-roster.js playerGridSlot).
  resetGrid({back=GRID_START_BACK,lane=0}={}){const target=this.data.meta.reconstructed_xy_m-back;this.reset(Math.max(0,this.a.findIndex(p=>p[0]>=target)));if(lane){this.x+=this.surface.lx*lane;this.y+=this.surface.ly*lane;this.settle();}this.awaitingStart=true;}
- reset(index=0){this.awaitingStart=false;this.distance=0;this.clock=0;this.lapStart=0;this.laps=0;this.best=null;this.lastLap=null;this.checkpoints=new Set();this.nextCheckpoint=1;this.lapValid=true;this.lastLapValid=null;this.excursion=null;this.lineBack=false;this.spin=0;this.rearSpin=0;this.shifts=0;this.rightings=0;this.rightedAt=null;this.invalidReason=null;this.lastInvalidReason=null;this.pitPenalty=null;this.beforeCross=null;this.lapFell=false;this.lastLapFell=false;this.fall=null;this.falls=0;this.backAt=null;this.recover(index);}
+ reset(index=0){this.awaitingStart=false;this.distance=0;this.clock=0;this.lapStart=0;this.laps=0;this.best=null;this.lastLap=null;this.checkpoints=new Set();this.nextCheckpoint=1;this.lapValid=true;this.lastLapValid=null;this.excursion=null;this.lineBack=false;this.spin=0;this.rearSpin=0;this.shifts=0;this.rightings=0;this.rightedAt=null;this.invalidReason=null;this.lastInvalidReason=null;this.pitPenalty=null;this.beforeCross=null;this.lapFell=false;this.lastLapFell=false;this.fall=null;this.falls=0;this.backAt=null;this.roamZone=null;this.recover(index);}
  // Put the car back at rest on the centre line, keeping its clock, laps and race progress.
- recover(index=this.index){const p=this.a[index%this.n];this.x=p[1];this.y=p[2];this.heading=Math.atan2(p[8],p[7]);this.vx=0;this.vy=0;this.yaw=0;this.steer=0;this.index=index;this.burnout=0;this.rearSlipSpeed=0;this.rearWheelSpeed=undefined;this.steerInput=0;this.steerVisual=0;this.gear=1;this.manualGear=false;this.rpm=IDLE_RPM;this.shiftTimer=0;this.longAccel=0;this.latAccel=0;this.crashImpactSpeed=0;this.settle();}
+ recover(index=this.index){const p=this.a[index%this.n];this.x=p[1];this.y=p[2];this.heading=Math.atan2(p[8],p[7]);this.vx=0;this.vy=0;this.yaw=0;this.steer=0;this.index=index;this.burnout=0;this.rearSlipSpeed=0;this.rearWheelSpeed=undefined;this.steerInput=0;this.steerVisual=0;this.gear=1;this.manualGear=false;this.rpm=IDLE_RPM;this.shiftTimer=0;this.longAccel=0;this.latAccel=0;this.crashImpactSpeed=0;this.roamZone=null;this.settle();}
  // Seat the body on its wheels at the current position and heading: level with
  // the ground under the four tyres, and clear of any bank under the body.
  settle(){
+  if(this.level!==undefined){this.level=undefined;this.underDeck=false;}
   const p=this.sample(this.x,this.y),c=Math.cos(this.heading),s=Math.sin(this.heading),gx=p.gx??0,gy=p.gy??0;
   this.surface=p;if(Number.isInteger(p.i))this.index=p.i;
   const at=(fx,ly)=>this.sample(this.x+c*fx-s*ly,this.y+s*fx+c*ly,this.index).z;
@@ -280,13 +283,21 @@ export class TestCar {
   }
   // On a bridge deck the road plane runs out to the parapet: the sea is 30 m below. In a tunnel or its trench it
   // runs out to the walls: the plaza beside them is 6 m above.
-  const blend=abyss?1:this.decks&&onDeck(this.data,s)||this.tunnels&&inTunnel(this.data,s)?0:clamp(outside/3,0,1);
+  // Where the city may be roamed (meta.roam) the plane reaches only out to the walls and their blocks: a car off the lap
+  // beside a deck's end, or far off with a deck its nearest station, sits on the ground there, not on the deck's plane
+  // drawn on out (which threw it in the air). And a car down on the ground under a deck (its plane more than 3 m above
+  // the car's level: TestCar.step) has the ground under its own wheels and body; a point further off (another car's
+  // spot on the deck ahead) is the deck's as ever.
+  const structure=this.decks&&onDeck(this.data,s)||this.tunnels&&inTunnel(this.data,s),below=structure&&this.level!==undefined&&Math.abs(x-this.x)+Math.abs(y-this.y)<8&&roadz-this.level>3&&roadz-this.terrain(x,y,ground)>3;
+  const blend=abyss||below?1:structure?(this.roam?clamp((outside-(wallGap(this.data,s,d)??0)-1)/3,0,1):0):clamp(outside/3,0,1);
   // Off the asphalt the car sits on the LiDAR terrain, so it must also lean and roll with it.
   if(blend>0){const e=1.5,tx2=(this.terrain(x+e,y,ground)-this.terrain(x-e,y,ground))/(2*e),ty2=(this.terrain(x,y+e,ground)-this.terrain(x,y-e,ground))/(2*e);gx+=(tx2-gx)*blend;gy+=(ty2-gy)*blend;}
   const service=abyss?null:pitLane(this.data,s);
   if(service&&d>=service.offset-service.halfWidth&&d<=service.reach&&d>width/2){pit=true;bank=grade=gx=gy=0;}
   const z=service&&pit?3.055:roadz*(1-blend)+this.terrain(x,y,ground)*blend+.055;
-  return {i:q.i,u:w,s:s>L-.01?0:s,d,z,width,bank,grade,gx,gy,tx,ty,lx,ly,pit,pitS,pitD,abyss,onRoad:!abyss&&(pit||Math.abs(d)<width/2)};
+  // In a zone of the city open to roam, its streets, sidewalks and squares are paved (its lawns are not).
+  const paved=!!this.roam&&blend>0&&!pit&&this.roam.paved(x,y);
+  return {i:q.i,u:w,s:s>L-.01?0:s,d,z,width,bank,grade,gx,gy,tx,ty,lx,ly,pit,pitS,pitD,abyss,onRoad:!abyss&&(pit||Math.abs(d)<width/2||paved)};
  }
  // Ground height and slope under one contact point near the car.
  ground(x,y){return this.sample(x,y,this.index);}
@@ -324,6 +335,9 @@ export class TestCar {
   this.wallImpactSpeed=0;this.crashImpactSpeed=0;
   // Scripts and other systems may place the car directly: seat it on the ground there.
   if(!(Math.hypot(this.x-this.stepX,this.y-this.stepY)<.5))this.settle();
+  // Down on the ground under a bridge's deck (off the lap, where the city may be roamed): its plane is far overhead, not
+  // the ground; nor do its walls stand down there. (Up on the deck the car's own height is the road's.)
+  if(this.roam&&this.decks){this.level=undefined;const q=this.sample(this.x,this.y);this.level=this.z-CG_HEIGHT;this.underDeck=onDeck(this.data,q.s)&&q.z-this.level>3&&q.z-this.terrain(this.x,this.y)>3;if(this.underDeck)this.surface=this.sample(this.x,this.y);}
   // Going down a plateau's wall (cliff-fall.js), the car stays out of the rock: the face pushes it back out.
   if(this.fall&&this.cliff){const q=this.cliff.query(this.x,this.y,this.edgeHit);if(q.near&&q.d<.6){const push=.6-q.d,vn=this.vx*q.nx+this.vy*q.ny;this.x+=q.nx*push;this.y+=q.ny*push;this.stepX=this.x;this.stepY=this.y;if(vn<0){this.vx-=1.3*vn*q.nx;this.vy-=1.3*vn*q.ny;}}}
   const p=this.surface,oldX=this.x,oldY=this.y;
@@ -437,7 +451,14 @@ export class TestCar {
   // centre of mass's normal, as if every wall were straight, stopped that car up to 0.8 m short of the wall (an
   // invisible wall in Floripa's and the Minhocão's hairpins).
   const b=this.body,reach=this.data.meta.barrier==='street'?WALL_REACH:RAIL_REACH,far=Math.hypot(b.halfLength+Math.abs(b.wallAhead),b.halfWidth);
-  for(let pass=0;pass<2;pass++){
+  // Out in a zone of the city (meta.roam): its own edges, the walls from behind and what stands in it (RoamWorld). Out
+  // behind the walls elsewhere (not by the pits): the walls from behind too, never pulled back through them onto the lap
+  // (with a deck's plane above, that threw a car in the air). Down under a deck: no walls at all, they stand up there.
+  const zone=this.roam?this.roam.zoneOf(this,reach):null,behind=!!this.roam&&!zone&&!this.underDeck&&this.roam.behind(this,reach);this.roamZone=zone;
+  // (The car out in a zone is the one the city's walkers keep out of the way of: city-life.js.)
+  if(zone)this.roam.player=this;
+  if(zone||behind){const hit=this.roam.collide(this,zone,reach,true);if(hit)this.wallImpactSpeed=Math.max(this.wallImpactSpeed,hit);}
+  for(let pass=0;!zone&&!behind&&!this.underDeck&&pass<2;pass++){
    const r=this.surface,side=Math.sign(r.d)||1;
    // Far from both barriers no point of the body reaches one.
    if(r.width/2+Math.min(guardrailClearance(this.data,r.s,-1),guardrailClearance(this.data,r.s,1))+reach-Math.abs(r.d)-far>1.5)break;
@@ -452,6 +473,10 @@ export class TestCar {
     // (sample's normal is two stations' mixed, short of unit length in a bend: its d, 6 cm short at 9 m off a
     // tight one, is made a distance again, as the drawn line's.)
     const n=Math.hypot(q.lx,q.ly)||1,depth=Math.abs(q.d)/n-(q.width/2+guardrailClearance(this.data,q.s,qs)+reach);
+    // By a gap opened to roam the wall has an end: a point past its back went round it; one nearer its end than its
+    // face leaves through the end (toward the gap), so the car slides past the corner instead of jumping sideways.
+    if(this.roam&&depth>0){const cap=this.roam.cap(q.s,qs);if(cap){if(depth>ROAM_BACK)continue;
+     if(cap.dist<depth){if(!(hit?.depth>=cap.dist))hit={depth:cap.dist,side:1,lx:-cap.dir*q.tx/n,ly:-cap.dir*q.ty/n,tx:q.lx/n,ty:q.ly/n};continue;}}}
     if(depth>0&&(depth<5||crossed&&qs===side)&&!(hit?.depth>=depth))hit={depth,side:qs,lx:q.lx/n,ly:q.ly/n,tx:q.tx/n,ty:q.ty/n};
    }
    if(!hit)break;
@@ -465,6 +490,9 @@ export class TestCar {
    }
    this.surface=this.sample(this.x,this.y);
   }
+  // Half through a gap: the walls' end corners against the body's sides (a corner between two of its points), and the
+  // zone's solids against its nose.
+  if(this.roam&&!zone&&!behind){const hit=this.roam.collide(this,null,reach,false);if(hit)this.wallImpactSpeed=Math.max(this.wallImpactSpeed,hit);}
   // Pit wall, garage fronts and the walls along the pit exit.
   for(let pass=0;this.pitGeo&&pass<2;pass++){
    const hit=wallContact(this.pitGeo,this.x,this.y,this.heading,this.body);if(!hit)break;
@@ -685,3 +713,147 @@ export function recognitionInput(car,{maxSpeed=33,cornerGrip=3.3,braking=3.5,thr
  const c=Math.cos(car.heading),s=Math.sin(car.heading),forward=car.vx*c+car.vy*s,slide=forward>3?Math.abs(Math.atan2(-car.vx*s+car.vy*c-1.117*car.yaw,forward)):0;
  return {left:Math.max(0,command),right:Math.max(0,-command),throttle:clamp((desiredSpeed-speed)*throttleResponse,0,1)*clamp(1-(slide-.06)*8,0,1),brake:clamp((speed-desiredSpeed)*brakeResponse,0,1),reverse:0,handbrake:0};
 }
+
+// --- Roaming the city (meta.roam: Floripa, gerar_cidade_floripa.py PASSEIO). Where a real side street meets the walls
+// they open (zone.gaps: side, s0, s1; meta.rails stops there, its ends square: guardrailClearance) onto a zone of the
+// city: zone.ring, loops of [x0, y0, x1, y1, ...], the first its outline counter-clockwise, the others the blocks in it
+// clockwise, so the open ground (streets, sidewalks, squares, lawns: zone.grass, a bit per 2 m cell) is always on an
+// edge's left. Its edges are the facades, the shore, the lap's walls and the closures across the streets that leave
+// it. A car whose centre of mass is out there (off the lap's corridor) meets those edges, the walls from behind (their
+// blocks are ROAM_BACK deep) and the solids the scenery modules stand there (addRoamSolids: parked cars, shelters,
+// kiosks, the fan zone's trucks...), instead of the walls from the road. Contacts as the drift arena's: pushed out, an
+// impulse at the point that touched (a clipped corner spins the car), a little bounce, scraping along. A hash of 8 m
+// cells holds only what is near the zones, so a car on the lap pays one empty lookup a step.
+const ROAM_CELL=8,ROAM_ROW=4,ROAM_BACK=.75,ROAM_BOUNCE=.2,ROAM_SCRAPE=.3,ROAM_MARGIN=12;
+const roamWorlds=new WeakMap();
+export function roamWorld(data){
+ if(!data.meta?.roam?.zones?.length)return null;
+ let w=roamWorlds.get(data);if(!w)roamWorlds.set(data,w=new RoamWorld(data));
+ return w;
+}
+// What a scenery module stands in a zone, for every car on that track data: {x, y, r} posts or {x, y, h, hu, hv} boxes
+// (centre, the heading of the hu half-length's axis, the half-width hv). Things away from every zone are left out.
+export function addRoamSolids(data,list){const w=roamWorld(data);if(!w)return 0;let n=0;for(const s of list)if(w.addSolid(s))n++;return n;}
+// The zone of the city (meta.roam) whose open ground (x, y) is on, or null.
+export function roamZoneAt(data,x,y){const w=roamWorld(data);return w?w.zones.find(z=>w.inside(z,x,y))??null:null;}
+function roamGapEnd(data,side,x){for(const z of data.meta.roam.zones??[])for(const g of z.gaps)if(Math.sign(g.side)===(side<0?-1:1)&&(Math.abs(g.s0-x)<1e-6||Math.abs(g.s1-x)<1e-6))return true;return false;}
+class RoamWorld{
+ constructor(data){
+  this.data=data;this.cells=new Map();this.zones=[];this.stamp=0;this.v=[0,0,0];this.near=[];this.keep=[];this.solids=0;
+  const a=data.samples,N=a.length,L=data.meta.reconstructed_xy_m,reach=data.meta.barrier==='street'?WALL_REACH:RAIL_REACH;
+  data.meta.roam.zones.forEach((z,index)=>{
+   const zone={index,name:z.name,label:z.label??z.name,gaps:z.gaps,x0:Infinity,y0:Infinity,x1:-Infinity,y1:-Infinity,rows:new Map(),grass:null};
+   for(const r of z.ring){
+    const n=r.length/2;
+    for(let k=0;k<n;k++){
+     const ax=r[2*k],ay=r[2*k+1],k1=(k+1)%n,bx=r[2*k1],by=r[2*k1+1],k0=(k+n-1)%n,px=r[2*k0],py=r[2*k0+1],dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+     zone.x0=Math.min(zone.x0,ax);zone.x1=Math.max(zone.x1,ax);zone.y0=Math.min(zone.y0,ay);zone.y1=Math.max(zone.y1,ay);
+     if(!(l2>1e-10))continue;
+     const e={t:0,zone,ax,ay,dx,dy,l2,seen:0};this.put(Math.min(ax,bx),Math.min(ay,by),Math.max(ax,bx),Math.max(ay,by),e);
+     for(let j=Math.floor(Math.min(ay,by)/ROAM_ROW);j<=Math.floor(Math.max(ay,by)/ROAM_ROW);j++){let row=zone.rows.get(j);if(!row)zone.rows.set(j,row=[]);row.push(e);}
+     // The outline turning right at a: a corner of what stands round the open ground (a facade's, a curb's) pokes in.
+     if((ax-px)*dy-(ay-py)*dx<0)this.put(ax,ay,ax,ay,{t:3,x:ax,y:ay,seen:0});
+    }
+   }
+   if(z.grass){const g=z.grass,bin=atob(g.bits),bits=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)bits[k]=bin.charCodeAt(k);zone.grass={x0:g.x0,y0:g.y0,step:g.step,nx:g.nx,ny:g.ny,bits};}
+   this.zones.push(zone);
+  });
+  // The walls' ends at each gap: the corners of their blocks (the face, as far as the body meets it, and the back).
+  const point=s=>{s=((s%L)+L)%L;let lo=0,hi=N-1;while(lo<hi){const m=(lo+hi+1)>>1;if(a[m][0]<=s)lo=m;else hi=m-1;}const p=a[lo],q=a[(lo+1)%N],u=(s-p[0])/((lo===N-1?L:q[0])-p[0]);return p.map((v,k)=>v+(q[k]-v)*u);};
+  for(const zone of this.zones)for(const g of zone.gaps)for(const s of [g.s0,g.s1]){
+   const p=point(s),t=Math.hypot(p[7],p[8])||1,lx=-p[8]/t*g.side,ly=p[7]/t*g.side,face=p[4]/2+guardrailClearance(data,s,g.side)+reach;
+   for(const d of [face,face+ROAM_BACK])this.put(p[1]+lx*d,p[2]+ly*d,p[1]+lx*d,p[2]+ly*d,{t:3,x:p[1]+lx*d,y:p[2]+ly*d,wall:true,seen:0});
+  }
+ }
+ put(x0,y0,x1,y1,item){for(let i=Math.floor(x0/ROAM_CELL);i<=Math.floor(x1/ROAM_CELL);i++)for(let j=Math.floor(y0/ROAM_CELL);j<=Math.floor(y1/ROAM_CELL);j++){const k=i*73856093^j*19349663;let c=this.cells.get(k);if(!c)this.cells.set(k,c=[]);c.push(item);}}
+ // Everything in the cells within r of (x, y), each once (the list is reused: read it before the next call).
+ query(x,y,r){
+  const out=this.near;out.length=0;const stamp=++this.stamp;
+  for(let i=Math.floor((x-r)/ROAM_CELL);i<=Math.floor((x+r)/ROAM_CELL);i++)for(let j=Math.floor((y-r)/ROAM_CELL);j<=Math.floor((y+r)/ROAM_CELL);j++){const c=this.cells.get(i*73856093^j*19349663);if(c)for(const it of c)if(it.seen!==stamp){it.seen=stamp;out.push(it);}}
+  return out;
+ }
+ addSolid(s){
+  if(!Number.isFinite(s?.x)||!Number.isFinite(s?.y))return false;
+  const r=s.r??Math.hypot(s.hu??0,s.hv??0);if(!this.zones.some(z=>s.x>z.x0-ROAM_MARGIN-r&&s.x<z.x1+ROAM_MARGIN+r&&s.y>z.y0-ROAM_MARGIN-r&&s.y<z.y1+ROAM_MARGIN+r))return false;
+  if(s.hu){const c=Math.cos(s.h??0),n=Math.sin(s.h??0),xs=[],ys=[];for(const [u,v] of [[-1,-1],[1,-1],[1,1],[-1,1]]){xs.push(s.x+c*u*s.hu-n*v*s.hv);ys.push(s.y+n*u*s.hu+c*v*s.hv);}
+   this.put(Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys),{t:1,xs,ys,seen:0});}
+  else this.put(s.x-s.r,s.y-s.r,s.x+s.r,s.y+s.r,{t:2,x:s.x,y:s.y,r:s.r,seen:0});
+  this.solids++;return true;
+ }
+ // On the zone's open ground: an odd count of its edges crossed going east (its row's edges only).
+ inside(z,x,y){
+  if(x<z.x0||x>z.x1||y<z.y0||y>z.y1)return false;
+  const row=z.rows.get(Math.floor(y/ROAM_ROW));if(!row)return false;let inside=false;
+  for(const e of row){const by=e.ay+e.dy;if((e.ay>y)!==(by>y)&&x<e.ax+(y-e.ay)*e.dx/e.dy)inside=!inside;}
+  return inside;
+ }
+ grass(z,x,y){const g=z.grass;if(!g)return false;const i=Math.floor((x-g.x0)/g.step),j=Math.floor((y-g.y0)/g.step);if(i<0||j<0||i>=g.nx||j>=g.ny)return false;const k=j*g.nx+i;return !!(g.bits[k>>3]>>(7-(k&7))&1);}
+ paved(x,y){for(const z of this.zones)if(this.inside(z,x,y))return !this.grass(z,x,y);return false;}
+ // The nearest point of the zone's edges within r of (x, y) (items: a query already made round it).
+ edge(x,y,r,z,items){
+  let best=null,d2=r*r;
+  for(const e of items){if(e.t!==0||e.zone!==z)continue;let u=((x-e.ax)*e.dx+(y-e.ay)*e.dy)/e.l2;u=u<0?0:u>1?1:u;const qx=e.ax+e.dx*u,qy=e.ay+e.dy*u,q2=(qx-x)**2+(qy-y)**2;if(q2<d2){d2=q2;best={d:Math.sqrt(q2),qx,qy};}}
+  return best;
+ }
+ // The lap at s on that side: the nearest end of a wall by a gap, within 2.5 m along the lap (dir: toward the gap).
+ cap(s,side){let out=null;for(const z of this.zones)for(const g of z.gaps){if(Math.sign(g.side)!==(side<0?-1:1))continue;
+  if(s<=g.s0&&g.s0-s<2.5&&!(out?.dist<=g.s0-s))out={dist:g.s0-s,dir:1};if(s>=g.s1&&s-g.s1<2.5&&!(out?.dist<=s-g.s1))out={dist:s-g.s1,dir:-1};}return out;}
+ // The car's centre of mass in a zone: off the lap's corridor (asphalt and the strip to the walls' face) and on the
+ // zone's open ground; a car just pushed back in from its edge stays in it.
+ zoneOf(car,reach){
+  const r=car.surface,n=Math.hypot(r.lx,r.ly)||1,side=Math.sign(r.d)||1;
+  if(Math.abs(r.d)/n<=r.width/2+guardrailClearance(this.data,r.s,side)+reach)return null;
+  for(const z of this.zones)if(this.inside(z,car.x,car.y))return z;
+  const was=car.roamZone;return was&&this.edge(car.x,car.y,2.5,was,this.query(car.x,car.y,2.5))?was:null;
+ }
+ // The car's centre of mass behind the walls (past their face), not by the pit lane (its own walls have it).
+ behind(car,reach){const r=car.surface;if(r.pit||r.pitS!==null)return false;const n=Math.hypot(r.lx,r.ly)||1;return Math.abs(r.d)/n>r.width/2+guardrailClearance(this.data,r.s,Math.sign(r.d)||1)+reach;}
+ // The body's plan (its box as the walls see it) against the zone (null: only its solids, for a car half through a gap
+ // or behind the walls away from the zones); walls: the walls from behind. Returns the hardest impact (m/s).
+ collide(car,zone,reach,walls=!!zone){
+  const b=car.body,data=this.data,hl=b.halfLength,hw=b.halfWidth,R=Math.hypot(hl+Math.abs(b.wallAhead),hw)+.6;let impact=0;
+  for(let pass=0;pass<3;pass++){
+   const ch=Math.cos(car.heading),sh=Math.sin(car.heading),cx=car.x+ch*b.wallAhead,cy=car.y+sh*b.wallAhead;let near=this.query(cx,cy,R);
+   // (On the lap only the solids and the walls' ends: the zone's own edges and corners stand behind the walls.)
+   if(!zone){const keep=this.keep;keep.length=0;for(const it of near)if(it.t===1||it.t===2||it.wall)keep.push(it);if(!keep.length&&!walls)return impact;near=keep;}
+   let best=null;const take=(depth,nx,ny,px,py)=>{if(depth>1e-4&&!(best?.depth>=depth))best={depth,nx,ny,rx:px-car.x,ry:py-car.y};};
+   // The body's outline, point by point (BODY_POINTS, as against the walls).
+   for(const [u,w] of BODY_POINTS){
+    const fx=b.wallAhead+u*hl,fy=w*hw,px=car.x+ch*fx-sh*fy,py=car.y+sh*fx+ch*fy;
+    for(const it of near)if(it.t===1&&inQuad(it,px,py)){const e=quadEdge(it,px,py);take(e.d+.002,(e.qx-px)/(e.d||1),(e.qy-py)/(e.d||1),px,py);}
+    if(!walls)continue;
+    const q=car.sample(px,py,car.index),qs=Math.sign(q.d)||1,n=Math.hypot(q.lx,q.ly)||1,at=Math.abs(q.d)/n,face=q.width/2+guardrailClearance(data,q.s,qs)+reach;
+    // On the lap's own ground (the gap's mouth): nothing of the zone's there.
+    if(at<=face)continue;
+    // The lap's wall from behind, or out through its end by a gap (not a deck's, up over a car on the ground below it).
+    if(at<face+ROAM_BACK&&guardrailPresent(data,q.s,qs)&&!(car.level!==undefined&&data.samples[q.i][3]-car.level>3&&onDeck(data,q.s))){
+     const depth=face+ROAM_BACK-at,cap=this.cap(q.s,qs);
+     if(cap&&cap.dist<depth)take(cap.dist,cap.dir*q.tx/n,cap.dir*q.ty/n,px,py);else take(depth,qs*q.lx/n,qs*q.ly/n,px,py);
+    }
+    // Past the zone's edge: back in, to its nearest point.
+    if(zone&&!this.inside(zone,px,py)){const e=this.edge(px,py,4,zone,near);if(e)take(e.d+.002,(e.qx-px)/(e.d||1),(e.qy-py)/(e.d||1),px,py);}
+   }
+   // Corners and posts into the body: the facades' and curbs' corners, the walls' ends, the boxes' corners, the posts.
+   const corner=(x,y,r)=>{
+    const dx=x-cx,dy=y-cy,lx=dx*ch+dy*sh,ly=-dx*sh+dy*ch,qx=clamp(lx,-hl,hl),qy=clamp(ly,-hw,hw),ox=lx-qx,oy=ly-qy,d=Math.hypot(ox,oy);
+    if(d>0){if(d<r){const ux=ox/d,uy=oy/d;take(r-d,-(ux*ch-uy*sh),-(ux*sh+uy*ch),cx+qx*ch-qy*sh,cy+qx*sh+qy*ch);}return;}
+    const ex=hl-Math.abs(lx),ey=hw-Math.abs(ly);
+    if(ex<ey){const k=-(Math.sign(lx)||1);take(ex+r,k*ch,k*sh,x,y);}else{const k=-(Math.sign(ly)||1);take(ey+r,-k*sh,k*ch,x,y);}
+   };
+   for(const it of near){if(it.t===3)corner(it.x,it.y,0);else if(it.t===2)corner(it.x,it.y,it.r);else if(it.t===1)for(let k=0;k<4;k++)corner(it.xs[k],it.ys[k],0);}
+   if(!best)break;
+   const {depth,nx,ny,rx,ry}=best;car.x+=nx*depth;car.y+=ny*depth;
+   car.updateAxes();const r=[rx,ry,-.1],v=car.pointVelocity(r,this.v),into=-(v[0]*nx+v[1]*ny);
+   if(into>0){
+    const j=(1+ROAM_BOUNCE)*into/car.inverseMass(r,nx,ny,0);car.impulse(r,nx*j,ny*j,0);
+    car.pointVelocity(r,v);const tx=-ny,ty=nx,slide=v[0]*tx+v[1]*ty,f=Math.min(Math.abs(slide)/car.inverseMass(r,tx,ty,0),ROAM_SCRAPE*j)*Math.sign(slide);car.impulse(r,-tx*f,-ty*f,0);
+    impact=Math.max(impact,into);
+   }
+   car.surface=car.sample(car.x,car.y);
+  }
+  return impact;
+ }
+}
+// A box's four corners (counter-clockwise): inside it, and the nearest point of its outline.
+function inQuad(q,x,y){for(let k=0;k<4;k++){const k1=(k+1)&3;if((q.xs[k1]-q.xs[k])*(y-q.ys[k])-(q.ys[k1]-q.ys[k])*(x-q.xs[k])<0)return false;}return true;}
+function quadEdge(q,x,y){let best=null;for(let k=0;k<4;k++){const k1=(k+1)&3,dx=q.xs[k1]-q.xs[k],dy=q.ys[k1]-q.ys[k];let u=((x-q.xs[k])*dx+(y-q.ys[k])*dy)/(dx*dx+dy*dy||1e-9);u=u<0?0:u>1?1:u;const qx=q.xs[k]+dx*u,qy=q.ys[k]+dy*u,d=Math.hypot(qx-x,qy-y);if(!best||d<best.d)best={d,qx,qy};}return best;}

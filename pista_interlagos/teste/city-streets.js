@@ -113,7 +113,7 @@ export async function createCityStreets(data,{mobile=false,lean=false,ground=nul
  const root=new THREE.Group();root.name='Pintura_cidade';root.userData.noReflection=true;
  const city=data.scenery?.city;map=await map;const t0=performance.now();
  const stats={streetLinesM:0,dashes:0,crosswalks:0,crosswalkBars:0,stopLines:0,pare:0,arrows:0,onibus:0,lapLinesM:0,lapCrosswalks:0,lapStopLines:0,
-  curbLines:0,manholes:0,drains:0,patches:0,cracks:0,oil:0,chunks:0,drawCalls:0,triangles:0,vertices:0};
+  curbLines:0,bays:0,bayRows:0,bayMarks:0,manholes:0,drains:0,patches:0,cracks:0,oil:0,chunks:0,drawCalls:0,triangles:0,vertices:0};
  if(!city||!map||!ground)return {root,stats};
  const light=mobile||lean,see=lean?SEE_LEAN:SEE;
  const a=data.samples,N=a.length,L=data.meta.reconstructed_xy_m,probe=new TestCar(data);
@@ -412,6 +412,52 @@ export async function createCityStreets(data,{mobile=false,lean=false,ground=nul
   if(sprite(p.x-p.ty*o,p.y+p.tx*o,Math.atan2(p.ty,p.tx)+(dir<0?Math.PI:0),1.9,2.5,REG.onibus,[...tone(WHITE,.4,random(st.seed+3)),.88],.45,groundZ,1))stats.onibus++;
   // The stop's no-parking stretch: the yellow line along the curb, from before the lettering to past the shelter.
   stroke(st,Math.min(m.s-dir*14,m.s+dir*8),Math.max(m.s-dir*14,m.s+dir*8),alongCurb(sg,-.05),.06,tone(YELLOW,.4,random(st.seed+5)),.4)&&stats.curbLines++;
+ }
+
+ // --- Parking bays where the cars park along the curb (city.parked, street-closures.js puts them there): the regulated
+ // parking of the Brazilian manual (MER), white: bays about 5.5 m long and 2.2 m deep, closed by a line along the traffic
+ // lane with the bay ends drawn to the curb, or only T marks at the bay ends (an L at each end of the row), or the line
+ // alone on older streets. One style per side of a street; the bays follow the parked cars (each car in its own bay, the
+ // empty ones between them), never across a crossing, a junction's mouth, a bus stop's no-parking stretch or a closure.
+ // Old paint: worn through like the rest. (Phones and the Básico level: the line along the lane only.)
+ {const pk=city.parked,cols=Object.fromEntries((pk?.columns??[]).map((k,i)=>[k,i])),sides=new Map(),BAY=5.5,DEPTH=1.95;
+  const near=(items,x,y,r)=>items.some(([px,py])=>(px-x)**2+(py-y)**2<r*r);
+  const crossPts=(city.crossings?.items??[]).map(([x,y])=>[x,y]),stopPts=(city.stops?.items??[]).map(([x,y])=>[x,y]),closePts=(city.closures??[]).map(c=>[c.x,c.y]);
+  for(const it of pk?.items??[]){
+   const x=it[cols.x],y=it[cols.y],h=it[cols.heading],m=onStreet(x,y,h,9);if(!m)continue;const p=at(m.st,m.s),d=(x-p.x)*-p.ty+(y-p.y)*p.tx;
+   const key=m.st.seed+':'+(d>0?1:-1);if(!sides.has(key))sides.set(key,{st:m.st,sg:d>0?1:-1,s:[]});sides.get(key).s.push(m.s);
+  }
+  // A bay end at s on side sg: where the curb is (the bay's inner edge) and whether paint may go there.
+  const curbHere=(st,s,sg)=>{const p=at(st,s);return curbAt(p,sg,p.w/2+1.5);};
+  const bayOk=(st,s,sg)=>{const k=Math.round(s);if(k<0||k>=st.n||!st.free[k])return false;const e=curbHere(st,s,sg);if(e==null||e<DEPTH+1.2)return false;
+   const p=at(st,s),o=sg*(e-1),x=p.x-p.ty*o,y=p.y+p.tx*o;return !near(crossPts,x,y,7)&&!near(stopPts,x,y,15)&&!near(closePts,x,y,14)&&lapClear(x,y)>3;};
+  for(const {st,sg,s:list} of sides.values()){
+   list.sort((p,q)=>p-q);const r=random(st.seed^(sg>0?0x2c1b3c6d:0x297a2d39)),style=light?'line':['box','box','T','T','line'][Math.floor(r()*5)];
+   const age=.35+r()*.5,col=tone(WHITE,age,r),wear=.35+age*.45,alpha=.72+r()*.18;
+   // Bay ends: each car's bay, shared ends between close cars, empty bays filling the short gaps; a long gap ends the row.
+   const rows=[];let row=[list[0]-BAY/2];
+   for(let i=0;i<list.length;i++){const s=list[i],next=list[i+1];
+    if(next==null||next-s>BAY*3.2){row.push(s+BAY/2);rows.push(row);if(next!=null)row=[next-BAY/2];continue;}
+    if(next-s<=BAY+1.6){row.push((s+next)/2);continue;}
+    const a=s+BAY/2,b=next-BAY/2,n=Math.max(0,Math.round((b-a)/BAY));row.push(a);for(let k=1;k<n;k++)row.push(a+(b-a)*k/n);if(b-a>1)row.push(b);}
+   for(const ends of rows){
+    // Cut where a bay end may not be painted: the rest of the row carries on as rows of its own.
+    let run=[];const flush=()=>{if(run.length>=2)paintRow(st,sg,run,style,col,wear,alpha);run=[];};
+    for(const s of ends){if(bayOk(st,s,sg))run.push(s);else flush();}flush();
+   }
+  }
+  function paintRow(st,sg,ends,style,col,wear,alpha){
+   const s0=ends[0],s1=ends.at(-1),line=alongCurb(sg,DEPTH);
+   if(style!=='T'&&stroke(st,s0,s1,line,.05,col,wear,alpha))stats.bayRows++;
+   if(style==='line'){stats.bays+=ends.length-1;return;}
+   ends.forEach((s,k)=>{const e=curbHere(st,s,sg);if(e==null)return;
+    if(style==='box'){if(across(st,s,sg*(e+.05),sg*(e-DEPTH),.05,col,wear,alpha))stats.bayMarks++;return;}
+    // T marks: a short bar from the lane line toward the curb and the line's piece either side of it (one side at the
+    // row's ends: an L).
+    if(across(st,s,sg*(e-DEPTH+.65),sg*(e-DEPTH),.05,col,wear,alpha))stats.bayMarks++;
+    const f=k===0?s:s-.55,t=k===ends.length-1?s:s+.55;if(t-f>.5)stroke(st,f,t,line,.05,col,wear,alpha);});
+   stats.bays+=ends.length-1;if(style==='T')stats.bayRows++;
+  }
  }
 
  // --- The lap: the real street's lanes from track.lanes, faded and scrubbed by the race, crossings and stop lines.

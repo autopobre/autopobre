@@ -114,7 +114,11 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  // (open only for the pit lane), the start on the Hercílio Luz deck, and on the decks the road plane reaching out to
  // the walls 20 m and more above the sea; a car driven at the wall stays on the deck.
  if(id==='floripa'){
-  assert.equal(data.meta.barrier,'street');assert.deepEqual(data.meta.rails['1'],[[0,L]],'Floripa: wall all the way on the left');
+  // (The walls open only where a side street leads into a zone of the city open to roam, meta.roam: gerar_cidade_floripa.py.)
+  const roamGaps=side=>(data.meta.roam?.zones??[]).flatMap(z=>z.gaps).filter(g=>g.side===side).map(g=>[g.s0,g.s1]).sort((p,q)=>p[0]-q[0]);
+  const openLeft=roamGaps(1),wallLeft=[];{let from=0;for(const [g0,g1] of openLeft){wallLeft.push([from,g0]);from=g1;}wallLeft.push([from,L]);}
+  assert.equal(data.meta.barrier,'street');assert.deepEqual(data.meta.rails['1'],wallLeft,'Floripa: wall all the way on the left (but for the roaming gaps)');
+  for(const [g0,g1] of [...openLeft,...roamGaps(-1)])assert(g1-g0>8&&g1-g0<40,`Floripa: a roaming gap ${g0}-${g1} the width of a street`);
   for(let i=0;i<n;i+=5)for(const side of [-1,1]){const g=guardrailClearance(data,a[i][0],side);assert(g>.3&&g<8.5,`Floripa: wall gap ${g} at s=${a[i][0]}`);}
   assert(onDeck(data,0)&&onDeck(data,L-80),'Floripa: the line and the grid on the Hercílio Luz');
   const probe=new TestCar(data);let deckStations=0,high=0,maxAbove=0;
@@ -230,7 +234,10 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  const field=new RaceField(data,{seed:1}),parked=new TestCar(data);parked.resetGrid();field.reset(parked.surface.s,{grid:true});
  const far=data.terrain;parked.x=far.x0+5;parked.y=far.y0+5;parked.surface=parked.sample(parked.x,parked.y);
  let steps=0,offroad=0,crashes=0;
- while(field.rivals.some(r=>!r.finished)&&steps<120*600){field.step(parked,1/120,3);for(const r of field.rivals){if(!r.car.surface.onRoad)offroad++;}steps++;}
+ let roamed=0;
+ while(field.rivals.some(r=>!r.finished)&&steps<120*600){field.step(parked,1/120,3);for(const r of field.rivals){if(!r.car.surface.onRoad)offroad++;if(r.car.roamZone)roamed++;}steps++;}
+ // A street circuit's gaps into the city (meta.roam) are off the rivals' line: none of them ever goes through.
+ assert.equal(roamed,0,`${id}: rivals never leave the lap through a gap into the city (${roamed} steps out)`);
  const finished=field.rivals.filter(r=>r.finished);
  assert(finished.length>=13,`${id}: rivals finish three laps (${finished.length}/14)`);
  assert(offroad/(steps*14)<.03,`${id}: rivals stay on the asphalt (${(offroad/(steps*14)*100).toFixed(2)}% off)`);

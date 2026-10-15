@@ -1401,7 +1401,8 @@ function plantIpes(trees,others,mobile){
 // density: trees and houses per area against the standard build (the Gráficos tab's scenery level);
 // lod: how near a tree block shows its full crowns.
 // lean: the cheapest scenery (Básico): plain near lumps and no shrubs.
-export function createLandscape({data,field,ortho=null,cover=null,buildings=null,cityAngle=Math.PI/2,mobile=false,style='urban',density=1,lod=mobile?80:130,ground=null,lean=false}){
+// city: a real city's map (city-map.js): grass tufts only on its lawns and lots, never on its streets and sidewalks.
+export function createLandscape({data,field,ortho=null,cover=null,buildings=null,cityAngle=Math.PI/2,mobile=false,style='urban',density=1,lod=mobile?80:130,ground=null,lean=false,city=null}){
  const root=new THREE.Group();root.name='Paisagem';const spread=1/Math.sqrt(density);
  const rand=random(data.samples.length*7919+17),stats={trees:0,houses:0,water:0};
  const trees=[],tall=[],houses=[],flats=[],lajes=[],rounds=[];
@@ -1459,6 +1460,8 @@ export function createLandscape({data,field,ortho=null,cover=null,buildings=null
   for(let y=y0+spacing/2;y<y0+height;y+=spacing)for(let x=x0+spacing/2;x<x0+width;x+=spacing){
    const px=x+(rand()-.5)*spacing*.9,py=y+(rand()-.5)*spacing*.9,cell=field.cell(px,py),kind=classAt(px,py);
    if(cell<0||(kind!=='1'&&kind!=='2'))continue;const edge=field.edge[cell];
+   // (A city's woods stay off its streets, sidewalks and squares' paving.)
+   if(city){const surface=city.surface(px,py);if(surface!=='green'&&surface!=='lot')continue;}
    if(edge<=9||rand()>(kind==='1'?.72:.22))continue;
    const h=kind==='1'?(edge<25?7:8.5)+rand()*7:3+rand()*3.5,list=kind==='1'&&rand()<.2?tall:trees;
    const tree={x:px,y:py,z:terrainHeight(data,px,py)-.3,height:list===tall?h*1.4:h,width:(list===tall?.75:.95)*h*(.8+rand()*.35),turn:rand()*Math.PI*2,color:treeColor(rand,kind==='2'?.7:0,mobile)};
@@ -1550,6 +1553,7 @@ export function createLandscape({data,field,ortho=null,cover=null,buildings=null
  // the lakes stay bare. Use the fitted visible ground supplied by the circuit. A tuft spreads its
  // blades about a metre, so painted run-off a metre and a half away keeps it off too.
  const vegetated=(x,y)=>{
+  if(city){const kind=city.surface(x,y);if(kind!=='green'&&kind!=='lot')return false;}
   if(ortho){
    // Paint as the terrain draws it (field.paint), round the tuft's metre-wide spread too.
    for(const [dx,dy] of [[0,0],[1.6,0],[-1.6,0],[0,1.6],[0,-1.6]]){const cell=field.cell(x+dx,y+dy);if(cell>=0&&field.paint[cell]>.1)return false;}

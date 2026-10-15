@@ -76,7 +76,14 @@ function heading(p){return Math.atan2(p[8],p[7]);}
 export function bend(data,s,span=22){return wrap(heading(trackPoint(data,s+span).p)-heading(trackPoint(data,s-span).p))/(2*span);}
 
 // Outside of the sharper corners, clear of roads, pits and stands.
+const towerCache=new WeakMap();
+// (Pure in the track data, asked for by many modules: worked out once per data and count.)
 export function towerSpots(data,count=9){
+ let cached=towerCache.get(data);if(!cached)towerCache.set(data,cached=new Map());
+ if(!cached.has(count))cached.set(count,findTowerSpots(data,count));
+ return cached.get(count);
+}
+function findTowerSpots(data,count){
  const L=data.meta.reconstructed_xy_m,bands=sceneryBands(data),candidates=[];
  for(let s=0;s<L;s+=6)candidates.push({s,k:bend(data,s)});
  candidates.sort((a,b)=>Math.abs(b.k)-Math.abs(a.k));
@@ -105,6 +112,8 @@ function findMarshalSpots(data){
  // A post every 360 m or so (each one up to 30 m off the beat, per circuit), on alternate sides, and
  // never under a billboard: a post that cannot keep 25 m from one stands where the old rule put it.
  const boards=billboardSpots(data),rand=seeded(circuitSeed(data.meta?.id)+360);
+ // Never in the mouth of a side street opened to roam the city (meta.roam's gaps in the walls).
+ const gaps=(data.meta.roam?.zones??[]).flatMap(z=>z.gaps),open=(s,side)=>gaps.some(g=>g.side===side&&s>g.s0-8&&s<g.s1+8);
  for(let s=140,k=0;s<L-60;s+=360,k++){
   const jitter=(rand()-.5)*60;
   // On a plateau's rim (Chapada dos Sonhos) the abyss side has no ground for a post: it stands on the other side.
@@ -112,7 +121,7 @@ function findMarshalSpots(data){
    let fallback=null,placed=false;
    for(const shift of [0,20,-20,40,-40]){
     const at=((s+jitter+shift)%L+L)%L,{p}=trackPoint(data,at),off=side*(p[4]/2+guardrailClearance(data,p[0],side)+2.6),x=p[1]-p[8]*off,y=p[2]+p[7]*off;
-    if(bandClearance(bands,x,y).distance<=2.5)continue;
+    if(bandClearance(bands,x,y).distance<=2.5||open(p[0],side))continue;
     const spot={s:at,side,x,y,p};fallback??=spot;
     if(boards.every(b=>Math.hypot(b.x-x,b.y-y)>25)){fallback=null;spots.push(spot);placed=true;break;}
    }

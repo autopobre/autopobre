@@ -211,12 +211,14 @@ function buildPlan(data){
  const mainStraight=s=>!runs.length||!inCorner(s)&&(wrapS(s,L)<wrapS(firstRun.from,L)||wrapS(s,L)>wrapS(lastRun.to,L));
  const far=(x,y,list,r)=>list.every(q=>Math.hypot(q.x-x,q.y-y)>=r),straight=s=>[-15,0,15].every(o=>Math.abs(bend(data,s+o))<1/300);
  const boards=brakeBoardSpots(data,{runs,bands:open,avoid:[...billboards.map(b=>({x:b.x,y:b.y,r:14})),...cams.map(c=>({...c,r:8})),...towers.map(t=>({x:t.x,y:t.y,r:10})),...marshals.map(m=>({x:m.x,y:m.y,r:6}))]});
- const poles=[];
+ const poles=[],roamGaps=(data.meta.roam?.zones??[]).flatMap(z=>z.gaps);
  for(const side of [-1,1]){
   let last=-Infinity,k=0,gap=POLE_GAP;
   for(let s=side<0?2:2+POLE_GAP/2;s<L-2;s+=2){
    // Corner exits only behind a rail: an open run-off is where a car runs wide.
    if(s-last<gap||inCorner(s)||!(straight(s)||exiting(s,side)&&guardrailPresent(data,s,side)))continue;
+   // Nor in the mouth of a side street opened to roam the city (meta.roam's gaps in the walls).
+   if(roamGaps.some(g=>g.side===side&&s>g.s0-6&&s<g.s1+6))continue;
    // Behind a street circuit's concrete wall the poles stand back on the sidewalk, clear of the catch fence.
    const {p}=trackPoint(data,s),off=side*(p[4]/2+guardrailClearance(data,s,side)+(data.meta.barrier==='street'?2.2:POLE_BEHIND)+rand()*.6),x=p[1]-p[8]*off,y=p[2]+p[7]*off;
    if(bandClearance(bands,x,y).distance<2.5||geo&&wallsNear(geo,x,y,1.5).length||pitBlocked(data,s,off))continue;

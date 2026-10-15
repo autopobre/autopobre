@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {canvasTexture} from './pit-textures.js';
+import {lightUniforms,nightLights,waterGlints,screenHalf} from './sea-water.js';
 
 // The postcard of Florianópolis round the street circuit (data.scenery.landmarks, gerar_floripa.py): the Rodoviária
 // Rita Maria beside the boxes, the TICEN, the Mercado Público and the Casa da Alfândega, the Catedral, the Forte de
@@ -8,6 +9,9 @@ import {canvasTexture} from './pit-textures.js';
 // hexagonal precast roof tubes, the TICEN's folded canopies and teal bus loops, the yellow market round its covered
 // passage. Everything is merged by material into a handful of meshes: one set near the track (casts shadows), one far
 // off (the old centre, the masts 3 km away). Nothing here touches the road, its walls or the pit lane and garages.
+// After dark (setNight): the masts' red aviation lights (a flashing beacon on top, steady reds down the tall ones,
+// each mast its own beat) and the city's lights out to the horizon on the far relief (cityLights), their streaks on
+// the bay where the town meets the water.
 
 function random(seed){let t=seed>>>0;return ()=>{t=t+0x6D2B79F5>>>0;let r=Math.imul(t^t>>>15,1|t);r=r+Math.imul(r^r>>>7,61|r)^r;return ((r^r>>>14)>>>0)/4294967296;};}
 // Linear colours (vertex colours are linear): an sRGB hex scaled by k.
@@ -545,8 +549,8 @@ function forte(m,{near:{stucco:S,tiles:T,paint:P,glass:G,steel:M},ground,mobile,
 // circuit they are silhouettes on the skyline: solid tapering sections in the lattice's average tone, no alpha.
 // Their feet go on the drawn hill (the far relief, read in createFloripaLandmarks), not on the towers' own z in the
 // track file: that one comes from outside the city's terrain model (80-138 m where the hill stands at 216-277 m).
-function mastsGeometry(m,rand,mobile){
- const B=new Batch(),lights=[],ranges=[],orange=lin(0xd8541e),white=lin(0xe9e7e0),galv=lin(0xaab1b5);
+function mastsGeometry(m,rand,mobile,glim=random(3307)){
+ const B=new Batch(),lights=[],nightMasts=[],ranges=[],orange=lin(0xd8541e),white=lin(0xe9e7e0),galv=lin(0xaab1b5);
  const heights=[58,49,42,37,33,30,28,26,24,22,21,20,35,27,23];
  for(let i=heights.length-1;i>0;i--){const j=Math.floor(rand()*(i+1));[heights[i],heights[j]]=[heights[j],heights[i]];}
  m.towers.forEach((t,i)=>{
@@ -560,9 +564,74 @@ function mastsGeometry(m,rand,mobile){
   if(rand()<.6)B.post([x,y,zb+h],[x,y,zb+h+3+rand()*6],.12,.05,4,galv);
   const dishes=mobile?0:Math.floor(rand()*3);for(let d=0;d<dishes;d++){const a=rand()*6.3,z=zb+h*(.45+rand()*.4),w=b+(top-b)*(z-zb)/h,r=rad(w)+.5,px=x+Math.cos(a)*r,py=y+Math.sin(a)*r,s=.6+rand()*.7;B.post([px,py,z],[px+Math.cos(a)*.5,py+Math.sin(a)*.5,z],s,s*.9,10,white,{bottom:true});}
   lights.push([x,y,zb+h+.4,rand()*2,1.1+rand()*.8]);if(h>40)lights.push([x,y,zb+h*.5,rand()*2,1.1+rand()*.8]);
+  // After dark: the flashing beacon on top (20 to 40 flashes a minute), steady reds every ~15 m down the mast.
+  const night=[{p:[x,y,zb+h+.5],blink:[1.5+glim()*1.5,.38+glim()*.12],g:5}];for(let z=h-15+glim()*3;z>8;z-=13+glim()*4)night.push({p:[x,y,zb+z],g:4});
+  const ph=glim();for(const l of night)nightMasts.push({...l,c:[1,1,1],i:l.g===5?1:.55+glim()*.2,s:.35,on:0,ph:(ph+glim()*.08)%1,tower:ranges.length});
   ranges.push({start,end:B.vertices,x,y,zb,lights:h>40?2:1});
  });
- return {batch:B,lights,ranges};
+ return {batch:B,lights,nightMasts,ranges};
+}
+// ---------- The city after dark, out to the horizon ----------
+// The land round the bay drawn by far-terrain.js (its rings 'medio', 14 km at 40 m, and 'longe', 44 km at 160 m: the
+// same relief and Sentinel-2 picture) gets street lights wherever the picture shows a town: São José, the Estreito
+// and Coqueiros across the strait, the island's centre round the Morro da Cruz, Palhoça and Biguaçu along the bays.
+// Town = land that is neither wood (green over red) nor cloud or cloud shadow (too bright, too dark); its density is
+// the share of town in ~140 m round each pixel (cloud holes filled from ~500 m round). Lights follow streets: each is
+// snapped onto a local grid of streets 70-110 m apart, turned by region. LED white mostly, the older sodium orange,
+// a lit window here and there; each comes on at its own moment of the dusk; far off they shimmer in the air. Inside
+// the track's grid the real city stands (city-buildings.js and its neighbours): no lights there.
+const loadImage=url=>new Promise((ok,fail)=>{const img=new Image();img.onload=()=>ok(img);img.onerror=()=>fail(new Error(String(url)));img.src=url;});
+// Box mean of a float grid (n × n) over (2r+1)², by an integral image.
+function boxMean(a,n,r){
+ const I=new Float64Array((n+1)*(n+1));for(let j=0;j<n;j++){let row=0;for(let i=0;i<n;i++){row+=a[j*n+i];I[(j+1)*(n+1)+i+1]=I[j*(n+1)+i+1]+row;}}
+ const out=new Float32Array(n*n);
+ for(let j=0;j<n;j++)for(let i=0;i<n;i++){const i0=Math.max(0,i-r),i1=Math.min(n,i+r+1),j0=Math.max(0,j-r),j1=Math.min(n,j+r+1);out[j*n+i]=(I[j1*(n+1)+i1]-I[j0*(n+1)+i1]-I[j1*(n+1)+i0]+I[j0*(n+1)+i0])/((i1-i0)*(j1-j0));}
+ return out;
+}
+async function townRing(spec,base){
+ const [buffer,img]=await Promise.all([fetch(new URL(spec.relief,base)).then(r=>{if(!r.ok)throw new Error(spec.relief);return r.arrayBuffer();}),loadImage(new URL(spec.image,base))]);
+ const height=reliefSampler(spec,buffer),n=(spec.nx-1)*2,size=(spec.nx-1)*spec.step,px=size/n,y1=spec.y0+(spec.ny-1)*spec.step;
+ const canvas=document.createElement('canvas');canvas.width=canvas.height=n;const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,n,n);
+ const rgb=ctx.getImageData(0,0,n,n).data,town=new Float32Array(n*n),known=new Float32Array(n*n),land=new Uint8Array(n*n);
+ for(let j=0;j<n;j++)for(let i=0;i<n;i++){
+  const k=j*n+i,h=height(spec.x0+(i+.5)*px,y1-(j+.5)*px);if(h==null||h<.8)continue;land[k]=1;
+  const r=rgb[k*4]/255,g=rgb[k*4+1]/255,b=rgb[k*4+2]/255,lum=.3*r+.59*g+.11*b;
+  if(lum>.55||lum<.06)continue;known[k]=1;if(g-r<=.012)town[k]=1;
+ }
+ const t1=boxMean(town,n,3),k1=boxMean(known,n,3),t2=boxMean(town,n,12),k2=boxMean(known,n,12),density=new Float32Array(n*n);
+ for(let k=0;k<n*n;k++)if(land[k])density[k]=k1[k]>.3?t1[k]/k1[k]:k2[k]>.05?t2[k]/k2[k]:0;
+ return {spec,height,density,n,px,x0:spec.x0,y1,rect:{x0:spec.x0,y0:spec.y0,x1:spec.x0+size,y1}};
+}
+async function cityLights(data,{mobile}){
+ const far=data.scenery?.far;if(!far?.medio)return null;
+ const base=new URL('./assets/circuitos/',import.meta.url),t=data.terrain,rand=random(4417);
+ const grid={x0:t.x0-20,y0:t.y0-20,x1:t.x0+(t.nx-1)*t.step+20,y1:t.y0+(t.ny-1)*t.step+20};
+ const rings=[await townRing(far.medio,base)];if(far.longe)rings.push(await townRing(far.longe,base));
+ const lights=[],shore=[],keep=mobile?.3:1;
+ // Street grid: turned by a slowly varying angle (one per ~1.6 km region), streets 70-110 m apart.
+ const region=(x,y)=>{const i=Math.floor(x/1600),j=Math.floor(y/1600),h=Math.sin(i*127.1+j*311.7)*43758.5453;return h-Math.floor(h);};
+ const COLOURS=[[.5,[1,.88,.72]],[.33,[1,.55,.2]],[.09,[.82,.9,1]],[.08,[1,.7,.42]]];
+ rings.forEach((ring,o)=>{
+  const inner=o===0?grid:rings[0].rect,perPx=(o===0?.2:1.4)*keep;
+  for(let j=0;j<ring.n;j++)for(let i=0;i<ring.n;i++){
+   const d=ring.density[j*ring.n+i];if(d<.08)continue;
+   let count=Math.pow(d,1.5)*perPx;const cx=ring.x0+(i+.5)*ring.px,cy=ring.y1-(j+.5)*ring.px;
+   if(cx>inner.x0&&cx<inner.x1&&cy>inner.y0&&cy<inner.y1)continue;
+   for(;count>0;count--){
+    if(count<1&&rand()>count)break;
+    let x=cx+(rand()-.5)*ring.px,y=cy+(rand()-.5)*ring.px;
+    const reg=region(x,y),a=reg*Math.PI/2,sp=70+40*reg,ca=Math.cos(a),sa=Math.sin(a);let u=x*ca+y*sa,v=-x*sa+y*ca;
+    if(rand()<.5)u=Math.round(u/sp)*sp+(rand()-.5)*3;else v=Math.round(v/sp)*sp+(rand()-.5)*3;
+    x=u*ca-v*sa;y=u*sa+v*ca;
+    const h=ring.height(x,y);if(h==null||h<1)continue;
+    let r=rand(),c=COLOURS[0][1];for(const [w,col] of COLOURS){if(r<w){c=col;break;}r-=w;}
+    const light={p:[x,y,h+4.5+rand()*4],c,i:.6+rand()*1,s:.3,g:6,on:.04+rand()*.46,ph:rand(),tw:.12};lights.push(light);
+    // By the water (the bed under sea level within 120 m, low ground): its streak on the bay.
+    if(h<30&&shore.length<(mobile?250:900)&&rand()<.55&&[[90,0],[-90,0],[0,90],[0,-90]].some(([dx,dy])=>{const z=ring.height(x+dx,y+dy);return z!=null&&z<.3;}))shore.push({...light,s:.4,i:light.i*1.4});
+   }
+  }
+ });
+ return {lights,shore};
 }
 // The far relief's height (far-terrain.js ring 'medio') at (x,y), bilinear; null outside it.
 function reliefSampler(spec,buffer){
@@ -596,9 +665,12 @@ export function createFloripaLandmarks(data,{ground,mobile=false}={}){
  let drawCalls=0,vertices=0;
  for(const [group,batches,shadow] of [['perto',near,true],['longe',far,false]])for(const [k,b] of Object.entries(batches)){if(!b.vertices)continue;root.add(b.mesh(`Marcos_${group}_${k}`,materials[k],shadow));drawCalls++;vertices+=b.vertices;}
  // Masts and their warning lights: placed on the far relief once it is read (the same file far-terrain.js draws).
- const cruz=marks.find(m=>m.kind==='morro_da_cruz');let lightPoints=null,lightData=[];
+ const cruz=marks.find(m=>m.kind==='morro_da_cruz');let lightPoints=null,lightData=[],mastGlow=null;
+ const night=lightUniforms();stats.night={level:0,mastLights:0,cityLights:0,shoreGlints:0};
  if(cruz?.towers?.length){
-  const {batch,lights,ranges}=mastsGeometry(cruz,random(911),mobile),mesh=batch.mesh('Marcos_mastros',materials.paint,false);root.add(mesh);drawCalls++;vertices+=batch.vertices;
+  const {batch,lights,nightMasts,ranges}=mastsGeometry(cruz,random(911),mobile),mesh=batch.mesh('Marcos_mastros',materials.paint,false);root.add(mesh);drawCalls++;vertices+=batch.vertices;
+  // At night the masts' lights as glowing beacons (the day keeps its small red points).
+  mastGlow=nightLights(nightMasts,night,{name:'Marcos_luzes_mastros_noite',minPx:2.6,floor:1,fogKeep:.35});root.add(mastGlow.mesh);stats.night.mastLights=nightMasts.length;
   lightData=lights;const lg=new THREE.BufferGeometry();lg.setAttribute('position',new THREE.Float32BufferAttribute(lights.flatMap(([x,y,z])=>[x,z,-y]),3));lg.setAttribute('color',new THREE.Float32BufferAttribute(lights.flatMap(()=>[1,.1,.05]),3));
   lightPoints=new THREE.Points(lg,new THREE.PointsMaterial({name:'Marcos_luzes_mastros',size:mobile?2.5:3,sizeAttenuation:false,vertexColors:true,toneMapped:false}));lightPoints.name='Marcos_luzes_mastros';root.add(lightPoints);drawCalls++;
   stats.masts=ranges.length;
@@ -608,13 +680,32 @@ export function createFloripaLandmarks(data,{ground,mobile=false}={}){
    for(const t of ranges){
     const z=relief(t.x,t.y),dz=z==null?0:z-2.5-t.zb;for(let k=t.start;k<t.end;k++)pos.setY(k,pos.getY(k)+dz);
     for(let k=0;k<t.lights;k++,light++){lightData[light][2]+=dz;lp.setY(light,lp.getY(light)+dz);}
+    nightMasts.forEach((l,k)=>{if(ranges[l.tower]===t)mastGlow.positions[k*3+1]+=dz;});
    }
+   mastGlow.update();
    pos.needsUpdate=lp.needsUpdate=true;mesh.geometry.computeBoundingSphere();lg.computeBoundingSphere();stats.mastsOnRelief=true;
   }).catch(e=>console.warn('Mastros do Morro da Cruz sem relevo:',e.message));
+ }
+ // The city's lights, once the far relief and its picture are read (a draw for the lights, one for their streaks).
+ let city=null,lit=0;
+ cityLights(data,{mobile}).then(made=>{
+  if(!made?.lights.length)return;
+  const glow=nightLights(made.lights,night,{name:'Cidade_luzes_longe',minPx:mobile?1.2:1.3,floor:.6,near:[350,900],fogKeep:.55});
+  const streaks=made.shore.length?waterGlints(made.shore,night,{name:'Cidade_reflexos',level:data.meta.sea_level_m??0,slope:.05}):null;
+  root.add(glow.mesh);if(streaks)root.add(streaks.mesh);city={glow,streaks};
+  Object.assign(stats.night,{cityLights:made.lights.length,shoreGlints:made.shore.length});stats.drawCalls+=streaks?2:1;setNight(lit);
+ }).catch(e=>console.warn('Luzes da cidade sem relevo:',e.message));
+ // 0 by day; dusk (.45) brings most of the town's lights on and the masts' glow; full at night.
+ function setNight(level){
+  lit=level;night.uNight.value=level;stats.night.level=level;const G=night.uGroups.value;
+  G[4].set(1,.05,.025,5.5);G[5].set(1,.04,.02,9);G[6].set(1,1,1,level>=.99?2.6:3.6);
+  if(mastGlow)mastGlow.mesh.visible=level>0;if(lightPoints)lightPoints.visible=level<=0;
+  if(city){city.glow.mesh.visible=level>0;if(city.streaks)city.streaks.mesh.visible=level>0;}
  }
  Object.assign(stats,{drawCalls,vertices});
  let clock=0;
  function update(dt){
+  if(lit>0){night.uTime.value+=dt;night.uScreen.value=screenHalf(mobile);}
   if(!lightPoints||!dt)return;clock+=dt;const col=lightPoints.geometry.attributes.color;
   // Obstruction lights: slow blinks, each mast its own rhythm.
   lightData.forEach(([, , ,phase,period],i)=>{const on=((clock+phase)%period)<period*.45,k=on?1:.08;col.setXYZ(i,k,k*.1,k*.05);});col.needsUpdate=true;
@@ -625,5 +716,5 @@ export function createFloripaLandmarks(data,{ground,mobile=false}={}){
  for(const m of marks){const margin={rodoviaria:34,ticen:6,mercado_publico:4,alfandega:4,catedral:6,forte_santana:3}[m.kind];if(margin===undefined||!m.w)continue;
   const c=Math.cos(m.heading),s=Math.sin(m.heading),hw=m.w/2+margin,hd=m.d/2+margin,step=10;
   for(let u=-hw;u<=hw+1e-6;u+=step)for(let v=-hd;v<=hd+1e-6;v+=step)clearings.push({x:m.x+c*u-s*v,y:m.y+s*u+c*v,r:step*.75});}
- return {root,obstacles:proxies,update,stats,clearings};
+ return {root,obstacles:proxies,update,setNight,stats,clearings};
 }

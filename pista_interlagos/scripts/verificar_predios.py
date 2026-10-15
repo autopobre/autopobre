@@ -1,11 +1,13 @@
 """Predios da cidade (Autódromo Floripa, city-buildings.js): montados sem erros, contagens, e fotos da volta e das ruas.
 
-    python verificar_predios.py [porta] [pasta das fotos] [--noite] [--so-volta] [--so-ruas] [--so-alto] [--prefixo=x]
+    python verificar_predios.py [porta] [pasta das fotos] [--noite] [--so-volta] [--so-ruas] [--so-alto] [--so-sacadas] [--prefixo=x]
 
 Abre ?circuito=floripa no Treino solo, confere as estatisticas de 'Predios_cidade' (predios, paredes, lojas, telhados,
 draw calls) e fotografa: a camera de perseguicao ao longo da volta (s a cada ~150-300 m perto dos predios), vistas do
 nivel da rua nas ruas da cidade e vistas do alto (dos tabuleiros das pontes, olhando a ilha e o continente). Confere
 tambem que um circuito sem cidade (o Minhocão) nao monta o modulo. --noite tira as fotos a noite.
+--so-sacadas (rodada 2): a vida nas fachadas que dao para a volta (gente nas sacadas e janelas, bandeiras e faixas,
+varais, plantas, antenas): confere as contagens e fotografa da pista olhando as fachadas, de perto e de baixo.
 """
 import json
 import sys
@@ -99,6 +101,7 @@ def foto(page, nome):
 
 # --stub=beira-mar,city-streets: troca modulos irmaos (em obra por outros) por um esqueleto vazio, so neste teste.
 STUBS = {'beira-mar': ('createBeiraMar', 'Beira_mar'), 'city-streets': ('createCityStreets', 'Ruas_cidade'),
+         'city-life': ('createCityLife', 'Vida_cidade'), 'city-traffic': ('createCityTraffic', 'Transito_cidade'), 'city-race': ('createCityRace', 'Corrida_na_cidade'),
          'street-closures': ('createStreetClosures', 'Bloqueios_ruas'), 'city-furniture': ('createCityFurniture', 'Mobiliario_cidade')}
 
 
@@ -109,8 +112,19 @@ def stubs(page):
             corpo = (f"import * as THREE from 'three';export {'async ' if nome != 'beira-mar' else ''}function {fn}()"
                      f"{{const root=new THREE.Group();root.name='{root}';return {{root,stats:{{stub:true}}}};}}"
                      + ("export function plateName(n){return n;}" if nome == 'city-furniture' else ''))
-            page.route(f'**/teste/{nome}.js*', lambda route, c=corpo: route.fulfill(status=200, content_type='text/javascript', body=c))
+            page.route(f'**/teste/{nome}.js*', lambda route, pedido=None, c=corpo: route.fulfill(status=200, content_type='text/javascript', body=c))
             print('stub', nome, flush=True)
+
+
+def congelar(page):
+    """--congelar=floripa-bridges,sea-water: serve a versao do HEAD de modulos irmaos (em obra por outros), so neste teste."""
+    import subprocess
+    for nome in next((a.split('=', 1)[1] for a in flags if a.startswith('--congelar=')), '').split(','):
+        if not nome:
+            continue
+        corpo = subprocess.run(['git', 'show', f'HEAD:pista_interlagos/teste/{nome}.js'], cwd=AQUI, capture_output=True, check=True).stdout
+        page.route(f'**/teste/{nome}.js*', lambda route, pedido=None, c=corpo: route.fulfill(status=200, content_type='text/javascript', body=c))
+        print('congelado', nome, flush=True)
 
 
 def abrir(page, circuito):
@@ -135,6 +149,29 @@ RUAS = [('Rua Conselheiro Mafra', .5), ('Rua Jerônimo Coelho', (1060, -160)), (
         ('Rua Duarte Schutel', (600, 550)), ('Rua 14 de Julho', (-750, -120)), ('Avenida Governador Ivo Silveira', (-950, 150)),
         ('Rua Visconde de Cairu', (-800, 0)), ('Rua Capitão Anaxágoras Aires Neto', (-1150, 200)), ('Rua Machado de Assis', (-850, 380)),
         ('Rua Pedro Ivo', .5)]
+
+
+# Pontos da volta com predios altos de um lado (1: a esquerda da volta, -1: a direita).
+SACADAS = [(560, -1), (600, 1), (650, 1), (1050, 1), (1100, 1), (1250, 1), (3500, 1), (3600, 1), (3700, 1), (3800, -1), (3850, -1), (3900, -1)]
+
+
+def sacadas():
+    """Da beira oposta da pista, olhando adiante e para cima as fachadas do lado dos predios (como o piloto as ve)."""
+    out = []
+    for s, lado in SACADAS:
+        p, q = amostra(s), amostra(s + 30)
+        o = -lado * (p[4] / 2 - 1.5)
+        de = [p[1] + p[9] * o, p[2] + p[10] * o, p[3] + 1.9]
+        para = [q[1] + q[9] * lado * 34, q[2] + q[10] * lado * 34, q[3] + 11]
+        out.append((f'sacada_{s:04d}', de, para, 55))
+    # De perto: da calcada em frente, olhando para cima as sacadas de uma torre de frente para a volta.
+    for s, lado in ((600, 1), (1100, 1), (3650, 1), (3850, -1)):
+        p, q = amostra(s), amostra(s + 12)
+        o = lado * (p[4] / 2 + 4)
+        de = [p[1] + p[9] * o, p[2] + p[10] * o, p[3] + 1.7]
+        para = [q[1] + q[9] * lado * 26, q[2] + q[10] * lado * 26, q[3] + 13]
+        out.append((f'sacada_perto_{s:04d}', de, para, 50))
+    return out
 
 
 def alto():
@@ -171,6 +208,7 @@ with sync_playwright() as p:
     page.on('pageerror', lambda e: (erros.append(str(e)), print('pageerror', e, flush=True)))
     page.on('console', lambda m: print('console', m.type, m.text, flush=True) if m.type in ('error', 'warning') else None)
     stubs(page)
+    congelar(page)
     nivel = next((a.split('=', 1)[1] for a in flags if a.startswith('--nivel=')), None)
     if nivel:
         # O nivel de graficos (baixo: cenario Basico, o modulo enxuto; medio: Leve, ainda sem varandas nem telhados).
@@ -186,7 +224,14 @@ with sync_playwright() as p:
     assert st and not st.get('stub'), st
     for k in ('buildings', 'walls', 'shops', 'roofs', 'drawCalls', 'triangles'):
         assert st.get(k, 0) > 0, (k, st)
-    assert st['drawCalls'] <= 15, st
+    # Rodada 2: a vida nas fachadas (pessoas, panos, coisas) cabe em ~20 draw calls com os predios.
+    assert st['drawCalls'] <= 20, st
+    vida = st.get('life') or {}
+    print('vida', json.dumps(vida, ensure_ascii=False), flush=True)
+    if not nivel:
+        for k in ('people', 'balconyPeople', 'windowPeople', 'roofPeople', 'flags', 'banners', 'garments', 'plants', 'dishes', 'antennas', 'openWindows'):
+            assert vida.get(k, 0) > 0, (k, vida)
+        assert st.get('historic', 0) > 0, st
     if NOITE:
         page.evaluate("interlagosClima.set({time:'noite'})")
         page.wait_for_timeout(3000)
@@ -199,20 +244,24 @@ with sync_playwright() as p:
         def mediana(v):
             v = sorted(x for x in v if x)
             return round(v[len(v) // 2], 2) if v else None
-        for s0 in (600, 1200, 3750):
+        # A vida nas fachadas (rodada 2): as pessoas e os panos/coisas, escondidos pelo nome.
+        VIDA = "['#Predios_cidade_gente','#Predios_cidade_gente_longe','#Predios_cidade_vida_ilha','#Predios_cidade_vida_continente']"
+        for s0 in (600, 1200, 3750, 3850):
             em(page, s0, espera=2500)
-            com, sem = [], []
+            com, sem, semvida = [], [], []
             # Alternando com e sem (o relogio da GPU sobe e desce): a mediana de cada lado.
             for _ in range(5):
-                for lista, oculto in ((com, 'false'), (sem, 'true')):
-                    page.evaluate(f"interlagosGraficos.hide(['Predios_cidade'],{oculto});true")
+                for lista, oculto in ((com, None), (sem, "['Predios_cidade']"), (semvida, VIDA)):
+                    if oculto:
+                        page.evaluate(f"interlagosGraficos.hide({oculto},true);true")
                     page.wait_for_timeout(400)
                     for _ in range(12):
                         page.wait_for_timeout(80)
                         lista.append(page.evaluate('interlagosGraficos.info().resolution.gpuMs'))
-            page.evaluate("interlagosGraficos.hide(['Predios_cidade'],false);true")
-            custo = page.evaluate("interlagosGraficos.cost(10).then(c=>({predios:c.parts['Predios_cidade']??null,total:Object.values(c.parts).reduce((a,p)=>[a[0]+p.calls,a[1]+p.triangles],[0,0])}))")
-            print(json.dumps({'s': s0, 'gpu_ms_com': mediana(com), 'gpu_ms_sem': mediana(sem), 'custo_10q': custo}), flush=True)
+                    if oculto:
+                        page.evaluate(f"interlagosGraficos.hide({oculto},false);true")
+            custo = page.evaluate("interlagosGraficos.cost(10).then(c=>({predios:c.parts['Predios_cidade']??null,vida:Object.fromEntries(Object.entries(c.groups).filter(([k])=>/gente|vida/.test(k))),total:Object.values(c.parts).reduce((a,p)=>[a[0]+p.calls,a[1]+p.triangles],[0,0])}))")
+            print(json.dumps({'s': s0, 'gpu_ms_com': mediana(com), 'gpu_ms_sem_predios': mediana(sem), 'gpu_ms_sem_vida': mediana(semvida), 'custo_10q': custo}, ensure_ascii=False), flush=True)
     so = [f for f in flags if f.startswith('--so-')]
     if not so or '--so-volta' in so:
         for s in VOLTA:
@@ -226,6 +275,13 @@ with sync_playwright() as p:
                 continue
             vista(page, v[0], v[1], 60)
             foto(page, 'rua_' + ascii(nome.split(' ', 1)[1]).replace(' ', '_').lower()[:24])
+    if not so or '--so-sacadas' in so:
+        for nome, de, para, fov in sacadas():
+            vista(page, de, para, fov)
+            foto(page, nome)
+        for s, _ in SACADAS[1::3]:
+            em(page, s)
+            foto(page, f'sacada_chase_{s:04d}')
     if not so or '--so-alto' in so:
         for nome, de, para, fov in alto():
             vista(page, de, para, fov)
