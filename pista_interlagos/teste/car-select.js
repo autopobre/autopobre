@@ -42,7 +42,8 @@ class Studio {
   // (build); template: the Opala's model, fusca the Fusca's.
   // zoom, elevation and offset (the point looked at, from the car's middle) ease towards their ...To; box: the car
   // shown, in the turntable's frame (what the pointer can aim at, what the camera keeps clear of).
-  this.yaw=-.55;this.handUntil=0;this.time=0;this.car=null;this.shown=null;this.wanted=null;this.next=null;this.template=null;this.fusca=null;this.environment=null;
+  // still: the turntable held (the screen's Parar de girar box); the car still turns by hand.
+  this.still=false;this.yaw=-.55;this.handUntil=0;this.time=0;this.car=null;this.shown=null;this.wanted=null;this.next=null;this.template=null;this.fusca=null;this.environment=null;
   this.zoom=this.zoomTo=1;this.zoomMax=2;this.elevation=this.elevationTo=VIEW.elevation;this.offset=new THREE.Vector3();this.offsetTo=new THREE.Vector3();
   this.box=new THREE.Box3(new THREE.Vector3(-2.4,0,-.95),new THREE.Vector3(2.4,1.45,.95));this.view=null;this.lens=1;this.distance=0;
  }
@@ -82,7 +83,7 @@ class Studio {
   if(!this.garage)this.setup(renderer);setCarEnvironment(this.environment,'estudio');
   if(this.wanted!==this.shown&&!this.next)this.build(renderer);
   if(!this.car)return false;
-  this.time+=dt;this.zoom+=(this.zoomTo-this.zoom)*ease;if(this.time>this.handUntil)this.yaw+=dt*.32/Math.pow(Math.max(1,this.zoom),.6);this.turntable.rotation.y=this.yaw;
+  this.time+=dt;this.zoom+=(this.zoomTo-this.zoom)*ease;if(!this.still&&this.time>this.handUntil)this.yaw+=dt*.32/Math.pow(Math.max(1,this.zoom),.6);this.turntable.rotation.y=this.yaw;
   this.garage.update(dt);
   const size=renderer.getSize(new THREE.Vector2()),W=size.x,H=size.y,c=this.camera,half=Math.tan(degToRad(VIEW.fov/2));
   // Far enough for the car (about 5 m seen three-quarters on, 1.6 m high) to fill most of the stage, clear of the arrows on its sides.
@@ -132,11 +133,11 @@ class Studio {
 }
 // root: the #cars screen. values: the chosen car's number in each model's field ({opala, fusca}); model: the tab
 // shown ('opala' or 'fusca'). onPick(number, model), onModel(model) (main.js then loads the Fusca's model:
-// setFusca), onNext(), onBack(); quality() gives the Gráficos tab's car reflections (the garage floor's follow them).
+// setFusca), onNext(), onBack(); still and onStill(still): the Parar de girar box, kept by main.js; quality() gives the Gráficos tab's car reflections (the garage floor's follow them).
 // In a multiplayer room (setRoom) the arrows pass over the cars other pilots have (the note says whose they are),
 // and everyone races the Opala (the tabs hide).
 export class CarSelect {
- constructor({root,values={},model=CAR_MODEL_DEFAULT,carRoot,onPick,onModel,onNext,onBack,quality=()=>'pista'}){
+ constructor({root,values={},model=CAR_MODEL_DEFAULT,carRoot,onPick,onModel,onNext,onBack,still=false,onStill,quality=()=>'pista'}){
   this.root=root;this.model=CAR_MODELS.includes(model)?model:CAR_MODEL_DEFAULT;
   this.values=Object.fromEntries(CAR_MODELS.map(m=>[m,carEntry(values[m],m)?values[m]:PLAYER_CAR_DEFAULT]));this.onPick=onPick;this.onModel=onModel;this.quality=quality;this.studio=new Studio(carRoot);this.live=false;
   this.room=null;this.taken=new Map();this.asked=null;this.guest=null;this.failure=null;this.tell('');
@@ -144,19 +145,20 @@ export class CarSelect {
   for(const tab of this.tabs.querySelectorAll('[data-model]'))tab.onclick=()=>this.setModel(tab.dataset.model);
   this.tabs.addEventListener('keydown',e=>{const step={ArrowLeft:-1,ArrowRight:1}[e.key];if(!step)return;e.preventDefault();
    const next=CAR_MODELS[(CAR_MODELS.indexOf(this.model)+step+CAR_MODELS.length)%CAR_MODELS.length];this.setModel(next);this.tabs.querySelector(`[data-model="${next}"]`).focus();});
+  const box=$('carStill');box.checked=this.studio.still=!!still;box.onchange=()=>{this.studio.still=box.checked;onStill?.(box.checked);};
   $('carLeft').onclick=()=>this.step(-1);$('carRight').onclick=()=>this.step(1);
   $('carsNext').onclick=()=>onNext();$('carsBack').onclick=()=>onBack();
   // Dragging the stage turns the car and tilts the view; two fingers pinch closer or farther, as the mouse wheel does,
   // towards what is under them; the +/− buttons and keys zoom on the stage's middle; a double click or tap goes up
   // close to that spot and back.
   const held=new Map(),spread=()=>{const [a,b]=[...held.values()];return Math.hypot(a.x-b.x,a.y-b.y);},middle=()=>{const [a,b]=[...held.values()];return [(a.x+b.x)/2,(a.y+b.y)/2];};let pinch=0;
-  this.stage.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;held.set(e.pointerId,{x:e.clientX,y:e.clientY});this.stage.setPointerCapture(e.pointerId);this.stage.classList.add('dragging');pinch=held.size===2?spread():0;});
+  this.stage.addEventListener('pointerdown',e=>{if(e.target.closest('button,label'))return;held.set(e.pointerId,{x:e.clientX,y:e.clientY});this.stage.setPointerCapture(e.pointerId);this.stage.classList.add('dragging');pinch=held.size===2?spread():0;});
   this.stage.addEventListener('pointermove',e=>{const p=held.get(e.pointerId);if(!p)return;if(held.size===1)this.studio.turn(e.clientX-p.x,e.clientY-p.y);p.x=e.clientX;p.y=e.clientY;
    if(held.size===2){const now=spread();if(pinch>0&&now>0)this.studio.zoomAt(now/pinch,...middle());pinch=now;}});
   const end=e=>{if(!held.delete(e.pointerId))return;pinch=held.size===2?spread():0;if(!held.size)this.stage.classList.remove('dragging');};
   this.stage.addEventListener('pointerup',end);this.stage.addEventListener('pointercancel',end);
   this.stage.addEventListener('wheel',e=>{e.preventDefault();this.studio.zoomAt(Math.exp(-e.deltaY*({1:16,2:400}[e.deltaMode]??1)*.0015),e.clientX,e.clientY);},{passive:false});
-  this.stage.addEventListener('dblclick',e=>{if(!e.target.closest('button'))this.studio.toggleZoom(e.clientX,e.clientY);});
+  this.stage.addEventListener('dblclick',e=>{if(!e.target.closest('button,label'))this.studio.toggleZoom(e.clientX,e.clientY);});
   const onStage=factor=>{const r=this.stage.getBoundingClientRect();this.studio.zoomAt(factor,r.left+r.width/2,r.top+r.height/2);};
   $('carZoomIn').onclick=()=>onStage(1.4);$('carZoomOut').onclick=()=>onStage(1/1.4);
   // Anywhere while this screen shows (dialogs and fields keep their keys): ← and → the previous and next car (the
@@ -254,6 +256,6 @@ export class CarSelect {
   const live=this.studio.ready(this.model)&&this.studio.render(renderer,Math.min(dt,.05),this.stage.getBoundingClientRect(),this.quality());
   if(live!==this.live){this.live=live;this.root.classList.toggle('live',live);this.stageLine();}
  }
- info(){return {value:this.value,model:this.model,live:this.live,taken:Object.fromEntries(this.taken),asked:this.asked,guest:this.guest,built:this.studio.shown?.split(':')[1]??null,builtModel:this.studio.shown?.split(':')[0]??null,count:rosterOf(this.model).choices.length,yaw:this.studio.yaw,zoom:this.studio.zoom,zoomTo:this.studio.zoomTo,zoomMax:this.studio.zoomMax,distance:this.studio.distance,elevation:this.studio.elevation,fov:this.studio.camera.fov,
+ info(){return {value:this.value,still:this.studio.still,model:this.model,live:this.live,taken:Object.fromEntries(this.taken),asked:this.asked,guest:this.guest,built:this.studio.shown?.split(':')[1]??null,builtModel:this.studio.shown?.split(':')[0]??null,count:rosterOf(this.model).choices.length,yaw:this.studio.yaw,zoom:this.studio.zoom,zoomTo:this.studio.zoomTo,zoomMax:this.studio.zoomMax,distance:this.studio.distance,elevation:this.studio.elevation,fov:this.studio.camera.fov,
    offset:this.studio.offset.toArray(),camera:this.studio.camera.position.toArray(),garage:this.studio.garage?.info()??null,meshes:(()=>{let n=0;this.studio.car?.traverse(o=>{if(o.isMesh&&o.visible)n++;});return n;})()};}
 }

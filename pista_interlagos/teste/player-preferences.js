@@ -43,6 +43,8 @@ export function normalizePreferences(value){
   fuscaCar:typeof source.fuscaCar==='string'&&carEntry(source.fuscaCar,'fusca')?source.fuscaCar:PLAYER_CAR_DEFAULT,
   // Its model (the car screen's tabs): the Opala unless the player picks the Fusca.
   carModel:CAR_MODELS.includes(source.carModel)?source.carModel:CAR_MODEL_DEFAULT,
+  // The car screen's turntable held still (its Parar de girar box): it turns unless the player stops it.
+  carStill:typeof source.carStill==='boolean'?source.carStill:false,
   // Laps of every race (Modo Corrida and Modo História): 3 unless the player picks more or fewer.
   laps:Number.isInteger(source.laps)&&source.laps>=LAPS.min&&source.laps<=LAPS.max?source.laps:LAPS.standard,
   // The race's weather (weather.js): the time of day (dia, fim_de_tarde, noite) and the rain (seco, garoa, chuva), or

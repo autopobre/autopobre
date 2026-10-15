@@ -52,7 +52,7 @@ import {setupSettings} from './settings.js';
 import {CarAudio} from './car-audio.js?v=20260913-immersive';
 import {PlayerPreferences,CAMERA_MODES,LAPS} from './player-preferences.js';
 import {createSky,SUN_DIRECTION} from './sky.js';
-import {weatherProfile,weatherCaption,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,drawWeather,chosenWeather,EFFECT_LIGHT} from './weather.js';
+import {weatherProfile,weatherCaption,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,drawWeather,chosenWeather,EFFECT_LIGHT,TIMES_OF_DAY,RAIN_LEVELS,nextTimeOfDay,nextRainLevel,weatherName} from './weather.js';
 import {createCinematic,SMEAR_CARS} from './cinematic.js';
 import {SunPlacement} from './sun-light.js';import {CarShadow} from './car-shadow.js';
 import {createLandscape,loadTerrainTextures,buildTrackField,readOrtho,looseGround,terrainMaterial,structureMaterial,createCrowd,SKYLINE_FAR} from './landscape.js';
@@ -547,6 +547,20 @@ function toggleHeadlights(){
  if(!ready||!sessionStarted||immersive?.onFoot())return;
  const on=playerLamps.toggle(),text=on?'Faróis acesos · H apaga':'Faróis apagados · H acende';
  status(text);setTimeout(()=>{if($('status').textContent===text)status('');},2500);headlightsHud();
+}
+// Y and U on the track: the next time of day (dia, fim de tarde, noite) or rain (seco, garoa, chuva) after the one
+// raced, as if picked in the Corrida tab (saved, both selects follow; Aleatório gives way to it). A room race keeps
+// the host's weather (multiplayer.js: the same grip for everyone).
+function cycleWeather(part){
+ if(!ready||!sessionStarted)return;
+ const time=part==='time',key=time?'timeOfDay':'rain',ids=time?['timeOfDay','tracksTime']:['rainLevel','tracksRain'];
+ let text='Na sala, horário e clima são os do anfitrião';
+ if(!weatherOverride&&!multiplayer?.race){
+  const value=time?nextTimeOfDay(weather.time):nextRainLevel(weather.rain);
+  preferences.update({[key]:value});for(const id of ids)$(id).value=value;applyWeather();
+  text=`${weatherName(time?TIMES_OF_DAY:RAIN_LEVELS,value)} · ${time?'Y muda o horário':'U muda o clima'}`;
+ }
+ status(text);setTimeout(()=>{if($('status').textContent===text)status('');},2500);
 }
 function headlightsHud(){$('touchLights')?.classList.toggle('active',playerLamps.lit);$('touchWipers')?.classList.toggle('active',windscreen.wiping);document.body.classList.toggle('lights-weather',weather.lights);document.body.classList.toggle('rain-weather',weather.wet);}
 // Every frame: the player's lit lenses on the car shown (rebuilt for another livery or the Fusca), the cockpit's FAROL
@@ -1534,7 +1548,8 @@ const pilotLine=()=>[pilotPicker.profiles.selected&&`Piloto: ${pilotPicker.profi
 // kept for the race. A multiplayer guest does not pick the track: its button waits for the host's race.
 const carSelect=new CarSelect({root:$('cars'),values:{opala:preferences.values.car,fusca:preferences.values.fuscaCar},model:preferences.values.carModel,carRoot,quality:()=>graphics.values.reflections,
  onModel:model=>{preferences.update({carModel:model});updateMenuLabels();if(model==='fusca')fuscaInStudio();},
- onPick:(number,model)=>{preferences.update({[model==='fusca'?'fuscaCar':'car']:number});multiplayer?.choose(number);updateMenuLabels();if(ready)showRoster();},onNext:()=>{if(multiplayer?.guest())multiplayer.wait();else if(menuMode==='drift')beginArena();else showScreen('tracks');},onBack:()=>showScreen('opening')});
+ onPick:(number,model)=>{preferences.update({[model==='fusca'?'fuscaCar':'car']:number});multiplayer?.choose(number);updateMenuLabels();if(ready)showRoster();},onNext:()=>{if(multiplayer?.guest())multiplayer.wait();else if(menuMode==='drift')beginArena();else showScreen('tracks');},onBack:()=>showScreen('opening'),
+ still:preferences.values.carStill,onStill:carStill=>preferences.update({carStill})});
 // The Fusca tab's studio needs the Fusca's model.
 function fuscaInStudio(){ensureFusca().then(template=>{if(template)carSelect.setFusca(template);else carSelect.failed('fusca');});}
 function openCarScreen(){
@@ -1730,6 +1745,8 @@ document.addEventListener('keydown',e=>{
  if(e.code==='KeyG'&&(e.isTrusted||!immersive.onFoot()))toggleGhost();
 if(e.code==='KeyH')toggleHeadlights();
 if(e.code==='KeyJ')toggleWipers();
+ if(e.code==='KeyY')cycleWeather('time');
+ if(e.code==='KeyU')cycleWeather('rain');
  // P pauses on the track (from the menu it resumes, as before); Escape opens the menu and, pressed again there, goes back
  // to the track (the team's request, 10-15).
  if(e.code==='KeyP'){if(held||!paused)hold(!held);else menu(false);}

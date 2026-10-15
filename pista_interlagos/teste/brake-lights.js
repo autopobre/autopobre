@@ -11,7 +11,7 @@ export const LAMP_Y=.6835;
 // The distant rival (immersive-visuals farProxy) carries its lamps higher and further back.
 const FAR_OFFSET=Object.freeze([-.215,.27,0]);
 export const BRAKE_ON=.05;
-// Tail lights (weather.js: dusk, night, rain): the lamps glow dimly all the time and brighten under braking. on: the
+// Tail lights (weather.js: night, rain): the lamps glow dimly all the time and brighten under braking. on: the
 // rivals' (main.js applyWeather); the player's car follows its own light switch (headlights.js), set(brake, lit).
 export const TAIL_LIGHTS={on:false};
 // The lamps' lens (car-finish.js 'lens': ring normals) needs each lamp mapped on its own: the GLB's lamp mesh holds

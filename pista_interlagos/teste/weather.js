@@ -28,6 +28,12 @@ export function drawWeather(random=Math.random){
 export function chosenWeather(time,rain,draw){
  return {time:time===RANDOM_WEATHER?draw.time:timeOfDay(time),rain:rain===RANDOM_WEATHER?draw.rain:rainLevel(rain)};
 }
+// The keyboard's Y and U (main.js cycleWeather): the time of day or the rain after the one raced, round the list
+// (dia, fim de tarde, noite, dia...; seco, garoa, chuva, seco...), and the name the race shows for it.
+const after=(list,value)=>list[(list.findIndex(([v])=>v===value)+1)%list.length];
+export const nextTimeOfDay=time=>after(TIMES_OF_DAY,timeOfDay(time))[0];
+export const nextRainLevel=rain=>after(RAIN_LEVELS,rainLevel(rain))[0];
+export const weatherName=(list,value)=>list.find(([v])=>v===value)?.[1].replace(' (padrão)','')??value;
 
 // A direction from the compass bearing (degrees from north, clockwise) and the height over the horizon.
 export function skyDirection(bearing,elevation){
@@ -142,9 +148,9 @@ export function weatherProfile(time=TIME_DEFAULT,rain=RAIN_DEFAULT){
   grip:r.grip,wetness:r.wetness,drops:r.drops,spray:r.spray,
   // The light on what draws its own colour (smoke, spray, dust, falling leaves: no lights in their shaders).
   ambient:AMBIENT[time]*(wet?1-.3*r.grey:1),
-  // The cars light up at dusk, at night and in the rain; the player's own lamps start on in those (headlights.js),
-  // except the story's, which the pilot switches on (L).
-  lights:night||time==='fim_de_tarde'||wet,
+  // The cars light up at night and in the rain; the player's own lamps start on in those (headlights.js), except the
+  // story's, which the pilot switches on (H). Dry dusk is still daylight: no lamps (the team's call, 10-15).
+  lights:night||wet,
   // How strong the headlights read against the daylight left (the beams, the glare): full at night.
   lamps:night?1:time==='fim_de_tarde'?.35:.25
  };

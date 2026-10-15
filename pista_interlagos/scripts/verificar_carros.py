@@ -87,6 +87,11 @@ with sync_playwright() as p:
  page.screenshot(path=str(RENDERS/'carros_por_cima.png'))
  page.mouse.dblclick(box['x']+box['width']*.5,box['y']+box['height']*.5);page.wait_for_timeout(300)
  page.evaluate("interlagosCarros.pick('73')");wait_js(page,"interlagosCarros.info().built==='73'")
+ # Parar de girar: the turntable holds (kept for the next visit), and turns again once the box is cleared.
+ page.check('#carStill');page.wait_for_timeout(2700);yaw=page.evaluate(CARS)['yaw'];page.wait_for_timeout(800)
+ assert page.evaluate(CARS)['still'] and page.evaluate(CARS)['yaw']==yaw and page.evaluate("JSON.parse(localStorage.getItem('opala99-preferences-v1')).carStill")
+ page.screenshot(path=str(RENDERS/'carros_parado.png'))
+ page.uncheck('#carStill');page.wait_for_timeout(500);assert page.evaluate(CARS)['yaw']>yaw and not page.evaluate("JSON.parse(localStorage.getItem('opala99-preferences-v1')).carStill")
 
  # On to the tracks: the car named there, the way back leads to it, the 1x1 is against the 99 now.
  page.click('#carsNext');assert page.is_visible('#tracks') and not page.is_visible('#cars')

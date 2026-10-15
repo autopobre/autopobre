@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
-import {weatherProfile,weatherCaption,timeOfDay,rainLevel,TIMES_OF_DAY,RAIN_LEVELS,TIME_PROFILES,skyDirection,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,timeChoice,rainChoice,drawWeather,chosenWeather} from '../teste/weather.js';
+import {weatherProfile,weatherCaption,timeOfDay,rainLevel,TIMES_OF_DAY,RAIN_LEVELS,TIME_PROFILES,skyDirection,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,timeChoice,rainChoice,drawWeather,chosenWeather,nextTimeOfDay,nextRainLevel,weatherName} from '../teste/weather.js';
 import {SUN_DIRECTION} from '../teste/sky.js';
 import {LOOK} from '../teste/cinematic.js';
 import {beamShape,BEAM_LOW,BEAM_HIGH,LAMP_SETS,ROAD_LAMPS,ROAD_LAMPS_MAX,updateRoadLamps,lampPatch,PlayerHeadlights} from '../teste/headlights.js';
@@ -26,7 +26,8 @@ for(const [t] of TIMES_OF_DAY)for(const [r] of RAIN_LEVELS){
  for(const k of ['zenith','horizon','ground','cloudShade','cloudLit','cirrus','aureole','silver','disc','sunset','city'])assert.equal(p.sky[k].length,3,`${t}/${r} sky.${k}`);
  assert.ok(p.sun.intensity>0&&p.fill.intensity>0&&p.fog.reach>0&&p.fog.reach<=1,`${t}/${r} light and fog`);
  assert.ok(Object.keys(p.look).every(k=>Object.hasOwn(LOOK,k)),`${t}/${r} changes only LOOK's keys`);
- assert.equal(p.lights,t!=='dia'||r!=='seco',`${t}/${r} headlights`);
+ // Dry dusk is still daylight: the cars light up only at night and in the rain (the team's call, 10-15).
+ assert.equal(p.lights,t==='noite'||r!=='seco',`${t}/${r} headlights`);
 }
 // Dusk is a low sun, night a moon; each darker than the last; the rain dims the sun, wets the road and costs grip.
 const dusk=weatherProfile('fim_de_tarde'),night=weatherProfile('noite');
@@ -58,6 +59,10 @@ assert.deepEqual([timeOfDay(RANDOM_WEATHER),weatherProfile(RANDOM_WEATHER,RANDOM
 {const counts={};for(let n=0;n<9000;n++){const {time,rain}=drawWeather();counts[`${time}/${rain}`]=(counts[`${time}/${rain}`]??0)+1;}
  assert.equal(Object.keys(counts).length,9,'every pair comes');assert.ok(Object.values(counts).every(c=>c>800&&c<1200),JSON.stringify(counts));}
 assert.deepEqual(chosenWeather(RANDOM_WEATHER,'garoa',{time:'noite',rain:'chuva'}),{time:'noite',rain:'garoa'});
+// Y and U on the track: the next time and rain round the list, from the one raced (never Aleatório), named as the selects.
+assert.deepEqual(['dia','fim_de_tarde','noite',RANDOM_WEATHER].map(nextTimeOfDay),['fim_de_tarde','noite','dia','fim_de_tarde']);
+assert.deepEqual(['seco','garoa','chuva','neve'].map(nextRainLevel),['garoa','chuva','seco','garoa']);
+assert.deepEqual([weatherName(TIMES_OF_DAY,'dia'),weatherName(TIMES_OF_DAY,'fim_de_tarde'),weatherName(RAIN_LEVELS,'seco'),weatherName(RAIN_LEVELS,'chuva')],['Dia','Fim de tarde','Seco','Chuva forte']);
 assert.deepEqual(chosenWeather('dia',RANDOM_WEATHER,{time:'noite',rain:'chuva'}),{time:'dia',rain:'chuva'});
 assert.deepEqual(chosenWeather('madrugada','neve',{time:'noite',rain:'chuva'}),{time:'dia',rain:'seco'});
 assert.equal(weatherCaption(caption,weatherProfile('noite','garoa'),{time:true,rain:true}),'São Paulo · 21h30 · 17 °C · garoa · pista úmida · sorteio: noite, garoa');

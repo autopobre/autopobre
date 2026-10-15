@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 
-// Headlights for dusk, night and rain (weather.js lights). The Opala 99 races with its original headlamps blanked
+// Headlights for the night and the rain (weather.js lights). The Opala 99 races with its original headlamps blanked
 // (they are stickers on the race car) and lights the road with the four round auxiliary lamps on brackets under
 // them (carro_23 in the pits, carro_15 at night: white LED, "faróis de milha"); a car without them (the Seiva
 // livery) uses the headlamps' places, the Fusca its own headlamps. Car frame: +X forward, +Y up, +Z right.

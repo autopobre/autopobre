@@ -34,8 +34,11 @@ body.cars-open>:not(#view):not(#cars):not(#rotatePhone):not(#mpRoom):not(dialog)
 .car-arrow:focus-visible{outline:2px solid #f4ce39;outline-offset:3px}
 .car-arrow[hidden]{display:none}
 @media(prefers-reduced-motion:reduce){.car-arrow{transition:none}.car-arrow:hover,.car-arrow:active{transform:none}}
-/* Top right of the stage: the zoom buttons (car-select.js; the wheel, a pinch, a double click and +/- too). */
+/* Top right of the stage: the Parar de girar box and the zoom buttons (car-select.js; the wheel, a pinch, a double click and +/- too). */
 .car-zoom{position:absolute;top:0;right:0;z-index:1;display:flex;gap:6px}
+.car-still{display:flex;align-items:center;gap:6px;margin:0 4px 0 0;padding:0 12px;height:34px;border-radius:17px;border:1px solid #ffffff40;background:#0c1012c4;color:#f4f3ee;font-size:12px;font-weight:700;cursor:pointer;user-select:none}
+.car-still:hover{border-color:#f4ce39}
+.car-still input{width:15px;height:15px;margin:0;accent-color:#f4ce39;cursor:pointer}
 .car-zoom button{width:34px;height:34px;margin:0;padding:0;border-radius:50%;border:1px solid #ffffff40;background:#0c1012c4;color:#f4f3ee;font-size:20px;font-weight:700;line-height:1;cursor:pointer}
 .car-zoom button:hover{border-color:#f4ce39;color:#f4ce39}
 .car-zoom button:focus-visible{outline:2px solid #f4ce39;outline-offset:2px}
@@ -73,7 +76,7 @@ body.cars-open>:not(#view):not(#cars):not(#rotatePhone):not(#mpRoom):not(dialog)
  .car-stage{min-height:0}
  .car-arrow{width:44px;height:44px;margin-top:-22px;font-size:32px}.car-arrow span{margin-top:-4px}
  .car-plate{gap:8px}#carNumber{min-width:52px;font-size:20px;padding:4px 7px}.car-plate h3{font-size:18px}#carName{margin-top:1px;font-size:11px}.car-plate p,.car-plate .tracks-kicker{display:none}
- .car-zoom button{width:30px;height:30px;font-size:17px}
+ .car-zoom button{width:30px;height:30px;font-size:17px}.car-still{height:30px;padding:0 9px;font-size:10px}
  .cars-go{gap:4px}.car-note{padding:4px 8px;font-size:9px}
  #cars .primary{padding:8px 10px;font-size:12px;min-height:40px}#cars .primary small{font-size:9px;margin-top:1px}
  #carsPilot{font-size:13px}

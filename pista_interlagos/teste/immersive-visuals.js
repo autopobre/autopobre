@@ -455,7 +455,7 @@ export class ImmersiveVisuals {
   const driver=createRivalDriver({color:entry.color,number:entry.number});driver.root.position.add(new THREE.Vector3(...FUSCA_SEAT));detail.add(driver.root);
   const far=this.farProxy(entry.color,FUSCA_PROFILE,entry.stripe),lamps=createBrakeLights({far:FUSCA_PROFILE.lamps});far.add(lamps);root.add(far);
   const midLamps=createBrakeLights({far:FUSCA_PROFILE.lamps});root.userData.detail=detail;this.addMid(root,{detail,wheels:car.userData.wheels.map(obj=>({obj})),radius:FUSCA_PROFILE.wheel,key:`${template.uuid}|fusca`,lamps:midLamps});
-  // Its headlamps, lit at dusk, at night and in the rain (headlights.js; main.js updateLamps shows them).
+  // Its headlamps, lit at night and in the rain (headlights.js; main.js updateLamps shows them).
   const heads=createHeadlights('fusca');root.add(heads);Object.assign(root.userData,{headlights:heads,lampSet:'fusca'});
   Object.assign(root.userData,{detail,far,driver,fusca:car,wheels:car.userData.wheels.map(obj=>({obj,base:obj.quaternion.clone()})),
    brake:v=>{car.userData.brake(v);lamps.userData.set(v);midLamps.userData.set(v);},nameLabel:name?this.tag(root,name,[0,2.2,0],2.7,.30,'#fff','#172a2ddb'):null});
@@ -509,8 +509,8 @@ export class ImmersiveVisuals {
   // Brake lights on both levels of detail, lit while its driver brakes (userData.brake).
   const lamps=[createBrakeLights(),createBrakeLights({far:true}),createBrakeLights()];detail.add(lamps[0]);far.add(lamps[1]);root.userData.brake=v=>{for(const l of lamps)l.userData.set(v);};
   const mid=()=>this.addMid(root,{detail,wheels:pivots,radius:FAR_PROFILE.wheel,key:`${template.uuid}|${livery99?'99':'equipe'}`,lamps:lamps[2]});
-  // Headlights on both levels (the auxiliary lamps where the template has them), lit at dusk, at night and in the
-  // rain (headlights.js; main.js updateLamps shows them while it races).
+  // Headlights on both levels (the auxiliary lamps where the template has them), lit at night and in the rain
+  // (headlights.js; main.js updateLamps shows them while it races).
   const heads=createHeadlights(lampSetFor(template));root.add(heads);root.userData.headlights=heads;root.userData.lampSet=heads.userData.lampSet;
   const label=name?this.tag(root,name,[0,2.08,0],2.7,.30,'#fff','#172a2ddb'):null;
   // The rival's own number where the Opala 99 carries its 99 (those stickers are

@@ -117,6 +117,23 @@ with sync_playwright() as p:
     check('day_is_dry', not dry['falling']['visible'] and dry['wetness'] == 0 and dry['grip'] == 1 and dry['rivalGrip'] == 1, dry)
     check('day_parks_wipers_and_floodlights', not dry['wipers']['on'] and dry['floods']['level'] == 0, [dry['wipers'], dry['floods']])
     check('day_light_as_before', dry['sun']['intensity'] == 7 and dry['exposure'] == .78 and dry['look']['adaptRange'] == [.72, 1.65], dry)
+    # Y and U on the track (10-15): the next time of day and rain, saved and mirrored in the selects; dry dusk is still
+    # daylight, so no car lights up (the pit wall's floodlights still glow a little, as they did).
+    def press(key):
+        page.keyboard.press(key)
+        wait_js(page, '!window.interlagosClima.info().compiling', timeout=90000)
+        page.wait_for_timeout(300)
+        now = info(page)
+        selects = page.evaluate("['timeOfDay','tracksTime','rainLevel','tracksRain'].map(id=>document.getElementById(id).value)")
+        return now, selects, page.evaluate("document.getElementById('status').textContent")
+    dusk, selects, said = press('KeyY')
+    check('y_goes_to_dusk', dusk['time'] == 'fim_de_tarde' and selects[:2] == ['fim_de_tarde'] * 2 and said == 'Fim de tarde · Y muda o horário', [dusk['time'], selects, said])
+    check('dusk_without_lamps', not dusk['lamps']['installed'] and not dusk['glow'] and not dusk['rivalGlow'] and not dusk['tail'] and not dusk['lamps']['lit'], dusk)
+    times = [press('KeyY')[0]['time'] for _ in range(2)]
+    check('y_cycles_round', times == ['noite', 'dia'], times)
+    rains = [press('KeyU') for _ in range(3)]
+    check('u_cycles_the_rain', [r[0]['rain'] for r in rains] == ['garoa', 'chuva', 'seco'] and rains[1][1][2:] == ['chuva'] * 2 and rains[1][2] == 'Chuva forte · U muda o clima' and rains[1][0]['wetness'] == 1,
+          [(r[0]['rain'], r[1], r[2], r[0]['wetness']) for r in rains])
     page.close()
     # The story at night: the pilot switches the lamps on (H) once in the car.
     page = browser.new_page(viewport={'width': 1280, 'height': 720})
@@ -188,7 +205,7 @@ with sync_playwright() as p:
     real = all(r['choice'] == {'time': 'aleatorio', 'rain': 'aleatorio'} and r['time'] in ('dia', 'fim_de_tarde', 'noite') and r['rain'] in ('seco', 'garoa', 'chuva')
                and r['draw'] == {'time': r['time'], 'rain': r['rain']} and r['sky']['weather'] == f"{r['time']}/{r['rain']}" for r in races)
     check('every_race_a_real_weather', real, [(r['choice'], r['time'], r['rain'], r['draw'], r['sky']['weather']) for r in races])
-    check('world_as_drawn', all((r['wetness'] > 0) == (r['rain'] != 'seco') and (r['grip'] < 1) == (r['rain'] != 'seco') and r['lamps']['installed'] == (r['time'] != 'dia' or r['rain'] != 'seco') for r in races),
+    check('world_as_drawn', all((r['wetness'] > 0) == (r['rain'] != 'seco') and (r['grip'] < 1) == (r['rain'] != 'seco') and r['lamps']['installed'] == (r['time'] == 'noite' or r['rain'] != 'seco') for r in races),
           [(r['time'], r['rain'], r['wetness'], r['grip'], r['lamps']['installed']) for r in races])
     check('restarts_draw_again', len({(r['time'], r['rain']) for r in races}) > 1, [(r['time'], r['rain']) for r in races])
     check('opening_names_the_draw', all(r['caption'].startswith('São Paulo · ') and r['caption'].endswith(' · sorteio: ' + {'dia': 'dia', 'fim_de_tarde': 'fim de tarde', 'noite': 'noite'}[r['time']] + ', ' + {'seco': 'tempo seco', 'garoa': 'garoa', 'chuva': 'chuva forte'}[r['rain']]) for r in races),
