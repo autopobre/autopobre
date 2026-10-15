@@ -198,6 +198,8 @@ export class PitStop {
   if([[4,-3.5,.9,.8],[2.7,-2.5,.55,.55],[-5,-4,.35,.35],[5,-4,.35,.35],[-6.5,-8,.35,.35],[6.5,-8,.35,.35]].some(([x,z,rx,rz])=>Math.abs(local.x-x)<rx&&Math.abs(local.z-z)<rz))return null;
   local.y=Math.max(0,Math.min(.25,(-local.z-6.5)*.25));return this.station.localToWorld(local).y;
  }
+ // A car stopping here opens the stop (beforeStep): F there (free-walk.js) waits for it and gets out to the café.
+ willOpen(){return !this.opened&&!this.departing&&this.racing&&(this.layout?.inBox?this.layout.inBox(this.car.surface):inPitBox(this.car.surface));}
  beforeStep(input,dt){
   if(!this.racing){if(this.opened){this.service.cancel();this.close();}return false;}
   const c=this.car,speed=Math.hypot(c.vx,c.vy),box=this.layout?.inBox?this.layout.inBox(c.surface):inPitBox(c.surface);

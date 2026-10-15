@@ -97,6 +97,8 @@ export class ArenaWorld{
   }
   return impact;
  }
+ // The pilot out of his car (free-walk.js) at (x, y), r round: past the wall or in a solid (cones and tyres he walks through).
+ blocks(x,y,r=.25){return floorEdge(x,y).d>-r||this.solids.some(q=>Math.hypot(x-q.x,y-q.y)<q.r+r);}
  // The point of the car's plan (its box, as the walls see it) nearest a circle, if inside it.
  touch(car,cx,cy,r){
   const b=car.body,ch=Math.cos(car.heading),sh=Math.sin(car.heading),dx=cx-car.x,dy=cy-car.y;

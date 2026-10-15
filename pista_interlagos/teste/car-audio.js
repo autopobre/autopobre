@@ -195,7 +195,8 @@ export class CarAudio {
   this.state={gear,rpm,skid:car.surface.onRoad&&(speed>5||wheelspin>1)?clamp(Math.max(skid,wheelspin/20),0,1):0,throttle};
   if(!ctx)return this.state;
   const t=ctx.currentTime,param=(p,v,tau=.06)=>p.setTargetAtTime(v,t,tau);
-  const inside=mode==='cockpit',distance=mode==='aerial'?.38:1,shifting=t<this.shiftUntil,running=command.engineOff?0:1;
+  // (command.listen: the pilot walking away from his idling car, free-walk.js, hears it fainter.)
+  const inside=mode==='cockpit',distance=(mode==='aerial'?.38:1)*(command.listen??1),shifting=t<this.shiftUntil,running=command.engineOff?0:1;
   param(this.synthGain.gain,this.recorded?.ready?0:1,.08);
   if(this.recorded?.ready){
    // The throttle picks open or closed loops (lifting at speed is the engine braking, not silence); a gear change

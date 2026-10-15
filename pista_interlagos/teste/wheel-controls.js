@@ -21,7 +21,7 @@ export const ROLES=Object.freeze({
  camera:{kind:'button',label:'Trocar câmera',keys:['KeyC']},
  lookBack:{kind:'button',label:'Olhar para trás',keys:['KeyB']},
  action:{kind:'button',label:'Ação (conversar, capô)',keys:['KeyE']},
- ignition:{kind:'button',label:'Ignição (IGN)',keys:['KeyL','KeyF']},
+ ignition:{kind:'button',label:'Ignição (IGN) · sair do carro',keys:['KeyL','KeyF']},
  starter:{kind:'button',label:'Partida, segurando',keys:['KeyI']},
  reset:{kind:'button',label:'Reposicionar / reboque',keys:['KeyR']},
  ghost:{kind:'button',label:'Fantasma',keys:['KeyG']},

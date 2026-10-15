@@ -1,4 +1,5 @@
 import {PitStop} from './pitstop.js';
+import {FreeWalk,pilotOutfit} from './free-walk.js';
 import {pitLane} from './pit-lane.js';
 import {createInterlagosPit} from './interlagos-pit.js';
 import {createCurveloPit} from './pit-building.js';
@@ -283,7 +284,7 @@ let explosions=null;
 let circuitExtras=[];
 // Look-back (B or the touch button): driving from the cockpit only, not on foot, in the pit stop or menus.
 // (On the arena B is a handbrake key, ARENA_HANDBRAKE: no looking back there.)
-const lookBackAllowed=()=>!arenaMode&&mode==='cockpit'&&ready&&!paused&&!cockpitView&&!pitstop?.opened&&!immersive?.onFoot()&&!gridPreview()&&!$('settings').open;
+const lookBackAllowed=()=>!arenaMode&&mode==='cockpit'&&ready&&!paused&&!cockpitView&&!pitstop?.opened&&!immersive?.onFoot()&&!walker?.active&&!gridPreview()&&!$('settings').open;
 // Sky light comes mostly from the environment map (sky.js); the hemisphere lifts the shade a little more.
 // Clear early-afternoon key light: a strong, barely warm sun against the open sky's fill, about 5:1 on
 // the ground like a sunny day (the fill was half that and a car's shadow went black), so shade under cars
@@ -629,7 +630,7 @@ const MULTIPLAYER=true;
 if(!MULTIPLAYER)carAudio.useDefaultSound();
 $('soundBench').hidden=!MULTIPLAYER;$('soundBenchState').textContent=carAudio.tuningSource==='bancada'?'Os seus ajustes da bancada estão tocando no jogo (desligue lá e recarregue o jogo para voltar ao padrão).':'Ajuste o ronco do Opala e do Fusca, marcha por marcha, e escolha se o jogo toca os seus ajustes.';
 const roomWanted=MULTIPLAYER&&new URLSearchParams(window.location.hash.slice(1)).has('desafio');let multiplayer=null;
-let pitstop,immersive,car,data,roadSurface,roadRails,roadCurbs,driver,wheels=[],trunkInterior=[],model,carStructure,paused=true,automatic=false,mode='chase',ready=false,loadToken=0,activeLivery='';
+let pitstop,walker=null,walkView=null,immersive,car,data,roadSurface,roadRails,roadCurbs,driver,wheels=[],trunkInterior=[],model,carStructure,paused=true,automatic=false,mode='chase',ready=false,loadToken=0,activeLivery='';
 // The car raced now ('99', or Modo Corrida's choice), the car at the back of its grid whose driver
 // sits out (the same, or a multiplayer host's: seatCar), whether it is the recon lap, its paint on
 // the player's model, and the track branding's Old Stock ads that car 70 carries on its doors.
@@ -764,7 +765,7 @@ async function cycleLivery(){
 // hand shuts as the car moves off.
 function updateOpenings(dt){if(Math.hypot(car.vx,car.vy)>1.5)openings.release('manual');openings.update(dt);showTrunkInside(trunkInterior,openings);}
 // nearest (R key): only the player's car goes back on track; rivals, laps and fuel carry on.
-function reset(nearest=false){car.fall=null;if(fallMode){setCameraMode(fallMode);fallMode=null;}fallView.stop(camera);if(!nearest)explosions?.reset();action.reset();mobile?.setHandbrake(false);openings.closeAll(true);if(nearest&&arenaMode)arenaMode.spawn(car);else if(nearest)car.recover();else{ghostRecorder.reset();car.resetGrid(playerGridSlot(immersive?.lineup?.length));arenaMode?.spawn(car);if(immersive&&!immersive.active)immersive.resetField();cockpit.resetPhone();}driver?.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();automatic=false;followInitialized=false;cameraReturn.reset(performance.now());headLook.yaw=headLook.pitch=0;lookBack.reset();updateCar(1);updateCamera(1);}
+function reset(nearest=false){walker?.reset();car.fall=null;if(fallMode){setCameraMode(fallMode);fallMode=null;}fallView.stop(camera);if(!nearest)explosions?.reset();action.reset();mobile?.setHandbrake(false);openings.closeAll(true);if(nearest&&arenaMode)arenaMode.spawn(car);else if(nearest)car.recover();else{ghostRecorder.reset();car.resetGrid(playerGridSlot(immersive?.lineup?.length));arenaMode?.spawn(car);if(immersive&&!immersive.active)immersive.resetField();cockpit.resetPhone();}driver?.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();automatic=false;followInitialized=false;cameraReturn.reset(performance.now());headLook.yaw=headLook.pitch=0;lookBack.reset();updateCar(1);updateCamera(1);}
 const names=[[0,'Reta dos boxes'],[280,'S do Senna · T1–T2'],[490,'Curva do Sol · T3'],[700,'Reta Oposta'],[1500,'Descida do Lago · T4–T5'],[1810,'Subida para a Ferradura'],[1990,'Ferradura · T6–T7'],[2230,'Laranjinha · T8'],[2430,'Pinheirinho · T9'],[2660,'Bico de Pato · T10'],[2840,'Mergulho · T11'],[3120,'Junção · T12'],[3250,'Subida dos boxes · T13'],[3570,'Café · T14'],[3960,'T15 · Reta dos boxes']];
 function location(s){const sections=data.meta.sections||names;let name=sections[0][1];for(const [d,n] of sections)if(s>=d)name=n;return name;}
 const fmt=t=>{if(t===null)return '—';const m=Math.floor(t/60),s=t%60;return `${String(m).padStart(2,'0')}:${s.toFixed(3).padStart(6,'0')}`;};
@@ -934,8 +935,9 @@ document.addEventListener('pointerlockchange',()=>{
 });
 document.addEventListener('pointerlockerror',lockFailed);
 document.addEventListener('mousemove',e=>{
- // On foot (pit stop, story-mode paddock) and on the podium the mouse belongs to that camera.
+ // On foot (pit stop, story-mode paddock, out of the car anywhere) and on the podium the mouse belongs to that camera.
  if(!pointerLocked||paused||pitstop?.opened||immersive?.ownsMouse()||(!e.movementX&&!e.movementY))return;
+ if(walker?.active){walker.turnView(e.movementX,e.movementY);return;}
  lookAround(e.movementX,e.movementY);
 });
 // Looking around from the car (dx, dy in mouse pixels): the captured mouse or the controller's right stick.
@@ -958,13 +960,14 @@ function padLook(dx,dy){
  if(!ready||paused)return;
  if(pitstop?.opened){if(!pitstop.coffee)pitstop.orbitView(dx,dy);else if(!pitstop.coffee.menu)pitstop.turnView(dx,dy);return;}
  if(immersive?.onFoot()){immersive.visual.turnView(dx,dy);return;}
+ if(walker?.active){walker.turnView(dx,dy);return;}
  if(!immersive?.ownsMouse()){lookAround(dx,dy);padLooked=true;}
 }
 function padLookEnd(){if(padLooked)cameraReturn.recall();padLooked=false;}
 $('view').addEventListener('pointermove',e=>{if(!pointerLocked&&e.buttons)cameraReturn.manual(performance.now());});
 window.addEventListener('pointerup',()=>$('view').classList.remove('dragging'));
 $('view').addEventListener('pointercancel',()=>$('view').classList.remove('dragging'));
-$('view').addEventListener('wheel',e=>{if(ready&&!paused&&!pitstop?.opened&&!immersive?.ownsMouse()){if(pointerLocked&&isInside()){e.stopImmediatePropagation();return;}orbitFromView();cameraReturn.manual(performance.now());}},{capture:true,passive:true});
+$('view').addEventListener('wheel',e=>{if(walker?.active){if(!paused)walker.zoom(Math.sign(e.deltaY));return;}if(ready&&!paused&&!pitstop?.opened&&!immersive?.ownsMouse()){if(pointerLocked&&isInside()){e.stopImmediatePropagation();return;}orbitFromView();cameraReturn.manual(performance.now());}},{capture:true,passive:true});
 // The rival the cameras watch in the recon lap (null: the player's own car).
 function watchedRival(){
  if(!watched||!automatic||!immersive||immersive.active)return null;
@@ -1083,6 +1086,8 @@ function moteCarBox(subjectObj,subjectCar){
 }
 function updateCamera(dt){
  if(pitstop?.opened)return;
+ // Out of the car (free-walk.js) the walk places the camera; the sun's shadows follow the pilot.
+ if(walker?.active){placeSun(walker.hero.position,null,dt);return;}
  // The arena's editor looks down on the whole floor (drift-arena-mode.js).
  if(arenaMode?.editing){arenaMode.editorCamera(camera);placeSun(carRoot.position,null,dt);return;}
  if(immersive?.active&&['crowd','podium'].includes(immersive.state.phase)&&!immersive.inCar){const p=immersive.visual.hero.getWorldPosition(new THREE.Vector3());placeSun(p,null,dt);return;}
@@ -1181,7 +1186,7 @@ const ARENA_KEYS=Object.freeze(['KeyT','Digit9','Digit0','Numpad9','Numpad0','Mi
 const HANDBRAKE_HOLD=Object.freeze(['KeyN']),ARENA_HANDBRAKE=Object.freeze(['KeyN','KeyB','ShiftLeft','ShiftRight','Space']);
 const outOfFuel=()=>immersive&&!immersive.active&&immersive.freeFuel<=0&&!pitstop?.coffee;
 function input(step=0){
- const afoot=pitstop?.coffee||immersive?.onFoot(),walk=afoot?gamepad.walk:0;
+ const afoot=pitstop?.coffee||immersive?.onFoot()||walker?.active,walk=afoot?gamepad.walk:0;
  const steer=afoot?Math.sign(wheel.steering)*Math.max(0,Math.abs(wheel.steering)-.25)/.75:wheel.steering;
  const command={ignition:pressed('KeyI')?1:0,throttle:Math.max(pressed('KeyW')||pressed('ArrowUp')?1:0,mobile?.throttle??0,gamepad.throttle,wheel.throttle,walk),brake:Math.max(pressed('KeyS')||pressed('ArrowDown')?1:0,mobile?.brake??0,gamepad.brake,wheel.brake,-walk),left:Math.max(pressed('KeyA')||pressed('ArrowLeft')?1:0,-(mobile?.steering??0),-gamepad.steering,-steer),right:Math.max(pressed('KeyD')||pressed('ArrowRight')?1:0,mobile?.steering??0,gamepad.steering,steer),reverse:pressed('KeyQ')?1:0,handbrake:pressed('Space')||!automatic&&!afoot&&(arenaMode?ARENA_HANDBRAKE:HANDBRAKE_HOLD).some(code=>keys.has(code))?1:0};
  // The wheel alone steering: physics turns the road wheels where it is, with no smoothing.
@@ -1332,7 +1337,7 @@ function frame(now=performance.now()){requestAnimationFrame(frame);
  if(!document.hidden)displayCadence.observe(now,!sessionStarted&&!loading&&screen!=='cars');
  if(frameCap.skip(now,displayCadence.measured?displayCadence.hz:0))return;if(graphicsCompiling){clock.getDelta();return;}debugOverlay.begin(now);try{runFrame();}finally{debugOverlay.end();}}
 // One frame of the game: controls, physics steps, people, cameras and the picture.
-function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(),dt=Math.min(rawDt,.08);gamepad.suspended=wheel.learning;gamepad.poll(dt);wheel.poll(dt);if($('settings').open)wheelPanel.frame();multiplayer?.frame(dt);mobile?.update(paused,pitstop?.coffee?'crowd':immersive?.active?immersive.state.phase:'race');if(touchDevice)document.body.classList.toggle('can-look-back',lookBackAllowed());updateCountdown();if(!ready||!sessionStarted){action.update(0,{active:false});actionNotice.update(0,null,false);carAudio.updateScene({},[],dt);const onCars=renderer&&!sessionStarted&&!$('cars').classList.contains('hidden');studioDensity(onCars,rawDt);if(onCars)carSelect.render(renderer,dt);return;}studioDensity(false);
+function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(),dt=Math.min(rawDt,.08);gamepad.suspended=wheel.learning;gamepad.poll(dt);wheel.poll(dt);if($('settings').open)wheelPanel.frame();multiplayer?.frame(dt);mobile?.update(paused,pitstop?.coffee||walker?.active?'crowd':immersive?.active?immersive.state.phase:'race');if(touchDevice)document.body.classList.toggle('can-look-back',lookBackAllowed());updateCountdown();if(!ready||!sessionStarted){action.update(0,{active:false});actionNotice.update(0,null,false);carAudio.updateScene({},[],dt);const onCars=renderer&&!sessionStarted&&!$('cars').classList.contains('hidden');studioDensity(onCars,rawDt);if(onCars)carSelect.render(renderer,dt);return;}studioDensity(false);
  renderedFrame++;if(!paused&&!document.hidden){adaptResolution(rawDt);if(!intro.active&&!navigator.webdriver)watchFrames(rawDt);}
  if(intro.active&&automatic)intro.stop();
  if(intro.active&&!immersive.active&&immersive.freeCountdown>0){immersive.freeCountdown=3;$('raceCountdown').hidden=true;}
@@ -1344,7 +1349,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(
  const heard=watchedRival()?.car??car;
  if(automatic&&!paused&&(mobile?.throttle||mobile?.brake||mobile?.steering||gamepad.driving||wheel.driving))takeWheel();
  if(arenaMode?.demo&&!paused&&(mobile?.throttle||mobile?.brake||mobile?.steering||gamepad.driving||wheel.driving))arenaMode.stopDemo('VOCÊ ASSUMIU O CARRO');
- if(!paused&&!frozen){if(automatic)immersive.recordAssisted=true;accumulator+=dt*fallView.timeScale;while(accumulator>=1/120){const command=automatic?pilot(1/120):arenaMode?.demo?arenaMode.demoCommand():input(1/120);if(outOfFuel()){command.throttle=0;command.reverse=0;}if(car.fall)Object.assign(command,{throttle:0,brake:0,left:0,right:0,reverse:0,handbrake:0});if(!pitstop?.beforeStep(command,1/120)&&!immersive?.step(command,1/120)){const before=Math.hypot(car.vx,car.vy);arenaMode?.beforeStep();car.step(command,1/120);const impact=Math.max(car.wallImpactSpeed??0,car.crashImpactSpeed??0,before-Math.hypot(car.vx,car.vy));arenaMode?.step(1/120,impact,{handbrake:!!command.handbrake,latched:!!mobile?.handbrake});if(impact>4){if(heard===car)carAudio.effect('collision');if(!car.fall)immersive?.wallImpact(impact);frameImpact=Math.max(frameImpact,impact);}const heardBefore=Math.hypot(heard.vx,heard.vy);immersive?.stepFree(1/120,command);if(heard!==car&&Math.max(heard.wallImpactSpeed??0,heard.crashImpactSpeed??0,heardBefore-Math.hypot(heard.vx,heard.vy))>4)carAudio.effect('collision');}lakeContact?.step(car,1/120);skidMarks.update(car,command,1/120);recordGhost();accumulator-=1/120;if(!immersive.active&&immersive.freeResultReady&&!multiplayer?.holdResults()){menu(true);break;}}}
+ if(!paused&&!frozen){if(automatic)immersive.recordAssisted=true;accumulator+=dt*fallView.timeScale;while(accumulator>=1/120){const command=automatic?pilot(1/120):arenaMode?.demo?arenaMode.demoCommand():input(1/120);if(outOfFuel()){command.throttle=0;command.reverse=0;}if(car.fall)Object.assign(command,{throttle:0,brake:0,left:0,right:0,reverse:0,handbrake:0});walker?.drive(command,{wait:!!(pitstop?.opened||pitstop?.willOpen())});if(!(walker?.active?false:pitstop?.beforeStep(command,1/120))&&!immersive?.step(command,1/120)){const before=Math.hypot(car.vx,car.vy);arenaMode?.beforeStep();car.step(command,1/120);const impact=Math.max(car.wallImpactSpeed??0,car.crashImpactSpeed??0,before-Math.hypot(car.vx,car.vy));arenaMode?.step(1/120,impact,{handbrake:!!command.handbrake,latched:!!mobile?.handbrake});if(impact>4){if(heard===car)carAudio.effect('collision');if(!car.fall)immersive?.wallImpact(impact);frameImpact=Math.max(frameImpact,impact);}const heardBefore=Math.hypot(heard.vx,heard.vy);immersive?.stepFree(1/120,command);if(heard!==car&&Math.max(heard.wallImpactSpeed??0,heard.crashImpactSpeed??0,heardBefore-Math.hypot(heard.vx,heard.vy))>4)carAudio.effect('collision');}lakeContact?.step(car,1/120);skidMarks.update(car,command,1/120);recordGhost();accumulator-=1/120;if(!immersive.active&&immersive.freeResultReady&&!multiplayer?.holdResults()){menu(true);break;}}}
  if(car.cliff&&!paused&&!frozen)playerFall(trackFall(car,dt*fallView.timeScale));
  // Any car meeting the ground below the wall goes up (the player's, a rival's): heard from afar, fainter.
  if(explosions&&!paused&&!frozen){
@@ -1357,12 +1362,14 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(
  skidMarks.flush();
  tyreSmoke.clearView(...(isInside()?[1.5,9]:followsCar(mode)?[.6,Math.max(2,(CAMERA_FRAMES[mode]?.back??9)*.45)]:[.5,2]));tyreSmoke.update(car,skidMarks.wheels,paused||frozen?0:dt,renderer.domElement.height);if(!paused&&!frozen)for(const r of immersive?.rivals??[])if(r.broken?.smokeLeft>0)tyreSmoke.plume(r.car,dt);lakeContact?.update(paused?0:dt,renderer.domElement.height);treeField?.update(paused?0:dt,renderer.domElement.height);
  const actionImpact=Math.max(frameImpact,immersive?.takeKnock()??0);
- const actionActive=!paused&&!frozen&&!intro.active&&!car.fall&&!automatic&&!watchedRival()&&!gridPreview()&&!pitstop?.opened&&!immersive?.onFoot()&&(immersive?.active?immersive.state.phase==='race':!immersive.freeCountdown&&!immersive.freeResultReady);
+ const actionActive=!paused&&!frozen&&!intro.active&&!car.fall&&!automatic&&!watchedRival()&&!gridPreview()&&!pitstop?.opened&&!immersive?.onFoot()&&!walker?.active&&(immersive?.active?immersive.state.phase==='race':!immersive.freeCountdown&&!immersive.freeResultReady);
  action.update(paused||frozen?0:dt,{car,rivals:immersive?.rivals??[],impact:actionImpact,active:actionActive});
  actionNotice.update(paused?0:dt,action.event,actionActive&&graphics.values.actionFeedback);
  const skid=skidMarks.wheels.reduce((sum,w)=>sum+w.strength,0)/4;
  // The same command drives the engine sound and the driver's hands and feet.
- const driveCommand=pitstop?.opened?{throttle:0,brake:1,engineOff:true}:immersive?.audioCommand(automatic?pilot():arenaMode?.demo?arenaMode.demo.last():input())??input();
+ // Out of the car (free-walk.js) it idles, fainter the farther he walks; braking to let him out, the brake lights and the engine say so.
+ const walkCommand=walker?.active?{throttle:0,brake:0,left:0,right:0,listen:clamp(7/Math.max(7,walker.carDistance()),.06,1)}:walker?.stopping?{...input(),throttle:0,brake:1,reverse:0}:null;
+ const driveCommand=pitstop?.opened?{throttle:0,brake:1,engineOff:true}:walkCommand??immersive?.audioCommand(automatic?pilot():arenaMode?.demo?arenaMode.demo.last():input())??input();
  const rivalSound=heard!==car?immersive.rivalSound(heard):null;
  const braking=driveCommand.engineOff?0:driveCommand.brake;brakeLamps.userData.set(model?.visible?braking:0,!!model?.visible&&playerLamps.lit);fuscaBody.brake(braking,playerLamps.lit);
  carAudio.update(heard,rivalSound?.command??driveCommand,rivalSound?.skid??skid,paused||frozen,mode);
@@ -1372,6 +1379,14 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(
  updateOpenings(paused?0:dt);updateCar(dt);if(!watchedRival())updateCamera(dt);const dash=cockpit.update(car,paused?0:dt,heard===car?carAudio.state:null),phoneArrived=dash.phoneArrived;if(phoneArrived)carAudio.notifyPhone();fuscaBody.update(dash.speed,dash.rpm,(immersive?.active?immersive.state.fuel:immersive?.freeFuel??12)/12);driver.update(car,paused?0:dt,{command:driveCommand,impact:frameImpact,phoneArrived});gamepad.bump(actionImpact);frameImpact=0;lapBanner(paused?0:dt);lastHud+=dt;if(lastHud>.07){hud();lastHud=0;}
  if(immersive?.visual)immersive.visual.renderAhead=renderAhead();immersive?.update(paused?0:dt,camera);if(watchedRival())updateCamera(dt);
  syncDamage();pitstop?.update(paused?0:dt,camera,sessionStarted&&!paused);updateGhost(dt);
+ // Out of the car anywhere (free-walk.js): F at the box hands the stop to the pit (out to its café there); the race leaving
+ // its running phase puts him back in at once; then the walk and its camera.
+ if(walker){
+  if(walker.stopping&&pitstop?.opened){walker.cancel();pitstop.visitCafe();}
+  if(walker.busy&&!walkRace())walker.reset();
+  walker.update(paused?0:dt,camera,{input:paused?undefined:input(),shift:pressed('ShiftLeft')||pressed('ShiftRight'),rivals:immersive?.rivals??[],visible:sessionStarted&&!paused});
+  if(touchDevice){const show=!walker.active&&(walker.stopping||walkRace()),label=walker.stopping?'Parando…':'Sair do carro';if($('touchExit').hidden===show)$('touchExit').hidden=!show;if($('touchExit').textContent!==label)$('touchExit').textContent=label;}
+ }
  // Specks in the air, the rivals' dust and the pushed verge grass; the pad buzzes on the kerbs.
  speedFx?.update(paused||frozen?0:dt,camera,{cars:carsThisFrame(),landscape,inside:isInside(),viewport:viewportThisFrame(),subject:watchedRival()?.car??car});gamepad.kerb(paused||frozen?0:car.kerbRide);
  // Marshals, cameramen, crews, the terrace and the café idle; passing cars catch their eye.
@@ -1444,7 +1459,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(
  // The speed smear rides on the camera's own motion, only while it drives with a car (not the opening shots, the
  // grid, the café, on foot, the podium or a cockpit photo); the cars riding along stay sharp. Phones (the lite film
  // look) with the full smear off get the light road smear of their Sensação de velocidade instead.
- const smearMode=intro.active||gridPreview()||pitstop?.opened||immersive?.onFoot()||(immersive?.active&&['crowd','podium'].includes(immersive.state.phase)&&!immersive.inCar)||(mode==='cockpit'&&cockpitView&&!watchedCar)?'still':mode;
+ const smearMode=intro.active||gridPreview()||pitstop?.opened||immersive?.onFoot()||walker?.active||(immersive?.active&&['crowd','podium'].includes(immersive.state.phase)&&!immersive.inCar)||(mode==='cockpit'&&cockpitView&&!watchedCar)?'still':mode;
  // The phones' road smear only behind the car: in the bonnet and cockpit views the own car's box is the whole screen,
  // every tap would be thrown away and the pass would cost its time for nothing.
  const behindCar=smearMode==='chase'||smearMode==='close'||smearMode==='far';
@@ -1521,6 +1536,17 @@ $('settingsResume').onclick=resumeRace;
 // on screen under a small badge; Escape opens the menu.
 let held=false;
 // Taking the wheel ends the recon lap: the cameras come back to the player's car.
+// Getting out of the car anywhere (free-walk.js): while the race runs (Modo Corrida's, the story's, the arena, the recon
+// lap) with the car on the ground; not in the countdown, the opening shots, the grid, at the open box (its own walk), in
+// the arena's editor or after the flag.
+function walkRace(){return ready&&sessionStarted&&!intro.active&&!gridPreview()&&!car.fall&&!pitstop?.opened&&!arenaMode?.editing&&raceResults.root.hidden&&(immersive.active?immersive.state.phase==='race':!immersive.freeCountdown&&!immersive.freeResultReady&&!immersive.finishing);}
+// F in the car: it stops and he gets out (the recon lap and the arena's demonstration hand the car over first); F again
+// while it brakes stays in.
+function toggleWalk(){
+ if(!walker||walker.active||!walker.stopping&&!walkRace())return false;
+ if(automatic)takeWheel();if(arenaMode?.demo)arenaMode.stopDemo('VOCÊ ASSUMIU O CARRO');
+ return walker.request();
+}
 function takeWheel(){automatic=false;if(watched){watched=0;followInitialized=false;tvCamera?.reset();}}
 // The recon lap (automatic) is never paused by the window losing focus: it may be a demonstration.
 // Nor is a multiplayer race: the others race on (two windows side by side share one focus).
@@ -1677,7 +1703,7 @@ function ownGearbox(){if(!car.manualGear){gearbox.sync(car,wheel.lever);car.manu
 // With the automatic the brake held at rest backs up (brake-reverse.js).
 const brakeReverse=new BrakeReverse();
 function shiftGear(step){
- if(!manualGearbox()||!ready||!sessionStarted||paused||automatic||immersive?.onFoot()||pitstop?.opened)return;
+ if(!manualGearbox()||!ready||!sessionStarted||paused||automatic||immersive?.onFoot()||walker?.active||pitstop?.opened)return;
  ownGearbox();if(step>0)gearbox.up();else gearbox.down(car);
 }
 let wheelPanel=null;
@@ -1718,6 +1744,9 @@ document.addEventListener('keydown',e=>{
  if(lapRecords.dialog.open||championshipDialog.dialog.open)return;
  if(pitstop?.opened&&!$('settings').open){if(e.code==='Escape')openSettings();else if(e.code==='KeyP')hold(!held);else if(!paused){if(pitstop.coffee&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){e.preventDefault();keys.add(e.code);}if(!e.repeat&&pitstop.handleKey(e.code))e.preventDefault();}return;}
  if($('settings').open){if(e.code==='KeyM'){carAudio.toggleMute();audioControls();}return;}
+ // Out of the car (free-walk.js) the walk takes the keys: F back in, E the hood or the trunk, Space, C, Shift and the
+ // movement keys; Escape, P, M, Y and U do as in the car; nothing else (no camera, lights, ghost, gear or rescue).
+ if(walker?.active&&sessionStarted&&ready&&!['Escape','KeyP','KeyM','KeyY','KeyU'].includes(e.code)){if(['INPUT','SELECT'].includes(e.target.tagName))return;e.preventDefault();if(e.code!=='Space')keys.add(e.code);if(!e.repeat&&!paused)walker.handleKey(e.code);return;}
  // The arena's panel and editor take their keys; T opens the panel while driving, 9 0 − = tune the car (ARENA_KEYS).
  if(arenaMode&&sessionStarted&&ready&&(arenaMode.editing||arenaMode.panelOpen||!paused&&ARENA_KEYS.includes(e.code))&&arenaMode.handleKey(e)){e.preventDefault();return;}
  if(arenaMode?.editing||arenaMode?.panelOpen)return;
@@ -1728,6 +1757,8 @@ document.addEventListener('keydown',e=>{
  // The key that skips the opening (intro-cinematic.js) does nothing else: not the story's first card, not the handbrake.
  if(e.introKey)return;
  if(!paused&&immersive?.handleKey(e.code)){e.preventDefault();return;}
+ // F gets out of the car anywhere in a race (free-walk.js); the car stops first.
+ if(e.code==='KeyF'&&!paused)toggleWalk();
  // Câmbio manual: X shifts up, Z down.
  if(e.code==='KeyX'||e.code==='KeyZ')shiftGear(e.code==='KeyX'?1:-1);
  // The controller's D-pad sends 1 2 3 too (synthetic), and on foot the numbers answer: only the
@@ -1762,7 +1793,7 @@ $('cockpitButton').onclick=()=>{if(ready)setCameraMode(mode==='cockpit'?'chase':
 $('skinButton').onclick=cycleLivery;
 $('watchButton').onclick=()=>watchNext(1);
 $('ghostButton').onclick=$('touchGhost').onclick=toggleGhost;
-$('touchLights').onclick=toggleHeadlights;$('touchWipers').onclick=toggleWipers;
+$('touchExit').onclick=()=>{if(walker?.active)walker.getIn();else toggleWalk();};$('touchLights').onclick=toggleHeadlights;$('touchWipers').onclick=toggleWipers;
 async function beginRace(restart=false,tour=false,story=preferences.values.immersive){
  if(loading)return;
  // The race the track screen asked for (a championship round or a room's race is a single race); a
@@ -1794,7 +1825,7 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  document.querySelector('.session').childNodes[1].textContent=championshipRace?` ${championshipRace.championship.info.label} · ETAPA ${championshipRace.round+1}/${championshipRace.championship.total} `:circuit.arena?' ARENA DE DRIFT ':immersive.lineup?.length===0?' TREINO SOLO ':immersive.lineup?` 1x1 · #${immersive.lineup[0]} `:' PISTA LIVRE ';
  // The story's paddock names the round ahead under its map (immersive.css .story-paddock): season, round, place and dates.
  {const r=championshipRace,row=r?.championship.schedule[r.round];$('mapRound').hidden=!r;if(r)$('mapRound').innerHTML=`<b>${r.championship.info.label} · ETAPA ${r.round+1} DE ${r.championship.total}</b>${[row?.place??circuit.name,row?.date].filter(Boolean).join(' · ')}`;}
- pitstop?.reset();automatic=false;watched=0;
+ pitstop?.reset();walker?.reset();automatic=false;watched=0;
  if(preferences.values.immersive){immersive.start();}
  else{if(immersive.active)immersive.disable();reset();setCameraMode(preferences.values.camera);updateCar(1);updateCamera(1);}
  paintCar();
@@ -1925,6 +1956,7 @@ function clearCircuit(){
  if(arenaMode)mobile?.setHandbrakeHold(false);arenaMode?.dispose();arenaMode=null;arenaScene=null;document.body.classList.remove('arena-mode');if(car)car.world=null;
  action.reset();actionNotice.update(0,null,false);intro.stop();const retired=[];
  if(pitstop){pitstop.reset();pitstop.panel.remove();pitstop.hud.remove();pitstop.walkHud.remove();pitstop.markers.removeFromParent();retired.push(pitstop.markers);pitstop=null;}
+ if(walker){walker.dispose();retired.push(walker.hero);walker=null;walkView=null;}
  camera.clearViewOffset();
  if(immersive){immersive.visual.restoreGraph();immersive.dispose();immersive.visual.damage.removeFromParent();retired.push(immersive.visual.damage);immersive=null;}
  if(car)delete car.condition;
@@ -2086,6 +2118,14 @@ async function loadCircuit(){
  multiplayer?.attach(immersive);
  // Box 99: Curvelo's service lane, or the surveyed garage at Interlagos.
  if(circuit.id==='curvelo'||pitLayout)pitstop=new PitStop({scene,car,carRoot,driver,mode:immersive,data,roadSurface,layout:pitLayout,obstacles:cameraObstacles,openings,onOpen:()=>{automatic=false;keys.clear();mobile?.clear();mobile?.setHandbrake(false);setCameraMode('chase');if(document.pointerLockElement)document.exitPointerLock();},onClose:()=>{keys.clear();mobile?.clear();followInitialized=false;},onSettings:openSettings});
+ // Out of the car anywhere (free-walk.js), among the Box 99's rooms and people where the circuit has them; he wears
+ // the clothes of the car he races (or of his story stage).
+ walker=new FreeWalk({scene,car,driver,openings,layout:pitstop?.layout??null,obstacles:cameraObstacles,water:landscape.stats.water?(x,y)=>landscape.water.at(x,y):null,
+  outfit:()=>pilotOutfit({career:immersive.active?immersive.state.profile.career:null,entry:raceCar==='99'&&raceModel!=='fusca'?null:carEntry(raceCar,raceModel)}),
+  title:()=>circuit.arena?'A PÉ · NA ARENA':reconLap||immersive.lineup?.length===0?'A PÉ · NA PISTA':'A PÉ · A CORRIDA CONTINUA',
+  emit:(name,options)=>carAudio.effect(name,options),
+  onOut:()=>{walkView=mode;setCameraMode('chase');keys.clear();mobile?.clear();if(!touchDevice&&!pointerLocked&&!lockUnavailable)try{$('view').requestPointerLock()?.catch?.(()=>{});}catch{}},
+  onIn:()=>{keys.clear();mobile?.clear();setCameraMode(walkView??preferences.values.camera);walkView=null;followInitialized=false;}});
  syncDamage(true);
  if(circuit.arena){
   arenaMode=new ArenaMode({scene,view:$('view'),textures:terrainTextures,mobile:scenery.mobile,storage:pilotStorage(),stadium:arenaScene,pilot:()=>immersive?.pilotName||typedPilot(),
@@ -2110,7 +2150,7 @@ async function loadCircuit(){
  updateCar(1);updateCamera(1);cockpit.outsideBatch();landscape.revealWaves(true);try{await cinematic.compile(scene,camera);await landscape.compileWater(renderer,scene,camera);}catch(err){console.warn(err);}finally{landscape.revealWaves(false);}
  ready=true;loadedCircuit=circuit.id;sceneryBuilt=sceneryLevel;setCameraMode(preferences.values.camera);$('skinButton').disabled=false;updateCar(1);cockpit.update(car,0);driver.update(car,0);updateCamera(1);cameraHint();hud();$('start').disabled=false;
  window.interlagos={ready:true,circuit:circuit.id,car,explosionInfo:()=>explosions?.info()??null,fallInfo:()=>({timeScale:fallView.timeScale,active:fallView.active,shot:!!fallView.shot,sight:fallInSight(fallView,car,camera)}),renderAhead,telemetry:()=>car.telemetry(),setLivery,reset:()=>reset(),reposition:index=>{car.reset(index);driver.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();cockpit.resetPhone();updateCar(1);updateCamera(1);},setTour:value=>{if(immersive.active)return;automatic=value;menu(false);},
-  immersiveInfo:()=>immersive.info(),pitInfo:()=>pitstop?.info()??null,
+  immersiveInfo:()=>immersive.info(),pitInfo:()=>pitstop?.info()??null,walkInfo:()=>walker?.info()??null,
   audioInfo:()=>carAudio.info(),mobileInfo:()=>({enabled:touchDevice,steering:mobile?.steering??0,throttle:mobile?.throttle??0,brake:mobile?.brake??0,pressed:[...(mobile?.pressed??[])],pixelRatio:renderer.getPixelRatio()}),gamepadInfo:()=>({connected:gamepad.connected,name:gamepad.connected?gamepad.name:'',steering:gamepad.steering,throttle:gamepad.throttle,brake:gamepad.brake,held:[...gamepad.held],rumble:gamepad.rumble,curve:gamepad.curve}),
   cinematicInfo:()=>({...cinematic.info(),adaptation:cinematic.adaptation()}),tvInfo:()=>tvCamera.info(),tvCamera:()=>tvCamera,introInfo:()=>intro.info(),skipIntro:()=>intro.stop(),setCinematic:level=>cinematic.setLevel(level),cinematicLook:patch=>Object.assign(cinematic.look,patch||{}),
   skidInfo:()=>skidMarks.info(),smokeInfo:()=>tyreSmoke.info(),sceneryInfo:()=>({...landscape.stats,sky:sky.info()}),waterInfo:()=>landscape.waterInfo(),lakeInfo:()=>lakeContact?.info()??null,treeInfo:()=>treeField?.info()??null,tumbleInfo,waterAt:(x,y)=>landscape.water.at(x,y),

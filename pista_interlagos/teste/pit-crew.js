@@ -539,6 +539,12 @@ export function hitPeople(car){
  for(let i=0;i<hits;i++)EVENTS.push({sound:'bonk',strength:Math.min(1.3,.5+speed/15)});
  return hits;
 }
+// The pilot out of his car (free-walk.js) hit by a rival: the same flight and bonk as anyone's. feet: where he stood
+// (world, three.js axes); he gets up where he lands (free-walk.js ends the flight before the walk back).
+export function knockOver(feet,yaw,car,side){
+ EVENTS.push({sound:'bonk',strength:Math.min(1.3,.5+Math.hypot(car.vx,car.vy)/15)});
+ return new Tumble({feet,yaw,velocity:throwFrom(car,side),home:feet,homeYaw:yaw,car:new THREE.Vector3(car.x,car.z-CAR_GROUND,-car.y)});
+}
 // Sounds from the flights since the last call ({sound, strength}), for main.js to play.
 export function takePeopleEvents(){return EVENTS.splice(0);}
 // Once a frame (main.js): people near the camera idle every frame, the ones farther off
