@@ -71,6 +71,13 @@ import {createFloripaBridges} from './floripa-bridges.js';
 import {createFloripaLandmarks} from './floripa-landmarks.js';
 import {createMinhocaoStructures} from './minhocao-structures.js';
 import {createMinhocaoLandmarks,hasMinhocaoLandmarks} from './minhocao-landmarks.js';
+import {createCityStreets} from './city-streets.js';
+import {createStreetClosures} from './street-closures.js';
+import {createCityFurniture} from './city-furniture.js';
+import {createBeiraMar} from './beira-mar.js';
+import {loadCityMap} from './city-map.js';
+import {createCityBuildings} from './city-buildings.js';
+import {citySpectators} from './city-crowd.js';
 import {Explosions} from './explosion.js';
 import {trackPoint as podiumPoint} from './immersive-visuals.js';
 import {CinematicIntro} from './intro-cinematic.js';
@@ -223,7 +230,8 @@ let renderer;
 // Its captures leave out the player's car, the ghost and the sprites sized for the screen.
 // The scene's big parts by name, for the cost of each (perf-probe.js; interlagosGraficos.cost/hide).
 const perfProbe=new PerfProbe({renderer:()=>renderer,scene,parts:()=>[['carro do jogador',carRoot],['rivais',immersive?.visual?.root],['cenário',landscape?.root],['beira da pista',trackside?.root],['bandeiras',flags?.root],['guard-rails',roadRails?.root],['zebras',roadCurbs],['postes das árvores',treeField?.points],['efeitos de velocidade',speedFx?.root],['chuva',rain?.root],['refletores',floods?.root],['marcas de pneu',skidMarks?.mesh],['fumaça',tyreSmoke?.mesh],['fantasma',ghostCar.root],['lago',lakeContact?.mesh]]});
-let carReflections=null;const probeAt=new THREE.Vector3(),reflectionHide=()=>[carRoot,ghostCar.root,tyreSmoke?.mesh,lakeContact?.mesh,treeField?.points,speedFx?.root];
+// (A circuit's small street things, root.userData.noReflection: poles and paint are not worth their draws in the car's paint.)
+let carReflections=null;const probeAt=new THREE.Vector3(),reflectionHide=()=>[carRoot,ghostCar.root,tyreSmoke?.mesh,lakeContact?.mesh,treeField?.points,speedFx?.root,...circuitExtras.filter(e=>e.root.userData.noReflection).map(e=>e.root)];
 const camera=new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,6500);
 const orbit=new OrbitControls(camera,$('view'));
 const ORBIT_MAX_DISTANCE=45;
@@ -511,6 +519,7 @@ function applyWeather(){
  // (new programs: compiled in slices when a race already shows), lit as the start decides (startLights) or H.
  TAIL_LIGHTS.on=weather.lights;setGlare(weather.lamps);playerLamps.setStrength(weather.lamps);
  floods?.setLevel(weather.night?1:weather.time==='fim_de_tarde'?.45:0);
+ for(const extra of circuitExtras)extra.setNight?.(weather.night?1:weather.time==='fim_de_tarde'?.45:0);
  // At night the cars reflect the night sky only (car-reflections.js setSkyOnly): another map size, other programs.
  const programs=playerLamps.install(weather.lights)|carReflections.setSkyOnly(weather.night);
  if(programs&&ready)precompileGraphics();
@@ -1935,7 +1944,9 @@ async function loadCircuit(){
   // Cascavel, ECPA: terrain, asphalt and gantry from the open-data track file (open-circuit.js);
   // woods from the land-cover grid and the real building footprints (landscape.js).
   const groundFit=fitGround(data);
-  const open=await createOpenCircuit(data,roadSurface,{heights:groundFit.heights,textures:terrainTextures,field:landscapeField,groundUrl:circuit.ground,label:`${circuit.track} · AUTO-POBRE RACING`,mobile:scenery.mobile});
+  // A real city round the lap (Floripa): its streets, sidewalks and squares are drawn on the ground from the city map.
+  const cityMap=data.scenery.city?await loadCityMap(data,circuit.ground.replace(/[^/]*$/,'')):null;
+  const open=await createOpenCircuit(data,roadSurface,{heights:groundFit.heights,textures:terrainTextures,field:landscapeField,groundUrl:circuit.ground,label:`${circuit.track} · AUTO-POBRE RACING`,mobile:scenery.mobile,city:cityMap});
   scene.add(open.root);cameraObstacles.push(...open.obstacles);
   // The valley out to 22 km below a plateau circuit (Chapada dos Sonhos), from the same folder as its ground photo.
   const far=data.scenery.far?await createFarTerrain(data,circuit.ground.replace(/[^/]*$/,''),{stride:sceneryLevel==='basico'?2:1}):null;if(far)scene.add(far.root);applyViewDistance();
@@ -1951,11 +1962,18 @@ async function loadCircuit(){
   // Its landmarks (minhocao-landmarks.js: Copan, Itália, the ex-Hilton, Caetano de Campos, the Consolação church...),
   // before the landscape: the generic buildings that cut into them are trimmed back first.
   if(hasMinhocaoLandmarks(data))circuitExtras.push(createMinhocaoLandmarks(data,{mobile:scenery.mobile,ground:groundAt}));
+  // A real city closed for the race (data.scenery.city, Floripa): the paint on its streets and on the lap, the side
+  // streets blocked where they meet the walls (with the traffic held behind and the parked cars), the poles, wires,
+  // traffic lights, bus stops and street signs, and the seafront promenades. The streets themselves are the ground's
+  // (landscape.js LAND_CITY, from the city map).
+  if(cityMap){const city={mobile:scenery.mobile,lean:sceneryLevel==='basico',ground:groundAt,map:cityMap};circuitExtras.push(...await Promise.all([createCityBuildings(data,city),createCityStreets(data,city),createStreetClosures(data,city),createCityFurniture(data,city),createBeiraMar(data,city)]));}
   for(const extra of circuitExtras){scene.add(extra.root);if(extra.obstacles)cameraObstacles.push(...extra.obstacles);}
-  landscape=createLandscape({data,field:landscapeField,ground:(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y),cover:data.scenery.cover,buildings:data.scenery.buildings,cityAngle:data.meta.city_angle??Math.PI/2,mobile:scenery.mobile,density:scenery.density,lod:scenery.lod,lean:sceneryLevel==='basico',style:'urban'});
+  landscape=createLandscape({data,field:landscapeField,ground:(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y),cover:data.scenery.cover,buildings:data.scenery.city?.buildings?null:data.scenery.buildings,cityAngle:data.meta.city_angle??Math.PI/2,mobile:scenery.mobile,density:scenery.density,lod:scenery.lod,lean:sceneryLevel==='basico',style:'urban'});
   // The trees the land cover put where a landmark's yard or apron is (floripa-landmarks.js) go.
   for(const extra of circuitExtras)if(extra.clearings)landscape.clearAround(extra.clearings);
   const stands=createGrandstands(data,terrainTextures,(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y));scene.add(stands.root);fixed.push(stands.root);cameraObstacles.push(...stands.obstacles);standTops=stands.rows;
+  // A city's own sidewalks fill with people behind the fences (city-crowd.js): standing fans, with the stands' in one draw.
+  if(cityMap)standTops=[...standTops,...citySpectators(data,{map:cityMap,ground:groundAt,lean:sceneryLevel==='basico',mobile:scenery.mobile})];
   Object.assign(landscape.stats,{ground:groundFit.stats,stands:stands.stats,circuit:open.stats,far:far?.stats,extras:Object.fromEntries(circuitExtras.map(e=>[e.root.name,e.stats]))});
  }else{
   const track=await loader.loadAsync('../exports/interlagos_pista.glb');let ortho=null;

@@ -8,6 +8,8 @@ import {canvasTexture} from './pit-textures.js';
 // same {root, rails, setQuality, stats}), so the cameras, the banners and the marshal posts find them where they look
 // for the rails. The blocks are 3 m long with a hairline joint, painted by stretch (bare concrete, white, and red and
 // white at the corners), each with its own tone and grime so a kilometre of them never reads as one copy.
+// meta.wall_paint 'bare' (Floripa, a city closed for a weekend's race): every block bare, hired concrete, each set down a
+// little on its own (a few centimetres out of line, never into the road), so the joints show small steps.
 const BLOCK=3,FENCE_TOP=3.9;
 // Jersey profile seen along the road, from the face's foot (d=0, road side) over the top and down the back:
 // [outward, height]. The car meets the wall at its face (physics: width/2 + gap). The blocks sit WALL_SINK into the ground.
@@ -85,7 +87,7 @@ export function barrierAt(stations,s){
 function random(seed){let t=seed>>>0;return ()=>{t=t+0x6D2B79F5>>>0;let r=Math.imul(t^t>>>15,1|t);r=r+Math.imul(r^r>>>7,61|r)^r;return ((r^r>>>14)>>>0)/4294967296;};}
 export function createStreetWalls(data,{quality='alto'}={}){
  const root=new THREE.Group();root.name='Muros_circuito_de_rua';
- const a=data.samples,L=data.meta.reconstructed_xy_m,rand=random(4021);
+ const a=data.samples,L=data.meta.reconstructed_xy_m,rand=random(4021),bare=data.meta.wall_paint==='bare';
  const point=s=>{if(s>=L)return a[0];let lo=0,hi=a.length-1;while(lo<hi){const mid=Math.ceil((lo+hi)/2);if(a[mid][0]<=s)lo=mid;else hi=mid-1;}
   const p=a[lo],q=a[(lo+1)%a.length],u=(s-p[0])/((lo===a.length-1?L:q[0])-p[0]);return p.map((value,k)=>k===0?s:value+(q[k]-value)*u);};
  // Curvature at s (for the corner paint): turn of the tangent over 20 m.
@@ -121,19 +123,32 @@ diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.07),scuff*.55);`);
   coverage+=to-from;sections++;
   // Stations every metre (barrierLines; a block is three); the paint changes by block.
   const base=positions.length/3,fbase=fence.length/3,last=stations.length-1;
-  let paint=null,blockColor=[.62,.61,.58];
+  let paint=null,blockColor=[.62,.61,.58],shift=0,rise=0,ring=-1;
   for(let i=0;i<=last;i++){
    const {s,x,y,ox,oy}=stations[i],ground=stations[i].z-WALL_SINK;
    const block=Math.floor(s/BLOCK);
-   if(paint!==block){paint=block;blocks++;
-    // Red and white at the corners (alternating blocks), white on most straights, bare concrete here and there.
+   const join=()=>{if(ring>0)for(let j=0;j<JERSEY.length-1;j++){const k=base+(ring-1)*JERSEY.length+j,b=k+JERSEY.length;side>0?indices.push(k,b,k+1,b,b+1,k+1):indices.push(k,k+1,b,b,k+1,b+1);}};
+   const pushRing=(px,py,pz,qx,qy,ps)=>{for(const [d,h] of JERSEY){positions.push(px+qx*(d+shift),pz+h+rise,-(py+qy*(d+shift)));colors.push(...blockColor);wallUv.push(ps,h);}ring++;};
+   if(paint!==block){
+    // A bare wall's blocks each stand on their own: at the joint (the painted seam, s a multiple of the block) the ring
+    // that ends one block and the one that starts the next, set apart by their own shifts.
+    let joint=null;
+    if(bare&&paint!==null&&i>0){const p=stations[i-1],sb=block*BLOCK,u=Math.min(1,Math.max(0,(sb-p.s)/((s-p.s)||1))),m=k=>p[k]+(stations[i][k]-p[k])*u;
+     joint=[m('x'),m('y'),m('z')-WALL_SINK,m('ox'),m('oy'),sb];pushRing(...joint);join();}
+    paint=block;blocks++;
     const corner=turn(s)>.006,shade=.92+rand()*.12;
-    blockColor=corner?(block%2?[.72*shade,.09*shade,.08*shade]:[.86*shade,.85*shade,.82*shade]):rand()<.62?[.8*shade,.8*shade,.77*shade]:[.6*shade,.59*shade,.55*shade];
+    if(bare){
+     // Bare concrete: weathered greys, some newer and paler, some stained darker, a few with a yellowish cast.
+     const r=rand();blockColor=r<.1?[.47*shade,.46*shade,.43*shade]:r<.2?[.7*shade,.69*shade,.65*shade]:r<.27?[.62*shade,.58*shade,.48*shade]:[.58*shade,.57*shade,.54*shade];
+     shift=rand()*.035;rise=(rand()-.5)*.02;
+    }
+    // Red and white at the corners (alternating blocks), white on most straights, bare concrete here and there.
+    else blockColor=corner?(block%2?[.72*shade,.09*shade,.08*shade]:[.86*shade,.85*shade,.82*shade]):rand()<.62?[.8*shade,.8*shade,.77*shade]:[.6*shade,.59*shade,.55*shade];
+    if(joint)pushRing(...joint);
    }
-   for(const [d,h] of JERSEY){positions.push(x+ox*d,ground+h,-(y+oy*d));colors.push(...blockColor);wallUv.push(s,h);}
    // Wound to face out of the block (the face toward the road, the top up): the material draws front faces only, and
    // wound the other way round the road saw the inside of the back slope, half a metre behind the face, through it.
-   if(i>0){for(let j=0;j<JERSEY.length-1;j++){const k=base+(i-1)*JERSEY.length+j,b=k+JERSEY.length;side>0?indices.push(k,b,k+1,b,b+1,k+1):indices.push(k,k+1,b,b,k+1,b+1);}}
+   pushRing(x,y,ground,ox,oy,s);join();
    // An end of the stretch (a pit entry or exit, a gap in the walls) shows the block's section, not its hollow.
    if(i===0?from>0:i===last&&to<L-1e-6)caps.push({x,y,ox,oy,ground,s,color:blockColor,back:(i===0)===(side>0)});
    // Fence over the block's top, leaning a little toward the track at the top. Not on the bridges: there the

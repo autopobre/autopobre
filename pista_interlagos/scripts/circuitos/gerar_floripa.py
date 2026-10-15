@@ -14,6 +14,9 @@ terra e um greide desenhado sobre as pontes (fatos publicados); o mar e o relevo
 concreto com alambrado dos dois lados, como nos circuitos de rua. Os boxes ficam diante da Rodoviaria Rita
 Maria, na Av. Paulo Fontes (a ponte nao tem onde por uma faixa de boxes).
 
+No fim, gerar_cidade_floripa.py poe a cidade de verdade em volta (scenery.city) e grava dados/pista_floripa.json; a volta
+sem ela fica em fontes/floripa/pista_floripa_base.json.
+
 O formato e o de gerar_pista.py / gerar_chapada.py, com:
 - duas colunas a mais nas estacoes: 'wall_right_m', 'wall_left_m' (folga do asfalto ate a face do muro);
 - `meta.decks`: trechos [s0, s1] sobre estrutura (pontes): ali o jogo nao cola o terreno na pista e o carro
@@ -681,18 +684,23 @@ def main():
     pit = {k_: v for k_, v in pit.items() if k_ not in ('xy', 'z_lane', 'lx_ly', 'lo_arr', 'hi_arr')}
     saida = {'meta': meta, 'columns': colunas, 'samples': np.round(samples, 5).tolist(), 'pit': pit,
              'terrain': terrain, 'scenery': scenery}
-    destino = DADOS / f'pista_{NOME}.json'
+    # A volta sem a cidade (a base de gerar_cidade_floripa.py, que grava dados/pista_floripa.json no fim).
+    destino = pasta / f'pista_{NOME}_base.json'
     destino.write_text(json.dumps(saida, separators=(',', ':'), ensure_ascii=False), encoding='utf-8')
     # As edificacoes que o jogo desenharia sobre uma faixa que ele mantem livre saem pela propria regra dele.
     import subprocess
     from config import RAIZ
-    node = RAIZ.parents[1] / 'apps' / 'node-v22.23.2-win-x64' / 'node.exe'
-    subprocess.run([str(node) if node.exists() else 'node', str(Path(__file__).with_name('podar_edificios.mjs')), str(destino)], check=True)
+    # O Node portatil da pasta apps (acima do repositorio, tambem de dentro de uma worktree), senao o do PATH.
+    node = next((q / 'apps' / 'node-v22.23.2-win-x64' / 'node.exe' for q in RAIZ.parents if (q / 'apps' / 'node-v22.23.2-win-x64' / 'node.exe').exists()), 'node')
+    subprocess.run([str(node), str(Path(__file__).with_name('podar_edificios.mjs')), str(destino)], check=True)
     print(f'{destino.name}: {destino.stat().st_size / 1e6:.2f} MB')
     resumo = {k_: meta[k_] for k_ in ('reconstructed_xy_m', 'reconstructed_3d_m', 'elevation_min_m', 'elevation_max_m',
                                       'elevation_range_m', 'grade_min_pct', 'grade_max_pct', 'width_min_m', 'width_max_m',
                                       'kerb_m', 'pit_lane_m', 'decks')}
     print(json.dumps(resumo, indent=1, ensure_ascii=False))
+    # A cidade de verdade em volta (pedido da equipe, 15/10/2026): ruas, calcadas, bloqueios, predios nas pegadas reais.
+    import gerar_cidade_floripa
+    gerar_cidade_floripa.main()
 
 
 # Marcos com modelo proprio no jogo (floripa-landmarks.js): vias/relacoes do OSM. Ficam fora das edificacoes genericas.

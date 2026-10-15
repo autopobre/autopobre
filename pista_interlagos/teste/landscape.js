@@ -505,16 +505,28 @@ const terrainShore={shoreMap:{value:null},shoreBounds:{value:new THREE.Vector4(0
 // steep: the ground has steep slopes (a plateau's talus and gorges, Chapada dos Sonhos): there the photograph, draped
 // from above, smears into streaks and the grass tiles stretch; it is read from a coarser mip and the grass laid from
 // the side (LAND_STEEP). The other circuits build without it.
-export function terrainMaterial(textures,field,{ortho=null,cover=null,mobile=false,steep=false}={}){
+// city (Floripa, city-map.js): the map of a real city's ground (streets, sidewalks, squares, cycleways, lawns, car parks)
+// drawn over the land with crisp edges at any distance (LAND_CITY).
+export function terrainMaterial(textures,field,{ortho=null,cover=null,mobile=false,steep=false,city=null}={}){
  // Pushed back in depth: far away, roads and kerbs a few centimetres above it still win.
  const material=new THREE.MeshStandardMaterial({name:'Terreno_paisagem_v2',map:ortho,roughness:.95,metalness:0,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:2});
  if(steep)material.defines={...material.defines,LAND_STEEP:''};
  material.onBeforeCompile=shader=>{
-  Object.assign(shader.uniforms,terrainShore,{coverMap:{value:cover},grassMap:{value:textures.grass},wildMap:{value:textures.wild},concreteMap:{value:textures.concrete},gravelMap:{value:textures.gravel},grassNormalMap:{value:textures.grassNormal},
-   trackField:{value:field.texture},fieldBounds:{value:new THREE.Vector4(field.x0,field.y0,field.width,field.height)}});
+  Object.assign(shader.uniforms,terrainShore,{coverMap:{value:cover},grassMap:{value:textures.grass},wildMap:{value:textures.wild},concreteMap:{value:textures.concrete},gravelMap:{value:city?.asphalt??textures.gravel},grassNormalMap:{value:textures.grassNormal},
+   trackField:{value:field.texture},fieldBounds:{value:new THREE.Vector4(field.x0,field.y0,field.width,field.height)},
+   cityMap:{value:city?.texture??null},cityStack:{value:city?.stack??new THREE.Vector2(.5,.5)},cityBounds:{value:city?.bounds??new THREE.Vector4(0,0,1,1)},cityRange:{value:city?.range??4}});
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vLandWorld;').replace('#include <begin_vertex>','#include <begin_vertex>\nvLandWorld=(modelMatrix*vec4(transformed,1.0)).xyz;');
   shader.fragmentShader=shader.fragmentShader.replace('#include <common>',`#include <common>
 uniform sampler2D grassMap,wildMap,concreteMap,gravelMap,grassNormalMap,trackField,shoreMap,coverMap;uniform vec4 fieldBounds,shoreBounds;uniform float shoreOn;varying vec3 vLandWorld;
+#ifdef LAND_CITY
+// One texture for the city (the ground's shader is near the device's limit of texture units, more so at night): both maps
+// in it, one above the other (city-map.js stack), and the asphalt on gravelMap's unit (terrainMaterial).
+uniform sampler2D cityMap;uniform vec2 cityStack;uniform vec4 cityBounds;uniform float cityRange;
+// Coverage of the inside of a signed distance (metres), its edge smoothed over a pixel.
+float cityInside(float d){float aa=max(fwidth(d)*.7,.012);return 1.0-smoothstep(-aa,aa,d);}
+// Distance to the edge of the nearest cell of a hexagonal grid of blocks size metres across (0 at the joint).
+float cityHex(vec2 p,float size){p/=size;const vec2 r=vec2(1.0,1.7320508);vec2 h=r*.5;vec2 a=mod(p,r)-h,b=mod(p-h,r)-h;vec2 g=dot(a,a)<dot(b,b)?a:b;g=abs(g);return (.5-max(dot(g,normalize(r)),g.x))*size;}
+#endif
 float landHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float landNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(landHash(i),landHash(i+vec2(1,0)),f.x),mix(landHash(i+vec2(0,1)),landHash(i+vec2(1,1)),f.x),f.y);}
 // A turn by any angle from two hashes (0..1), no trig. A few fixed turns would not do: two cells with the
@@ -640,24 +652,101 @@ ground=mix(ground,concrete*.55,roofM*(1.0-groomed));
 ground=mix(ground,mix(wild*vec3(.62,.45,.32),ortho*1.3,.6),bareM*(1.0-groomed*.8));
 // The aerial photograph reads correctly from afar and hides texture repetition.
 ground=mix(ground,ortho*vec3(.9,.94,.86),smoothstep(220.0,1100.0,viewDist)*.75);
+float cityCover=0.0,cityRough=.9;
+#ifdef LAND_CITY
+{
+ vec2 cw=vec2(vLandWorld.x,-vLandWorld.z),cuv=(cw-cityBounds.xy)/cityBounds.zw;
+ float inCity=step(0.0,cuv.x)*step(cuv.x,1.0)*step(0.0,cuv.y)*step(cuv.y,1.0);
+ vec2 cuvA=vec2(cuv.x,cityStack.y+clamp(cuv.y,0.0,1.0)*cityStack.x),cuvB=vec2(cuv.x,clamp(cuv.y,0.0,1.0)*cityStack.x);
+ vec3 da=(texture2D(cityMap,cuvA).rgb*2.0-1.0)*cityRange,db=(texture2D(cityMap,cuvB).rgb*2.0-1.0)*cityRange;
+ float roadM=cityInside(da.r),walkM=cityInside(da.g),plazaM=cityInside(da.b),cycleM=cityInside(db.r),greenM=cityInside(db.g),parkM=cityInside(db.b);
+ float cn=landNoise(cw*.07),cn2=landNoise(cw*.55+3.1),fine=1.0-smoothstep(18.0,60.0,viewDist);
+ // The concrete texture lends its grain only (its own colour is a warm gravel): each surface keeps a neutral tone of its own.
+ float grain=mix(1.0,dot(concrete,vec3(.3,.55,.15))/max(dot(texture2D(concreteMap,vec2(.5),12.0).rgb,vec3(.3,.55,.15)),.04),.65);
+ // The city's asphalt: the race's own asphalt photograph (track-surface.js, a 2 m tile), twice at other scales and turns
+ // so the tile never lines up, toned a little greyer: the side streets look like the street the lap is. (Their patches,
+ // cracks and manholes lie along each street: city-streets.js.)
+ vec2 aRot=mat2(.8,-.6,.6,.8)*cw;
+ vec3 aTex=mix(texture2D(gravelMap,cw/2.3).rgb,texture2D(gravelMap,aRot/3.1+.37).rgb,smoothstep(.3,.7,landNoise(cw*.11)));
+ vec3 asphaltC=mix(vec3(dot(aTex,vec3(.3,.55,.15))),aTex,.6)*1.85*mix(.86,1.12,cn)*mix(.94,1.05,cn2);
+ // The curb: 15 cm of concrete along the road's edge, the gutter's dark line at its foot. Thinner than a pixel far away
+ // it fades into the sidewalk instead of shimmering.
+ float curbAa=max(fwidth(da.r),.01),curbSeen=clamp(.15/(curbAa*2.5),0.0,1.0);
+ float curbM=(1.0-smoothstep(.15-curbAa,.15+curbAa,da.r))*smoothstep(-curbAa,curbAa,da.r)*curbSeen*(1.0-roadM);
+ float gutterM=smoothstep(-.18,-.02,da.r)*roadM*curbSeen;
+ vec3 curbC=vec3(.4,.395,.38)*grain*mix(.85,1.06,cn2);
+ // Sidewalks: each stretch (40 m cells, roughly a block's frontage) its own paving: concrete slabs, the hexagonal
+ // blocks of the island's streets or small Portuguese stones, each a little its own grey. The joints fade out before
+ // they can shimmer.
+ float style=landHash(floor(cw/41.0+.37)),jointAa=max(fwidth(cw.x),fwidth(cw.y));
+ vec2 slab=abs(fract(cw+.5)-.5);float slabJoint=1.0-smoothstep(0.0,max(jointAa*1.2,.012),.5-max(slab.x,slab.y));
+ float hexJoint=1.0-smoothstep(0.0,max(jointAa*1.2,.008),cityHex(cw,.3));
+ float stones=landNoise(cw*14.0)*.6+landNoise(cw*31.0)*.4;
+ vec3 walkC=mix(vec3(.3,.295,.285),vec3(.27,.26,.245),landHash(floor(cw/41.0+.37)+2.7))*grain*mix(.88,1.06,cn);
+ float joints=style<.45?slabJoint*.35:style<.8?hexJoint*.4:0.0;
+ walkC*=1.0-joints*fine;
+ walkC=mix(walkC,mix(vec3(.2,.195,.185),vec3(.34,.33,.31),stones),step(.8,style)*fine*.7);
+ // Grime along the curb and the building line, where the sweepers do not reach.
+ walkC*=mix(.8,1.0,smoothstep(0.0,.9,-da.g))*mix(.86,1.0,smoothstep(0.0,.6,da.r));
+ // Squares and the seafront promenade: interlocking concrete pavers (40 x 20 cm, running bond), grey with the odd
+ // terracotta band and patches of a different batch; the joints fade out with distance.
+ vec2 pv=cw/vec2(.4,.2);pv.x+=step(1.0,mod(floor(pv.y),2.0))*.5;vec2 pvf=abs(fract(pv)-.5);
+ float paverJoint=1.0-smoothstep(0.0,max(jointAa*1.2,.006),min((.5-pvf.x)*.4,(.5-pvf.y)*.2));
+ float band=step(.5,fract(cw.y/9.0+landNoise(cw*.02)*.6))*step(.62,landHash(floor(cw/23.0)+1.7));
+ vec3 plazaC=mix(vec3(.29,.285,.27),vec3(.25,.13,.09),band*.8)*mix(1.0,mix(.9,1.06,landHash(floor(pv)+floor(cw/7.0))),fine)*mix(.92,1.04,cn);
+ plazaC*=1.0-paverJoint*.3*fine;
+ // Cycleways: red asphalt with a white line along each edge.
+ float cycleEdge=smoothstep(-.3,-.24,db.r)*(1.0-smoothstep(-.16,-.1,db.r))*fine;
+ vec3 cycleC=mix(vec3(.2,.042,.032)*grain*mix(.85,1.1,cn),vec3(.42,.42,.4),cycleEdge);
+ // Lawns of squares, medians and the seafront parks, a little uneven.
+ vec3 lawnC=grass*vec3(.34,.5,.24)*mix(.82,1.08,cn)*mix(.92,1.06,cn2);
+ // Car parks: asphalt a shade lighter, oil darker where the cars stand.
+ vec3 parkC=asphaltC*1.18*mix(1.0,.78,smoothstep(.55,.85,landNoise(cw*.35)));
+ // What is left (yards and lots between the buildings, the ground under the odd shed): packed earth and old concrete,
+ // weeds in patches. Woods keep their own ground.
+ float weeds=smoothstep(.6,.8,landNoise(cw*.09+1.3)*.7+landNoise(cw*.5)*.3);
+ vec3 lotC=mix(mix(vec3(.12,.115,.105),vec3(.17,.165,.155),landNoise(cw*.03+4.0))*grain,lawnC*.75,weeds*.45);
+ lotC=mix(lotC,wild*vec3(.3,.34,.22),treeM*.8);
+ lotC=mix(lotC,ortho*vec3(.9,.94,.86),smoothstep(260.0,1100.0,viewDist)*.5);
+ ground=mix(ground,lotC,inCity);
+ vec3 city=ground;
+ city=mix(city,lawnC,greenM);
+ city=mix(city,parkC,parkM);
+ city=mix(city,plazaC,plazaM);
+ city=mix(city,walkC,walkM);
+ city=mix(city,curbC,curbM*max(walkM,max(plazaM,max(greenM,.6))));
+ city=mix(city,cycleC,cycleM);
+ city=mix(city,asphaltC*mix(1.0,.55,gutterM),roadM);
+ cityCover=max(max(roadM,walkM),max(max(plazaM,cycleM),max(greenM,parkM)))*inCity;
+ cityRough=mix(mix(.92,.86,clamp(walkM+plazaM,0.0,1.0)),.9,roadM);
+ ground=mix(ground,city,inCity);
+}
+#endif
 // Lake bed and a damp, darker bank along the smooth shoreline (the cell flags would show steps).
+#ifdef LAND_CITY
+float shoreD=-24.0;
+#else
 float shoreD=shoreOn>.5?texture2D(shoreMap,vec2((vLandWorld.x-shoreBounds.x)/shoreBounds.z,(-vLandWorld.z-shoreBounds.y)/shoreBounds.w)).r:-24.0;
+#endif
 float lakeBedM=shoreOn>.5?smoothstep(-.4,.5,shoreD):waterBed,bankM=smoothstep(-3.2,-.3,shoreD)*(1.0-lakeBedM)*shoreOn;
 ground=mix(ground,ground*vec3(.58,.55,.46),bankM*.75);
 ground=mix(ground,vec3(.035,.045,.03),lakeBedM);
 diffuseColor.rgb=ground;
 `).replace('#include <roughnessmap_fragment>',`float roughnessFactor=mix(.96,.8,max(pavedM,paintM))-paintM*runoffRubber*.1;
+roughnessFactor=mix(roughnessFactor,cityRough,cityCover);
 roughnessFactor=mix(roughnessFactor,.63,bankM*.7);`)
   .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
 #ifndef LAND_SIMPLE
  vec3 grassBump=texture2D(grassNormalMap,w/3.3).xyz*2.0-1.0;
- float bumpAmount=(1.0-smoothstep(10.0,65.0,viewDist))*(1.0-pavedM)*(1.0-paintM)*(1.0-lakeBedM)*.4;
+ float bumpAmount=(1.0-smoothstep(10.0,65.0,viewDist))*(1.0-pavedM)*(1.0-paintM)*(1.0-lakeBedM)*(1.0-cityCover)*.4;
  normal=normalize(normal+(viewMatrix*vec4(grassBump.x,0.0,-grassBump.y,0.0)).xyz*bumpAmount);
 #endif`);
   carShadowPatch(shader);
  };
- material.defines={...(mobile?{LAND_SIMPLE:''}:{}),...(cover&&ortho?{USE_COVER:''}:{})};
- material.customProgramCacheKey=()=>'terrain-landscape-v5-'+(ortho?'ortho':'cerrado')+(cover&&ortho?'-cover':'')+(mobile?'-mobile':'');
+ material.defines={...(mobile?{LAND_SIMPLE:''}:{}),...(cover&&ortho?{USE_COVER:''}:{}),...(city?{LAND_CITY:''}:{})};
+ material.customProgramCacheKey=()=>'terrain-landscape-v5-'+(ortho?'ortho':'cerrado')+(cover&&ortho?'-cover':'')+(mobile?'-mobile':'')+(city?'-city':'');
+ // Kept on the material, so clearing the circuit (main.js) disposes the city map with it.
+ if(city)material.cityMap=city.texture;
  return material;
 }
 
@@ -1689,6 +1778,8 @@ function fanGeometry(mobile,far=false){
 // Friends sit together in one colour, fan clubs fill sectors, seats empty in patches; some fans
 // stand, cheer or wave a flag, and everyone moves on their own clock. One draw call per circuit.
 // lean (Baixo, integrated video): seats a quarter further apart, a fifth fewer fans.
+// step.stand: a row of people standing (on a city's sidewalk behind the fences: city-crowd.js), none seated; step.ground(x, y):
+// each one's feet on the ground there (a sidewalk climbing a hill), not on the row's highest corner.
 export function createCrowd(steps,{mobile=false,lean=false}={}){
  const rand=random(steps.length*131+7),items=[],spacing=lean?1.22:mobile?.98:.69;
  for(const step of steps){
@@ -1708,13 +1799,14 @@ export function createCrowd(steps,{mobile=false,lean=false}={}){
    const px=cx+ux*t,pz=cz+uz*t;
    if(valueNoise(px*.23+7.3,pz*.23+(step.depth??0)*2.6)<.17||rand()<.04){group=0;continue;}
    const club=FAN_CLUBS[(n=>n<.27?1:n>.8?3:n>.7?2:0)(valueNoise(px/24+3.1,pz/24-1.7))];
-   if(group<=0){group=1+Math.floor(Math.pow(rand(),1.7)*5);shirt=pickShirt(club&&rand()<.6?club:SHIRT_MIX,rand);standing=rand()<.07;}
+   if(group<=0){group=1+Math.floor(Math.pow(rand(),1.7)*5);shirt=pickShirt(club&&rand()<.6?club:SHIRT_MIX,rand);standing=!!step.stand||rand()<.07;}
    group--;
    const own=rand()<.72?shirt:pickShirt(club&&rand()<.5?club:SHIRT_MIX,rand),bright=.8+rand()*.32,r=rand();
    // Poses as in FAN_POSE: seated 0, folded 1, phone 2, elbows on knees 3, standing 4, cheering 5, flag 6/7.
    const pose=standing?(r<.6?4:r<.84?5:7):r<.07?2:r<.19?1:r<.27?3:r<.31?5:r<.345?6:0;
    const depth=(rand()-.5)*.14,along=t+(rand()-.5)*.1;
-   items.push({x:cx+ux*along-uz*depth,y:-(cz+uz*along+ux*depth),z:y,turn,color:own.map(v=>v*bright),scale:.93+rand()*.14,pose,seed:rand(),sun,sky:sky*(.93+rand()*.14)});
+   const ix=cx+ux*along-uz*depth,iy=-(cz+uz*along+ux*depth);
+   items.push({x:ix,y:iy,z:step.ground?.(ix,iy)??y,turn,color:own.map(v=>v*bright),scale:.93+rand()*.14,pose,seed:rand(),sun,sky:sky*(.93+rand()*.14)});
   }
  }
  // Blocks of CROWD_CELL metres, each drawn near or far (fanGeometry far) as it looks to the camera of that draw (crowdNear:

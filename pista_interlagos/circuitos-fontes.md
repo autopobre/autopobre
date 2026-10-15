@@ -368,17 +368,32 @@ dados da Prefeitura; `--geofloripa` baixa só eles).
   (`floripa-landmarks.js`), como as pontes (`floripa-bridges.js`) e as antenas do Morro da Cruz.
 - **No jogo**: muros de concreto com alambrado dos dois lados (`street-walls.js`, folga por estação nas colunas
   `wall_right_m`/`wall_left_m`), o mar (`sea-water.js`), anéis de relevo e cor até 22 km (`far-terrain.js`).
+- **A cidade (15/10/2026, pedido da equipe: "como se fosse Mônaco")**: `scripts/circuitos/gerar_cidade_floripa.py`, o
+  passo final de `gerar_floripa.py` (a volta sem a cidade fica em `fontes/floripa/pista_floripa_base.json`), acrescenta
+  `scenery.city`. O leito de cada via de carro do OSM é medido por transectos até os meios-fios do cadastro (311 das
+  738 vias; nas outras, as faixas do OSM), as esquinas concordadas (fecho de 3 m) e os canteiros (anéis fechados de
+  meio-fio) devolvidos; calçadas por classe de via e pela etiqueta `sidewalk`, praças do GeoFloripa, caminhos de
+  pedestre, ciclovias, gramados e estacionamentos do OSM, e um calçadão de 20 m ao longo da costa. Tudo vira uma
+  imagem de 1 m/px com seis campos de distância com sinal (`teste/assets/circuitos/floripa_cidade.png`), que o chão
+  do jogo desenha (`landscape.js` LAND_CITY). Também: faixas de pedestre, semáforos e paradas de ônibus (nós do OSM),
+  as faixas e a mão de cada via da volta, os bloqueios onde as ruas reais cruzam o corredor dos muros (menos as que
+  passam por baixo das pontes), postes com fiação, árvores de calçada e de praça, carros parados, placas de esquina,
+  a costa e os trapiches, e as pegadas reais do cadastro para os prédios (`city-buildings.js`). Os módulos do jogo:
+  `city-map.js`, `city-buildings.js`, `city-streets.js`, `street-closures.js` + `city-cars.js`, `city-furniture.js`,
+  `beira-mar.js` e `city-crowd.js` (gente em pé nas calçadas); os muros ficam de concreto cru (`meta.wall_paint`).
 
 | Dado | Fonte | Uso |
 |---|---|---|
-| Vias, costa, marcos, prédios com andares | OpenStreetMap (Overpass, base 11/10/2026) | eixo, mar fora da caixa, marcos |
+| Vias, costa, marcos, prédios com andares; calçadas, faixas de pedestre, semáforos, paradas, ciclovias, praças, estacionamentos, trapiches | OpenStreetMap (Overpass, base 11/10/2026) | eixo, mar fora da caixa, marcos; a cidade |
 | MDT e MDS 1 m (SDS 2010–2012), cadastro de edificações (2020), meios-fios, batimetria, parques | GeoFloripa, Prefeitura de Florianópolis (PMF/SMPIU), WCS/WFS sem login | relevo, pontes, prédios, larguras, fundo do mar |
 | Relevo 30 m, superfície 30 m, cobertura 10 m, cor 10 m | ANADEM, Copernicus GLO-30, ESA WorldCover, Sentinel-2 S2C_22JGQ_20260925 | fora da caixa da Prefeitura, cor do chão e do horizonte |
 | Dimensões das pontes e dos marcos | Wikipédia, Teixeira Duarte (restauro 2019), ABCEM, SciELO, OpenSeaMap | modelos |
 
 **Aproximações declaradas:** o circuito inteiro; larguras mínimas de corrida; o greide das pontes sobre o mar; os
 muros; os boxes diante da rodoviária (a ponte, onde fica a largada, não tem espaço para um pit lane); as
-arquibancadas na Paulo Fontes; alturas de prédios construídos depois de 2012.
+arquibancadas na Paulo Fontes; alturas de prédios construídos depois de 2012. Na cidade: as larguras das vias sem
+meio-fio medido (pelas faixas do OSM), as calçadas por classe de via, o calçadão como faixa fixa ao longo da costa;
+bloqueios, postes, fiação, árvores de calçada, carros parados, fachadas e o mobiliário da orla são desenho de jogo.
 
 ## Circuito do Minhocão (circuito de rua imaginário, São Paulo, SP) — fontes baixadas em 11/10/2026
 

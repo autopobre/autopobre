@@ -39,10 +39,10 @@ export function terrainMesh(data,heights,material){
  const mesh=new THREE.Mesh(geometry,material);mesh.name='Terreno_ANADEM';mesh.receiveShadow=true;return mesh;
 }
 
-export async function createOpenCircuit(data,roadSurface,{heights,textures,field,groundUrl,label,mobile=false}){
+export async function createOpenCircuit(data,roadSurface,{heights,textures,field,groundUrl,label,mobile=false,city=null}){
  const root=new THREE.Group();root.name='Circuito_'+data.meta.id;
  const loader=new THREE.TextureLoader(),ground=await loader.loadAsync(groundUrl);ground.colorSpace=THREE.SRGBColorSpace;ground.anisotropy=4;
- const cover=coverTexture(data.scenery.cover,{city:!!data.meta.street}),groundMaterial=terrainMaterial(textures,field,{ortho:ground,cover,mobile,steep:!!data.scenery.cliff});groundMaterial.userData.terrain=true;
+ const cover=coverTexture(data.scenery.cover,{city:!!data.meta.street}),groundMaterial=terrainMaterial(textures,field,{ortho:ground,cover,mobile,steep:!!data.scenery.cliff,city:city&&{...city,asphalt:roadSurface.material.map}});groundMaterial.userData.terrain=true;
  // Kept on the material too, so clearing the circuit (main.js) disposes it with the map.
  groundMaterial.coverMap=cover;
  // On a plateau's rim (Chapada dos Sonhos, cliff-scenery.js) no grid triangle leans across the lip: the wall and the

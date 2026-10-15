@@ -1,10 +1,12 @@
-"""Autódromo Floripa no navegador: carrega sem erros, mar, pontes, muros e marcos montados, e fotos da volta.
+"""Autodromo Floripa no navegador: a volta no meio da cidade real (data.scenery.city, gerar_cidade_floripa.py).
 
-    python verificar_floripa.py [porta] [pasta das fotos] [--so-fotos]
+    python verificar_floripa.py [porta] [pasta das fotos] [--sem-vistas] [--noite]
 
-Abre o circuito pelo seletor (?circuito=floripa) no Treino solo, confere o cenario (mar, pontes, marcos, muros de rua,
-predios) e fotografa a pista em varios pontos e cameras, mais vistas de longe (as pontes vistas do mar, a cidade). O
-carro anda no tabuleiro das pontes ate o muro, sem cair para o mar. Fotos em renders/floripa_*.png (ou na pasta dada).
+Abre ?circuito=floripa no Treino solo, confere que os modulos da cidade estao montados (chao LAND_CITY, predios nas
+pegadas reais, pintura das ruas, bloqueios, mobiliario, beira-mar, torcida nas calcadas), sem erros de pagina nem de
+shader no console (de dia e, com --noite, a noite: o chao da cidade cabe nas unidades de textura), e fotografa a volta
+como verificar_floripa.py, mais vistas da cidade. O carro anda no tabuleiro das pontes ate o muro. Fotos em
+renders/floripa_*.png (ou na pasta dada).
 """
 import json
 import sys
@@ -49,7 +51,8 @@ with sync_playwright() as p:
     page = browser.new_page(viewport={'width': 1280, 'height': 720})
     page.set_default_timeout(240000)
     page.on('pageerror', lambda e: (erros.append(str(e)), print('pageerror', e, flush=True)))
-    page.on('console', lambda m: print('console', m.type, m.text, flush=True) if m.type in ('error', 'warning') else None)
+    # Erros de console contam (um shader que nao compila so aparece ali); os avisos do compilador do D3D nao.
+    page.on('console', lambda m: (erros.append(m.text[:300]), print('console', m.type, m.text[:300], flush=True)) if m.type == 'error' else None)
     page.goto(URL + '?circuito=floripa', wait_until='domcontentloaded')
     wait_js(page, "window.interlagos&&!document.querySelector('#start').disabled")
     assert page.get_attribute('[data-circuit="floripa"]', 'aria-pressed') == 'true'
@@ -65,7 +68,11 @@ with sync_playwright() as p:
     info = page.evaluate("()=>({circuit:interlagos.circuit,scenery:interlagos.sceneryInfo(),drawCalls:interlagos.state?.drawCalls})")
     assert info['circuit'] == 'floripa', info
     sc = info['scenery']
-    print(json.dumps({k: sc.get(k) for k in ('trees', 'houses', 'chunks', 'circuit', 'far', 'extras', 'ground')}, ensure_ascii=False), flush=True)
+    print(json.dumps({k: sc.get(k) for k in ('trees', 'houses', 'chunks', 'fans', 'circuit', 'ground')}, ensure_ascii=False), flush=True)
+    extras = sc.get('extras') or {}
+    for nome in ('Predios_cidade', 'Pintura_cidade', 'Bloqueios_ruas', 'Mobiliario_urbano', 'Beira_mar', 'Pontes_Floripa', 'Marcos_Floripa', 'Mar'):
+        assert nome in extras and not extras[nome].get('stub'), (nome, list(extras))
+    print(json.dumps({k: {q: v for q, v in extras[k].items() if not isinstance(v, (dict, list))} for k in extras}, ensure_ascii=False)[:3000], flush=True)
     foto(page, 'largada')
     pontos = [(4380, 'chase', 'grid_ponte'), (60, 'chase', 'ponte_vao'), (60, 'cockpit', 'ponte_cockpit'), (300, 'chase', 'cabeceira_ilha'),
               (420, 'chase', 'adolfo_konder'), (700, 'chase', 'hoepcke'), (900, 'chase', 'claudino'), (1200, 'chase', 'paulo_fontes'),
@@ -86,6 +93,19 @@ with sync_playwright() as p:
             vista(page, de, para, fov)
             foto(page, nome)
         page.evaluate('interlagosLuz.photo(null)')
+    # A noite: o chao da cidade compila (unidades de textura), lampadas e janelas acendem.
+    if '--noite' in sys.argv:
+        page.evaluate("interlagosClima.set({time:'noite'});true")
+        page.wait_for_timeout(9000)
+        for s, modo, nome in [(700, 'chase', 'noite_hoepcke'), (1200, 'chase', 'noite_paulo_fontes'), (3550, 'chase', 'noite_14_de_julho')]:
+            em(page, s, modo, 2500)
+            foto(page, nome)
+        if '--sem-vistas' not in sys.argv:
+            vista(page, [x + 200, y - 300, 140], [x + 1500, y - 200, 20], 55, 2500)
+            foto(page, 'noite_ilha_alto')
+            page.evaluate('interlagosLuz.photo(null)')
+        page.evaluate("interlagosClima.set({time:'dia'});true")
+        page.wait_for_timeout(4000)
     # No tabuleiro, contra o muro: o carro nunca desce para o mar.
     em(page, 200, 'chase', 600)
     z0 = page.evaluate("()=>{const c=interlagos.car;c.heading+=.6;c.vx=20*Math.cos(c.heading);c.vy=20*Math.sin(c.heading);c.stepX=c.x;c.stepY=c.y;return c.z}")
