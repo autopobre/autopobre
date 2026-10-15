@@ -68,7 +68,9 @@ function contactGeometry(){
 export const contactFade=(height,upright)=>(1-smooth(.04,.9,height))*smooth(.3,.8,upright);
 // Strength by the Gráficos values: strongest without sun shadows (Baixo: the only grounding there), lighter
 // where the shadow map and the ambient occlusion already darken under the car.
-export const contactStrength=({shadows,post,ao})=>shadows==='off'?.94:post==='full'&&ao?.74:.84;
+// Under the body itself (15 cm of air with the car over it) the road is near black, as a camera shows it: at .74 with
+// the occlusion's floor the gap under the car stayed at L 17 on screen, the Forza shot's at 2, and the frame looked milky.
+export const contactStrength=({shadows,post,ao})=>shadows==='off'?.95:post==='full'&&ao?.9:.92;
 // The wheel blur's opacity at full speed by Sensação de velocidade (off: none).
 export const BLUR_LEVELS=Object.freeze({off:0,leve:.9,media:.96,completa:1});
 // Surface speed of a car's front and rear tyres (m/s): rolling, plus the rear's wheelspin; the rear as the physics

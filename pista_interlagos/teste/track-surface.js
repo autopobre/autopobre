@@ -210,22 +210,23 @@ const fract=v=>v-Math.floor(v);
 // Painted kerb: 1.2 m blocks (Interlagos yellow/green; circuits from open data give their
 // own colours in meta.kerb_colors), worn paint, rubber on the track side and shallow
 // rumble ridges. DataTextures keep this usable in Node tests.
+// The colour map holds only the paint's wear and the rubber, in grey: the two colours and the join between them are
+// worked out in kerbPatch from the kerb's own coordinates (a texel-wide join read as square blocks near the camera),
+// as are the seams and the chips (single-texel chips read as magnified pixels).
 const curbMaps=new Map();
-const rgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16));
-function curbTextures(colors=['#e2b22e','#1a7034']){
- const key=colors.join();if(curbMaps.has(key))return curbMaps.get(key);
+const KERB_PAINT=['#e2b22e','#1a7034'].map(c=>new THREE.Color(c));
+function curbTextures(){
+ const key='grey';if(curbMaps.has(key))return curbMaps.get(key);
  const w=128,h=512,color=new Uint8Array(w*h*4),normal=new Uint8Array(w*h*4),rough=new Uint8Array(w*h*4);
  const hash=(x,y)=>{const v=Math.sin(x*127.1+y*311.7)*43758.5453;return v-Math.floor(v);};
  const noise=(x,y)=>{const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy,sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy);
   const a=hash(ix%16,iy%64),b=hash((ix+1)%16,iy%64),c=hash(ix%16,(iy+1)%64),d=hash((ix+1)%16,(iy+1)%64);return (a+(b-a)*sx)+((c+(d-c)*sx)-(a+(b-a)*sx))*sy;};
- const [yellow,green]=colors.map(rgb);
  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
-  const i=(y*w+x)*4,u=x/w,base=y<h/2?yellow:green,edge=Math.min(y%(h/2),h/2-1-y%(h/2));
-  const wear=.78+.22*noise(x/6,y/6)*noise(x/2,y/2+7),rubber=Math.max(0,1-u/.45)*(.25+.35*noise(x/3,y/9)),seam=edge<2?.72:1;
-  const chip=hash(x,y)>.9&&noise(x/9,y/11)>.58?1:0;
-  for(let k=0;k<3;k++)color[i+k]=Math.round((base[k]*wear*seam*(1-rubber)+18*rubber)*(1-chip*.45));
+  const i=(y*w+x)*4,u=x/w;
+  const wear=.8+.2*noise(x/6,y/6)*noise(x/3,y/3+7),rubber=Math.max(0,1-u/.45)*(.25+.35*noise(x/3,y/9));
+  color.fill(Math.round(255*wear*(1-rubber*.93)),i,i+3);
   color[i+3]=255;
-  const r=Math.round(255*(.68+.22*noise(x/7,y/7)-rubber*.34+chip*.08));
+  const r=Math.round(255*(.68+.22*noise(x/7,y/7)-rubber*.34));
   rough.set([r,r,r,255],i);
   // Ridge every 0.4 m along the kerb (six per 2.4 m tile), fading toward the outer edge.
   const slope=Math.cos(y/h*Math.PI*2*6)*.55*(1-u*.4),nx=(noise(x/4,y/4)-.5)*.12,len=Math.hypot(nx,slope,1);
@@ -239,11 +240,11 @@ function curbTextures(colors=['#e2b22e','#1a7034']){
 // fresher and a little warmer or cooler, worn through to the concrete in its own patches, chipped
 // at its ends, with rubber on the track side (heavier where the track bends: kerbData.x) and dust on
 // the outer side that change along the lap, so the 2.4 m tile never repeats.
-function kerbPatch(shader){
- Object.assign(shader.uniforms,ROAD_WEATHER);
+function kerbPatch(shader,paint=KERB_PAINT){
+ Object.assign(shader.uniforms,ROAD_WEATHER,{kerbPaintA:{value:paint[0]},kerbPaintB:{value:paint[1]}});
  shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute vec2 kerbData;\nvarying vec2 vKerbData;').replace('#include <begin_vertex>','#include <begin_vertex>\nvKerbData=kerbData;');
  shader.fragmentShader=shader.fragmentShader.replace('#include <common>',`#include <common>
-varying vec2 vKerbData;uniform float roadWetness;
+varying vec2 vKerbData;uniform float roadWetness;uniform vec3 kerbPaintA,kerbPaintB;
 float kerbHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float kerbNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(kerbHash(i),kerbHash(i+vec2(1,0)),f.x),mix(kerbHash(i+vec2(0,1)),kerbHash(i+vec2(1,1)),f.x),f.y);}`).replace('#include <map_fragment>',`
 float kerbBlock=floor(vMapUv.y*2.0),kerbAlong=fract(vMapUv.y*2.0);
@@ -251,7 +252,11 @@ vec2 kerbSeed=vec2(kerbBlock,vKerbData.y);
 float kb=kerbHash(kerbSeed+.3),kb2=kerbHash(kerbSeed+5.7),kb3=kerbHash(kerbSeed+9.1);
 vec2 kerbUv=vec2(vMapUv.x,kb>.5?(kerbBlock+1.0-kerbAlong)*.5:vMapUv.y);
 vec4 sampledDiffuseColor=textureGrad(map,kerbUv,dFdx(vMapUv),dFdy(vMapUv));
-diffuseColor*=sampledDiffuseColor;
+// The two paints from the kerb's own coordinate (a block of each every 1.2 m): their join blended over a pixel, and a
+// dark sawn seam about a centimetre wide at every block's end, both as sharp up close as far off.
+float kerbQ=fract(vMapUv.y),kerbSide=kerbQ<.5?-min(kerbQ,.5-kerbQ):min(kerbQ-.5,1.0-kerbQ),kerbStep=max(fwidth(vMapUv.y),1e-6);
+float kerbSeam=1.0-.3*(1.0-smoothstep(.0035,.0035+kerbStep*3.6,abs(kerbSide)*2.4))*(1.0-smoothstep(.004,.012,kerbStep*2.4));
+diffuseColor.rgb*=sampledDiffuseColor.rgb*mix(kerbPaintA,kerbPaintB,smoothstep(-kerbStep,kerbStep,kerbSide))*kerbSeam;
 // Metres across the kerb (0 at the road) and along the lap.
 vec2 kp=vec2(vMapUv.x*1.05,vMapUv.y*2.4);
 diffuseColor.rgb*=(.88+.18*kb2)*mix(vec3(1.0),vec3(1.05,1.0,.9),kb3);
@@ -261,7 +266,10 @@ float kerbPx=length(fwidth(kp)),kerbFine=1.0-smoothstep(.015,.045,kerbPx),kerbMi
 float kerbWear=smoothstep(.62-kerbPx*.3,.8+kerbPx*.3,kerbNoise(kp*vec2(4.0,2.6)+kb*17.0)*.6+mix(.5,kerbNoise(kp*vec2(11.0,9.0)+kb2*9.0),kerbMid)*.22+mix(.5,kerbNoise(kp*vec2(46.0,38.0)),kerbFine)*.18)*(.2+.8*kb3*kb3);
 diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.45+vec3(.1,.095,.09),kerbWear*.6);
 float kerbEnd=min(kerbAlong,1.0-kerbAlong)*1.2;
-float kerbChip=mix(.2,step(.8,kerbHash(floor(kp*vec2(26.0,20.0))+kb*31.0)),kerbFine)*(1.0-smoothstep(.04,.14+kerbPx,kerbEnd))*step(.35,kb2);
+// Chips knocked out of the paint near the block's ends: round flakes of 1-3 cm, each its own place in its cell.
+vec2 chipGrid=kp*vec2(26.0,20.0),chipCell=floor(chipGrid),chipAt=(fract(chipGrid)-.5-(vec2(kerbHash(chipCell+kb*31.0+.7),kerbHash(chipCell+kb*31.0+3.3))-.5)*.5)/vec2(26.0,20.0);
+float chipR=.006+.01*kerbHash(chipCell+kb*13.0+5.1);
+float kerbChip=mix(.12,step(.8,kerbHash(chipCell+kb*31.0))*(1.0-smoothstep(chipR-kerbPx*.7,chipR+kerbPx*.7,length(chipAt))),kerbFine)*(1.0-smoothstep(.04,.14+kerbPx,kerbEnd))*step(.35,kb2);
 diffuseColor.rgb*=1.0-kerbChip*.5;
 float kerbRubber=(1.0-smoothstep(.05,.6,vMapUv.x))*(.2+.8*vKerbData.x)*(.35+.65*kerbNoise(vec2(vMapUv.x*7.0,kp.y*.4)+kb))*smoothstep(.15,.65,kerbNoise(vec2(kp.y*.06,vKerbData.y*3.0+1.0)));
 diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.03,.028,.026),clamp(kerbRubber*.7,0.0,.75));
@@ -278,10 +286,10 @@ roughnessFactor=mix(roughnessFactor,.12,roadWetness);`);
 export function createCurbs(data,{quality='alto'}={}){
  const root=new THREE.Group();root.name='Zebras_circuito_completo';
  const probe=new TestCar(data),profile=[[0,.02],[.48,.065],[1.05,.02]],L=data.meta.reconstructed_xy_m;
- const maps=curbTextures(data.meta.kerb_colors),material=new THREE.MeshStandardMaterial({name:'Zebra_pintada',map:maps.map,normalMap:maps.normalMap,roughnessMap:maps.roughnessMap,normalScale:new THREE.Vector2(.6,.6),roughness:.88,metalness:0,side:THREE.DoubleSide});
+ const maps=curbTextures(),paint=(data.meta.kerb_colors??['#e2b22e','#1a7034']).map(c=>new THREE.Color(c)),material=new THREE.MeshStandardMaterial({name:'Zebra_pintada',map:maps.map,normalMap:maps.normalMap,roughnessMap:maps.roughnessMap,normalScale:new THREE.Vector2(.6,.6),roughness:.88,metalness:0,side:THREE.DoubleSide});
  material.detailNormalMap=maps.normalMap;material.detailRoughnessMap=maps.roughnessMap;
  // Each block weathered on its own; the cars' crisp shadows fall on the kerbs too (car-shadow.js).
- material.onBeforeCompile=kerbPatch;material.customProgramCacheKey=()=>'kerb-blocks-car-shadow-v3';
+ material.onBeforeCompile=shader=>kerbPatch(shader,paint);material.customProgramCacheKey=()=>'kerb-blocks-car-shadow-v4';
  root.userData.setQuality=value=>{
   const detail=TRACK_DETAIL[trackQuality(value)];
   const normal=detail.shader?maps.normalMap:null;
@@ -595,8 +603,11 @@ rubber+=tirePair*(.06+.22*brake)*(.3+.7*streak);
 #if ROAD_DETAIL > 1
 rubber+=oldMarks(s,d,path,clamp(vRoad.w/max(width*.18,.1),-1.0,1.0),acrossPixel)*(1.0-smoothstep(.1,.3,acrossPixel));
 #endif
+// The grid's launch marks are dull black rubber: as dark as the line, but they keep the stones' roughness (a polished
+// mark mirrored the low sun and read as pale paint behind the slots), with only a faint sheen.
+float launch=0.0;
 #if ROAD_DETAIL > 0
-rubber+=launchMarks(s>${(L/2).toFixed(1)}?${L.toFixed(1)}-s:-s,d,acrossPixel)*(1.0-smoothstep(.1,.3,acrossPixel));
+launch=launchMarks(s>${(L/2).toFixed(1)}?${L.toFixed(1)}-s:-s,d,acrossPixel)*(1.0-smoothstep(.1,.3,acrossPixel));rubber+=launch;
 #endif
 rubber=clamp(rubber,-.1,.8);
 // Oil and fuel drips down the middle of the line, between the wheel tracks: few, faint and
@@ -695,7 +706,7 @@ float fineRough=textureGrad(roughnessMap,scanUv,blurX,blurY).g;
 float fineRough=.83;
 #endif
 // Seen at a grazing angle only the polished tops of the stones show, so the far road is a little smoother.
-float roughnessFactor=clamp(.6+.34*fineRough-clamp(rubber*3.0,0.0,1.0)*.2-tar*.12-roadRepair*.06+edge*.04+concrete*.04-grain*.1-drop*.2-.12*smoothstep(15.0,80.0,viewDist),.45,1.0);
+float roughnessFactor=clamp(.6+.34*fineRough-clamp((rubber-launch)*3.0,0.0,1.0)*.2-launch*.05-tar*.12-roadRepair*.06+edge*.04+concrete*.04-grain*.1-drop*.2-.12*smoothstep(15.0,80.0,viewDist),.45,1.0);
 // Wet: a film of water over the stones (about .3), the puddles near mirrors.
 roughnessFactor=mix(roughnessFactor,mix(.3+.12*fineRough,.05,puddle),roadWetness);
 `);

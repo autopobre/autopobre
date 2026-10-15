@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {EFFECT_LIGHT} from './weather.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
+import {mergeStill} from './car-lod.js';
 import {steeringWheelAngle} from './driver-rig.js';
 import {GATE} from './driver-controls.js';
 import {clamp} from './physics.js';
@@ -262,6 +263,8 @@ export function createCockpit(renderer){
  mesh(new THREE.TorusGeometry(.173,.021,8,12,.18),m.webbing,[0,0,0],wheelTurn).rotation.z=Math.PI-.17;
  const phone=createFamilyPhone();wheelTurn.add(phone.root);
  box([0,-.107,.004],[.03,.03,.034],m.shell,wheelTurn); // lap-timer mount on the lower spoke
+ // The wheel's parts turn together: one mesh per material (car-lod.js mergeStill), the phone and the radio button apart.
+ mergeStill(wheelTurn,{skip:[phone.root,ptt]});mergeStill(wheel,{skip:[wheelTurn]});
 
  // Driver controls. Each moving part is a pivot group the seated driver animates;
  // the *Grip/contact anchors are where a glove or boot sole meets it.
@@ -380,6 +383,43 @@ export function createCockpit(renderer){
   setView(was);copy.name='Interior_Opala_99_parado';return copy;
  }
  root.userData.outsideCopy=outsideCopy;
+ // The cabin as the outside views see it through the windows, still and batched: one mesh per material (about 25
+ // draws where the live one, with every switch and gauge on its own, makes over 200: a cheap PC's processor felt
+ // it on every frame of the chase camera). main.js cabinVisibility shows it outside the cockpit view, beside root.
+ let batch=null,plainShared=null;
+ const plainMaterial=()=>plainShared??=new THREE.MeshStandardMaterial({name:'Interior_lote_cores',vertexColors:true,roughness:.68,metalness:.2});
+ function outsideBatch(build=true){
+  if(batch||!build||!root.parent)return batch;
+  const was=lastView;setView({inside:false});root.updateMatrixWorld(true);
+  const inverse=root.matrixWorld.clone().invert(),local=new THREE.Matrix4(),groups=new Map(),loose=[];
+  const shown=o=>{for(let q=o;q;q=q.parent){if(q===root)return true;if(!q.visible)return false;}return false;};
+  root.traverse(o=>{
+   if(!(o.isMesh||o.isLine||o.isPoints)||!shown(o))return;
+   const material=o.material?.map===mirrorTarget.texture?stillMirror:o.material;
+   if(!o.isMesh||o.isInstancedMesh||o.isSkinnedMesh||Array.isArray(material)){loose.push(o);return;}
+   // Plain opaque parts (most switches, brackets, bolts each had a material of their own) go into one mesh of vertex
+   // colours: through the tinted windows their sheen does not show. Textured, see-through and patched ones keep theirs.
+   const plain=!material.map&&!material.transparent&&!material.alphaTest&&material.onBeforeCompile===THREE.Material.prototype.onBeforeCompile&&!material.isShaderMaterial&&!material.vertexColors&&material.color;
+   const key=plain?'plain|'+o.renderOrder:material.uuid+'|'+o.renderOrder;if(!groups.has(key))groups.set(key,{material:plain?plainMaterial():material,plain,list:[]});groups.get(key).list.push(o);
+  });
+  batch=new THREE.Group();batch.name='Interior_Opala_99_lote';batch.matrixAutoUpdate=false;batch.matrix.copy(root.matrix);
+  for(const {material,plain,list} of groups.values()){
+   const uv=!plain&&list.some(o=>o.geometry.attributes.uv),color=material.vertexColors,indexed=list.every(o=>o.geometry.index);
+   const parts=list.map(o=>{
+    let g=o.geometry.clone();if(!indexed&&g.index)g=g.toNonIndexed();
+    for(const k of Object.keys(g.attributes))if(!['position','normal','uv','color'].includes(k)||k==='uv'&&!uv||k==='color'&&!color)g.deleteAttribute(k);
+    const n=g.attributes.position.count;if(!g.attributes.normal)g.computeVertexNormals();
+    if(uv&&!g.attributes.uv)g.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(n*2),2));
+    if(plain){const c=new Float32Array(n*3),k=o.material.color;for(let i=0;i<c.length;i+=3){c[i]=k.r;c[i+1]=k.g;c[i+2]=k.b;}g.setAttribute('color',new THREE.BufferAttribute(c,3));}
+    else if(color&&!g.attributes.color)g.setAttribute('color',new THREE.BufferAttribute(new Float32Array(n*3).fill(1),3));
+    return g.applyMatrix4(local.multiplyMatrices(inverse,o.matrixWorld));
+   });
+   const merged=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());if(!merged)continue;
+   const mesh=new THREE.Mesh(merged,material);mesh.renderOrder=list[0].renderOrder;mesh.castShadow=list.some(o=>o.castShadow);mesh.receiveShadow=list.some(o=>o.receiveShadow);batch.add(mesh);
+  }
+  for(const o of loose){const c=o.clone(false);c.matrixAutoUpdate=false;c.matrix.multiplyMatrices(inverse,o.matrixWorld);if(c.material?.map===mirrorTarget.texture)c.material=stillMirror;batch.add(c);}
+  setView(was);batch.visible=false;root.parent.add(batch);return batch;
+ }
  function update(car,dt,powertrain){
   const speed=Math.hypot(car.vx,car.vy)*3.6,gear=Math.min(5,1+Math.floor(speed/42));
   const rpm=powertrain?.rpm??(speed<2?1100:Math.min(7800,1800+(speed%42)/42*5700));
@@ -396,7 +436,7 @@ export function createCockpit(renderer){
   return {speed,rpm,gear,steering:wheelTurn.rotation.z,phoneArrived};
  }
  // drop: how far setView lowered the cabin; the driver (driver.js) and photo poses follow it.
- return {root,wheel,wheelTurn,controls,eye,update,setView,drop:()=>root.position.y,mirrorTarget,rearCamera,resetPhone:()=>phone.reset(),
-  info:()=>({reference:INTERIOR_REFERENCES,steering:wheelTurn.rotation.z,speed:display.speed,mirror:[mirrorTarget.width,mirrorTarget.height],visible:root.visible,phone:phone.info(),controls:controls.info(),
+ return {root,wheel,wheelTurn,controls,eye,update,setView,outsideBatch,drop:()=>root.position.y,mirrorTarget,rearCamera,resetPhone:()=>phone.reset(),
+  info:()=>({reference:INTERIOR_REFERENCES,steering:wheelTurn.rotation.z,speed:display.speed,mirror:[mirrorTarget.width,mirrorTarget.height],visible:root.visible||!!batch?.visible,batched:!!batch?.visible,phone:phone.info(),controls:controls.info(),
    materials:reflective.size,cabinReflections:!!m.envMap,seat:seat.children.length,view:{classic:classic.visible,cabin:cabin.visible,fillers:fillers.visible,drop:root.position.y,eye:eye.toArray(),mirrorY:mirror.position.y}})};
 }

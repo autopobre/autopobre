@@ -7,7 +7,9 @@ import * as THREE from '../teste/node_modules/three/build/three.module.js';
 import {TestCar,guardrailClearance,guardrailSections} from '../teste/physics.js';
 import {fitGround,groundHeight,standLayout,standPoint,roofHeight,sceneryBands,bandClearance,STAND} from '../teste/track-clearance.js';
 import {billboardSpots,BOARD_CLEARANCE} from '../teste/track-surface.js';
-import {buildTrackField,createCrowd} from '../teste/landscape.js';
+import {buildTrackField,createCrowd,crowdNear} from '../teste/landscape.js';
+import {VIEW_DISTANCES} from '../teste/graphics-settings.js';
+import {weatherProfile} from '../teste/weather.js';
 import {createGrandstands} from '../teste/interlagos-stands.js';
 import {SUN_DIRECTION} from '../teste/sky.js';
 const data=JSON.parse(fs.readFileSync(new URL('../dados/pista.json',import.meta.url)));data.meta.id='interlagos';
@@ -115,13 +117,34 @@ const built=createGrandstands(data,{concrete:null},ground),crowd=createCrowd(bui
 assert.equal(built.stats.rows,STAND.blocks*STAND.rows*4);
 assert(crowd.count>2000,'the main grandstand is full: '+crowd.count);
 const m=new THREE.Matrix4(),pos=new THREE.Vector3(),rot=new THREE.Quaternion(),scale=new THREE.Vector3();let fans=0;
-crowd.root.traverse(o=>{if(!o.isInstancedMesh)return;for(let i=0;i<o.count;i++){
+// (Each block's far figures, landscape.js fanGeometry far, are the same fans again: counted once.)
+crowd.root.traverse(o=>{if(!o.isInstancedMesh||o.userData.farCrowd)return;for(let i=0;i<o.count;i++){
  o.getMatrixAt(i,m);m.decompose(pos,rot,scale);const x=pos.x,y=-pos.z,look=new THREE.Vector3(0,0,1).applyQuaternion(rot);
  const b=stands.reduce((best,s)=>Math.hypot(s.x-x,s.y-y)<Math.hypot(best.x-x,best.y-y)?s:best),l=(x-b.x)*b.rx+(y-b.y)*b.ry;
  assert(look.x*-b.rx+(-look.z)*-b.ry>.99,'fan faces the track');
  assert(pos.y>ground(x,y)+.3&&pos.y<roofHeight(b,l)-2,'fan seated above the ground, under the roof');fans++;
 }});
 assert.equal(fans,crowd.count);
+// Near or far figure by how big a block looks (crowdNear): through the chase lens near at 45 m, far at 60; the broadcast
+// camera's 4.5° lens sees a block 500 m off near; a few metres of give, per camera, so a block on the line holds.
+{
+ const [a,b]=crowd.root.children,n=a.count,c=a.boundingSphere.center,r=a.boundingSphere.radius;
+ const draw=(cam,d)=>{cam.position.set(c.x+r+d,c.y,c.z);cam.updateMatrixWorld();a.onBeforeRender(null,null,cam);b.onBeforeRender(null,null,cam);return [a.count,b.count];};
+ const chase=new THREE.PerspectiveCamera(58,16/9,.1,2000),tv=new THREE.PerspectiveCamera(4.5,16/9,.1,9000);
+ assert.deepEqual(draw(chase,40),[n,0],'near');assert.deepEqual(draw(chase,52),[n,0],'near holds a little past the line');assert.deepEqual(draw(chase,56),[0,n],'far');
+ assert.deepEqual(draw(chase,48),[0,n],'far holds a little inside it');assert.deepEqual(draw(chase,44),[n,0],'near again');
+ assert.deepEqual(draw(tv,500),[n,0],'the broadcast camera\'s long lens');
+ assert(crowdNear(45,chase)&&!crowdNear(60,chase)&&crowdNear(600,tv)&&!crowdNear(45,new THREE.PerspectiveCamera(120,1,.1,100)),'by the lens');
+}
+// The skyline's towers keep some tone through the haze only where the weather's fog reaches far (a clear Média day and
+// beyond: never on Curta, in a drizzle on Média or in the rain), and are wholly fog before the camera's far plane.
+{
+ const src=fs.readFileSync(new URL('../teste/landscape.js',import.meta.url),'utf8');
+ assert(src.includes('mix(1.0,.45,smoothstep(6.0,55.0,up)*smoothstep(1850.0,2300.0,fogReach))')&&src.includes('fogFactor=max(fogFactor,smoothstep(skylineFar*.8,skylineFar*.97,vFogDepth));'),'tower fog');
+ const cap=(view,time,rain)=>{const end=VIEW_DISTANCES[view].fog[1]*weatherProfile(time,rain).fog.reach,t=Math.min(1,Math.max(0,(end-1850)/450));return t*t*(3-2*t);};
+ for(const time of ['dia','fim_de_tarde','noite']){assert.equal(cap('curta',time,'seco'),0,`Curta ${time}`);for(const view of Object.keys(VIEW_DISTANCES))assert.equal(cap(view,time,'chuva'),0,`${view} ${time} rain`);assert.equal(cap('media',time,'garoa'),0);}
+ assert(cap('media','dia','seco')>.99&&cap('media','fim_de_tarde','seco')>.9&&cap('longa','dia','seco')===1,'a clear day from Média up');
+}
 built.root.traverse(o=>{if(o.isMesh){o.geometry.computeBoundingBox();assert(Number.isFinite(o.geometry.boundingBox.min.y),o.name);}});
 console.log(JSON.stringify({ground:fit.stats,worst:Object.fromEntries(Object.entries(worst).map(([k,v])=>[k,+v.e.toFixed(3)])),verge:{vertices:verge,dipped,deepest:+deepest.toFixed(2)},shade:+(shaded/seats).toFixed(3),fans:crowd.count,billboards:spots.map(s=>Math.round(s.p[0]))}));
 console.log('testar_cenario: OK');

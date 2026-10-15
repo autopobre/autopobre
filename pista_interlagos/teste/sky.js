@@ -8,6 +8,20 @@ export const SUN_DIRECTION=new THREE.Vector3(-.521,.707,-.478).normalize();
 // The world's environment strength (scene.environmentIntensity); the cars' trim, which carries the cars' own map
 // (three.js then ignores the scene's strength), keeps it too (car-finish.js TRIM_ENV).
 export const WORLD_ENV=1;
+// The world's lighting map's sky saturation by time of day (sky.js bake, weather.js times): the shade's skylight near
+// grey by day (a cast shadow on asphalt about 25,27,31, the Forza shot's 13,15,18 but lighter), a little colour left at
+// dusk, the night's moonlit blue kept. The dome, the fog and the cars' own map keep the sky's colours.
+export const WORLD_FILL_SATURATION=Object.freeze({dia:.4,fim_de_tarde:.6,noite:1});
+// That map is also the mirror of every world material without a map of its own: the lakes, Floripa's sea and the pits'
+// glass mirrored a grey sky. Those wear the sky's full colour instead (skyMirror: the same bake at full saturation, one
+// map more while the fill is below 1, the world's own at night), at the scene's strength as before. (Not enumerable:
+// a circuit's clean-up, main.js clearCircuit, disposes the textures it finds on the old materials, never the sky's.)
+export const SKY_REFLECTION={texture:null,scene:null};
+export function skyMirror(material){
+ Object.defineProperties(material,{envMap:{get:()=>SKY_REFLECTION.texture,set(){},configurable:true,enumerable:false},
+  envMapIntensity:{get:()=>SKY_REFLECTION.scene?.environmentIntensity??WORLD_ENV,set(){},configurable:true,enumerable:false}});
+ return material;
+}
 // Linear-space colours shared by the sky dome, the fog and the environment map.
 const ZENITH=new THREE.Color(.07,.22,.54),HORIZON=new THREE.Color(.53,.645,.8),GROUND=new THREE.Color(.19,.205,.155);
 const SKY_DETAIL=Object.freeze({basico:{octaves:3,layers:1},leve:{octaves:4,layers:1},completo:{octaves:6,layers:2},denso:{octaves:7,layers:2}});
@@ -23,7 +37,7 @@ void main(){
 }`;
 const fragmentShader=`
 uniform vec3 sunDirection,zenith,horizon,ground,cloudShade,cloudLit,cirrusTint,aureoleTint,silverTint,disc,sunset,city;
-uniform float time,cloudCover,environment,stars,band;
+uniform float time,cloudCover,environment,stars,band,fill,discScale;
 varying vec3 vDirection;
 float skyHash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
 float skyNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
@@ -97,9 +111,14 @@ void main(){
   if(h<0.0)color=mix(mix(vec3(.18,.185,.19)*band,ground,smoothstep(.05,.45,-h)),vec3(.42,.42,.41)*band,wall);
   else color=mix(band,color*(1.0+.22*(1.0-smoothstep(.1,.35,h))),smoothstep(top-.003,top+.002,h));
  }
+ // The world's lighting map: its sky's colour at 'fill' saturation (WORLD_FILL_SATURATION). That map is the shade's
+ // whole light (a cast shadow on asphalt lit by the blue zenith alone came out 19,27,40: blue, where a camera, the sun
+ // bouncing off the ground round it and a broadcast's white balance give a near grey).
+ if(environment>.5&&environment<1.5)color=mix(vec3(dot(color,vec3(.2126,.7152,.0722))),color,fill);
  // A cloud also occludes the solar disc; otherwise it glowed on top of dark clouds. The world's lighting
  // map keeps 10% of it; the cars' 30%: a glint in the paint beside the sun's own highlight, not a second sun.
- color+=disc*smoothstep(.99965,.99986,mu)*(environment>1.5?.3:1.0-environment*.9)*transmission;
+ // discScale: the dome while the cars' reflection probe or the grid's picture capture it (CAPTURE_SUN).
+ color+=disc*smoothstep(.99965,.99986,mu)*(environment>1.5?.3:(1.0-environment*.9)*discScale)*transmission;
  gl_FragColor=vec4(color,1.0);
  #include <tonemapping_fragment>
  #include <colorspace_fragment>
@@ -112,12 +131,14 @@ export function createSky(renderer,scene,{mobile=false,detail=mobile?'leve':'com
   time:{value:0},cloudCover:{value:.47},environment:{value:0},
   // The weather's tints (weather.js weatherProfile().sky); these are the clear day's, the game as it always was.
   cloudShade:{value:v3([.34,.405,.52])},cloudLit:{value:v3([1.08,1.06,1.01])},cirrusTint:{value:v3([1,1,1])},aureoleTint:{value:v3([1,.82,.62])},
-  silverTint:{value:v3([1,.85,.65])},disc:{value:v3([22,19,15])},sunset:{value:v3([0,0,0])},city:{value:v3([0,0,0])},stars:{value:0},band:{value:1}
+  silverTint:{value:v3([1,.85,.65])},disc:{value:v3([22,19,15])},sunset:{value:v3([0,0,0])},city:{value:v3([0,0,0])},stars:{value:0},band:{value:1},fill:{value:WORLD_FILL_SATURATION.dia},discScale:{value:1}
  };
  const quality=detailFor(detail);
  const material=new THREE.ShaderMaterial({name:'Ceu_dinamico',uniforms,vertexShader,fragmentShader,side:THREE.BackSide,depthWrite:false,fog:false,defines:{CLOUD_OCTAVES:quality.octaves,CLOUD_LAYERS:quality.layers}});
  const dome=new THREE.Mesh(new THREE.SphereGeometry(1,48,24),material);
- dome.name='Ceu';dome.frustumCulled=false;dome.renderOrder=-10;
+ // Drawn after the opaque world (renderOrder 0), at the far plane: only the pixels nothing covers run its clouds. First,
+ // it shaded the whole screen and the ground then painted over most of it (a cheap notebook's video: 3 ms of 28).
+ dome.name='Ceu';dome.frustumCulled=false;dome.renderOrder=.5;
  scene.add(dome);
  scene.background=null;
  scene.fog=new THREE.Fog(HORIZON.clone(),mobile?420:520,mobile?2400:3300);
@@ -125,17 +146,21 @@ export function createSky(renderer,scene,{mobile=false,detail=mobile?'leve':'com
  // dome's uniforms (only 'environment' is their own), so a new weather draws them again with its own colours.
  const envScene=new THREE.Scene(),envMaterial=material.clone();envMaterial.uniforms={...uniforms,environment:{value:1}};envMaterial.defines={CLOUD_OCTAVES:4,CLOUD_LAYERS:2};
  envScene.add(new THREE.Mesh(dome.geometry,envMaterial));
- let environmentTarget=null,carTarget=null;
+ let environmentTarget=null,carTarget=null,mirrorTarget=null;
  function bake(){
   const pmrem=new THREE.PMREMGenerator(renderer);
   envMaterial.uniforms.environment.value=1;const world=pmrem.fromScene(envScene,.025);
+  // The mirrors' map (SKY_REFLECTION): the world's at full colour, drawn only while its fill greys it.
+  const fill=uniforms.fill.value;let mirror=null;
+  if(fill<1){uniforms.fill.value=1;mirror=pmrem.fromScene(envScene,.025);uniforms.fill.value=fill;}
   // The cars' own map (car-reflections.js 'ceu' and its fallback): the same sky with the horizon band.
   envMaterial.uniforms.environment.value=2;const cars=pmrem.fromScene(envScene,.025);
   pmrem.dispose();
-  const old=[environmentTarget,carTarget];environmentTarget=world;carTarget=cars;
+  const old=[environmentTarget,carTarget,mirrorTarget];environmentTarget=world;carTarget=cars;mirrorTarget=mirror;
   // The world's sky light (the cars carry their own map and strength, car-finish.js): with the hemisphere
   // (main.js skyFill), about a fifth of the sun on open ground, so shade keeps its skylight.
   if(!scene.environment||scene.environment===old[0]?.texture)scene.environment=world.texture;
+  SKY_REFLECTION.texture=(mirror??world).texture;SKY_REFLECTION.scene=scene;
   for(const t of old)t?.dispose();
  }
  bake();scene.environmentIntensity=WORLD_ENV;
@@ -143,6 +168,8 @@ export function createSky(renderer,scene,{mobile=false,detail=mobile?'leve':'com
   dome,get environment(){return environmentTarget.texture;},get carEnvironment(){return carTarget.texture;},sunDirection:uniforms.sunDirection.value,horizon:HORIZON,
   weather:'dia',
   update(dt){uniforms.time.value+=dt;},
+  // The sun's disc on the dome as the cars' captures see it (car-reflections.js): 1 back for the main view.
+  setCaptureSun(scale=1){uniforms.discScale.value=scale;},
   // The boolean API remains valid; scenery names also distinguish Básico and Ultra.
   setDetail(value){const next=detailFor(value);if(material.defines.CLOUD_OCTAVES!==next.octaves||material.defines.CLOUD_LAYERS!==next.layers){material.defines.CLOUD_OCTAVES=next.octaves;material.defines.CLOUD_LAYERS=next.layers;material.needsUpdate=true;}},
   // A weather (weather.js weatherProfile): the dome's colours, the key light's direction (the moon at night), the fog's
@@ -154,11 +181,12 @@ export function createSky(renderer,scene,{mobile=false,detail=mobile?'leve':'com
    uniforms.zenith.value.setRGB(...k.zenith);uniforms.horizon.value.setRGB(...k.horizon);uniforms.ground.value.setRGB(...k.ground);uniforms.cloudCover.value=k.cloudCover;
    for(const name of ['cloudShade','cloudLit','disc','sunset','city'])uniforms[name].value.fromArray(k[name]);
    uniforms.cirrusTint.value.fromArray(k.cirrus);uniforms.aureoleTint.value.fromArray(k.aureole);uniforms.silverTint.value.fromArray(k.silver);
-   uniforms.stars.value=k.stars;uniforms.band.value=k.band;
+   uniforms.stars.value=k.stars;uniforms.band.value=k.band;uniforms.fill.value=WORLD_FILL_SATURATION[profile.time]??1;
    scene.fog.color.setRGB(...profile.fog.color);
    bake();return true;
   },
-  dispose(){scene.remove(dome);dome.geometry.dispose();material.dispose();envMaterial.dispose();if(scene.environment===environmentTarget.texture)scene.environment=null;environmentTarget.dispose();carTarget.dispose();},
+  dispose(){scene.remove(dome);dome.geometry.dispose();material.dispose();envMaterial.dispose();if(scene.environment===environmentTarget.texture)scene.environment=null;
+   if(SKY_REFLECTION.scene===scene){SKY_REFLECTION.texture=null;SKY_REFLECTION.scene=null;}environmentTarget.dispose();carTarget.dispose();mirrorTarget?.dispose();},
   info:()=>({clouds:uniforms.cloudCover.value,cloudOctaves:material.defines.CLOUD_OCTAVES,cloudLayers:material.defines.CLOUD_LAYERS,environment:!!scene.environment,fog:[scene.fog.near,scene.fog.far],weather:sky.weather,stars:uniforms.stars.value})
  };
  return sky;

@@ -17,7 +17,10 @@ import {barrierLines,barrierAt,jerseyFace,WALL_SINK} from './street-walls.js';
 const SKINS=[0xc68e6a,0x8d5a3b,0xe0b08f,0x6b4128,0xd9a37f,0xb77a55,0xf0c8a8,0x4a2c1d],HAIR=[0x2b1f17,0x1b1410,0x5a3a22,0x8a6a4a,0xbab4ab,0x111111];
 // Banners: lengths (m) of the tiles a run is made of, their height on the rail and how far in front of its line (the
 // W-beam's ridges stand 0.10 m out of it: a banner lies 2 cm off them).
-const BANNER_TILE=[5.6,9.4],BANNER_LOW=.37,BANNER_HIGH=.87,BANNER_FRONT=.118;
+const BANNER_TILE=[4.8,10.6],BANNER_LOW=.37,BANNER_HIGH=.87,BANNER_FRONT=.118;
+// The artwork's own length (an atlas row is 16:1 on a half-metre banner): a longer banner shows it at this length
+// with its field carried on at both ends, a shorter one squeezes it.
+const BANNER_ART=8;
 // On a street circuit's concrete wall (street-walls.js) a banner lies on the upper face of the Jersey profile, the plane
 // that leans back 9 cm from 0.33 m to the top at 0.81 m: from WALL_LOW to WALL_HIGH in the wall's own heights,
 // WALL_GAP in front of the face. (Hung at the rail's height and in front of the wall's foot, as on a rail, it stood
@@ -121,36 +124,41 @@ function findMarshalSpots(data){
 }
 
 // Where the rail banners hang, found once per track data (pure: the Node check testar_beira.mjs reads
-// it): runs of banners tied side by side. A run keeps one length of banner and mostly one sponsor
-// (half of them alternate two, and an odd one slips in); every banner sits a little higher or lower,
-// has its own dirt, fading and gap to the next, and now and then one is missing, hangs loose by a
-// corner or has its top corner torn off. Local businesses hang more of them than the national names.
+// it): runs of one to three banners tied side by side, each run its own banner length (4.8-10.6 m), mostly one
+// sponsor (half of them alternate two, and an odd one slips in); an alternating pair takes a third sponsor every two
+// or three banners and never do three of one sponsor hang side by side, so no rail reads as a stamped row. Every banner
+// sits a little higher or lower, has its own dirt, fading and gap to the next, and now and then one is missing, hangs
+// loose by a corner or has its top corner torn off. Local businesses hang more of them than the national names.
 // alt: the sponsor's reversed banner (paintBannerAlt): some runs all one or the other, most mixed.
 const bannerPlans=new WeakMap();
 export function bannerPlan(data){
  if(bannerPlans.has(data))return bannerPlans.get(data);
  const L=data.meta.reconstructed_xy_m,sponsors=circuitSponsors(data.meta.id,data.meta.name??'Interlagos'),ROWS=sponsors.length,rand=seeded(circuitSeed(data.meta.id)+91),banners=[];
  const weights=sponsors.map(s=>s.region==='br'?.55:1),total=weights.reduce((u,v)=>u+v,0);
- const pickRow=(not=-1)=>{for(;;){let r=rand()*total,k=0;while(r>weights[k]&&k<ROWS-1)r-=weights[k++];if(k!==not)return k;}};
+ const pickRow=(...not)=>{for(;;){let r=rand()*total,k=0;while(r>weights[k]&&k<ROWS-1)r-=weights[k++];if(!not.includes(k))return k;}};
  // Its own stream, so the variants leave the rest of the plan as it was.
  const flip=seeded(circuitSeed(data.meta.id)+313);let mix=.5;
  let runs=0,metres=0;
  const hang=(side,s0,s1,row)=>{const rip=rand()<.035;banners.push({side,s0,s1,row,alt:flip()<mix?1:0,lift:(rand()-.5)*.05,drop:(rand()-.5)*.04,fade:rand()**1.6,bright:.82+.22*rand(),dirt:.15+.75*rand()**1.4,reach:.22+.4*rand(),seed:rand(),rip,hangs:!rip&&rand()<.045?(rand()<.5?-1:1):0});};
  for(const side of [-1,1])for(const [from,end] of guardrailSections(data,side)){
-  const to=Math.min(end,L);
+  // The sponsor last hung next to here and how many of it in a row (a bare stretch breaks the row).
+  const to=Math.min(end,L);let last=-1,repeat=0;
   for(let s=from+8+rand()*6;s<to-8;){
-   const tile=BANNER_TILE[0]+(BANNER_TILE[1]-BANNER_TILE[0])*rand(),len=tile*(2+Math.floor(rand()*4)),stop=Math.min(to-8,s+len);
-   if(rand()<.72&&stop-s>tile){
-    const a0=pickRow(),b0=rand()<.45?pickRow(a0):-1,m=flip();let k=0;mix=m<.3?0:m<.45?1:.5;
+   const tile=BANNER_TILE[0]+(BANNER_TILE[1]-BANNER_TILE[0])*rand(),len=tile*(1+Math.floor(rand()*3)),stop=Math.min(to-8,s+len);
+   if(rand()<.72&&stop-s>tile*.9){
+    const a0=pickRow(last),b0=rand()<.45?pickRow(a0,last):-1,m=flip();let k=0,third=2+Math.floor(rand()*2);mix=m<.3?0:m<.45?1:.5;
     for(let t=s;t<stop-1;k++){
-     const end=Math.min(stop,t+tile),odd=rand()<.1;
+     const end=Math.min(stop,t+tile);
+     let row=rand()<.1?pickRow(a0):b0>=0&&k%2?b0:a0;
+     if(b0>=0&&k===third){row=pickRow(a0,b0);third+=2+Math.floor(rand()*2);}
+     if(row===last&&repeat>=2)row=pickRow(row);
      // One banner in sixteen is missing: bare rail where it hung.
-     if(rand()>.06)hang(side,t,end,odd?pickRow(a0):b0>=0&&k%2?b0:a0);
+     if(rand()>.06){hang(side,t,end,row);repeat=row===last?repeat+1:1;last=row;}else{last=-1;repeat=0;}
      t=end+(rand()<.6?.04+.2*rand():0);
     }
     metres+=stop-s;runs++;
-   }
-   s=stop+(rand()<.5?.5+1.5*rand():tile);
+   }else{last=-1;repeat=0;}
+   s=stop+(rand()<.66?.3+1.3*rand():tile*.8);
   }
  }
  const plan={sponsors,banners,runs,metres};bannerPlans.set(data,plan);return plan;
@@ -172,10 +180,11 @@ export function createTrackside(data){
   // Sun fade and a warm cast with it; a loose one sags and billows out from the rail at its free corner.
   tint.setRGB(bright,bright*(1-.03*fade),bright*(1-.09*fade));
   // Its stations: its two ends and the barrier's own between them (every half metre too on a loose one, for the sag).
-  const inner=line.map(q=>q.s);if(hangs)for(let t=s0+.5;t<s1;t+=.5)inner.push(t);
+  // A banner longer than its artwork carries its field on at both ends (a station where the artwork starts and ends).
+  const pad=Math.max(0,(len-BANNER_ART)/2),inner=line.map(q=>q.s);if(hangs)for(let t=s0+.5;t<s1;t+=.5)inner.push(t);if(pad>.05)inner.push(s0+pad,s1-pad);
   const stations=[s0];for(const t of inner.filter(t=>t>s0+.03&&t<s1-.03).sort((u,v)=>u-v))if(t-stations.at(-1)>.03)stations.push(t);stations.push(s1);
   stations.forEach((t,count)=>{
-   const w=barrierAt(line,t),e=hangs<0?t-s0:s1-t,sag=hangs&&e<1.6?(1-e/1.6)**2:0,f=(t-s0)/len,u=side>0?f:1-f;
+   const w=barrierAt(line,t),e=hangs<0?t-s0:s1-t,sag=hangs&&e<1.6?(1-e/1.6)**2:0,f=Math.min(1,Math.max(0,(t-s0-pad)/(len-2*pad))),u=side>0?f:1-f;
    // Its bottom and top edges: up from the barrier's ground and out from its foot (negative: in front of it). On a
    // wall the jitter of the banner's height stays within the face.
    const z=wall?w.z-WALL_SINK:w.z,lo=wall?WALL_LOW+(drop+.02)*.25+sag*.12:BANNER_LOW+drop+sag*.12,hi=wall?WALL_HIGH+(lift-.025)*.2-sag*.3:BANNER_HIGH+lift-sag*.3;

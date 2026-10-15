@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
+import {skyMirror} from './sky.js';
 
 // The sea round a coastal circuit (Floripa: the strait between the island and the continent, data.meta.sea_level_m):
 // one plane at sea level from the track out past the far rings (far-terrain.js), over a sea bed the track file digs
 // below 0 (bathymetry). The water is the bay's: green-grey and murky close to the shore and under the bridges, bluer
-// and darker out in the bays; the sky is in it through the scene's environment map (fresnel), a wind chop of three
+// and darker out in the bays; the sky is in it through the sky's own map (fresnel; sky.js skyMirror), a wind chop of three
 // octaves of moving ripples breaks it up, the sun leaves a glitter path, and a thin band of churned water marks the
 // shore. The shallows come from the terrain grid: a depth map over the grid, deep everywhere beyond it.
 const SIZE=90000;
@@ -19,7 +20,8 @@ export function createSea(data,{mobile=false}={}){
  const geometry=new THREE.PlaneGeometry(SIZE,SIZE,1,1).rotateX(-Math.PI/2);
  const uniforms={seaTime:{value:0},seaDepth:{value:depthTexture(data,level)},
   seaGrid:{value:new THREE.Vector4(t.x0,t.y0,(t.nx-1)*t.step,(t.ny-1)*t.step)}};
- const material=new THREE.MeshStandardMaterial({name:'Agua_baia',color:0x2f5552,roughness:.07,metalness:0,envMapIntensity:1.0});
+ // (the sky in it at its full colour: sky.js SKY_REFLECTION, the world's lighting map greys it for the shade)
+ const material=skyMirror(new THREE.MeshStandardMaterial({name:'Agua_baia',color:0x2f5552,roughness:.07,metalness:0}));
  material.onBeforeCompile=shader=>{
   Object.assign(shader.uniforms,uniforms);
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vSeaWorld;').replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nvSeaWorld=(modelMatrix*vec4(transformed,1.0)).xyz;');

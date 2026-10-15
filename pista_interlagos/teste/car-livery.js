@@ -162,6 +162,23 @@ export function trunkInside(model){
  return out;
 }
 export function showTrunkInside(list,openings){const open=!!openings?.isOpen(OPENINGS.trunk);for(const o of list??[])o.visible=open;}
+// The 99's side numbers are flat grids (2 cm cells) laid along the rear quarters; the passenger's runs on round the
+// tail's corner, where the body turns in faster than its cells: there a cell cut across the corner up to 2 cm off the
+// paint, a white sliver at the bumper's join from behind (round-2 judges, the story's grid). Its cells past DECAL_TAIL
+// (car frame, metres) are folded away on the template as loaded (every clone shares the geometry); the number itself
+// ends ahead of it.
+export const DECAL_TAIL=Object.freeze({names:/^Adesivo_(passageiro|motorista)_99$/,x:-2.085});
+export function trimDecalTails(model){
+ model.updateMatrixWorld(true);const toCar=model.matrixWorld.clone().invert(),m=new THREE.Matrix4(),v=new THREE.Vector3();let folded=0;
+ model.traverse(o=>{
+  const g=o.geometry;if(!o.isMesh||!g?.index||g.userData.decalTail||!DECAL_TAIL.names.test([o.material].flat()[0]?.name??''))return;
+  m.multiplyMatrices(toCar,o.matrixWorld);const p=g.attributes.position,index=g.index;
+  for(let t=0;t<index.count;t+=3){let x=0;for(let k=0;k<3;k++)x+=v.fromBufferAttribute(p,index.getX(t+k)).applyMatrix4(m).x/3;
+   if(x<DECAL_TAIL.x){const a=index.getX(t);index.setX(t+1,a);index.setX(t+2,a);folded++;}}
+  index.needsUpdate=true;g.userData.decalTail=true;
+ });
+ return folded;
+}
 // The player's Opala in another team's colours (Modo Corrida's car selection, race-roster.js): the 99's
 // sponsors, names and numbers hidden, body and stripe repainted, the car's own number where the 99
 // carries its 99, and car 70's Old Stock ads on the doors (on their hinges, so they swing with them).

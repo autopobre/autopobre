@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {structureMaterial} from './landscape.js';
+import {skyMirror} from './sky.js';
 import {RIVAL_ROSTER} from './race-roster.js';
 import {canvasTexture,garageDoors,facadeGlass,FACADE_GLASS_ROWS,tyreWall,css,pitLaneSign} from './pit-textures.js';
 import {createPeople} from './pit-crew.js';
@@ -32,7 +33,8 @@ export function createPitBuildings({pit,c,lerp,at,root,obstacles,textures,labels
  const concrete=structureMaterial(mat('Concreto',0x8f918b,{side:THREE.DoubleSide}),textures);
  const doors=garageDoors([...RIVAL_ROSTER.map(r=>({number:r.number,name:r.shortName,color:r.color})),undefined]);
  const doorMaterial=new THREE.MeshStandardMaterial({name:'Portas_equipes',map:doors.map,roughness:.55,metalness:.35});
- const glass=new THREE.MeshStandardMaterial({name:'Vidros_boxes_fachada',map:facadeGlass(),roughness:.12,metalness:.35});
+ // (the facade's glass mirrors the sky at its full colour: sky.js SKY_REFLECTION)
+ const glass=skyMirror(new THREE.MeshStandardMaterial({name:'Vidros_boxes_fachada',map:facadeGlass(),roughness:.12,metalness:.35}));
  const railGlass=new THREE.MeshStandardMaterial({name:'Terraco_vidro',color:0xcfe6ee,roughness:.05,metalness:.2,transparent:true,opacity:.28,depthWrite:false,side:THREE.DoubleSide});
  const steel=mat('Aco_cobertura',0xdde1e4,{metalness:.55,roughness:.38});
  const membrane=new THREE.MeshStandardMaterial({name:'Cobertura_membrana',color:0xf4f3ee,emissive:0x2c2c29,roughness:.75,side:THREE.DoubleSide});
@@ -111,12 +113,14 @@ export function createPitBuildings({pit,c,lerp,at,root,obstacles,textures,labels
  }
  // Garage numbers above the doors, with the team colour.
  const numbers=canvasTexture((ctx,w,h)=>{const cw=w/8,ch=h/4;signs.forEach((q,i)=>{const x=(i%8)*cw,y=Math.floor(i/8)*ch;ctx.fillStyle='#1b2a2c';ctx.fillRect(x,y,cw,ch);ctx.fillStyle=css(q.color);ctx.fillRect(x,y,cw,ch*.18);ctx.strokeStyle='rgba(255,255,255,.45)';ctx.lineWidth=3;ctx.strokeRect(x+5,y+5,cw-10,ch-10);ctx.fillStyle='#f4f1e4';ctx.font='bold 42px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(q.label,x+cw/2,y+ch*.6);});},512,256);
- const numberMaterial=new THREE.MeshBasicMaterial({map:numbers});
+ const numberMaterial=new THREE.MeshBasicMaterial({map:numbers}),plates=[];
  signs.forEach((q,i)=>{
   const g=new THREE.PlaneGeometry(1.6,.8),uv=g.attributes.uv;for(let k=0;k<uv.count;k++)uv.setXY(k,(i%8+uv.getX(k))/8,1-(Math.floor(i/8)+1-uv.getY(k))/4);
   const m=new THREE.Mesh(g,numberMaterial);const o=at(q.p,q.front-.12,5);m.position.set(o.x,q.p[c.z]+5.05,o.z);
-  m.rotation.y=Math.atan2(q.p[c.ty],q.p[c.tx]);m.name='Numero_box';root.add(m);
+  m.rotation.y=Math.atan2(q.p[c.ty],q.p[c.tx]);m.updateMatrix();plates.push(g.applyMatrix4(m.matrix));
  });
+ // One mesh for all the numbers (one material): two dozen draws were one each, every frame on the straight.
+ if(plates.length){const m=new THREE.Mesh(mergeGeometries(plates,false),numberMaterial);m.name='Numero_box';root.add(m);plates.forEach(g=>g.dispose());}
  // Box 99: the team garage, the Lanchonete da Tia, the painted service box on the
  // working lane where the car stops in the race, the crew and the Tia.
  const box99=b99?createBox99({pit,c,lerp,at,root,obstacles,textures,people,crowd,labels}):null;

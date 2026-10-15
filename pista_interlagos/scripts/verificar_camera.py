@@ -73,6 +73,10 @@ def hfov(fov, aspect):
     return math.degrees(2 * math.atan(math.tan(math.radians(fov) / 2) * aspect))
 
 
+def vfov(h, aspect):
+    return math.degrees(2 * math.atan(math.tan(math.radians(h) / 2) / aspect))
+
+
 def race(browser, w, h, level='alto', mobile=False, circuit='interlagos', **prefs):
     ctx = browser.new_context(viewport={'width': w, 'height': h}, device_scale_factor=1, is_mobile=mobile, has_touch=mobile, reduced_motion='no-preference')
     stored = {'circuit': circuit, 'immersive': False, 'camera': 'chase', 'graphics': {'level': level, 'overrides': {'dynamicResolution': False}}, **prefs}
@@ -126,8 +130,9 @@ with sync_playwright() as p:
         check('chase_and_close_sit_low', rest['chase']['position'][1] - rest['chase']['ground'] < 2.3 and rest['close']['position'][1] - rest['close']['ground'] < 1.9 and rest['far']['position'][1] - rest['far']['ground'] > 3.2)
         for mode in ('chase', 'close', 'far'):
             s = at_speed(page, mode, 'velocidade_' + mode); b = s['carScreen']
-            # About 6° (camera-rig.js kick), never past 95° side to side (MAX_SPEED_HFOV: far reaches it first).
-            check(f'{mode}_lens_opens_at_200', s['speed'] > 180 and s['fov'] > s['baseFov'] + 4.5 and hfov(s['fov'], s['aspect']) < 95.1, [s['speed'], s['fov'], round(hfov(s['fov'], s['aspect']), 1)])
+            # About 6° (camera-rig.js kick), never past 92° side to side (MAX_SPEED_HFOV: close and far reach it first,
+            # far with only about 2.4° to open).
+            check(f'{mode}_lens_opens_at_200', s['speed'] > 180 and s['fov'] > min(s['baseFov'] + 4.5, vfov(92, s['aspect']) - .3) and hfov(s['fov'], s['aspect']) < 92.1, [s['speed'], s['fov'], round(hfov(s['fov'], s['aspect']), 1)])
             check(f'{mode}_dolly_keeps_the_car_size', b['width'] > rest[mode]['carScreen']['width'] * .88, [b['width'], rest[mode]['carScreen']['width']])
         # Driving fast the view trembles a little (turns only); with Movimento da câmera off it is still and the lens stays.
         page.evaluate(CAMERA, 'chase'); page.evaluate(PLACE, [4100, -1.5, 55, 0]); page.keyboard.down('KeyW'); page.evaluate(WATCH); page.wait_for_timeout(700)
@@ -189,7 +194,8 @@ with sync_playwright() as p:
         check('phone_car_as_big_as_on_a_monitor', b['width'] > rest['chase']['carScreen']['width'] * .85 and b['y1'] < .95, b)
         at_rest(page, 'close'); s = snap(page, 'celular_close'); shot(page, 'celular_close')
         check('phone_close_bumper_on_screen', s['carScreen']['y1'] < .96, s['carScreen'])
-        # Médio's Reduzido camera motion still opens the lens (the kick is not the shake), up to 95° side to side.
+        # Médio's Reduzido camera motion still opens the lens (the kick is not the shake), up to 95° side to side (a
+        # 20:9 phone, 90° wide at rest, keeps the old ceiling: camera-rig.js PHONE_SPEED_HFOV).
         s = at_speed(page, 'chase', 'celular_velocidade_chase')
         check('phone_lens_opens_at_200', s['speed'] > 180 and s['fov'] > s['baseFov'] + 3 and hfov(s['fov'], s['aspect']) < 95.1, [s['fov'], s['baseFov'], round(hfov(s['fov'], s['aspect']), 1)])
         ctx.close()
@@ -211,6 +217,8 @@ with sync_playwright() as p:
             if page.is_visible('#pilotName') and not page.input_value('#pilotName'):
                 page.fill('#pilotName', 'Piloto grid')
             choose_race(page, story=True); wait_js(page, 'window.interlagos?.ready', timeout=180000)
+            # The career's cards (Kléber's welcome) come before the paddock, as browser_config.enter_track skips them.
+            page.evaluate('window.interlagosHistoria.skipCards()')
             page.evaluate(GRID); frames(page, 40); s = snap(page, 'grid_' + circuit); shot(page, 'grid_' + circuit); b = s['carScreen']
             check(f'grid_hero_{circuit}', s['frame'] == 'grid' and s['baseFov'] == 48 and .4 < b['width'] < .65 and b['x0'] > -.02 and b['x1'] < 1.02 and .3 < b['y0'] and b['y1'] < .9 and s['position'][1] - s['ground'] > .5, b)
             ctx.close()

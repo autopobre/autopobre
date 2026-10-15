@@ -15,12 +15,30 @@ import {marshalSpots,towerSpots,bend} from '../teste/trackside.js';
 import {TvCamera} from '../teste/tv-camera.js';
 import {pitGeometry,pitLane,wallsNear} from '../teste/pit-lane.js';
 import {GRAPHICS_OPTIONS,GRAPHICS_PRESETS} from '../teste/graphics-settings.js';
-import {FLAG_LEVELS,flagPlan,flagSpots,lowCameraSpots,FlagGusts,flagGust} from '../teste/trackside-flags.js';
+import {FLAG_LEVELS,flagPlan,flagSpots,lowCameraSpots,FlagGusts,flagGust,clothPoint,flagSweep,sweepHits} from '../teste/trackside-flags.js';
 
 const LEVELS=['off','leve','media','completa'];
 assert.deepEqual(Object.keys(FLAG_LEVELS),GRAPHICS_OPTIONS.speedEffects.choices.map(([v])=>v),'one flag profile per Sensação de velocidade choice');
 for(const level of ['baixo','medio','alto','ultra'])assert(FLAG_LEVELS[GRAPHICS_PRESETS[level].speedEffects],`${level} has a flag profile`);
 assert(!FLAG_LEVELS.media.shadow&&!FLAG_LEVELS.media.fine&&FLAG_LEVELS.media.reach<FLAG_LEVELS.completa.reach,'Médio (phones): coarse cloth, no shadows, shorter reach');
+// The cloth the board check shakes (clothPoint, flagSweep) is the vertex shader's own: every term of its flagCloth and of
+// the lift, droop, ripple and pennant taper the shader feeds it, term for term in both sources. A change to one side
+// alone (the shader's cloth flying further than the check believes) fails here.
+{
+ const glsl=readFileSync(new URL('../teste/trackside-flags.js',import.meta.url),'utf8'),js=clothPoint.toString(),sweep=flagSweep.toString();
+ const pairs=[
+  ['float a0=lift*1.5707963,k=max(a0*droop,1e-3);','const a0=lift*Math.PI/2,k=Math.max(a0*droop,1e-3);',js],
+  ['float along=size.x*(cos(a0*(1.0-droop*u))-cos(a0))/k,down=size.x*(sin(a0)-sin(a0*(1.0-droop*u)))/k;','const along=w*(Math.cos(a0*(1-droop*u))-Math.cos(a0))/k,down=w*(Math.sin(a0)-Math.sin(a0*(1-droop*u)))/k;',js],
+  ['float ripple=amp*size.x*pow(u,1.15)*(sin(7.0*u-wave+v*1.4)+.35*sin(17.0*u-wave*1.8-v*2.3));','const ripple=amp*w*u**1.15*(Math.sin(7*u-wave+v*1.4)+.35*Math.sin(17*u-wave*1.8-v*2.3));',js],
+  ['float y=-size.y*(.5+(v-.5)*(1.0-taper*u))-down+.25*ripple*sin(3.0*u+wave*.3);','-h*(.5+(v-.5)*(1-taper*u))-down+.25*ripple*Math.sin(3*u+wave*.3)',js],
+  ['return vec3(dir.x*along,y,dir.y*along)+vec3(-dir.y,0.0,dir.x)*ripple;','return [dir[0]*along-dir[1]*ripple,',js],
+  ['float droop=(1.0-lift)*mix(.3,.7,heavy)*(1.0-still)+.02;','droop=(1-lift)*(.3+.4*heavy)+.02',sweep],
+  ['float amp=((.05+.07*lift)+.2*g)*(.85+.3*light)','amp=((.05+.07*lift)+.2*g)*1.15',sweep],
+  ['+g*1.1,.1,1.0),1.0,still);','for(let lift=.1;lift<=1.0001;lift+=.05)',sweep],
+  ['float taper=abs(flagPattern-5.0)<.5?.92:0.0;','taper=t.pattern===PATTERN.pennant?.92:0',sweep]];
+ for(const [shader,port,source] of pairs)assert(glsl.includes(shader)&&source.includes(port),`cloth term out of step: ${shader}`);
+ assert(/const PATTERN=\{[^}]*pennant:5[,}]/.test(glsl),'the shader\'s pattern 5 is the pennant');
+}
 
 const only=process.argv[2],report={};
 for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa','minhocao']){
@@ -73,6 +91,32 @@ for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasi
  assert(kinds.pennant>=20,`${id}: edge pennants (${kinds.pennant})`);assert(kinds.rod>=4,`${id}: corner rods (${kinds.rod})`);
  assert.equal(kinds.billboard,billboards.length*2,`${id}: two flags per billboard`);
  if(id!=='curvelo')assert(kinds.roof>=10,`${id}: grandstand roof flags`);else assert(!kinds.roof,'Curvelo has no surveyed stands');
+ // --- No cloth through a board (round 2: a flag cut through a billboard on every lap): every flag near a billboard
+ // (its backing, legs, catwalk, lamps) or a brake board is shaken through random states of the shader's own cloth
+ // (any heading, calm to flying straight out, gusts, ripple, the pole's lean); not one point, nor its pole, inside one.
+ {
+  const boxes=plan.boxes;assert(boxes.length>=billboards.length,`${id}: board boxes`);
+  const inside=(b,x,y,z)=>{if(z<b.z0||z>b.z1)return false;if(b.r!==undefined)return Math.hypot(x-b.x,y-b.y)<b.r;const dx=x-b.x,dy=y-b.y,u=dx*b.ax+dy*b.ay,v=-dx*b.ay+dy*b.ax;return Math.abs(u)<b.hu&&v>b.v0&&v<b.v1;};
+  let seed=11;const rnd=()=>(seed=seed*16807%2147483647)/2147483647;let shaken=0;
+  for(const t of items){
+   const near=boxes.filter(b=>Math.hypot(t.x-b.x,t.y-b.y)<(b.r??b.hu+1.2)+t.w*1.6+t.pole+.5);if(!near.length)continue;shaken++;
+   // (the lean: instanceMatrix turns the flag by Euler x=tilt[0], z=tilt[1]; the pole's top in track x/y and height)
+   const taper=t.pattern===5?.92:0,[al,be]=t.tilt,top=h=>[-h*t.pole*Math.sin(be),-h*t.pole*Math.cos(be)*Math.sin(al),h*t.pole*Math.cos(be)*Math.cos(al)],[lx,ly,lz]=top(1);
+   for(let k=0;k<300;k++){
+    const lift=.1+.9*rnd(),heavy=rnd(),droop=(1-lift)*(.3+.4*heavy)+.02,g=lift>.999?1.3:(lift-.1)/1.1*rnd(),amp=((.05+.07*lift)+.2*g)*(.85+.3*rnd()),a=rnd()*6.283,wave=rnd()*60;
+    for(let u=0;u<=1.0001;u+=.125)for(const v of [0,.5,1]){
+     const c=clothPoint(u,v,[Math.cos(a),Math.sin(a)],lift,droop,amp,wave,t.w,t.h,taper),x=t.x+lx+c[0],y=t.y+ly-c[2],z=t.z+lz+c[1];
+     if(t.kind!=='rod')for(const b of near)assert(!inside(b,x,y,z),`${id}: ${t.kind} at ${t.s.toFixed(0)} sweeps into a ${b.part} (${b.slot??'brake'})`);
+    }
+   }
+   for(let h=0;h<=1;h+=.1){const [px,py,pz]=top(h);for(const b of near)assert(!inside(b,t.x+px,t.y+py,t.z+pz+.001),`${id}: ${t.kind} pole at ${t.s.toFixed(0)} through a ${b.part}`);}
+  }
+  assert(shaken>=billboards.length*2,`${id}: the boards' own corner flags shaken (${shaken})`);
+  // The check bites: the old 1.4 m corner pole let a calm, hanging cloth dip into the board's top.
+  const corner=items.find(t=>t.kind==='billboard'),old={...corner,pole:1.4,w:1.1,h:.72};
+  assert(sweepHits(old,flagSweep(old),boxes.find(b=>b.part==='backing'&&Math.hypot(b.x-corner.x,b.y-corner.y)<9)),`${id}: a short corner pole is caught`);
+  report[id]={...report[id],swept:shaken,rejected:plan.rejected};
+ }
  // --- Brake boards: 300/200/100 counting down to a corner, outside its approach when clear.
  assert(boards.length>=3,`${id}: brake boards (${boards.length})`);
  for(const b of boards){
@@ -87,7 +131,7 @@ for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasi
   assert(!m.includes(300)||m.includes(200),`${id}: no gap in the countdown`);assert.equal(new Set(mine.map(b=>b.side)).size,1,`${id}: a countdown on one side of the track`);
  }
  assert(plan.targets.every((t,i,a)=>!i||a[i-1].s<=t.s),`${id}: crossing targets by lap distance`);
- report[id]={...counts,kinds,boards:boards.length};
+ report[id]={...counts,kinds,boards:boards.length,...report[id]};
 }
 
 // --- The cars' wake: gust bookkeeping on a 1000 m lap. Cars run along s at vx m/s (negative: backwards).

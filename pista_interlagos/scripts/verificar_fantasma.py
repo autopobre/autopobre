@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import browser_executable,browser_args,wait_js,wait_race_start,pause_race
+from browser_config import browser_executable,browser_args,wait_js,wait_race_start,pause_race,choose_race
 
 PORT=sys.argv[1] if len(sys.argv)>1 else '8799'
 URL=f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
@@ -104,8 +104,9 @@ with sync_playwright() as p:
  assert page.evaluate("JSON.parse(localStorage.getItem('opala99-preferences-v1')).ghost")==False
 
  # Modo História keeps its own ghosts, as its records: on foot in the paddock G says there is none yet.
- pause_race(page);page.click('#leaveRace');page.click('#tracksBack');page.click('#carsBack');page.click('#storyStart');page.click('#singleRace')
- wait_js(page,"interlagos.ready&&!interlagos.state.paused&&interlagos.immersiveInfo().active")
+ # (Modo História's track screen offers only the Old Stock season: the story's race on this circuit is the page's hook.)
+ pause_race(page);page.click('#leaveRace');page.click('#tracksBack');page.click('#carsBack');page.click('#storyStart');choose_race(page,story=True)
+ wait_js(page,"interlagos.ready&&!interlagos.state.paused&&interlagos.immersiveInfo().active");page.evaluate('window.interlagosHistoria.skipCards()')
  page.keyboard.press('KeyG');page.wait_for_timeout(200);g=info(page)
  assert 'Ainda não há volta gravada' in g['status'] and 'Modo História' in g['status'] and not g['enabled'],g
  result['historia']=g['status']

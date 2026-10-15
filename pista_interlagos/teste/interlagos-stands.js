@@ -15,18 +15,23 @@ export function createGrandstands(data,textures,ground=null){
  const blocks=standLayout(data),root=new THREE.Group();root.name='Arquibancadas_Interlagos';
  if(!blocks.length)return {root,rows:[],obstacles:[],stats:{blocks:0,rows:0}};
  const concrete=structureMaterial(new THREE.MeshStandardMaterial({name:'Concreto',color:0x8f918b,roughness:.9}),textures);concrete.vertexColors=true;
- const steel=structureMaterial(new THREE.MeshStandardMaterial({name:'Metal',color:0x9aa2a6,metalness:.5,roughness:.45}),textures);
+ // Painted steel, plain: the shared 'Metal' upgrade draws a roller door's ribs, which along the girders under the roof
+ // read as bright seams of light between the slab and the beams.
+ const steel=new THREE.MeshStandardMaterial({name:'Aco_arquibancada',color:0x737b80,metalness:.4,roughness:.55});
  const roofMaterial=new THREE.MeshStandardMaterial({name:'Cobertura_arquibancada',color:0xe8eae6,roughness:.55,metalness:.2,side:THREE.DoubleSide});
  // Trapezoidal steel deck: ribs down the slope every 25 cm (faded before they alias), grime toward
  // the edges, and a shaded underside that only sees the ground.
  roofMaterial.onBeforeCompile=shader=>{
-  shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vDeck;varying float vDeckDown;').replace('#include <begin_vertex>','#include <begin_vertex>\nvDeck=uv;vDeckDown=step(normalize(mat3(modelMatrix)*normal).y,-.5);');
-  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vDeck;varying float vDeckDown;').replace('#include <color_fragment>',`#include <color_fragment>
+  shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vDeck;varying float vDeckDown,vDeckSide;').replace('#include <begin_vertex>','#include <begin_vertex>\nvDeck=uv;vec3 deckN=normalize(mat3(modelMatrix)*normal);vDeckDown=step(deckN.y,-.5);vDeckSide=1.0-step(.5,abs(deckN.y));');
+  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vDeck;varying float vDeckDown,vDeckSide;').replace('#include <color_fragment>',`#include <color_fragment>
 float deckRib=vDeck.x*${((STAND.length+.3)/.25).toFixed(1)},deckFade=1.0-smoothstep(.25,.6,fwidth(deckRib));
 float deckEdge=smoothstep(.3,0.0,min(vDeck.y,1.0-vDeck.y));
-diffuseColor.rgb*=(1.0-.14*deckFade*smoothstep(.2,.5,abs(fract(deckRib)-.5)))*(1.0-.18*deckEdge)*mix(1.0,.62,vDeckDown);`);
+// The slab's cut edges (its 22 cm ends and back, which the roof's rise toward the track tilts to face the stand's
+// fans and the cars below) are a dark flashing, not the white deck: in the sun they drew a bright seam under the roof.
+diffuseColor.rgb*=(1.0-.14*deckFade*smoothstep(.2,.5,abs(fract(deckRib)-.5))*(1.0-vDeckSide))*(1.0-.18*deckEdge)*mix(1.0,.62,vDeckDown)*mix(1.0,.28,vDeckSide);`).replace('#include <metalnessmap_fragment>',`#include <metalnessmap_fragment>
+roughnessFactor=mix(roughnessFactor,.95,vDeckSide);metalnessFactor*=1.0-vDeckSide;`);
  };
- roofMaterial.customProgramCacheKey=()=>'stand-roof-deck-v1';
+ roofMaterial.customProgramCacheKey=()=>'stand-roof-deck-v2';
  const fasciaMaterial=new THREE.MeshStandardMaterial({name:'Faixa_cobertura',color:0x12463b,roughness:.6});
  const seatMaterial=new THREE.MeshStandardMaterial({name:'Assentos_arquibancada',vertexColors:true,roughness:.5});
  const parts={body:[],seats:[],roof:[],fascia:[],steel:[]},rows=[],up=new THREE.Vector3(0,1,0);

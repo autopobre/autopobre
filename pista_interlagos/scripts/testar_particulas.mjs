@@ -5,11 +5,11 @@
 // asphalt or a kerb; the verge grass takes at most WAKE_CARS cars.
 //   node scripts/testar_particulas.mjs
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
-import {SPEED_EFFECTS,speedEffects,MOTE_CAPACITY,MOTE_BOX,MOTE_AHEAD,MOTE_FLOOR,MOTE_EYE,MOTE_TINTS,MOTE_BIG,MOTE_BIG_NEAR,WIND,EXPOSURE,MAX_STREAK,moteWrap,moteCentre,AirMotes,wakeCars,createSpeedEffects} from '../teste/speed-particles.js';
+import {SPEED_EFFECTS,speedEffects,MOTE_CAPACITY,MOTE_BOX,MOTE_AHEAD,MOTE_FLOOR,MOTE_EYE,MOTE_TINTS,MOTE_MIX,MOTE_DARK,MOTE_SHADE,MOTE_COVER,MOTE_LENGTH,MOTE_BIG,MOTE_BIG_NEAR,MOTE_ROAD_KEEP,MOTE_NEAR,MOTE_GAP,WIND,EXPOSURE,MAX_STREAK,MOTE_TRUST,moteWrap,moteCentre,moteRoadFrame,moteOffRoad,moteTrust,motePitFrame,motePitOff,moteFold,AirMotes,wakeCars,createSpeedEffects} from '../teste/speed-particles.js';
 import {GRAPHICS_OPTIONS,GRAPHICS_PRESETS,GRAPHICS_LEVELS} from '../teste/graphics-settings.js';
-import {TyreSmoke,BIT_LIFE,BIT_PIXELS} from '../teste/tyre-smoke.js';
+import {TyreSmoke,BIT_LIFE,BIT_PIXELS,KERB_GRIT} from '../teste/tyre-smoke.js';
 import {CAMERA_FRAMES} from '../teste/camera-rig.js';
 import {TestCar,SUSPENSION_WHEELS} from '../teste/physics.js';
 import {kerbSegment,surfaceKind} from '../teste/kerb-contact.js';
@@ -20,18 +20,21 @@ import {fitGround,groundHeight} from '../teste/track-clearance.js';
 // --- Levels: every choice of the knob has a profile, heavier choices never switch anything off.
 const choices=GRAPHICS_OPTIONS.speedEffects.choices.map(([v])=>v);
 assert.deepEqual(Object.keys(SPEED_EFFECTS),choices,'one profile per speedEffects choice, in panel order');
-const flags=['windSweep','kerbBuzz','rivalDust','debris','grassWake','roadSmear'];
+const flags=['windSweep','kerbBuzz','rivalDust','debris','grassWake','roadSmear','kerbGrit'];
 choices.forEach((c,k)=>{if(!k)return;const a=SPEED_EFFECTS[choices[k-1]],b=SPEED_EFFECTS[c];assert(b.motes>=a.motes&&b.roadStreak>=a.roadStreak,c);for(const f of flags)assert(!a[f]||b[f],`${c} keeps ${f}`);});
-assert.deepEqual(SPEED_EFFECTS.off,{motes:0,windSweep:false,kerbBuzz:false,rivalDust:false,debris:false,grassWake:false,roadSmear:false,roadStreak:0},'Desligada: nothing new on screen');
-assert(SPEED_EFFECTS.leve.windSweep&&SPEED_EFFECTS.leve.kerbBuzz&&!SPEED_EFFECTS.leve.motes&&!SPEED_EFFECTS.leve.roadSmear&&!SPEED_EFFECTS.leve.roadStreak,'Leve: kerb shiver and wind, no asphalt streak');
-// The asphalt shader's streak (where no film smear reaches the road) grows with the knob: part on Média, all on Completa.
-assert(SPEED_EFFECTS.media.roadStreak>0&&SPEED_EFFECTS.media.roadStreak<1&&SPEED_EFFECTS.completa.roadStreak===1,'asphalt streak by level');
-// Média (Médio, phones): more specks than before (120 were lost in the asphalt's grain) and the light road smear.
-assert.equal(SPEED_EFFECTS.media.motes,180);assert(SPEED_EFFECTS.media.rivalDust&&SPEED_EFFECTS.media.roadSmear&&!SPEED_EFFECTS.media.debris&&!SPEED_EFFECTS.media.grassWake,'Média: specks, rival dust, road smear');
-assert(SPEED_EFFECTS.completa.motes>=250&&SPEED_EFFECTS.completa.motes<=MOTE_CAPACITY&&SPEED_EFFECTS.completa.debris&&SPEED_EFFECTS.completa.grassWake,'Completa');
+assert.deepEqual(SPEED_EFFECTS.off,{motes:0,windSweep:false,kerbBuzz:false,rivalDust:false,debris:false,grassWake:false,roadSmear:false,roadStreak:0,kerbGrit:false},'Desligada: nothing new on screen');
+// Leve (Baixo, the cheap PC): no specks, but the asphalt shader's own streak (no extra pass) as its road cue at speed.
+assert(SPEED_EFFECTS.leve.windSweep&&SPEED_EFFECTS.leve.kerbBuzz&&!SPEED_EFFECTS.leve.motes&&!SPEED_EFFECTS.leve.roadSmear&&!SPEED_EFFECTS.leve.kerbGrit&&SPEED_EFFECTS.leve.roadStreak>=.4&&SPEED_EFFECTS.leve.roadStreak<=.5,'Leve: kerb shiver, wind and the asphalt streak');
+// The asphalt shader's streak (where no film smear reaches the road) grows with the knob: part on Leve and Média, all on Completa.
+assert(SPEED_EFFECTS.media.roadStreak>SPEED_EFFECTS.leve.roadStreak&&SPEED_EFFECTS.media.roadStreak<1&&SPEED_EFFECTS.completa.roadStreak===1,'asphalt streak by level');
+// Média (Médio, phones): a few dark specks only (its road smear sells the speed; 180 pale ones read as a broken centre
+// line), rival dust, the road smear and the kerbs' grit.
+assert(SPEED_EFFECTS.media.motes<=MOTE_DARK&&SPEED_EFFECTS.media.motes<=30);assert(SPEED_EFFECTS.media.rivalDust&&SPEED_EFFECTS.media.roadSmear&&SPEED_EFFECTS.media.kerbGrit&&!SPEED_EFFECTS.media.debris&&!SPEED_EFFECTS.media.grassWake,'Média: dark specks, rival dust, road smear, kerb grit');
+// Completa: 60% fewer specks than the 320 that read as lane paint.
+assert(SPEED_EFFECTS.completa.motes>=100&&SPEED_EFFECTS.completa.motes<=130&&SPEED_EFFECTS.completa.debris&&SPEED_EFFECTS.completa.grassWake&&SPEED_EFFECTS.completa.kerbGrit,'Completa');
 assert.equal(speedEffects('???'),SPEED_EFFECTS.off,'an unknown value is off');
 const perLevel=Object.fromEntries(GRAPHICS_LEVELS.map(l=>[l,speedEffects(GRAPHICS_PRESETS[l].speedEffects).motes]));
-assert(perLevel.baixo===0&&perLevel.medio<=200&&perLevel.alto>=250,'Baixo none, Médio (phones) small, Alto full');
+assert(perLevel.baixo===0&&perLevel.medio<=30&&perLevel.alto>=100&&perLevel.alto<=130&&perLevel.ultra<=130,'Baixo none, Médio (phones) a few dark ones, Alto and Ultra about 120');
 
 // --- The wrap: every copy lands inside the box round its centre, a whole box of drift is the same
 // place, a small drift a small step (except across a face, where the speck is faded out).
@@ -67,13 +70,76 @@ assert(motes.material.transparent&&!motes.material.depthWrite&&motes.mesh.frustu
 // before the eye's height (in the shader, against cameraPosition), so it always lands below the horizon.
 assert(MOTE_FLOOR+MOTE_BOX[1]<CAMERA_FRAMES.close.up&&MOTE_FLOOR+MOTE_BOX[1]<CAMERA_FRAMES.chase.up,'the box under the chase and close eyes');
 assert(MOTE_EYE[0]>MOTE_EYE[1]&&MOTE_EYE[1]>0&&/cameraPosition\.y-moteEye\.x/.test(motes.material.vertexShader),'specks fade out below the eye');
-// Grey-brown dust drawn over the picture (not added light): dull tints under the bloom's threshold, a light, a mid
-// and a dark one; the HDR alpha (the occlusion mask) is never written.
-assert(MOTE_TINTS.length===3&&MOTE_TINTS.every(c=>Math.max(...c)<.8&&(Math.max(...c)-Math.min(...c))/Math.max(...c)<.4)&&MOTE_TINTS[2][0]<MOTE_TINTS[0][0]*.5,'dusty tints');
+// Grey-brown dust drawn over the picture (not added light): dull tints, mostly a mid grey-brown about as bright as
+// sunlit asphalt, some dark brown and under a tenth the pale tan (68% of them were pale: broken lane paint on the
+// road); the HDR alpha (the occlusion mask) is never written.
+const luma=c=>.2126*c[0]+.7152*c[1]+.0722*c[2];
+assert(MOTE_TINTS.length===3&&MOTE_TINTS.every(c=>Math.max(...c)<.4&&(Math.max(...c)-Math.min(...c))/Math.max(...c)<.4),'dusty tints');
+assert(luma(MOTE_TINTS[0])<=.2&&luma(MOTE_TINTS[1])<=luma(MOTE_TINTS[0])*.55&&luma(MOTE_TINTS[2])<=.35&&MOTE_MIX[2]<.1&&Math.abs(MOTE_MIX.reduce((a,b)=>a+b)-1)<1e-9,'mostly mid, pale under a tenth');
 assert(motes.material.blendDst===THREE.OneMinusSrcAlphaFactor&&motes.material.blendSrcAlpha===THREE.ZeroFactor&&motes.material.blendDstAlpha===THREE.OneFactor,'over the picture, alpha kept');
-// Few big flecks, and those start further from the lens and always draw a short streak (never a round blot).
-{const tint=motes.geometry.attributes.tint.array;let big=0;for(let i=0;i<MOTE_CAPACITY;i++)big+=tint[i*4+3];assert(big/MOTE_CAPACITY<=MOTE_BIG*1.6&&MOTE_BIG_NEAR>=1.5,`big flecks ${big}`);}
+{
+ const tint=motes.geometry.attributes.tint.array,look=motes.geometry.attributes.look.array,form=motes.geometry.attributes.form.array;let big=0,pale=0;const lengths=new Set();
+ for(let i=0;i<MOTE_CAPACITY;i++){big+=tint[i*4+3];const c=[tint[i*4],tint[i*4+1],tint[i*4+2]];if(luma(c)>luma(MOTE_TINTS[0])*1.25)pale++;
+  // Médio draws the first ones: every one dark.
+  if(i<MOTE_DARK)assert(luma(c)<=luma(MOTE_TINTS[1])*1.16,`speck ${i} dark`);
+  // Thin dust (coverage), a streak of its own length.
+  if(!tint[i*4+3])assert(look[i*4+1]>=MOTE_COVER[0]&&look[i*4+1]<=MOTE_COVER[1],'coverage');assert(form[i*2]>=MOTE_LENGTH[0]&&form[i*2]<=MOTE_LENGTH[1]&&form[i*2+1]>=0&&form[i*2+1]<1);
+  if(i<120)lengths.add(form[i*2].toFixed(3));}
+ // Few big flecks, and those start further from the lens and always draw a short streak (never a round blot).
+ assert(big/MOTE_CAPACITY<=MOTE_BIG*1.6&&MOTE_BIG_NEAR>=1.5,`big flecks ${big}`);
+ assert(pale/MOTE_CAPACITY<.1,`pale specks ${pale}`);assert(lengths.size>=110,'no two dashes alike');
+}
+// In the shader: faded within about 2 m of the lens and near the ground behind them along the view (MOTE_GAP: a speck
+// lying on the road is paint), thin at both ends, never across the followed car's box when in front of it, nearly
+// none over clean asphalt, and lit as dust (a backlit speck keeps only MOTE_SHADE of its tint: no glow).
+{
+ const vs=motes.material.vertexShader,fs=motes.material.fragmentShader;
+ assert(MOTE_NEAR.outside[0]>=2&&MOTE_NEAR.inside[0]>=2.4&&MOTE_GAP[0]>=.2&&MOTE_GAP[1]<=1,'near the lens, near the ground');
+ assert(/moteCarFar>0\.&&-head\.z<moteCarFar/.test(vs)&&/inBox\(ch\)/.test(vs)&&/inBox\(ct\)/.test(vs),'never across the followed car');
+ assert(/smoothstep\(0\.,\.32,vQuad\.x\)\*\(1\.-smoothstep\(\.42,1\.,vQuad\.x\)\)/.test(fs),'tapered both ends');
+ assert(vs.includes(`mix(${MOTE_SHADE.toFixed(2)},1.,lit)`)&&MOTE_SHADE<=.4&&MOTE_ROAD_KEEP<=.1,'lit as dust, the road nearly empty');
+ motes.setCarBox({box:[.4,.2,.6,.5],far:7});assert.deepEqual(motes.uniforms.moteCarBox.value.toArray(),[.4,.2,.6,.5]);assert.equal(motes.uniforms.moteCarFar.value,7);
+ motes.setCarBox(null);assert.equal(motes.uniforms.moteCarFar.value,0,'no car box: none skipped');
+}
 motes.dispose();
+// The road round the camera as the shader reads it (moteRoadFrame: a bowed line fitted ten metres either side): over
+// the lap, the centre line and the edges 16 m either way land within a third of a metre of the survey on nearly every
+// station (the road's width there is the camera's: a road widening by the pits is off by its own change).
+{
+ const a=JSON.parse(readFileSync(new URL('../dados/pista.json',import.meta.url))).samples,n=a.length,errs=[];
+ for(let i=0;i<n;i+=3){const f=moteRoadFrame(a,i);for(let j=-8;j<=8;j+=2){const q=a[(i+j+n)%n];for(const side of [0,1,-1]){const x=q[1]+q[9]*side*q[4]/2,z=-(q[2]+q[10]*side*q[4]/2);
+  errs.push(Math.abs(moteOffRoad(x,z,f)+f.half-Math.abs(side)*q[4]/2));}}}
+ errs.sort((u,v)=>u-v);const p95=errs[Math.floor(errs.length*.95)];assert(p95<.33,`road band off by ${p95.toFixed(2)} m (95%)`);
+ // A speck over the asphalt is folded out past the edge on its own side (the verges hold the dust); one off it stays put.
+ for(let i=0;i<n;i+=37){const f=moteRoadFrame(a,i);for(let k=0;k<40;k++){const x=f.cx+(r()-.5)*30,z=f.cz+(r()-.5)*30,[fx,fz]=moteFold(x,z,f),was=moteOffRoad(x,z,f),now=moteOffRoad(fx,fz,f);
+  if(was>=0)assert(fx===x&&fz===z,'off the road: kept');else assert(now>=.34&&now<=f.half*.7+.36,`folded ${was.toFixed(2)} -> ${now.toFixed(2)}`);}}
+ const f=moteRoadFrame(a,100);assert(moteOffRoad(a[100][1],-a[100][2],f)<-5&&moteOffRoad(a[100][1]+a[100][9]*(a[100][4]/2+3),-(a[100][2]+a[100][10]*(a[100][4]/2+3)),f)>2.5,'asphalt in, verge out');
+}
+// Every circuit (Minhocão's hairpins, Piracicaba's, Floripa's streets): where the shader trusts the fit (moteTrust over
+// a half: near the camera, gentle bends) the centre line and the edges land within ~a third of a metre of the survey on
+// 99% of the points ±10 stations round the camera; past that the specks it sorts fade (MOTE_TRUST in the shader).
+{
+ for(const file of readdirSync(new URL('../dados/',import.meta.url)).filter(f=>/^pista(_[a-z]+)?\.json$/.test(f))){
+  const a=JSON.parse(readFileSync(new URL('../dados/'+file,import.meta.url))).samples,n=a.length,errs=[];
+  for(let i=0;i<n;i+=3){const f=moteRoadFrame(a,i);for(let j=-10;j<=10;j++){const q=a[(i+j+n)%n];for(const side of [0,1,-1]){const x=q[1]+q[9]*side*q[4]/2,z=-(q[2]+q[10]*side*q[4]/2);
+   if(moteTrust(x,z,f)>.5)errs.push(Math.abs(moteOffRoad(x,z,f)+f.half-Math.abs(side)*q[4]/2));}}}
+  errs.sort((u,v)=>u-v);const p99=errs[Math.floor(errs.length*.99)];assert(errs.length>n&&p99<.4,`${file}: trusted road band off by ${p99.toFixed(2)} m (99%)`);
+ }
+ const vs=new AirMotes(8).material.vertexShader;
+ assert(vs.includes(`smoothstep(${MOTE_TRUST.along[0].toFixed(1)},${MOTE_TRUST.along[1].toFixed(1)},abs(along))`)&&vs.includes(`smoothstep(${MOTE_TRUST.turn[0].toFixed(2)},${MOTE_TRUST.turn[1].toFixed(2)},abs(moteRoadShape.y*along))`),'the shader fades by MOTE_TRUST');
+ assert(MOTE_TRUST.along[1]<=17&&MOTE_TRUST.turn[1]<=.5,'trusted no further than the box reaches');
+}
+// The pit lane's paving is road too (Interlagos' surveyed lane beside the main straight): the band across its nearest
+// station, as the shader reads it, holds the lane's paved width and nothing past it; away from the lane, none.
+{
+ const data=JSON.parse(readFileSync(new URL('../dados/pista.json',import.meta.url))),P=data.pit,c=Object.fromEntries(P.columns.map((k,i)=>[k,i])),p=P.samples[Math.floor(P.samples.length/2)];
+ const at=d=>[p[c.x]+p[c.lx]*d,-(p[c.y]+p[c.ly]*d)],f=motePitFrame(P,...at(0));
+ assert(f&&Math.abs(f.hi-f.lo-(p[c.hi]-p[c.lo]))<1e-9,'the lane found');
+ assert(motePitOff(...at((p[c.lo]+p[c.hi])/2),f)<-1&&motePitOff(...at(p[c.hi]-.2),f)<0&&motePitOff(...at(p[c.lo]+.2),f)<0,'its paving in');
+ assert(motePitOff(...at(p[c.hi]+1),f)>.9&&motePitOff(...at(p[c.lo]-1),f)>.9,'past its edges out');
+ const s=data.samples[Math.floor(data.samples.length*.4)];assert.equal(motePitFrame(P,s[1],-s[2]),null,'away from the lane: none');
+ assert.equal(motePitFrame(undefined,0,0),null,'a circuit without a surveyed lane');
+}
 
 // --- The cars that push the grass: nearest the camera first, moving ones only, at most six.
 const at=(x,y,v)=>({x,y,vx:v,vy:0});
@@ -90,7 +156,9 @@ const view=new THREE.PerspectiveCamera();view.position.set(player.x,player.surfa
 for(const level of choices){
  fx.setLevel(level);const p=SPEED_EFFECTS[level];calls.length=0;
  fx.update(1/60,view,{cars:[player,near,far],landscape:land});
- assert.equal(fx.info().motes.count,p.motes,level);assert.equal(fx.info().drawCalls,p.motes?1:0);assert.equal(smoke.debris,p.debris);
+ assert.equal(fx.info().motes.count,p.motes,level);assert.equal(fx.info().drawCalls,p.motes?1:0);assert.equal(smoke.debris,p.debris);assert.equal(smoke.kerbGrit,p.kerbGrit);
+ // The road under the camera reaches the specks (the player's track: its width, its bend).
+ if(p.motes){const road=fx.info().motes.road;assert(road&&Math.abs(road.half*2-player.a[player.index][4])<3,`${level}: road ${JSON.stringify(road)}`);}
  assert.deepEqual(calls.map(c=>c[0]),p.rivalDust?[near]:[],`${level}: dust only for rivals in sight`);
  assert.equal(land.cars.length,p.grassWake?2:0,`${level}: grass wake (the far rival is out of reach)`);
  assert.deepEqual(fx.sound(null),{kerb:null,windSweep:p.windSweep});
@@ -156,6 +224,25 @@ const wheels=SUSPENSION_WHEELS.map(w=>({x:w.x,y:w.y,front:w.front,strength:0}));
 s=new TyreSmoke();place(edge+.5-half,30);for(let k=0;k<60;k++)s.update(rival,wheels,1/60,1080);assert.equal(s.info().total,0,'player on a kerb: no dust');
 place(edge+3.2,30);for(let k=0;k<60;k++)s.update(rival,wheels,1/60,1080);assert(s.info().total>20,'player on the grass: dust');
 assert.equal(s.size,s.capacity+s.extra);s.dispose();
+// Média and up (kerbGrit): a wheel on a painted kerb at speed scuffs up a faint puff of grit in the second ring (thin,
+// short-lived, grey dust and grit specks, never a grass blade); none on asphalt, none slow, none below Média.
+{
+ const g=new TyreSmoke();g.kerbGrit=true;place(edge+.5-half,36);assert(SUSPENSION_WHEELS.some(w=>{const c=Math.cos(rival.heading),sn=Math.sin(rival.heading);return surfaceKind(data,rival.sample(rival.x+c*w.x-sn*w.y,rival.y+sn*w.x+c*w.y,rival.index))==='kerb';}),'a wheel on the kerb');
+ for(let k=0;k<60;k++)g.update(rival,wheels,1/60,1080);let info=g.info();
+ assert(info.total===0&&info.speedFx.active>=5&&info.speedFx.active<=40,`kerb grit ${JSON.stringify(info.speedFx)}`);
+ const grit=g.particles.slice(g.capacity).filter(p=>p.age<p.life);
+ assert(grit.every(p=>p.dust===1?p.strength<=KERB_GRIT.strength+1e-9&&p.life<=KERB_GRIT.life[1]:p.dust>=2.6),'faint dust and grit specks, no grass');
+ // (the player's own wheels' grit is tagged as such: the browser check counts it apart from the rivals' dust)
+ assert(info.speedFx.kerb===info.speedFx.active,`the player's kerb grit tagged ${JSON.stringify(info.speedFx)}`);
+ const calm=new TyreSmoke();calm.kerbGrit=true;place(edge+.5-half,KERB_GRIT.from-2);for(let k=0;k<60;k++)calm.update(rival,wheels,1/60,1080);assert.equal(calm.info().speedFx.total,0,'slow over a kerb: nothing');
+ // A wet track lays the dust: a drizzle (.55) or the rain (1), none; damp (.15), fewer puffs than dry.
+ for(const wetness of [.55,1]){const wet=new TyreSmoke();wet.kerbGrit=true;wet.wet=wetness;place(edge+.5-half,36);for(let k=0;k<60;k++)wet.update(rival,wheels,1/60,1080);assert.equal(wet.info().speedFx.total,0,`wet kerb (${wetness}): no grit`);wet.dispose();}
+ {const damp=new TyreSmoke();damp.kerbGrit=true;damp.wet=.15;place(edge+.5-half,36);for(let k=0;k<60;k++)damp.update(rival,wheels,1/60,1080);const n=damp.info().speedFx.total;assert(n>0&&n<g.info().speedFx.total,`damp kerb: fewer puffs (${n})`);damp.dispose();}
+ place(0,36);const road=new TyreSmoke();road.kerbGrit=true;for(let k=0;k<60;k++)road.update(rival,wheels,1/60,1080);assert.equal(road.info().speedFx.total,0,'asphalt: nothing');
+ // A rival's wheels on the kerb scuff it the same way (not tagged as the player's).
+ const r=new TyreSmoke();r.kerbGrit=true;place(edge+.5-half,36);for(let k=0;k<60;k++){r.rival(rival,1/60);r.age(1/60);}assert(r.info().speedFx.active>=3&&r.info().speedFx.kerb===0,'a rival on the kerb');
+ for(const t of [g,calm,road,r])t.dispose();
+}
 
 // --- The verge grass: one material for every block, at most WAKE_CARS cars, a new program key.
 const field=buildTrackField(data),fit=fitGround(data),ground=(x,y)=>groundHeight(data.terrain,fit.heights,x,y);

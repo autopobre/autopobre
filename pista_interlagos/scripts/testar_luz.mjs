@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
-import {SUN_DIRECTION} from '../teste/sky.js';
+import {SUN_DIRECTION,WORLD_FILL_SATURATION,SKY_REFLECTION,skyMirror} from '../teste/sky.js';
 import {SunPlacement,lightBasis,shadowLean,snapToTexels,SHADOW_LEAN,SHADOW_MARGIN} from '../teste/sun-light.js';
 import {carShadowPatch,CAR_SHADOW_LAYER} from '../teste/car-shadow.js';
 import {SHADOW_LEVELS} from '../teste/graphics-settings.js';
@@ -102,9 +102,27 @@ assert.ok(CAR_SHADOW_LAYER>0&&CAR_SHADOW_LAYER<32);
  assert.ok(Math.abs(curve(.5-1e-6)-curve(.5+1e-6))<1e-5&&Math.abs((curve(.5)-curve(.5-1e-4))/1e-4-c)<1e-2,'continuous, same slope at the middle');
  assert.ok(curve(0)===0&&Math.abs(curve(1e-5)/1e-5-k)<1e-3,'black stays black, reached at the toe slope');
  for(let x=.005;x<.5;x+=.005)assert.ok(curve(x)>curve(x-.005)&&curve(x)>=clip(x)-1e-9&&curve(x)<=Math.min(k*x,.5)+1e-9,`under the middle: rising, never clipped, lifted no more than the toe (${x.toFixed(3)})`);
- assert.ok(curve(.06)*255>=18&&clip(.06)===0,'a shade at 6% stays visible (was black)');
+ // ...but not lifted into a milky floor (round 3: at toe 1.4 the frame's darkest twentieth sat at L 17-26).
+ assert.ok(curve(.06)*255>=15&&clip(.06)===0,'a shade at 6% stays visible (was black)');
+ assert.ok(k<=1.2&&curve(.03)*255<=9,'black reaches black: no milky floor');
  // The occlusion multiplies the sunlit picture too: its floor keeps the sky in the deepest shade.
  assert.ok(LOOK.aoFloor>=.25&&LOOK.aoFloor<=.5,'occlusion floor');
+ // The shade's skylight near grey by day (the world's lighting map's sky desaturated in its bake: a car's shadow on
+ // asphalt was 19,27,40, blue), the night's moonlit blue kept; the dome and the cars' map keep the sky's colours.
+ const sky=readFileSync(new URL('../teste/sky.js',import.meta.url),'utf8');
+ assert.ok(WORLD_FILL_SATURATION.dia>=.3&&WORLD_FILL_SATURATION.dia<=.7&&WORLD_FILL_SATURATION.fim_de_tarde>=WORLD_FILL_SATURATION.dia&&WORLD_FILL_SATURATION.noite===1,'skylight saturation by time of day');
+ assert.ok(sky.includes('if(environment>.5&&environment<1.5)color=mix(vec3(dot(color,vec3(.2126,.7152,.0722))),color,fill);'),'only the world\'s lighting map is desaturated');
+ // ...the shade's light only: the mirrors keep the sky's colour (a lake or Floripa's bay mirrored a grey sky, its zenith
+ // .07,.22,.54 at .155,.215,.343). The lakes, the sea and the pits' glass wear SKY_REFLECTION's map: the same bake at
+ // full saturation while the fill greys the world's (the world's own at night), at the scene's strength as before.
+ assert.ok(sky.includes('if(fill<1){uniforms.fill.value=1;mirror=pmrem.fromScene(envScene,.025);uniforms.fill.value=fill;}')&&sky.includes('SKY_REFLECTION.texture=(mirror??world).texture;'),'a full-colour map for the mirrors');
+ const water=skyMirror(new THREE.MeshStandardMaterial({envMapIntensity:1.2})),map={isTexture:true};SKY_REFLECTION.texture=map;SKY_REFLECTION.scene={environmentIntensity:.7};
+ assert.ok(water.envMap===map&&water.envMapIntensity===.7,'a mirror reads the full-colour map at the scene\'s strength');
+ water.envMap=null;water.envMapIntensity=3;assert.ok(water.envMap===map&&water.envMapIntensity===.7,'and keeps them');
+ assert.ok(!Object.values(water).includes(map),'never handed to a circuit\'s clean-up (main.js clearCircuit disposes what Object.values finds)');
+ SKY_REFLECTION.texture=SKY_REFLECTION.scene=null;assert.equal(water.envMap,null,'no map yet: the scene\'s');
+ for(const [file,count] of [['landscape.js',3],['sea-water.js',1],['pit-building.js',1]])
+  assert.ok(readFileSync(new URL('../teste/'+file,import.meta.url),'utf8').split('skyMirror(').length-1>=count,`${file}: its mirrors wear the sky's full colour`);
  // Lens ghosts: at most half their old strength (.05 of the flare), soft discs.
  assert.ok(LOOK.ghosts>0&&LOOK.ghosts<=.05*LOOK.flare*.5+1e-9,'ghosts dimmed');
  assert.ok(!source.includes('smoothstep(size*.55,size'),'no hard-rimmed ghost');

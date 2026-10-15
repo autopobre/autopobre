@@ -6,7 +6,8 @@ source (Baixo the sky, Médio the circuit baked from the grid, Alto the probe ro
 Ultra the HD probe and the metallic flake), switched live without a long freeze; the probe keeps
 redrawing; the player's, a rival's and the distant model's paint wear the map; a restart bakes the grid
 again; back on the car screen the studio's map returns. Shots of the black 99 and a coloured rival
-beside the main grandstand (chase, close, hood) per level, and the reflection maps.
+beside the main grandstand (chase, close, hood) per level, and the reflection maps; on each level the 99's
+tail panel in the close view stays a gloss black (a dark mirror, not the round-2 primer grey).
 Usage: verificar_reflexos.py [port]   (INTERLAGOS_URL overrides the address; shots go to
 pista_interlagos/renders/reflexos or REFLEXOS_OUT)."""
 import base64, json, os, sys, time
@@ -49,6 +50,31 @@ def check(name, ok, detail=''):
 
 def reflections(page):
     return page.evaluate('interlagosGraficos.info().reflections')
+
+
+# The 99's tail panel under the lamps, in the car's frame (x forward, y up, z right): where the last picture drew it
+# (interlagos.carScreenPoints), its luma (PIL 'L') in the screenshot, 3 px in from its edges.
+TAIL = [[-2.215, .40, -.32], [-2.215, .40, .32], [-2.215, .54, .32], [-2.215, .54, -.32]]
+
+
+def tail_luma(page, path):
+    from PIL import Image, ImageDraw, ImageFilter, ImageStat
+    pts = page.evaluate('q=>typeof interlagos.carScreenPoints==="function"?interlagos.carScreenPoints(q):null', TAIL)
+    if not pts or any(abs(p[2]) > 1 for p in pts):
+        return None
+    img = Image.open(path).convert('L'); mask = Image.new('L', img.size, 0)
+    ImageDraw.Draw(mask).polygon([(p[0], p[1]) for p in pts], fill=255); mask = mask.filter(ImageFilter.MinFilter(7))
+    stat = ImageStat.Stat(img, mask)
+    if not stat.count[0]:
+        return None
+    hist = img.histogram(mask); total = sum(hist); seen = 0; p5 = p95 = None
+    for v, n in enumerate(hist):
+        seen += n
+        if p5 is None and seen >= total * .05:
+            p5 = v
+        if p95 is None and seen >= total * .95:
+            p95 = v
+    return {'mean': round(stat.mean[0], 1), 'p5': p5, 'p95': p95, 'px': int(stat.count[0])}
 
 
 def save_map(page, name):
@@ -111,7 +137,7 @@ with sync_playwright() as p:
         check(f'{level}_finish', paint['profile'] == level and paint['player']['name'] == 'Pintura_preta' and paint['player']['clearcoat'] >= .95 and paint['player']['flake'] == (level == 'ultra'), paint['player'])
         check(f'{level}_no_long_freeze', gap < 1500, gap)
         if source == 'probe':
-            check(f'{level}_probe_redraws', later['updates'] > r['updates'] and later['faces'] > r['faces'] and r['size'] == (128 if level == 'alto' else 256), (r, later))
+            check(f'{level}_probe_redraws', later['updates'] > r['updates'] and later['faces'] > r['faces'] and r['size'] == (256 if level == 'alto' else 512), (r, later))
         if source == 'bake':
             check(f'{level}_grid_baked', r['bakes'] >= 1, r)
         means = save_map(page, level)
@@ -121,6 +147,12 @@ with sync_playwright() as p:
         for cam in ('chase', 'close', 'hood'):
             page.evaluate(CAMERA, cam); page.wait_for_timeout(1200)
             page.screenshot(path=str(OUT / f'{level}_{cam}.png'))
+            if cam == 'close':
+                tail = tail_luma(page, OUT / f'{level}_{cam}.png')
+                per_level[level]['tail'] = tail
+                # Gloss black, not gunmetal: the camera-facing tail panel a dark mirror (round 2: L 36-55, a primer grey).
+                # Here the sun is ahead: the tail mirrors the car's own shadow behind it, near black is right.
+                check(f'{level}_gloss_black_tail', tail and 1 <= tail['mean'] <= 30, tail)
         page.evaluate(CAMERA, 'chase')
     check('flake_only_on_ultra', [per_level[l]['paint']['flake'] for l in per_level] == [0, 0, 0, 1])
     check('player_paint_hex_kept', all(per_level[l]['player']['color'] == per_level['baixo']['player']['color'] for l in per_level), [per_level[l]['player']['color'] for l in per_level])

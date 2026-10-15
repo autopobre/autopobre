@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import browser_executable,browser_args,wait_js,wait_race_start
+from browser_config import browser_executable,browser_args,wait_js,wait_race_start,choose_race
 
 PORT=sys.argv[1] if len(sys.argv)>1 else '8799'
 URL=f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
@@ -125,7 +125,8 @@ with sync_playwright() as p:
  # Stevan's Opala 99 (Konrad's seat a moment ago) gone from the track, not parked where it stopped.
  page.click('#tracksBack');wait_js(page,"interlagosCarros.info().live");page.click('#carsBack');page.click('#storyStart')
  assert page.is_visible('#tracks') and page.get_attribute('#tracks','data-mode')=='historia' and page.inner_text('#tracksBack')=='← Início'
- page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000);page.wait_for_timeout(600)
+ # (Modo História's track screen offers only the Old Stock season: the story's race on this circuit is the page's hook.)
+ choose_race(page,story=True);wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000);page.evaluate('window.interlagosHistoria.skipCards()');page.wait_for_timeout(600)
  story=page.evaluate(CARS);assert story['raceCar']=='99' and story['painted']=='99' and story['skin'] and story['touchSkin'],story
  story_field=page.evaluate(FIELD);assert story_field['rivals'][0]=='73' and '99' not in story_field['rivals'] and not story_field['opala99Shown'],story_field
  # The grid list in the settings is the story's field too, not the #73 race's.

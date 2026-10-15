@@ -85,6 +85,11 @@ with sync_playwright() as p:
     limp_on = info(page)['limp']
     page.keyboard.press('KeyJ')
     page.wait_for_timeout(1600)
+    # (the stroke ends on the game's clock: on a loaded machine it runs slower than the wall's; the day's parking below too)
+    try:
+        wait_js(page, '!window.interlagosClima.info().wipers.on', timeout=8000)
+    except TimeoutError:
+        pass  # the check below reports it
     parked = info(page)
     check('j_parks_the_wipers', not parked['wipers']['on'] and parked['wipers']['angles'] == [0, 0], parked['wipers'])
     check('limp_switch_follows', limp_on is not None and abs(parked['limp'] - limp_on) > .5, [limp_on, parked['limp']])
@@ -101,6 +106,12 @@ with sync_playwright() as p:
     choose(page, 'rainLevel', 'seco')
     wait_js(page, '!window.interlagosClima.info().compiling', timeout=90000)
     page.wait_for_timeout(500)
+    # The wipers finish their stroke before they park (windscreen-rain.js: up to one 1.15 s cycle of the game's own clock,
+    # which a loaded machine runs slower than the wall's: the frame's dt is capped), so a fixed half second was not always it.
+    try:
+        wait_js(page, '!window.interlagosClima.info().wipers.on', timeout=8000)
+    except TimeoutError:
+        pass  # the check below reports it
     dry = info(page)
     check('day_takes_the_lamps_away', not dry['lamps']['installed'] and not dry['glow'] and not dry['rivalGlow'] and dry['roadLamps'] == 0, dry)
     check('day_is_dry', not dry['falling']['visible'] and dry['wetness'] == 0 and dry['grip'] == 1 and dry['rivalGrip'] == 1, dry)

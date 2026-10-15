@@ -57,6 +57,9 @@ with sync_playwright() as p:
         after = camera()
         check('scroll_zoom', after['distance'] < before['distance']-.5)
         # Subir a camera ate o teto, sem perder o carro como alvo.
+        # (S held reverses the stopped car: on a slow machine it had backed out from under the gantry by now, and went on
+        # backing out during the drag. Put back on the line and let go, it stands under the gantry.)
+        page.keyboard.up('KeyS'); page.evaluate('interlagos.reposition(0)'); frame()
         page.mouse.move(730,450); page.mouse.down()
         page.mouse.move(730,800,steps=8); page.mouse.up(); frame()
         top = camera()

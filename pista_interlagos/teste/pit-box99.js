@@ -202,7 +202,7 @@ export function createBox99({pit,c,lerp,at,root,obstacles,textures,people,crowd,
  kit([[box(.85,1.95,.75),0xc9282e,[0,.975,0]],[box(.87,.08,.77),0x2a2d30,[0,1.99,0]]],-18.75,F+9.4);add(M.fridge,new THREE.PlaneGeometry(.75,1.72),-18.75,F+9.005,1);
  const lamp=(x,d,y,color)=>{const len=5.1-y-.2;kit([[cyl(.006,len,6),DARK,[0,.2+len/2,0]],[new THREE.ConeGeometry(.22,.2,16),color,[0,.1,0]]],x,d,y,0,true);add(M.light,sph(.06,10,8),x,d,y-.02,0,true);};
  for(const x of [-16.3,-13.4,-10.5])lamp(x,F+9.2,2.7,GREEN);for(const [x,d] of tables)lamp(x,d,2.35,0xc4232a);
- const fan=new THREE.Mesh(mergeGeometries([paint(cyl(.08,.14,12),DARK),...[0,1,2].map(k=>paint(box(.95,.012,.15).translate(.55,-.02,0).rotateY(k*Math.PI*2/3),0x7a4a2a))],false),M.props);fan.name='Ventilador_de_teto';put(fan,-13.4,F+5.2,4.5,0,true);addc(DARK,cyl(.015,.55,6),-13.4,F+5.2,4.85,0,true);
+ const fan=new THREE.Mesh(mergeGeometries([paint(cyl(.08,.14,12),DARK),...[0,1,2].map(k=>paint(box(.95,.012,.15).translate(.55,-.02,0).rotateY(k*Math.PI*2/3),0x7a4a2a))],false),M.props);fan.name='Ventilador_de_teto';fan.userData.live=true;put(fan,-13.4,F+5.2,4.5,0,true);addc(DARK,cyl(.015,.55,6),-13.4,F+5.2,4.85,0,true);
  {const pos=[],col=[],colors=[RED,YELLOW,GREEN,0x2f6db5,WHITE].map(h=>new THREE.Color(h));let k=0;
   for(const d of [F+2.6,F+5.4,F+8.2])for(let x=-19.1;x<-6.9;x+=.3,k++){
    const sag=u=>4.55-.4*Math.sin(Math.PI*(u+19.1)/12.3),A=frame(x,d,sag(x),true),Bq=frame(x+.22,d,sag(x+.22),true),C=frame(x+.11,d,sag(x+.11)-.26,true),color=colors[k%5];

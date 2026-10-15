@@ -5,13 +5,15 @@ Usage: verificar_velocidade.py [port] [out_dir]
 INTERLAGOS_URL overrides the address; out_dir defaults to cwd/.audit-local/velocidade (shots + relatorio.json).
 
 Interlagos, Corrida única, on a virtual clock (every step is one 1/60 s frame, so shots are frame-exact):
-- Médio and Alto: the air specks per level (180 / 320, one draw), live switches to Desligada and back;
+- Médio and Alto: the air specks per level (24 dark ones / 120, one draw), live switches to Desligada and back;
 - Médio: a rival held on the grass beside the back straight (RaceField's puppet hook) throws dust and the
   near road smears (the phones' road smear); at Leve both stop;
-- Alto: the speed smear follows the camera (none on a paused frame) and the specks land on the road, never
-  against the sky;
+- Alto: the speed smear follows the camera (none on a paused frame) and the specks stay below the horizon, never
+  against the sky, and never across the followed car;
 - Alto: the player rides the Curva do Sol kerb: kerbRide, the rumble loop on the kerb's side, light-motor
-  pulses on a (fake) pad, no gravel noise and no dirt cloud; back on the asphalt it dies away;
+  pulses on a (fake) pad, the camera's kerb jolt (more than the car's own heave: A/B with Movimento de câmera off),
+  a faint grit puff from the player's own wheels (none on a wet kerb), no gravel noise and no dirt cloud; back on
+  the asphalt it dies away;
 - Alto: a rival runs through the verge grass with the race held (P): the grass by the rival changes when
   the wake is switched off (Média) and comes back exactly when switched on again (Completa).
 """
@@ -60,6 +62,11 @@ FAKE_PAD = """(()=>{const pad={connected:false,axes:[0,0,0,0],buttons:Array(17).
 HIDE_MOTES = """async()=>{const {AirMotes}=await import('./speed-particles.js');const update=AirMotes.prototype.update;let motes=null;
  AirMotes.prototype.update=function(...args){motes=this;return update.apply(this,args);};try{__step(1);}finally{AirMotes.prototype.update=update;}
  if(motes)motes.alpha=0;return !!motes;}"""
+# The same specks drawn solid magenta (a new fragment program, for this check only): where they land shows plainly.
+MARK_MOTES = """async()=>{const {AirMotes}=await import('./speed-particles.js');const update=AirMotes.prototype.update;let motes=null;
+ AirMotes.prototype.update=function(...args){motes=this;return update.apply(this,args);};try{__step(1);}finally{AirMotes.prototype.update=update;}
+ if(!motes)return false;window.__marked={motes,shader:motes.material.fragmentShader};motes.material.fragmentShader=motes.material.fragmentShader.replace('gl_FragColor=vec4(vTint*effectLight,a);','gl_FragColor=vec4(8.,0.,8.,1.);');motes.material.needsUpdate=true;return true;}"""
+UNMARK_MOTES = "(()=>{const m=window.__marked;if(m){m.motes.material.fragmentShader=m.shader;m.motes.material.needsUpdate=true;}return true;})()"
 
 
 def check(name, condition, detail=None):
@@ -75,6 +82,15 @@ def step(page, n):
 
 def speed(page):
     return page.evaluate('interlagos.speedInfo()')
+
+
+def compiled(page):
+    # A weather change's new programs compile in slices while the race holds (main.js graphicsCompiling): frames on.
+    for _ in range(600):
+        if not page.evaluate('interlagosGraficos.info().compiling'):
+            return
+        step(page, 1); page.wait_for_timeout(50)
+    raise AssertionError('still compiling')
 
 
 def shot(page, name):
@@ -120,15 +136,15 @@ def motes_per_level(page, level, expected):
     set_effects(page, level, 'off'); step(page, 2); off = speed(page)
     check(f'{level}_motes_off_live', off['motes']['count'] == 0 and not off['motes']['visible'] and off['drawCalls'] == 0 and not off['rivalDust'], off['motes'])
     set_effects(page, level, 'completa'); step(page, 2); full = speed(page)
-    check(f'{level}_motes_completa_live', full['motes']['count'] >= 250 and full['grassWake'] and not page.evaluate('interlagosGraficos.info().compiling'), full['motes'])
+    check(f'{level}_motes_completa_live', 100 <= full['motes']['count'] <= 130 and full['grassWake'] and not page.evaluate('interlagosGraficos.info().compiling'), full['motes'])
     set_effects(page, level, {'medio': 'media', 'alto': 'completa'}[level]); step(page, 2)
 
 
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path=browser_executable(), headless=True, args=browser_args())
-    # ---------------- Médio (phones): 180 specks, the rivals' dust, no grass.
+    # ---------------- Médio (phones): 24 dark specks, the rivals' dust, no grass.
     ctx, page = start(browser, 'medio')
-    motes_per_level(page, 'medio', 180)
+    motes_per_level(page, 'medio', 24)
     check('medio_no_grass', (page.evaluate('interlagos.sceneryInfo().grassTufts') or 0) == 0)
     page.evaluate(CAMERA, 'chase')
     w = page.evaluate(PUT, [-1, 1000, -1.0, 42])
@@ -152,9 +168,9 @@ with sync_playwright() as p:
     REPORT['info']['medio'] = speed(page)
     ctx.close()
 
-    # ---------------- Alto: 320 specks, kerb rumble, grass wake.
+    # ---------------- Alto: 120 specks, kerb rumble, grass wake.
     ctx, page = start(browser, 'alto')
-    motes_per_level(page, 'alto', 320)
+    motes_per_level(page, 'alto', 120)
     check('alto_grass', page.evaluate('interlagos.sceneryInfo().grassTufts') > 1000)
     # Straight at 200 km/h: the specks stream past (the streak follows the camera's speed).
     page.evaluate(CAMERA, 'chase'); page.evaluate(PUT, [-1, 4100, -1.5, 55]); page.keyboard.down('KeyW'); step(page, 40)
@@ -165,16 +181,22 @@ with sync_playwright() as p:
     # paused frame, and back over a few frames once the race goes on (a cut or a pause starts it from nothing).
     smear = lambda: page.evaluate('interlagosGraficos.info().cinematic.smear')
     moving = smear(); page.keyboard.press('KeyP'); step(page, 2); held = smear()
-    # Held, the specks stand where they were: they change the road below the horizon, never the sky above it
-    # (after the lens has settled: it keeps easing to its speed width while held).
-    step(page, 240); with_motes = shot(page, 'alto_reta_200_parado')
+    # Held, the specks stand where they were: they change the picture below the horizon, never the sky above it, and
+    # never the followed car's box (after the lens has settled: it keeps easing to its speed width while held). For
+    # the A/B they are drawn solid magenta (thin dark dust would hide in the grass), then hidden.
+    step(page, 240); shot(page, 'alto_reta_200_parado')
+    check('motes_marked', page.evaluate(MARK_MOTES)); step(page, 1)
+    with_motes = shot(page, 'alto_reta_200_parado_marcado'); box = speed(page)['motes']['carBox']
     check('motes_hidden_for_sky_check', page.evaluate(HIDE_MOTES)); step(page, 1)
     without = shot(page, 'alto_reta_200_parado_sem_ar')
     page.evaluate("async()=>{const {AirMotes}=await import('./speed-particles.js');const u=AirMotes.prototype.update;AirMotes.prototype.update=function(...a){this.alpha=1;AirMotes.prototype.update=u;return u.apply(this,a);};return true;}")
     diff = ImageChops.difference(with_motes, without).convert('L'); w, h = diff.size
     sky = sum(diff.crop((0, 0, w, int(h * .4))).histogram()[9:]); road = sum(diff.crop((0, int(h * .5), w, h)).histogram()[9:])
-    REPORT['info']['motes_where'] = {'sky': sky, 'road': road}
-    check('motes_on_the_road_not_the_sky', sky <= 5 and road > 20, {'sky': sky, 'road': road})
+    car = sum(diff.crop((int(box[0] * w), int((1 - box[3]) * h), int(box[2] * w), int((1 - box[1]) * h))).histogram()[9:]) if box else None
+    REPORT['info']['motes_where'] = {'sky': sky, 'road': road, 'car': car, 'carBox': box}
+    check('motes_below_the_horizon_not_the_sky', sky <= 5 and road > 20, {'sky': sky, 'road': road})
+    check('motes_never_across_the_car', box is not None and car <= 3, {'car': car, 'box': box})
+    page.evaluate(UNMARK_MOTES)
     page.keyboard.press('KeyP'); step(page, 1); first = smear(); step(page, 20); again = smear()
     check('smear_follows_the_camera', moving['strength'] > .9 and held['strength'] == 0 and first['strength'] < .5 and again['strength'] > .9, {'moving': moving, 'held': held, 'first': first, 'again': again})
     page.keyboard.up('KeyW')
@@ -189,6 +211,31 @@ with sync_playwright() as p:
     check('kerb_ride', kerb['kerbWheels'] == 2 and kerb['kerb']['level'] > .8 and kerb['kerbTilt'] > .5 and kerb['kerb']['pan'] < 0 and kerb['kerb']['dirt'] == 0, kerb)
     check('kerb_pitch_follows_ridges', abs(kerb['kerb']['hz'] - page.evaluate('Math.hypot(interlagos.car.vx,interlagos.car.vy)') / .4) < 2, kerb['kerb'])
     check('kerb_no_dirt_cloud', page.evaluate('interlagos.smokeInfo().active') == 0, page.evaluate('interlagos.smokeInfo()'))
+    # The camera's mount jolts on the ridges (camera-rig.js KERB_JOLT): the eye's height shakes by centimetres from frame
+    # to frame; the painted kerb scuffs up a faint grit puff (speed effects' ring, not the dirt cloud above).
+    jolt = lambda: (lambda ys: max(abs(ys[i + 1] - 2 * ys[i] + ys[i - 1]) for i in range(1, len(ys) - 1)))([page.evaluate('(__step(1),interlagos.cameraSnapshot().position[1])') for _ in range(14)])
+    on_kerb = jolt(); grit = speed(page)['particles']
+    # (the player's own wheels' grit, tagged apart from the rivals' dust in the same ring)
+    check('kerb_grit_puff', grit['kerb'] >= 1, grit)
+    # A/B on the same kerb with Movimento de câmera off: the car's own heave over the ridges is left, the jolt is not.
+    page.evaluate('v=>{interlagosGraficos.set(v);return true;}', {'level': 'alto', 'overrides': {'dynamicResolution': False, 'cameraMotion': 0}}); step(page, 2)
+    page.evaluate(PUT, [-1, 548, w / 2 + .45 - .804, 31]); step(page, 10)
+    heave_only = jolt()
+    page.evaluate('v=>{interlagosGraficos.set(v);return true;}', {'level': 'alto', 'overrides': {'dynamicResolution': False}}); step(page, 2)
+    page.evaluate(PUT, [-1, 548, w / 2 + .45 - .804, 31]); step(page, 10)
+    REPORT['info']['jolt'] = {'kerb': on_kerb, 'kerb_motion_off': heave_only}
+    check('kerb_jolt_is_the_mount', on_kerb > 2 * heave_only, {'kerb': round(on_kerb, 4), 'motion_off': round(heave_only, 4)})
+    # A wet track lays the dust: held on the same kerb in the rain (the weather the Corrida tab picks) for a second, the
+    # dry puffs dying out, no grit; dry again, it comes back.
+    # (the rain's lamps and wipers compile first, the race held meanwhile; then put back every few frames: on the wet
+    # track the car slides off the kerb within a few metres)
+    page.evaluate("interlagosClima.set({rain:'chuva'});true"); compiled(page)
+    for _ in range(15):
+        page.evaluate(PUT, [-1, 548, w / 2 + .45 - .804, 31]); step(page, 4)
+    wet = speed(page); page.evaluate("interlagosClima.set({rain:'seco'});true"); compiled(page)
+    check('kerb_no_grit_in_the_wet', wet['kerbWheels'] == 2 and wet['particles']['kerb'] == 0, {'kerbWheels': wet['kerbWheels'], 'particles': wet['particles']})
+    page.evaluate(PUT, [-1, 548, w / 2 + .45 - .804, 31]); step(page, 10)
+    check('kerb_grit_when_dry_again', speed(page)['particles']['kerb'] >= 1, speed(page)['particles'])
     if audio.get('context') == 'running' and audio.get('focused'):
         check('kerb_rumble_loop', loops.get('kerb', 0) > .05 and loops.get('gravel', 1) == 0, loops)
     else:
@@ -197,6 +244,8 @@ with sync_playwright() as p:
     page.evaluate(PUT, [-1, 560, 0, 31]); step(page, 40)
     back = speed(page)
     check('kerb_fades_on_asphalt', back['kerbWheels'] == 0 and back['kerb']['level'] < .02, back['kerb'])
+    off_kerb = jolt()
+    check('kerb_jolt', .004 < on_kerb < .08 and on_kerb > 3 * off_kerb, {'kerb': round(on_kerb, 4), 'asphalt': round(off_kerb, 4)})
     # Verge grass: a rival through the grass beside the back straight, the race held on one frame.
     w = page.evaluate(PUT, [-1, 1752, 1.0, 36])
     page.evaluate(PUT, [0, 1765, 0, 34]); page.evaluate(DRIVE, [0, 1765, w / 2 + 2.6, 34])

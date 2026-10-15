@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
 import {GRAPHICS_LEVELS,GRAPHICS_OPTIONS,GRAPHICS_PRESETS,REFLECTION_LEVELS} from '../teste/graphics-settings.js';
-import {finishClass,FINISH_PROFILES,COAT_FLOOR,coatRoughnessFor,finishMaterial,finishMesh,setCarFinish,setCarSamples,setCarEnvironment,carFinishInfo,paintOf} from '../teste/car-finish.js';
+import {finishClass,FINISH_PROFILES,COAT_FLOOR,coatRoughnessFor,finishMaterial,finishMesh,setCarFinish,setCarSamples,setCarEnvironment,carFinishInfo,paintOf,coatGain,COAT_IBL_LINE,LENS_COAT,LENS_RED,GLASS_LOOK,setCarProbe} from '../teste/car-finish.js';
 import {teamPaint} from '../teste/immersive-visuals.js';
 import {WORLD_ENV} from '../teste/sky.js';
 
@@ -40,15 +40,27 @@ assert.ok(profiles.every(Boolean),'each reflection level names a finish profile'
 assert.deepEqual(order.map(k=>REFLECTION_LEVELS[k].source),['sky','bake','probe','probe']);
 for(const k of order){const l=REFLECTION_LEVELS[k];
  if(l.source==='bake')assert.ok(l.bake===256,'the grid bake is the sky map\'s size: no other programs on phones');
- if(l.source==='probe'){assert.ok(Number.isInteger(Math.log2(l.probe))&&l.probe<=256,'probe size');assert.ok(l.faces>=1&&l.faces<=6&&l.far>=150);}
+ if(l.source==='probe'){assert.ok(Number.isInteger(Math.log2(l.probe))&&l.probe>=256&&l.probe<=512,'probe size: 128 px mirrored the stands as blobs');assert.ok(l.faces>=1&&l.faces<=6&&l.far>=150);}
 }
 assert.ok(REFLECTION_LEVELS.dinamico_hd.probe>=REFLECTION_LEVELS.dinamico.probe&&REFLECTION_LEVELS.dinamico_hd.faces>=REFLECTION_LEVELS.dinamico.faces);
-// Never plainer going up: as much coat and reflection or more, as smooth a coat and chrome or smoother.
+// Never plainer going up: as much coat and reflection or more, as smooth a coat and chrome or smoother. The coat's
+// own reflectance and gain only among the captured maps (the grid's picture, the probes): Baixo's sky map has no
+// surroundings of its own and keeps a little gain to show its painted horizon band.
 for(let i=1;i<profiles.length;i++){const a=profiles[i-1],b=profiles[i];
- for(const key of ['coat','coatEnv','env','glass','coatF0','flake'])assert.ok(b[key]>=a[key],`${order[i]} ${key} >= ${order[i-1]}`);
- for(const key of ['coatRoughness','chrome'])assert.ok(b[key]<=a[key],`${order[i]} ${key} <= ${order[i-1]}`);
+ for(const key of ['coat','env','glass','flake'])assert.ok(b[key]>=a[key],`${order[i]} ${key} >= ${order[i-1]}`);
+ if(i>1)for(const key of ['coatEnv','coatF0'])assert.ok(b[key]>=a[key],`${order[i]} ${key} >= ${order[i-1]}`);
+ for(const key of ['coatRoughness','chrome','coatIBL'])assert.ok(b[key]<=a[key],`${order[i]} ${key} <= ${order[i-1]}`);
 }
-for(const p of profiles){assert.ok(p.coat>=.95,'a full clear coat on every level');assert.ok(p.coatF0>=.04&&p.coatF0<=.08,'a clear coat, not chrome');assert.ok(p.coatEnv>=1&&p.coatEnv<=1.6);}
+for(const p of profiles){assert.ok(p.coat>=.95,'a full clear coat on every level');assert.ok(p.coatF0>=.04&&p.coatF0<=.07,'a clear coat, not chrome');assert.ok(p.coatEnv>=1&&p.coatEnv<=1.3);assert.ok(p.coatIBL>=.02&&p.coatIBL<=p.coatRoughness+.01,'the coat mirrors its map at least as sharp as its glint');}
+// Gloss black, not gunmetal (round 2: lift .9, gain 1.5-1.6 and a 7% coat turned the black 99's tail into a featureless
+// L 36-55 primer grey): a black panel mirrors its surroundings as a lacquer does, about 4 to 6% head-on, the dark
+// road and stands no more lifted than the bright sky (so the horizon line keeps its contrast). Baixo (sky map, no
+// film toe) a little more.
+for(const [k,p] of order.map((k,i)=>[k,profiles[i]])){
+ const dark=p.coatF0*coatGain(p,.05),sky=p.coatF0*coatGain(p,1),limit=k==='ceu'?.085:.065;
+ assert.ok(dark>=.04&&dark<=limit,`${k}: a black panel mirrors ${(dark*100).toFixed(1)}% of the road and shade (lacquer, not primer)`);
+ assert.ok(dark/sky<=1.15,`${k}: the dark half of the reflection lifted only ${((dark/sky-1)*100).toFixed(0)}% over the sky's`);
+}
 assert.equal(FINISH_PROFILES.ultra.flake>0,true,'Ultra has the metallic flake');assert.equal(FINISH_PROFILES.alto.flake,0);
 // Without multisampling (Médio: antialias 0) the coat keeps a floor against sparkle on thin edges.
 assert.equal(GRAPHICS_PRESETS.medio.antialias,0);
@@ -69,11 +81,45 @@ let shader=compile(black);
 assert.ok(shader.fragmentShader.includes('material.clearcoatF0 = vec3( carCoatF0 );')&&shader.fragmentShader.includes('clearcoatRadiance*=carCoatEnv*(1.0+carCoatLift'),'coat patched');
 assert.ok(!shader.fragmentShader.includes('#include <lights_physical_fragment>'),'the chunk is replaced');
 assert.ok(shader.uniforms.carCoatF0&&shader.uniforms.carCoatEnv&&shader.uniforms.carCoatLift,'coat uniforms');
+// The coat mirrors its map at its own sharpness (the probe's full picture), not at its glint's floor: the line it
+// swaps is still three.js's.
+assert.ok(THREE.ShaderChunk.lights_fragment_maps.includes(COAT_IBL_LINE),'three.js still looks the coat up in this line');
+assert.ok(!shader.fragmentShader.includes(COAT_IBL_LINE)&&shader.fragmentShader.includes('carCoatIBL + geometryRoughness'),'the coat\'s look-up at its own roughness');
+assert.equal(shader.uniforms.carCoatIBL.value,FINISH_PROFILES.alto.coatIBL);
+// A dipping reflection meets the road from the car's own surface, looked up from the probe's centre (the tail's mirror
+// of the road behind it was the car's own shadow under its middle); only the race's probe has a centre.
+assert.ok(shader.fragmentShader.includes('carCoatRadiance( geometryViewDir')&&shader.fragmentShader.indexOf('vec3 carCoatRadiance(')>shader.fragmentShader.indexOf('#include <envmap_physical_pars_fragment>'),'the coat\'s look-up corrected for the probe\'s centre');
+assert.ok(shader.vertexShader.includes('vCarWorld=(modelMatrix*vec4(transformed,1.0)).xyz;'));
+setCarProbe({x:1,y:2,z:3},1);assert.equal(shader.uniforms.carProbe.value.w,1);setCarEnvironment({image:{height:7}},'estudio');assert.ok(shader.uniforms.carProbe.value.w<-1e4,'the studio\'s map: no probe centre');setCarEnvironment(env256,'teste');
+// The probe's centre is the player's car's: a rival a few metres off (on other ground) keeps the plain look-up.
+assert.ok(shader.fragmentShader.includes('r=normalize(mix(hit,r,smoothstep(3.0,6.0,length(vCarWorld.xz-carProbe.xz))));'),'the correction fades 3-6 m off the probe');
+// On the sky's own map (night, the story's paddock, before the grid's picture) every level's coat is Baixo's (the coat
+// tuned for a captured circuit left the black 99 dull there); on a captured map, the level's own. Values only.
+{
+ setCarFinish('medio');setCarEnvironment(env256,'corrida',true);const u=shader.uniforms,b=FINISH_PROFILES.baixo,m=FINISH_PROFILES.medio;
+ assert.ok(u.carCoatF0.value===b.coatF0&&u.carCoatEnv.value===b.coatEnv&&u.carCoatLift.value===b.lift&&carFinishInfo().skyMap,'sky map: Baixo\'s coat');
+ assert.equal(u.carCoatIBL.value,m.coatIBL,'the coat\'s sharpness stays the level\'s');
+ setCarEnvironment(env256,'corrida',false);assert.ok(u.carCoatF0.value===m.coatF0&&u.carCoatEnv.value===m.coatEnv&&u.carCoatLift.value===m.lift,'a captured map: the level\'s coat');
+ setCarEnvironment(env256,'corrida',true);setCarFinish('alto');assert.equal(u.carCoatEnv.value,b.coatEnv,'a level switch on the sky map keeps it');
+ setCarEnvironment(env256,'teste');assert.equal(u.carCoatEnv.value,FINISH_PROFILES.alto.coatEnv);
+}
+// The tail lamps' lens: its own clear coat (no gain, no lift: the paint's washed it amber in the sun), a deep red
+// reflector a fifth metal; the ring normals and the faint glow stay.
+const lens=finishMaterial(physical('Lanterna_vermelha',{color:0xff0000,emissive:0x000000})),lensShader=compile(lens);
+assert.equal(lens.userData.carFinish,'lens');assert.ok(lens.metalness<=.25&&lens.color.r<=.32&&lens.color.g<.01,'deep red, a little metal');assert.deepEqual(lens.color.toArray().map(v=>+v.toFixed(3)),LENS_RED.map(v=>+v.toFixed(3)));
+assert.ok(lens.normalMap&&lens.emissive.r>0,'rings and glow kept');
+assert.ok(lensShader.uniforms.carCoatEnv!==shader.uniforms.carCoatEnv&&lensShader.uniforms.carCoatEnv.value===LENS_COAT.coatEnv&&lensShader.uniforms.carCoatLift.value===0,'the lens\'s own coat');
+// The windows from outside: a dark mirror (darker tint, a reflectance floor), the sun's glint a small point.
+assert.ok(GLASS_LOOK.f0>=.08&&GLASS_LOOK.f0<=.1&&Math.abs(((GLASS_LOOK.ior-1)/(GLASS_LOOK.ior+1))**2-GLASS_LOOK.f0)<.005,'glass reflectance floor and its ior');
+assert.ok(GLASS_LOOK.sun>=8&&GLASS_LOOK.sun<=16&&GLASS_LOOK.tint>.19&&GLASS_LOOK.tint<.6,'glint and tint');
 const chrome=finishMaterial(new THREE.MeshStandardMaterial({name:'Aros_polidos',metalness:.9,roughness:.14,color:new THREE.Color(.65,.68,.72)}));
 assert.equal(chrome.metalness,1);assert.ok(chrome.roughness<=.08);assert.ok(chrome.color.g>.75,'brighter polished metal');
 const glass=finishMaterial(physical('Policarbonato_fume',{transparent:true,opacity:.19}));shader=compile(glass);
 assert.ok(shader.fragmentShader.includes('carGlass')&&shader.fragmentShader.indexOf('carAlpha')<shader.fragmentShader.indexOf('#include <opaque_fragment>'),'glass alpha before the opaque fragment');
 assert.equal(glass.opacity,.19,'the tint as main.js sets it');assert.equal(glass.customProgramCacheKey(),'car-glass');
+assert.ok(shader.uniforms.carGlassTint.value===GLASS_LOOK.tint&&shader.fragmentShader.includes(`vec3(${GLASS_LOOK.sun.toFixed(1)})`)&&glass.ior===GLASS_LOOK.ior,'smoked from outside, the glint capped');
+assert.ok(shader.fragmentShader.includes('mix(diffuseColor.a,max(diffuseColor.a,carGlassTint),carKeep)'),'the driver\'s own windscreen keeps its plain tint');
+assert.equal(compile(finishMaterial(physical('Lente_farol',{transparent:true,opacity:.35}))).uniforms.carGlassTint.value,0,'lamp lenses keep their own tint');
 const tyre=finishMaterial(new THREE.MeshStandardMaterial({name:'Pneu_slick_borracha',roughness:.78}));assert.ok(tyre.envMapIntensity<FINISH_PROFILES.alto.env);
 // The trim (black plastic, the cage, the cabin) carries the cars' map, so three.js ignores the scene's strength: it
 // keeps the world's own (sky.js), as the drivers and crew beside it do.
@@ -137,6 +183,17 @@ for(const file of ['car-finish.js','car-reflections.js'])assert.ok(published.inc
 // that exist, car 70's doors left to the Old Stock ads; the stripes cut before the sponsors that lie over them.
 {
  const L=await import('../teste/car-livery.js'),{RIVAL_ROSTER}=await import('../teste/race-roster.js'),{clipBelow,rivalDirt}=await import('../teste/immersive-visuals.js');
+ // The 99's side number no longer cuts across the tail's corner (a white sliver at the bumper's join from behind): its
+ // cells past DECAL_TAIL fold away, the rest of the number and every other sticker stay.
+ {
+  const model=new THREE.Group(),grid=()=>new THREE.PlaneGeometry(.48,.4,24,4).translate(-1.9,.6,.85);
+  const side=new THREE.Mesh(grid(),new THREE.MeshPhysicalMaterial({name:'Adesivo_passageiro_99'})),other=new THREE.Mesh(grid(),new THREE.MeshPhysicalMaterial({name:'Adesivo_passageiro_invent'}));
+  model.add(side,other);const tris=g=>{const out=[];for(let t=0;t<g.index.count;t+=3)out.push([0,1,2].map(k=>g.index.getX(t+k)));return out;};
+  const before=tris(side.geometry).filter(t=>new Set(t).size===3).length,folded=L.trimDecalTails(model),after=tris(side.geometry).filter(t=>new Set(t).size===3);
+  assert.ok(folded>0&&folded<before/4&&after.length===before-folded,`the corner's cells folded (${folded} of ${before})`);
+  const p=side.geometry.attributes.position;assert.ok(after.every(t=>t.reduce((x,i)=>x+p.getX(i),0)/3>=L.DECAL_TAIL.x),'what stays lies ahead of the corner');
+  assert.ok(tris(other.geometry).every(t=>new Set(t).size===3),'other stickers untouched');assert.equal(L.trimDecalTails(model),0,'once per geometry');
+ }
  const C=await import('../teste/car-finish.js');
  for(const e of RIVAL_ROSTER){
   const parts=L.liveryParts(e.number);assert.ok(parts.length>=4,`#${e.number} carries sponsors`);

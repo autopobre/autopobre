@@ -33,8 +33,9 @@ export const LOOK={
  // toe: below mid grey the contrast eases into black, reaching it at this slope, instead of clipping.
  // The clip turned all under about 7% (the shade of a car on the asphalt, tyres, wheel wells) pure black,
  // and after the filmic curve's own toe the sky's fill in a cast shadow (a fifth of the sun) sank to
- // about 5%; a little over 1 gives that shade its skylight back, black stays black.
- toe:1.4,
+ // about 5%; a little over 1 gives that shade its skylight back, black stays black. At 1.4 (with the occlusion's
+ // floor) the whole frame went milky: its darkest twentieth at L 17-26, the Forza shot's at 2.
+ toe:1.12,
  shadowTint:[.975,.995,1.03],highlightTint:[1.025,1.0,.965],
  vignette:.12,grain:.007,aberration:.00035,
  // Bloom: hot highlights only (sun on chrome and clear coat), averaged so a single glinting pixel
@@ -59,17 +60,19 @@ export const LOOK={
 
 // Speed smear (Desfoque de velocidade), driven by the camera's own motion and not the car's speed, so a paused
 // frame, a cut, the photo and the podium are sharp: shutter (s) of the streak; it builds from 'from' to 'full'
-// of the followed car's top speed (the Fusca feels it as the Opala does), eased over 'ease' s; it starts 'near'
+// of the followed car's top speed (the Fusca feels it as the Opala does) along a gentle curve (t^curve: the Opala at
+// 130 km/h about .7, so the mid-speed corners stream too), eased over 'ease' s; it starts 'near'
 // metres from the lens (the asphalt under the bottom of the frame) and is capped at 'cap' of the picture's size
 // close by and 'farCap' past about 20 m, so the crowd stays legible. SMEAR_CARS: the cars kept sharp (cinematic
 // render context smearCars, main.js).
-export const SPEED_SMEAR=Object.freeze({shutter:1/360,from:.3,full:.88,ease:.15,near:1.5,cap:.032,farCap:.008,cut:150});
+export const SPEED_SMEAR=Object.freeze({shutter:1/360,from:.18,full:.75,curve:1.1,ease:.15,near:1.5,cap:.032,farCap:.008,cut:150});
 // The phones' road smear (render context roadSmear: Médio's film look with the full smear off): only the near road,
 // three taps of colour with no depth per tap (the riding cars' boxes alone keep them out), nothing past about 20 m.
 export const ROAD_SMEAR=Object.freeze({taps:3,cap:.022,farCap:0});
-export const SMEAR_CARS=4;
+// Eight: in a lap-one pack the 5th to 8th car ahead smeared like scenery (a soft ghost at 30-60 m) with four.
+export const SMEAR_CARS=8;
 // The smear's strength for a camera moving at speed (m/s) behind a car with this top speed.
-export function smearStrength(speed,top=60){const t=THREE.MathUtils.clamp((speed/Math.max(top,1)-SPEED_SMEAR.from)/(SPEED_SMEAR.full-SPEED_SMEAR.from),0,1);return t*t*(3-2*t);}
+export function smearStrength(speed,top=60){const t=THREE.MathUtils.clamp((speed/Math.max(top,1)-SPEED_SMEAR.from)/(SPEED_SMEAR.full-SPEED_SMEAR.from),0,1);return t**SPEED_SMEAR.curve;}
 const vertexShader=`varying vec2 vUv;void main(){vUv=position.xy*.5+.5;gl_Position=vec4(position.xy,0.0,1.0);}`;
 const depthCommon=`
 uniform sampler2D tDepth;uniform float cameraNear,cameraFar;uniform vec2 projScale,depthSize;
@@ -173,20 +176,21 @@ void main(){float sum=0.0,wsum=0.0;
 const compositeShader=`${depthCommon}
 uniform sampler2D tColor,tAO,tBloom,tSun,tExposure,tDof;uniform float dofFocus,dofAmount;uniform float adaptKey;uniform vec2 adaptRange;
 uniform vec2 resolution,aoSize;uniform mat4 cameraWorld;uniform vec3 camPos,sunDir;uniform vec2 sunUV;uniform float sunFront;
-uniform float debugView,exposure,time,speedBlur,aoStrength,bloomStrength,vignette,grain,aberration,saturation,greenSaturation,contrast,toe,aoFloor,flare,streak,ghosts,clarity;
+uniform float debugView,exposure,time,frame,speedBlur,aoStrength,bloomStrength,vignette,grain,aberration,saturation,greenSaturation,contrast,toe,aoFloor,flare,streak,ghosts,clarity;
 uniform vec3 whiteBalance,shadowTint,highlightTint,hazeColor,hazeSun;uniform float hazeDensity,hazeFalloff,hazeStart,hazeBase;
-uniform vec3 smearShift;uniform vec4 smearBoxes[4],smearPlanes[4],smearFar;uniform vec4 smearReach;
+uniform vec3 smearShift;uniform vec4 smearBoxes[${SMEAR_CARS}],smearPlanes[${SMEAR_CARS}];uniform float smearFar[${SMEAR_CARS}];uniform vec4 smearReach;
 varying vec2 vUv;
 // The cars riding with the camera (speed smear): inside one's screen box, standing above the road under it and
-// nearer than its far end; the road inside the box is still the road and smears like the rest.
-float riding(vec2 p,vec3 v){float on=0.0;
- for(int i=0;i<4;i++){vec4 b=smearBoxes[i];
-  if(b.z>b.x&&p.x>b.x&&p.x<b.z&&p.y>b.y&&p.y<b.w&&-v.z<smearFar[i]&&dot(smearPlanes[i].xyz,v)-smearPlanes[i].w>.12)on=1.0;}
- return on;}
+// nearer than its far end; the road inside the box is still the road and smears like the rest. The slots are filled
+// in order (updateSmear), so the first empty one ends the list: a lone car costs one pass, not SMEAR_CARS.
+float riding(vec2 p,vec3 v){
+ for(int i=0;i<${SMEAR_CARS};i++){vec4 b=smearBoxes[i];if(b.z<=b.x)break;
+  if(p.x>b.x&&p.x<b.z&&p.y>b.y&&p.y<b.w&&-v.z<smearFar[i]&&dot(smearPlanes[i].xyz,v)-smearPlanes[i].w>.12)return 1.0;}
+ return 0.0;}
 // The road smear's cheaper test (no depth): inside any riding car's box.
-float boxed(vec2 p){float on=0.0;
- for(int i=0;i<4;i++){vec4 b=smearBoxes[i];if(b.z>b.x&&p.x>b.x&&p.x<b.z&&p.y>b.y&&p.y<b.w)on=1.0;}
- return on;}
+float boxed(vec2 p){
+ for(int i=0;i<${SMEAR_CARS};i++){vec4 b=smearBoxes[i];if(b.z<=b.x)break;if(p.x>b.x&&p.x<b.z&&p.y>b.y&&p.y<b.w)return 1.0;}
+ return 0.0;}
 vec3 RRTAndODTFit(vec3 v){vec3 a=v*(v+.0245786)-.000090537,b=v*(.983729*v+.432951)+.238081;return a/b;}
 vec3 aces(vec3 c){
  const mat3 i=mat3(vec3(.59719,.076,.0284),vec3(.35458,.90834,.13383),vec3(.04823,.01566,.83777));
@@ -225,15 +229,29 @@ void main(){
   if(len>cap)flow*=cap/len;
   if(min(len,cap)*resolution.y>1.5){
    // Six taps across the shutter (smearReach.w; the phones' road smear three, colour only), centred on now,
-   // jittered per pixel so they never band.
-   vec3 acc=color;float w=1.0,jitter=ign(gl_FragCoord.xy)-.5,taps=smearReach.w;bool full=taps>4.5;
+   // jittered per pixel so they never band, the pattern moved every frame (a still one printed a halftone dot screen
+   // on hard edges: a car's shadow, the kerb's colour join, the bonnet's edge). Where the shutter's two ends differ a
+   // lot the dither read as dots: there it goes as the taps close up (a step under two or three pixels is no band).
+   // (The halftone left on a cast shadow's edge is the sun shadow's own: three.js turns its five PCF taps by a still
+   // per-pixel noise.)
+   float taps=smearReach.w;bool full=taps>4.5;
+   float jitter=ign(gl_FragCoord.xy+frame*5.588)-.5;
+   if(full){float a=luma(texture2D(tColor,clamp(uv-flow*.5,vec2(.001),vec2(.999))).rgb),b=luma(texture2D(tColor,clamp(uv+flow*.5,vec2(.001),vec2(.999))).rgb);
+    jitter*=1.0-smoothstep(.15,.5,abs(a-b)/(a+b+.05))*(1.0-smoothstep(2.0,5.0,min(len,cap)*resolution.y/taps));}
+   // Next to a car kept sharp (its box, a pixel or two off its edge) the smear fades in over a few pixels: a hard cut
+   // there crawled along the bonnet from the hood view. Two looks, 2 px either way along the smear (the cut shows
+   // along it): in the hood view the box is the whole screen, and four looks round cost every smeared pixel twice that.
+   // (flow is over a pixel and a half long here: never a zero vector)
+   float keep=1.0;
+   if(full&&boxed(uv)>.5){vec2 o=normalize(flow)*2.0/resolution;keep=1.0-.5*(riding(uv+o,viewPosAt(uv+o))+riding(uv-o,viewPosAt(uv-o)));}
+   vec3 acc=color,still=color;float w=1.0;
    for(int i=0;i<6;i++){
     if(float(i)>=taps)break;
     vec2 tap=clamp(uv+flow*((float(i)+.5+jitter*.9)/taps-.5),vec2(.001),vec2(.999));float weight;
     if(full){vec3 tv=viewPosAt(tap);weight=exp(-abs(tv.z-viewPos.z)/max(1.0,z*.12))*(1.0-riding(tap,tv));}else weight=1.0-boxed(tap);
     acc+=texture2D(tColor,tap).rgb*weight;w+=weight;
    }
-   color=acc/w;
+   color=mix(still,acc/w,keep);
   }
  }
  #ifdef BLOOM
@@ -324,6 +342,9 @@ export async function compileInSlices(renderer,scene,camera,target=()=>null,look
  let whole=false;
  const split=o=>{if(fits(o))units.push(o);else if(!drawn(o))for(const c of o.children)split(c);else if(holdsLight(o))whole=true;else units.push(o);};
  split(scene);
+ // A rival's close model out of the scene graph while it is far (immersive-visuals.js detailLevel) is compiled too: a
+ // recompile then (a weather, a level) left its programs to be built at the first close fight.
+ const detached=[];scene.traverse(o=>{const d=o.userData?.detail;if(d?.isObject3D&&!d.parent)detached.push(d);});for(const d of detached)split(d);
  // compile() also walks the whole scene for its lights at every call: some 6000 objects, a millisecond,
  // times the two or three thousand subtrees of a circuit. The top-level children with no light are hidden
  // from that walk for the task and shown again before it ends (compile() takes every material, shown or not).
@@ -365,8 +386,8 @@ export function createCinematic(renderer,{mobile=false,level=mobile?'lite':'full
  const sunMaterial=pass(sunShader,{tDepth:{value:null},tColor:{value:null},sunUV:{value:new THREE.Vector2()},aspect:{value:new THREE.Vector2(1,1)}});
  const compositeUniforms={...depthUniforms(),tColor:{value:null},tAO:{value:null},tBloom:{value:null},tSun:{value:null},
   resolution:{value:new THREE.Vector2()},aoSize:{value:new THREE.Vector2()},cameraWorld:{value:new THREE.Matrix4()},camPos:{value:new THREE.Vector3()},
-  sunDir:{value:new THREE.Vector3(0,1,0)},sunUV:{value:new THREE.Vector2()},sunFront:{value:0},time:{value:0},speedBlur:{value:0},
-  smearShift:{value:new THREE.Vector3()},smearBoxes:{value:Array.from({length:SMEAR_CARS},()=>new THREE.Vector4())},smearPlanes:{value:Array.from({length:SMEAR_CARS},()=>new THREE.Vector4())},smearFar:{value:new THREE.Vector4()},
+  sunDir:{value:new THREE.Vector3(0,1,0)},sunUV:{value:new THREE.Vector2()},sunFront:{value:0},time:{value:0},frame:{value:0},speedBlur:{value:0},
+  smearShift:{value:new THREE.Vector3()},smearBoxes:{value:Array.from({length:SMEAR_CARS},()=>new THREE.Vector4())},smearPlanes:{value:Array.from({length:SMEAR_CARS},()=>new THREE.Vector4())},smearFar:{value:new Array(SMEAR_CARS).fill(0)},
   smearReach:{value:new THREE.Vector4(SPEED_SMEAR.near,SPEED_SMEAR.cap,SPEED_SMEAR.farCap,6)},
   tDof:{value:null},dofFocus:{value:10},dofAmount:{value:0},tExposure:{value:null},adaptKey:{value:.2},adaptRange:{value:new THREE.Vector2(1,1)},debugView:{value:0},exposure:{value:0},aoStrength:{value:0},bloomStrength:{value:0},vignette:{value:0},grain:{value:0},aberration:{value:0},saturation:{value:1},greenSaturation:{value:1},contrast:{value:1},toe:{value:1},aoFloor:{value:0},flare:{value:0},streak:{value:0},ghosts:{value:0},clarity:{value:0},
   whiteBalance:{value:new THREE.Vector3()},shadowTint:{value:new THREE.Vector3()},highlightTint:{value:new THREE.Vector3()},hazeColor:{value:new THREE.Vector3()},hazeSun:{value:new THREE.Vector3()},
@@ -422,7 +443,9 @@ export function createCinematic(renderer,{mobile=false,level=mobile?'lite':'full
   if(!smear.strength)return;
   if(full)u.smearReach.value.set(SPEED_SMEAR.near,SPEED_SMEAR.cap,SPEED_SMEAR.farCap,6);else u.smearReach.value.set(SPEED_SMEAR.near,ROAD_SMEAR.cap,ROAD_SMEAR.farCap,ROAD_SMEAR.taps);
   u.smearShift.value.copy(smear.velocity).applyMatrix3(smear.view.setFromMatrix4(camera.matrixWorldInverse)).multiplyScalar(SPEED_SMEAR.shutter*smear.strength);
-  for(let i=0;i<SMEAR_CARS;i++){const c=cars?.[i];if(c){u.smearBoxes.value[i].fromArray(c.box);u.smearPlanes.value[i].fromArray(c.plane);}else u.smearBoxes.value[i].set(0,0,0,0);u.smearFar.value.setComponent(i,c?c.far:0);}
+  // (packed from slot 0 with no gap: the shader stops at the first empty box)
+  let k=0;for(let i=0;cars&&i<cars.length&&k<SMEAR_CARS;i++){const c=cars[i];if(!c)continue;u.smearBoxes.value[k].fromArray(c.box);u.smearPlanes.value[k].fromArray(c.plane);u.smearFar.value[k++]=c.far;}
+  for(;k<SMEAR_CARS;k++){u.smearBoxes.value[k].set(0,0,0,0);u.smearFar.value[k]=0;}
  }
  // Materials compile for the render target they draw into: with the look on, the scene is
  // linear and un-tone-mapped both on screen and off it, so load-time compiles stay valid.
@@ -505,7 +528,7 @@ export function createCinematic(renderer,{mobile=false,level=mobile?'lite':'full
    adaptMaterial.uniforms.tLum.value=lumTarget.texture;adaptMaterial.uniforms.tPrev.value=adapt[0].texture;
    adaptMaterial.uniforms.rate.value=adaptReset?1:1-Math.exp(-Math.min(dt,.1)*look.adaptSpeed);draw(adaptMaterial,adapt[1]);
    adapt.reverse();adaptReset=false;u.tExposure.value=adapt[0].texture;u.adaptKey.value=look.adaptKey;u.adaptRange.value.set(...look.adaptRange);
-   u.tColor.value=hdr.texture;u.resolution.value.set(width,height);u.cameraWorld.value.copy(camera.matrixWorld);u.camPos.value.copy(camera.position);u.time.value=time;
+   u.tColor.value=hdr.texture;u.resolution.value.set(width,height);u.cameraWorld.value.copy(camera.matrixWorld);u.camPos.value.copy(camera.position);u.time.value=time;u.frame.value=frame;
    u.debugView.value=look.debug;u.exposure.value=look.exposure;u.aoStrength.value=1;u.aoFloor.value=look.aoFloor;u.toe.value=look.toe;u.bloomStrength.value=look.bloom;u.vignette.value=look.vignette;u.grain.value=look.grain;u.aberration.value=look.aberration;
    u.saturation.value=look.saturation;u.greenSaturation.value=look.greenSaturation;u.contrast.value=look.contrast;u.flare.value=look.flare;u.streak.value=look.streak;u.ghosts.value=look.ghosts;u.clarity.value=profile().clarity;
    u.whiteBalance.value.set(...look.whiteBalance);u.shadowTint.value.set(...look.shadowTint);u.highlightTint.value.set(...look.highlightTint);

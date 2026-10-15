@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
-import {createPeople,POSES,IDLE_ARMS,IDLE_GESTURES,IDLE_KINDS,applyPose,clonePose,IdleMind,Idler,updatePeople,peopleInfo} from '../teste/pit-crew.js';
+import {createPeople,POSES,IDLE_ARMS,IDLE_GESTURES,IDLE_KINDS,applyPose,clonePose,IdleMind,Idler,updatePeople,peopleInfo,setPeopleReach} from '../teste/pit-crew.js';
 
 // People idle instead of standing like statues: the gesture targets land the hands where
 // they should, everyone moves over time, cars catch the marshals' and cameramen's eyes.
@@ -50,6 +50,14 @@ const entries=[
  {outfit:{top:0xe8702a,hat:'cap'},pose:'rest',idle:'marshal',x:300,y:0,z:0,yaw:0},
  {outfit:{top:0x24292e,hat:'headset'},pose:'stand',idle:'camera',x:0,y:5.9,z:300,yaw:0,camera:{x:0,y:5.9,z:300,back:.62,drop:1.25}},
 ];
+// Standing people are a little taller or shorter each; anyone seated keeps the height of the seat, whatever their idle
+// (Box 99's desk engineers: a stool and the 'desk' idle, their hands on the desk).
+{
+ const desk=people.crowd([{outfit:{},pose:'stool',idle:'desk',x:0,y:0,z:0,yaw:0},{outfit:{},pose:'sit',x:1,y:0,z:0,yaw:0},...[2,3,4,5].map(x=>({outfit:{},pose:'stand',x,y:0,z:x*.7,yaw:0}))],{name:'Estatura',cell:48});
+ const hips=desk.children[0].skeleton.bones.filter(b=>b.name==='Quadril').map(b=>b.scale.x);
+ assert.ok(hips[0]===1&&hips[1]===1,`seated: the seat's height (${hips})`);
+ assert.ok(hips.slice(2).every(s=>s>=.94&&s<=1.06)&&new Set(hips.slice(2)).size>1,`standing: each their own height (${hips})`);
+}
 const group=people.crowd(entries,{name:'Teste',cell:48});scene.add(group);
 assert.equal(group.children.length,3,'one skinned mesh per neighbourhood');
 for(const m of group.children){assert(m.isSkinnedMesh&&!Array.isArray(m.material),'a single skinned draw call each');}
@@ -93,6 +101,15 @@ camera.position.set(0,6,308);step(1);
 // Every skinned vertex stays inside the group's culling sphere while they idle.
 for(const m of group.children){m.updateMatrixWorld(true);const sphere=m.boundingSphere;for(let i=0;i<m.geometry.attributes.position.count;i+=7){m.getVertexPosition(i,v);assert(sphere.containsPoint(v),`${m.name} vertex inside its bounding sphere`);}}
 
+// Their reach (PEOPLE_REACH) goes by the lens: 500 m off, past a 250 m reach through the chase lens, in it through the
+// broadcast camera's long one.
+{
+ const far=people.crowd([{outfit:{},pose:'stand',x:500,y:0,z:0,yaw:0}],{name:'Lente',cell:48});scene.add(far);setPeopleReach(250);
+ const lens=new THREE.PerspectiveCamera(58,16/9,.1,3000);scene.add(lens);lens.position.set(0,2,0);
+ scene.updateMatrixWorld();updatePeople(1/30,lens,[]);assert.equal(far.children[0].visible,false,'past the reach through the chase lens');
+ lens.fov=4.5;lens.updateProjectionMatrix();updatePeople(1/30,lens,[]);assert.equal(far.children[0].visible,true,'in it through a long lens');
+ setPeopleReach(800);scene.remove(far,lens);
+}
 // Taken out of the scene (another circuit loaded), the crowd leaves the update list.
 scene.remove(group);step(.1);assert(!peopleInfo().some(c=>c.name.startsWith('Teste')),'removed crowds stop updating');
 

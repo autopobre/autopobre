@@ -109,6 +109,62 @@ export function brakeBoardSpots(data,{runs=cornerRuns(data),bands=sceneryBands(d
 // Curvelo's service lane and garages (pit-lane.js) on the infield side of its main straight.
 function pitBlocked(data,s,off){const lane=pitLane(data,s);return !!lane&&off>0&&off<lane.reach+4;}
 
+// --- Where a flag's cloth can go. The cloth as the vertex shader moves it (VERTEX_HEAD flagCloth), in the pole's
+// frame: u out from the pole, v down from its top, dir the unit way it flies (x, z); [x, y, z] from the pole's top.
+export function clothPoint(u,v,dir,lift,droop,amp,wave,w,h,taper){
+ const a0=lift*Math.PI/2,k=Math.max(a0*droop,1e-3);
+ const along=w*(Math.cos(a0*(1-droop*u))-Math.cos(a0))/k,down=w*(Math.sin(a0)-Math.sin(a0*(1-droop*u)))/k;
+ const ripple=amp*w*u**1.15*(Math.sin(7*u-wave+v*1.4)+.35*Math.sin(17*u-wave*1.8-v*2.3));
+ return [dir[0]*along-dir[1]*ripple,-h*(.5+(v-.5)*(1-taper*u))-down+.25*ripple*Math.sin(3*u+wave*.3),dir[1]*along+dir[0]*ripple];
+}
+// Every state the shader can put the cloth in (lift from the calmest hang to flying straight out, light or heavy
+// cloth, the biggest ripple a gust can add at that lift, any heading): pairs of how far out from the pole and how
+// low under its top (m), the lowest first at each reach. A rod (folded under a car) can lay its pole flat: its reach
+// takes the pole's length and its lowest is the ground.
+export function flagSweep(t){
+ const taper=t.pattern===PATTERN.pennant?.92:0,pairs=[];
+ for(let lift=.1;lift<=1.0001;lift+=.05)for(const heavy of [0,.5,1]){
+  const droop=(1-lift)*(.3+.4*heavy)+.02,g=lift>.999?1.3:Math.max(0,(lift-.1)/1.1),amp=((.05+.07*lift)+.2*g)*1.15;
+  for(let u=0;u<=1.0001;u+=.05)for(const v of [0,1]){
+   const c=clothPoint(u,v,[1,0],lift,droop,0,0,t.w,t.h,taper),wobble=amp*t.w*u**1.15*1.35;
+   pairs.push([Math.hypot(c[0],wobble),c[1]-.25*wobble,c[1]+.25*wobble]);
+  }
+ }
+ const lean=Math.hypot(...(t.tilt??[0,0]))*t.pole,rod=t.kind==='rod';
+ return {reach:Math.max(...pairs.map(p=>p[0]))+lean+(rod?t.pole:0),lean:lean+(rod?t.pole:0),rod,pairs};
+}
+// Whether the cloth (or the pole) can enter a box: {x, y (track data), ax, ay: its unit width axis, hu: half width,
+// v0..v1: across it (along the axis turned left), z0..z1: its heights}, or a post {x, y, r, z0, z1}. t at its spot.
+export function sweepHits(t,sweep,box){
+ let d;
+ if(box.r!==undefined)d=Math.max(0,Math.hypot(t.x-box.x,t.y-box.y)-box.r);
+ else{const dx=t.x-box.x,dy=t.y-box.y,u=dx*box.ax+dy*box.ay,v=-dx*box.ay+dy*box.ax;d=Math.hypot(Math.max(0,Math.abs(u)-box.hu),Math.max(0,box.v0-v,v-box.v1));}
+ if(d>sweep.reach)return false;
+ const top=t.z+t.pole,base=sweep.rod?t.z:t.z;
+ // The pole (a rod folds along the ground).
+ if(d<=(t.radius??0)+sweep.lean+.02&&Math.min(top,box.z1)>Math.max(base,box.z0)+.01)return true;
+ // The cloth: any state reaching the box's distance that dips under its top and still rises over its bottom.
+ const near=Math.max(0,d-sweep.lean);
+ for(const [r,low,high] of sweep.pairs)if(r>=near&&(sweep.rod?t.z:top+low)<box.z1&&top+high>box.z0)return true;
+ return false;
+}
+// The boards a flag must never sweep through: each billboard's backing, its legs, catwalk and lamps (track-surface.js
+// builds them from billboardFormat) and the 300/200/100 brake boards (here, posts and all, as a round post).
+export function boardBoxes(data,billboards=billboardSpots(data),brake=[]){
+ const probe=new TestCar(data),out=[];
+ for(const b of billboards){
+  const {p,side}=b,f=billboardFormat(data,b);probe.index=b.index;const ground=probe.sample(b.x,b.y).z,ry=Math.atan2(-p[7]*.8+p[8]*side*.6,p[8]*.8+p[7]*side*.6)+f.turn,ax=Math.cos(ry),ay=Math.sin(ry);
+  // (the face's front, local +z of the board's build, is the axis turned right in the track's x/y: v < 0)
+  const box=(hu,v0,v1,z0,z1,part)=>out.push({x:b.x,y:b.y,ax,ay,hu,v0,v1,z0:ground+z0,z1:ground+z1,part,slot:b.slot});
+  const legTop=f.centre-(f.h+.4)/2+.05;
+  box((f.w+.4)/2,-.11,.11,legTop-.05,f.top,'backing');
+  box(Math.max(...f.legs.map(Math.abs))+.25,-.25,.25,-.6,legTop,'legs');
+  if(f.lamps){box(f.w*.45,-.78,-.06,f.centre-f.h/2-.3,f.centre-f.h/2-.22,'catwalk');box(f.w/2-f.w/(2*f.lamps)+.26,-1.2,0,f.top,f.top+.45,'lamps');}
+ }
+ for(const b of brake){probe.index=trackPoint(data,b.s).i;const z=probe.sample(b.x,b.y).z;out.push({x:b.x,y:b.y,r:.75,z0:z-.05,z1:z+1.7,part:'brake'});}
+ return out;
+}
+
 // Every flag, rod and board of a circuit, found once per track data: items in instance order (tier,
 // then spread round the lap), the instance count per level, the boards and the crossing targets.
 const plans=new WeakMap();
@@ -203,11 +259,12 @@ function buildPlan(data){
   add('roof',big.has(t)||rand()<.5?2:3,x,y,roofHeight(t.b,t.b.roof.from)+.15,{s:t.b.s,lean:.03,c1:o.pattern===PATTERN.chequer?0x111111:team[0],c2:o.pattern===PATTERN.chequer?0xf2f2f2:team[1],...o});
  });
  // Small flags on the billboards' top corners (track-surface.js builds each board its own size), in
- // sponsors' colours, cut one of three ways.
+ // sponsors' colours, cut one of three ways. The pole is tall enough that the cloth hanging slack in a calm
+ // (its own length straight down under its height) still clears the board's top.
  for(const b of billboards){
   const {p,side}=b,f=billboardFormat(data,b);probe.index=b.index;const ground=probe.sample(b.x,b.y).z,ry=Math.atan2(-p[7]*.8+p[8]*side*.6,p[8]*.8+p[7]*side*.6)+f.turn;
-  for(const lx of [-(f.w/2+.1),f.w/2+.1]){const roll=rand(),team=TEAMS[Math.floor(rand()*TEAMS.length)];
-   add('billboard',3,b.x+Math.cos(ry)*lx,b.y+Math.sin(ry)*lx,ground+f.top,{s:p[0],pole:1.4+.4*rand(),radius:.03,w:.9+.2*rand(),h:.62+.1*rand(),pattern:roll<.45?PATTERN.halves:roll<.8?PATTERN.diagonal:PATTERN.stripes,c1:team[0],c2:team[1],lean:.03});}
+  for(const lx of [-(f.w/2+.1),f.w/2+.1]){const roll=rand(),team=TEAMS[Math.floor(rand()*TEAMS.length)],w=.9+.2*rand(),h=.62+.1*rand(),pole=h+1.05*w+.2+.35*rand();
+   add('billboard',3,b.x+Math.cos(ry)*lx,b.y+Math.sin(ry)*lx,ground+f.top,{s:p[0],pole,radius:.03,w,h,pattern:roll<.45?PATTERN.halves:roll<.8?PATTERN.diagonal:PATTERN.stripes,c1:team[0],c2:team[1],lean:.03});}
  }
  // Flexible white-and-orange rods just past the kerb: at each corner's exit on the outside (Médio
  // up), and at its apex inside and turn-in outside.
@@ -218,14 +275,19 @@ function buildPlan(data){
   add('rod',tier,x,y,null,{s,pole:1.08+.25*rand(),radius:.028+.008*rand(),w:.34+.1*rand(),h:.2+.06*rand(),pattern:PATTERN.pennant,c1:0xff5a0a,c2:0xf4f4f0,lean:.06});
  }
 
+ // No cloth and no pole ever sweeps through a board (billboards where they finally stand, the brake boards): a flag
+ // whose every reachable state (flagSweep) could enter one is left out.
+ // (only flags within a cloth's length of a box are swept: the rest of the lap costs nothing at load)
+ const boxes=boardBoxes(data,billboards,boards),close=t=>boxes.filter(b=>Math.hypot(t.x-b.x,t.y-b.y)<(b.r??b.hu+Math.max(-b.v0,b.v1))+t.w*1.6+t.pole+.5);
+ const swept=items.filter(t=>{const near=close(t);if(!near.length)return true;const sweep=flagSweep(t);return !near.some(b=>sweepHits(t,sweep,b));}),rejected=items.length-swept.length;
  // Instance order: by tier, each tier spread round the lap so a capped count still covers it.
  const ordered=[];
- for(let tier=0;tier<=3;tier++)ordered.push(...items.filter(t=>t.tier===tier).sort((u,v)=>u.s-v.s).map((t,k)=>[spread(k),t]).sort((u,v)=>u[0]-v[0]).map(([,t])=>t));
+ for(let tier=0;tier<=3;tier++)ordered.push(...swept.filter(t=>t.tier===tier).sort((u,v)=>u.s-v.s).map((t,k)=>[spread(k),t]).sort((u,v)=>u[0]-v[0]).map(([,t])=>t));
  const counts={};
  for(const level of TIER_NAMES){const q=FLAG_LEVELS[level];counts[level]=Math.min(q.cap,ordered.filter(t=>t.tier<=q.tier).length);}
  ordered.forEach((t,index)=>{t.index=index;targets.push({s:t.s,d:t.d,kind:t.kind,index,up:t.up});});
  for(const b of boards)targets.push({s:b.s,d:b.d,kind:'board',index:-1,up:0});
- return {length:L,items:ordered,counts,boards,targets:targets.sort((u,v)=>u.s-v.s),runs};
+ return {length:L,items:ordered,counts,boards,targets:targets.sort((u,v)=>u.s-v.s),runs,boxes,rejected};
 }
 
 // The cars' wake on the cloth: when a car (player or rival, from its TestCar surface.s/.d) goes by a
@@ -425,13 +487,16 @@ function clothMaterial(uniforms){
  diffuseColor.rgb=vFlagKind.x<.5?flagPaint(vFlagUv,vFlagKind.y,vFlagTint,vFlagTint2):vFlagKind.z>.5?(mod(floor(vFlagUv.y*6.0),2.0)<.5?vFlagTint:vFlagTint2):vec3(.55,.56,.57);`)
    .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\n roughnessFactor=vFlagMat.x;')
    .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\n metalnessFactor=vFlagMat.y;')
-   // Thin cloth: sun on its far side shows through.
+   // Thin cloth: sun on its far side shows through, and looking toward the sun through it the weave glows in its own
+   // colour (forward scatter, whatever way the cloth faces): a backlit flag is a lit colour, not a black rag. The
+   // sun's light is the weather's (dim at dusk, the moon's at night), so it never glows in the dark.
    .replace('#include <lights_fragment_end>',`#include <lights_fragment_end>
 #if NUM_DIR_LIGHTS > 0
- if(vFlagKind.x<.5)reflectedLight.directDiffuse+=diffuseColor.rgb*directionalLights[0].color*max(-dot(normal,directionalLights[0].direction),0.0)*.3;
+ if(vFlagKind.x<.5){vec3 flagSun=directionalLights[0].color,flagTo=directionalLights[0].direction;float flagInto=max(dot(-geometryViewDir,flagTo),0.0);
+  reflectedLight.directDiffuse+=diffuseColor.rgb*flagSun*(max(-dot(normal,flagTo),0.0)*.3+.35*flagInto*flagInto*flagInto);}
 #endif`);
  };
- material.customProgramCacheKey=()=>'trackside-flags-v2';return material;
+ material.customProgramCacheKey=()=>'trackside-flags-v3';return material;
 }
 function depthMaterial(uniforms){
  const material=new THREE.MeshDepthMaterial({side:THREE.DoubleSide});

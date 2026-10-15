@@ -10,9 +10,15 @@ import {surfaceKind,KERB_WIDTH} from './kerb-contact.js';
 // rivals' dust and the grit and grass kicked up at the verge, so they never eat the player's smoke.
 // Bits live a moment (BIT_LIFE s), fade before they reach the lens and never grow past BIT_PIXELS.
 export const BIT_LIFE=[.22,.38],BIT_PIXELS=12;
+// A wheel riding a painted kerb at speed (kerbGrit, Sensação de velocidade Média and up) scuffs up a faint puff of
+// grit: from KERB_GRIT.from m/s, at most KERB_GRIT.rate puffs a second a wheel, thin (strength) and short-lived, and
+// now and then a speck of grit (bits). Never off a run-off or the grass (that is dirt, and raises its own cloud).
+export const KERB_GRIT=Object.freeze({from:12,full:34,rate:9,strength:.2,life:[.45,.75],size:.16,bits:.3,wet:.3});
 export class TyreSmoke {
  constructor(capacity=256,extra=256){
-  this.capacity=capacity;this.extra=extra;this.cursor=0;this.extraCursor=0;this.total=0;this.extraTotal=0;this.emit=[0,0,0,0];this.grit=[0,0,0,0];this.debris=false;
+  this.capacity=capacity;this.extra=extra;this.cursor=0;this.extraCursor=0;this.total=0;this.extraTotal=0;this.emit=[0,0,0,0];this.grit=[0,0,0,0];this.kerb=[0,0,0,0];this.debris=false;this.kerbGrit=false;
+  // The track's wetness (weather.js, main.js applyWeather): a wet kerb throws no grit.
+  this.wet=0;
   // soft(x,y): whether the ground off the track there throws dust (null: everywhere off it).
   this.soft=null;
   const size=capacity+extra;this.size=size;
@@ -56,7 +62,7 @@ export class TyreSmoke {
  reset(){for(const p of this.particles)p.age=p.life;this.emit.fill(0);this.grit.fill(0);this.geometry.attributes.puff.array.fill(0);this.geometry.attributes.puff.needsUpdate=true;}
  // The next particle of the player's ring, or of the speed-effects ring (extra).
  next(extra=false){
-  if(extra&&this.extra){const q=this.particles[this.capacity+this.extraCursor];this.extraCursor=(this.extraCursor+1)%this.extra;this.extraTotal++;return q;}
+  if(extra&&this.extra){const q=this.particles[this.capacity+this.extraCursor];this.extraCursor=(this.extraCursor+1)%this.extra;this.extraTotal++;q.kerb=false;return q;}
   const q=this.particles[this.cursor];this.cursor=(this.cursor+1)%this.capacity;this.total++;return q;
  }
  // Grit and grass bits flung from a wheel running at the verge: thrown up and out, gone a moment later.
@@ -81,7 +87,7 @@ export class TyreSmoke {
   if(dt<=0)return;
   const c=Math.cos(car.heading),s=Math.sin(car.heading),speed=Math.hypot(car.vx,car.vy);
   for(let i=0;i<wheels.length;i++){
-   const w=wheels[i],x=car.x+c*w.x-s*w.y,y=car.y+s*w.x+c*w.y,p=car.sample(x,y,car.index),soil=this.soil(surfaceKind(car.data,p),x,y),paved=!soil;
+   const w=wheels[i],x=car.x+c*w.x-s*w.y,y=car.y+s*w.x+c*w.y,p=car.sample(x,y,car.index),kind=surfaceKind(car.data,p),soil=this.soil(kind,x,y),paved=!soil;
    // Under water (LakeContact sets car.wet) there is no dust: the lake throws spray instead.
    const down=!car.wheelLoad||car.wheelLoad[i]>0,scraping=!!car.hullContact&&!paved&&speed>3&&!(car.wetHull>.02),dust=!paved&&!(car.wet?.[i]>.01)&&(speed>4&&down||scraping);
    // Tyres throw dust only while touching the ground; a body sliding over soil raises its own cloud.
@@ -96,8 +102,25 @@ export class TyreSmoke {
      age:0,life:2+Math.random()*1.1,size:.28+Math.random()*.18,strength:intensity,dust:0});
    }
    if(this.debris&&down&&!(car.wet?.[i]>.01))this.gritFrom(i,this.grit,x,y,p,soil,speed,car,w.y>0?1:-1,dt);
+   if(kind==='kerb'&&down)this.kerbFrom(i,this.kerb,x,y,p.z,speed,car,dt);
   }
   this.age(dt);
+ }
+ // A faint scuff of grit off a painted kerb (kerbGrit): thin grey puffs and a speck now and then, in the second ring.
+ // Fading out as the track gets wet (none from KERB_GRIT.wet: a drizzle's .55 and the rain's 1 lay the dust).
+ // (q.kerb: the player's own wheels' scuff, for the checks: interlagos.speedInfo().particles.kerb)
+ kerbFrom(i,emit,x,y,z,speed,car,dt){
+  if(!this.kerbGrit||car.wet?.[i]>.01||this.wet>=KERB_GRIT.wet)return;
+  const share=Math.min(1,Math.max(0,(speed-KERB_GRIT.from)/(KERB_GRIT.full-KERB_GRIT.from)))*(1-this.wet/KERB_GRIT.wet);if(share<=0)return;
+  emit[i]+=share*KERB_GRIT.rate*dt;
+  while(emit[i]>=1){
+   emit[i]--;const q=this.next(true),bit=Math.random()<KERB_GRIT.bits;q.kerb=emit===this.kerb;
+   // (a bit: a speck of grit, never a grass blade, flicked up behind the tyre)
+   Object.assign(q,bit?{x:x+(Math.random()-.5)*.2,y:z+.05,z:-y+(Math.random()-.5)*.2,vx:car.vx*.2+(Math.random()-.5)*.8,vy:.6+Math.random()*1.1,vz:-car.vy*.2+(Math.random()-.5)*.8,
+     age:0,life:BIT_LIFE[0]+Math.random()*(BIT_LIFE[1]-BIT_LIFE[0]),size:.025+Math.random()*.02,strength:.8,dust:2.7+Math.random()*.25,floor:z+.02}
+    :{x:x+(Math.random()-.5)*.2,y:z+.05,z:-y+(Math.random()-.5)*.2,vx:car.vx*.12+(Math.random()-.5)*.5,vy:.1+Math.random()*.15,vz:-car.vy*.12+(Math.random()-.5)*.5,
+     age:0,life:KERB_GRIT.life[0]+Math.random()*(KERB_GRIT.life[1]-KERB_GRIT.life[0]),size:KERB_GRIT.size+Math.random()*.08,strength:KERB_GRIT.strength*(.6+.4*share),dust:1,floor:z});
+  }
  }
  // At the verge at speed (speedEffects 'completa'): a wheel on the grass or soil beside the track (never a
  // kerb, the asphalt or a paved run-off) flings a few bits outward.
@@ -117,7 +140,8 @@ export class TyreSmoke {
   const c=Math.cos(car.heading),s=Math.sin(car.heading),emit=car.dustEmit??=[0,0,0,0],grit=car.gritEmit??=[0,0,0,0];
   SUSPENSION_WHEELS.forEach((w,k)=>{
    if(car.wheelLoad&&!(car.wheelLoad[k]>0)||car.wet?.[k]>.01)return;
-   const ox=c*w.x-s*w.y,oy=s*w.x+c*w.y,wheel=car.sample(car.x+ox,car.y+oy,car.index),soil=this.soil(surfaceKind(car.data,wheel),car.x+ox,car.y+oy);
+   const ox=c*w.x-s*w.y,oy=s*w.x+c*w.y,wheel=car.sample(car.x+ox,car.y+oy,car.index),kind=surfaceKind(car.data,wheel),soil=this.soil(kind,car.x+ox,car.y+oy);
+   if(kind==='kerb')this.kerbFrom(k,car.kerbEmit??=[0,0,0,0],car.x+ox,car.y+oy,wheel.z,speed,car,dt);
    if(soil){
     const intensity=Math.min(.75,(speed-4)/22)*(w.front?.45:1);emit[k]+=intensity*22*dt;
     // Seen from further away than the player's own: bigger, thicker puffs.
@@ -163,7 +187,7 @@ export class TyreSmoke {
  info(){
   const live=p=>p.age<p.life,main=this.particles.slice(0,this.capacity),extra=this.particles.slice(this.capacity);
   return {active:main.filter(live).length,total:this.total,capacity:this.capacity,drawCalls:1,
-   speedFx:{active:extra.filter(live).length,dust:extra.filter(p=>live(p)&&p.dust===1).length,bits:extra.filter(p=>live(p)&&p.dust>=2).length,total:this.extraTotal,capacity:this.extra}};
+   speedFx:{active:extra.filter(live).length,dust:extra.filter(p=>live(p)&&p.dust===1).length,bits:extra.filter(p=>live(p)&&p.dust>=2).length,kerb:extra.filter(p=>live(p)&&p.kerb).length,total:this.extraTotal,capacity:this.extra}};
  }
  dispose(){this.geometry.dispose();this.material.dispose();}
 }

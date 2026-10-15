@@ -37,8 +37,11 @@ for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasi
  else{
  assert(banners.length>=20,`${id}: ${banners.length} banners`);
  const lengths=banners.map(b=>b.s1-b.s0);for(const b of banners)rows.set(b.row,(rows.get(b.row)??0)+1);
- assert(lengths.every(l=>l>.5&&l<=9.41),`${id}: banners up to 9.4 m`);
- assert(Math.max(...lengths)-Math.min(...lengths.filter(l=>l>5))>2,`${id}: banners of different lengths`);
+ assert(lengths.every(l=>l>.5&&l<=10.61),`${id}: banners up to 10.6 m`);
+ assert(Math.max(...lengths)-Math.min(...lengths.filter(l=>l>4.5))>3,`${id}: banners of different lengths`);
+ // Never three banners of one sponsor side by side (tied within a metre of each other): no stamped rows on the rail.
+ let triples=0;for(let i=2;i<banners.length;i++){const [a,b,c]=[banners[i-2],banners[i-1],banners[i]];if(a.side===c.side&&b.side===c.side&&a.row===b.row&&b.row===c.row&&b.s0-a.s1<1&&c.s0-b.s1<1)triples++;}
+ assert.equal(triples,0,`${id}: ${triples} rows of three banners of one sponsor`);
  assert(rows.size>=Math.min(10,sponsors.length-2),`${id}: ${rows.size} sponsors on the rails`);
  assert(Math.max(...rows.values())<=banners.length*.3,`${id}: no sponsor on more than 30% of the banners`);
  if(banners.length>80)assert(banners.some(b=>b.hangs)&&banners.some(b=>b.rip),`${id}: some loose and torn banners`);

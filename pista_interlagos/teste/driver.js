@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {DriverMotion,solveArm} from './driver-rig.js';
 import {DriverControls} from './driver-controls.js';
 import {createHelmet} from './driver-helmet.js';
+import {mergeStill} from './car-lod.js';
 import {wrap} from './physics.js';
 
 // Seated model based on geracoes_piloto/v01_omp_oli; +X front, -Z left.
@@ -182,5 +183,7 @@ export async function createDriver(cockpit){
   }
  }
  function reset(){motion.reset();choreography.reset(1);handState.id=-1;handState.from=null;handState.away=0;}
+ // Each glove, boot and the torso's straps move as one: a mesh per material (car-lod.js mergeStill), the head apart.
+ for(const a of arms)mergeStill(a.glove);for(const leg of legs)mergeStill(leg.boot);mergeStill(torso,{skip:[neck]});
  return {root,update,reset,suit,info:()=>({reference:'geracoes_piloto/v01_omp_oli',suit:suitKind,...pose,arms:errors,legs:legErrors,controls:{...controlPose},visible:root.visible,helmet:helmet.info(),headHeight:1.105+.161})};
 }

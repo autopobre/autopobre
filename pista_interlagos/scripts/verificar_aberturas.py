@@ -142,6 +142,8 @@ with sync_playwright() as p:
         # Modo História opens the track screen; Corrida única starts the story there.
         choose_race(page, story=True)
         wait_js(page, 'window.interlagos?.ready')
+        # The career's cards (Kléber's welcome) come before the paddock, as browser_config.enter_track skips them.
+        page.evaluate('window.interlagosHistoria.skipCards()')
         page.evaluate('interlagos.immersiveInfo()')
         wait_js(page, "fixtureMode.state.phase==='crowd'&&!!fixtureMode.visual.ownOpenings")
         # Walked round in the garage, the parked Opala shows the player's whole cockpit through its windows.

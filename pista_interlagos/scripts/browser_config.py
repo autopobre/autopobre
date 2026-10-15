@@ -69,10 +69,14 @@ def browser_executable():
 def browser_args():
     """Hardware WebGL by default; INTERLAGOS_SOFTWARE_GL=1 forces SwiftShader on machines without a GPU.
 
-    The landscape renders at about 1 fps in SwiftShader, so software runs need patience."""
+    The landscape renders at about 1 fps in SwiftShader, so software runs need patience.
+    INTERLAGOS_LOW_POWER_GPU=1 picks the integrated GPU on a two-GPU laptop: the cheap-PC proxy
+    (medir_pc_fraco.py)."""
     args = ['--enable-webgl', '--ignore-gpu-blocklist']
     if os.environ.get('INTERLAGOS_SOFTWARE_GL'):
         args += ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+    if os.environ.get('INTERLAGOS_LOW_POWER_GPU'):
+        args += ['--force_low_power_gpu']
     return args
 
 

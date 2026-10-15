@@ -11,6 +11,14 @@ export function gpuName(raw){
  const text=String(raw||'').trim(),angle=/^ANGLE \((?:[^,]*), (.+?)(?: \(0x[0-9a-f]+\))?(?: (Direct3D\d*|OpenGL[^,]*|Metal|Vulkan[^,]*))?(?: vs_\S+ ps_\S+)?(?:, [^)]*)?\)$/i.exec(text);
  return angle?[angle[1].trim(),angle[2]?.trim()].filter(Boolean).join(' · '):text||'desconhecida';
 }
+// A recorded stretch of frames (record()): the average frame rate, the 1% low (the mean of the slowest 1% of frames,
+// as a frame rate), the worst frame, how many frames took over twice the usual (hitches) and the CPU time per frame.
+export function frameStats(intervals,cpu=[]){
+ const n=intervals.length;if(!n)return null;const sorted=[...intervals].sort((a,b)=>b-a),sum=intervals.reduce((a,b)=>a+b,0),slow=sorted.slice(0,Math.max(1,Math.round(n/100)));
+ const median=sorted[Math.floor(n/2)],cpuSorted=[...cpu].sort((a,b)=>b-a),round=(v,d=1)=>+v.toFixed(d);
+ return {frames:n,seconds:round(sum/1000,2),fps:round(n*1000/sum),low1:round(1000/(slow.reduce((a,b)=>a+b,0)/slow.length)),worst:round(sorted[0]),median:round(median,2),hitches:intervals.filter(t=>t>median*2&&t>20).length,
+  cpu:cpu.length?round(cpu.reduce((a,b)=>a+b,0)/cpu.length,2):null,cpuP99:cpu.length?round(cpuSorted[Math.floor(cpu.length/100)],2):null,cpuWorst:cpu.length?round(cpuSorted[0]):null};
+}
 export class DebugOverlay {
  constructor({renderer,touch=false,lines=()=>[],target=()=>60,profile=()=>false}){
   this.renderer=renderer;this.touch=touch;this.lines=lines;this.target=target;this.profile=profile;this.mode='off';this.frameGpuMs=null;
@@ -30,13 +38,14 @@ export class DebugOverlay {
  // Frame start: the interval since the previous frame, and the GPU timer for this one.
  begin(now=performance.now()){
   if(this.mode==='full'||this.profile())this.gpuBegin();else if(this.gpu?.pending.length)this.stopGpu();
+  const rec=this.rec;if(rec){if(rec.last&&now-rec.last<1000&&rec.dt.length<36000){const dt=now-rec.last;rec.dt.push(dt);if(dt>50&&rec.long.length<40)rec.long.push([+((now-rec.t0)/1000).toFixed(2),+dt.toFixed(1)]);}rec.last=now;rec.start=performance.now();}
   if(this.mode==='off')return;this.started=performance.now();
   if(this.last){const dt=now-this.last;if(dt<1000){this.times[this.cursor]=dt;this.count=Math.min(HISTORY,this.count+1);this.window.frames++;}}
   else this.window.start=now;
   this.last=now;
  }
  end(){
-  this.gpuEnd();
+  this.gpuEnd();if(this.rec?.start){if(this.rec.cpu.length<36000)this.rec.cpu.push(performance.now()-this.rec.start);this.rec.start=0;}
   if(this.mode==='off'||!this.started)return;const cpu=performance.now()-this.started;this.started=0;
   this.cpu[this.cursor]=cpu;this.window.cpu+=cpu;this.cursor=(this.cursor+1)%HISTORY;
   const now=this.last;if(now>=this.graphAt){this.graphAt=now+100;this.drawGraph();}
@@ -98,5 +107,9 @@ export class DebugOverlay {
  }
  gpuEnd(){const g=this.gpu;if(!g?.active)return;g.gl.endQuery(g.ext.TIME_ELAPSED_EXT);g.pending.push(g.active);g.active=null;}
  stopGpu(){this.frameGpuMs=null;const g=this.gpu;if(!g)return;if(g.active)this.gpuEnd();for(const q of [...g.pending,...g.free])g.gl.deleteQuery(q);g.pending.length=g.free.length=0;this.shown.gpu=null;}
+ // Checks (medir_pc_fraco.py, verificar_velocidade.py): record(true) starts keeping every frame's interval and CPU
+ // time, whatever the panel shows; record(false) stops and gives frameStats of them, and when (seconds) the frames over
+ // 50 ms came, with their length.
+ record(on){if(on){this.rec={dt:[],cpu:[],long:[],last:0,start:0,t0:performance.now()};return true;}const r=this.rec;this.rec=null;return r?{...frameStats(r.dt,r.cpu),long:r.long}:null;}
  info(){return {mode:this.mode,corner:[...this.root.classList].find(c=>/^dbg-(tl|tc|tr|bl|br)$/.test(c))?.slice(4)??null,fps:this.shown.fps,ms:this.shown.ms,low:this.shown.low,cpu:this.shown.cpu,gpu:this.shown.gpu,gpuTimer:!!this.gpu?.ext,rows:[...this.list.querySelectorAll('dt')].map(dt=>[dt.textContent,dt.nextElementSibling.textContent])};}
 }

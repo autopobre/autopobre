@@ -13,7 +13,7 @@ import json
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import browser_executable,browser_args,wait_js,wait_race_start
+from browser_config import browser_executable,browser_args,wait_js,wait_race_start,choose_race
 
 PORT=sys.argv[1] if len(sys.argv)>1 else '8799'
 URL=f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
@@ -124,7 +124,8 @@ with sync_playwright() as p:
  page.evaluate('interlagos.immersiveInfo();fixture.onMainMenu();true');wait_js(page,"!document.querySelector('#tracks').classList.contains('hidden')")
  after=page.evaluate(CARS);assert after['fusca'] is None and after['opalaShown'] and after['seatShift']==[0,0,0],after
  page.click('#tracksBack');wait_js(page,"interlagosCarros.info().live");page.click('#carsBack');page.click('#storyStart')
- page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000);page.wait_for_timeout(600)
+ # (Modo História's track screen offers only the Old Stock season: the story's race on this circuit is the page's hook.)
+ choose_race(page,story=True);wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000);page.evaluate('window.interlagosHistoria.skipCards()');page.wait_for_timeout(600)
  story=page.evaluate(CARS);assert story['raceCar']=='99' and story['raceModel']=='opala' and story['fusca'] is None and story['opalaShown'],story
  storyField=page.evaluate(FIELD);assert storyField['rivals']==OLD_STOCK,storyField['rivals'];assert storyField['models']==['opala']*14 and storyField['fuscasShown']==0 and storyField['fieldBody']=='opala' and storyField['playerBody']=='opala',storyField
  result['historia']={'model':story['raceModel'],'raceCar':story['raceCar']}

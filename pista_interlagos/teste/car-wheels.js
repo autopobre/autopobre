@@ -145,9 +145,11 @@ export const tyreInfo=()=>({detailed,models:Object.keys(tyres),lettered:Object.v
 // half catches the sky, the lower the road); model: its number in the shader (instance colour).
 export const BLUR_PROFILES=Object.freeze({
  // The Opala's polished five-spoke alloy: the cap, the lug nuts' ring, the spokes over the dark hub and the brake
- // disc, the barrel's step, the bright lip and its shadowed edge, the rubber.
- opala:Object.freeze({model:0,rings:[[0,178,.92,.9,.3],[.1,120,.95,.85,.35],[.2,150,.97,.85,.35],[.615,40,.975,.5,.5],[.645,240,.98,1,.12],[.7,44,.985,.2,.6],[.725,49,.985,0,.88],[.74,52,.985,0,.88]],
-  spokes:[5,.17,.62,.5,.36,228,.95,.24],gaps:[[.17,34,.4,.55],[.44,105,.7,.42]],letters:[.845,.065,40],lip:[.645,.7],dome:.5}),
+ // disc, the barrel's step, the bright lip and its shadowed edge, the rubber. Smeared, the spokes' facets face every
+ // way at once: a lighter, half-metal satin that takes the sky's light whatever side it is on (as a mirror metal the
+ // disc reflected the one dark direction its averaged normal saw: a smooth dark hubcap in every shade, round 2).
+ opala:Object.freeze({model:0,rings:[[0,196,.92,.65,.3],[.1,128,.95,.6,.38],[.2,158,.97,.6,.38],[.615,46,.975,.45,.5],[.645,240,.98,1,.12],[.7,44,.985,.2,.6],[.725,49,.985,0,.88],[.74,52,.985,0,.88]],
+  spokes:[5,.17,.62,.5,.36,232,.45,.42],gaps:[[.17,38,.35,.55],[.44,128,.45,.45]],letters:[.845,.065,40],lip:[.645,.7],dome:.5}),
  // The Fusca's black steel wheel: six holes onto the dark drum, a dark cap.
  fusca:Object.freeze({model:1,rings:[[0,66,.9,.5,.3],[.12,34,.975,.3,.4],[.6,40,.975,.2,.3],[.665,26,.985,0,.85],[.7,50,.985,0,.88]],
   spokes:[6,.3,.5,.55,.55,36,.3,.4],gaps:[[.3,20,.2,.5]],letters:[.85,.06,40],lip:[.6,.665],dome:.2})

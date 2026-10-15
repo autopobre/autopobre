@@ -75,7 +75,9 @@ with sync_playwright() as p:
     page.evaluate("pit.setDamage(true);pit.condition.damage('pneus',.5);pit.mode.freeFuel=4;pit.startFuel(2);pit.service.startRepair('pneus','proper');pit.view=pit.startView()")
     SAMPLE = """()=>{const c=interlagos.car,h=c.heading,crew=pit.layout.crew,inside=crew.actors.filter(a=>{const dx=a.x-c.x,dy=a.y-c.y,f=dx*Math.cos(h)+dy*Math.sin(h),r=dx*Math.sin(h)-dy*Math.cos(h);return Math.abs(f)<2.3&&Math.abs(r)<.85;}).map(a=>a.person.name);
      const fx=c.x+Math.cos(h)*-.7+Math.sin(h)*.79,fy=c.y+Math.sin(h)*-.7-Math.cos(h)*.79,tip=crew.spout.clone().applyEuler(crew.can.rotation).add(crew.can.position);
-     return {inside,job:pit.service.job?.id??null,spout:Math.hypot(tip.x-fx,-tip.z-fy),fuelAct:crew.actors[4].act};}"""
+     const drawn=o=>{const m=o.matrixWorld.elements;return Math.hypot(m[12]-o.position.x,m[13]-o.position.y,m[14]-o.position.z);},near=o=>Math.hypot(o.matrixWorld.elements[12]-c.x,-o.matrixWorld.elements[14]-c.y);
+     return {inside,job:pit.service.job?.id??null,spout:Math.hypot(tip.x-fx,-tip.z-fy),fuelAct:crew.actors[4].act,
+      props:Math.max(...[crew.can,crew.pole,crew.disc].map(drawn)),propsFar:Math.max(...[crew.can,crew.pole,crew.disc].map(near))};}"""
     samples = []
     for _ in range(90):
         page.wait_for_timeout(100)
@@ -85,6 +87,10 @@ with sync_playwright() as p:
     report['crew'] = {'through_car': sorted({n for q in samples for n in q['inside']}), 'spout_at_filler': min((q['spout'] for q in samples if q['fuelAct'] == 'fuel'), default=None), 'jobs': sorted({q['job'] for q in samples if q['job']})}
     assert not report['crew']['through_car'], report['crew']
     assert report['crew']['spout_at_filler'] is not None and report['crew']['spout_at_filler'] < .15, report['crew']
+    # The can, the lollipop's pole and its disc are drawn where they are placed, by the car (frozen with the still
+    # scenery, main.js freezeStatic, they stood at the world's origin, 30 m off the box).
+    report['crew']['props_drawn_off'] = max(q['props'] for q in samples); report['crew']['props_from_car'] = max(q['propsFar'] for q in samples)
+    assert report['crew']['props_drawn_off'] < 1e-3 and report['crew']['props_from_car'] < 6, report['crew']
     page.screenshot(path=str(ROOT / f'renders/boxes_{TAG}equipe.png'))
     # As in GTA: F gets out of the Opala (the mouse then turns the third-person camera).
     page.keyboard.press('f')

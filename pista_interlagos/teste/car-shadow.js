@@ -158,13 +158,15 @@ export class CarShadow{
   try{
    for(let i=0;i<n;i++){
     const root=roots[i],camera=this.cameras[i];
-    root.updateMatrixWorld();this.casters+=this.mark(root);
+    // The scene's matrices were just brought up to date (main.js runFrame, once a frame): the car is not walked again.
+    this.casters+=this.mark(root);
     // The tile centres on the car's middle, the camera up the sun from it.
     root.getWorldPosition(this.centre).y+=CAR_SHADOW_LOOK.lift;
     camera.position.copy(this.centre).addScaledVector(this.direction,CAR_SHADOW_LOOK.depth);camera.lookAt(this.centre);camera.updateMatrixWorld();
     uniforms.carShadowMatrix.value[i].multiplyMatrices(this.bias,camera.projectionMatrix).multiply(camera.matrixWorldInverse);
     this.target.viewport.set((i%this.columns)*size,Math.floor(i/this.columns)*size,size,size);renderer.setRenderTarget(this.target);
-    this.scene.children.length=0;this.scene.children.push(root);
+    // root's matrices are fresh (just above): the tile's scene must not walk the car again.
+    this.scene.matrixWorldAutoUpdate=false;this.scene.children.length=0;this.scene.children.push(root);
     try{renderer.render(this.scene,camera);}finally{this.scene.children.length=0;}
    }
   }finally{

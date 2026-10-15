@@ -19,6 +19,9 @@ with sync_playwright() as p:
   assert page.locator('.pit-parts article').count()==6
   assert page.evaluate('interlagos.car.surface.pit&&interlagos.car.surface.onRoad')
   page.wait_for_timeout(2500);page.screenshot(path=str(ROOT/f'renders/pitstop_servicos_{mobile}.png'))
+  # The crew's hand-placed can, lollipop pole and disc are drawn where they are placed (frozen with the still scenery,
+  # main.js freezeStatic, they stood at the world's origin).
+  assert page.evaluate("(()=>{const w=pit.layout?.crew;return !!w&&[w.can,w.pole,w.disc].every(o=>{const m=o.matrixWorld.elements;return Math.hypot(m[12]-o.position.x,m[13]-o.position.y,m[14]-o.position.z)<1e-3;});})()"),'crew props drawn where placed'
   wallet=page.evaluate('pit.wallet');page.click('[data-repair="motor"][data-kind="proper"]')
   page.click('[data-repair="freios"][data-kind="proper"]');page.click('[data-repair="suspensao"][data-kind="proper"]')
   # Engine and both front wheels are different places of the car: the crew works them together.

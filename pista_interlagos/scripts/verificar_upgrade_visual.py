@@ -196,7 +196,7 @@ def comfortable_camera(page, straight, case):
     place(page, straight['index'], 43)
     frames(page, 12)
     reduced = shot(page, case + '_reduced_motion')
-    # With the motion off the lens stays at the view's own (camera-rig.js baseFov: 58 for the hood at 16:10).
+    # With the motion off the lens stays at the view's own (camera-rig.js baseFov: the hood's 53 at 16:10).
     check(case + '_os_reduced_motion', abs(reduced['camera']['fov'] - reduced['camera']['baseFov']) < .05 and
           not reduced['graphics']['cinematic']['features']['motionBlur'], reduced['camera'])
     page.emulate_media(reduced_motion='no-preference')
@@ -273,10 +273,10 @@ def action_encounters(page, straight, case):
             if kind == 'impact':
                 check(case + '_impact_uses_collision_physics', event['collisions'] > started['beforeCollisions'], event)
             state = shot(page, case + '_action_' + kind)
-            # Speed and the action open the chase lens past its own (55 at 16:10), never wider than 95° side to side
-            # (camera-rig.js MAX_SPEED_HFOV, applied after the kick and the punches).
+            # Speed and the action open the chase lens past its own (55 at 16:10), never wider than 92° side to side
+            # (camera-rig.js MAX_SPEED_HFOV, applied after the kick and the punches; 95° only on a 20:9 phone).
             wide = math.degrees(2 * math.atan(math.tan(math.radians(state['camera']['fov']) / 2) * state['camera']['aspect']))
-            check(case + '_action_camera_' + kind, state['camera']['fov'] > state['camera']['baseFov'] + 1 and wide < 95.1, {**state['camera'], 'horizontalFov': round(wide, 1)})
+            check(case + '_action_camera_' + kind, state['camera']['fov'] > state['camera']['baseFov'] + 1 and wide < (92.1 if state['camera']['aspect'] <= 16 / 9 + .01 else 95.1), {**state['camera'], 'horizontalFov': round(wide, 1)})
             results['encounters'][kind] = {'event': event, 'camera': state['camera'], 'action': state['action']}
     finally:
         page.evaluate(RESTORE_FIXTURE)

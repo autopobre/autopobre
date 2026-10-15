@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {REFLECTION_LEVELS} from './graphics-settings.js';
-import {setCarEnvironment,setCarFinish,setCarSamples,carEnvironment,carFinishInfo,paintOf,CAR_LIGHT_MAX} from './car-finish.js';
+import {setCarEnvironment,setCarFinish,setCarSamples,setCarProbe,carEnvironment,carFinishInfo,paintOf,CAR_LIGHT_MAX} from './car-finish.js';
 import {compileInSlices} from './cinematic.js';
 // Where the cars' paint, glass and chrome get their surroundings (the Gráficos tab's "Reflexos dos
 // carros", REFLECTION_LEVELS): the sky's map for the cars (sky.js carEnvironment, with its horizon band), the circuit seen
@@ -14,6 +14,12 @@ const BAKE_DELAY=3;   // race frames before the grid's picture is taken: the tra
 // 800 thousand triangles drawn whole in every cube face, a few coloured pixels in the reflection; the
 // stands stay), skid marks, the lake's splashes, falling leaves and the verge's grass tufts.
 const CAPTURE_SKIP=new Set(['Torcida','Marcas_de_derrapagem','Respingos_do_lago','Folhas_caindo','Vegetacao_das_margens','Chuva']);
+// The sun's disc as a capture draws it, as the sky's own map for the cars keeps it (sky.js): whole, its 2-3° disc
+// mirrored in a window as a soft 90 px glow, a lamp inside the cabin in the backlit Goiânia lap (round-2 judges); the
+// sun's own glint on paint and glass comes from its light, a hard point.
+export const CAPTURE_SUN=.3;
+// How far over the player's car's ground main.js centres the probe (carReflections.update).
+export const PROBE_HEIGHT=1;
 // The prefilter of a capture (the probe's, the bake's), its texels capped at the cars' own light (CAR_LIGHT_MAX) as
 // three.js copies the cube into its own layout, before any blur. The world's smooth glass is not capped: the sun's
 // glint on a window at a grazing angle (the Minhocão landmarks' panes, roughness .1) passed half float's 65504 in a
@@ -36,7 +42,7 @@ export class CarReflections {
  // At night (weather.js) the cars wear the night sky's map only: a capture of the track there is the asphalt in the
  // headlights' pools, and every black paint came out pale. True when that changed (another map size: main.js
  // precompiles); the grid's picture and the probe wait until the day comes back.
- setSkyOnly(value){value=!!value;if(value===this.skyOnly)return false;this.skyOnly=value;if(!value&&this.level.source==='bake'&&!this.bakeTarget)this.bakeWanted=BAKE_DELAY;if(!value&&this.cube)this.fresh=true;setCarEnvironment(this.environment(true),'corrida');return true;}
+ setSkyOnly(value){value=!!value;if(value===this.skyOnly)return false;this.skyOnly=value;if(!value&&this.level.source==='bake'&&!this.bakeTarget)this.bakeWanted=BAKE_DELAY;if(!value&&this.cube)this.fresh=true;this.wear(this.environment(true));return true;}
  // The middle of the grid (about 80 m before the line), 1.2 m over the asphalt: next to the main
  // grandstand and the pits on the circuits here. World frame (x, height, -y).
  static gridPoint(data){
@@ -53,7 +59,7 @@ export class CarReflections {
   let programs=setCarFinish(level.finish,{samples:this.samples()});
   if(level.source==='probe'){if(!this.cube||this.cube.width!==level.probe)this.makeProbe(level.probe);this.setFar(level.far);}else this.dropProbe();
   if(level.source!=='bake')this.dropBake();else if(!this.bakeTarget)this.bakeWanted=BAKE_DELAY;
-  setCarEnvironment(this.environment(true),'corrida');
+  this.wear(this.environment(true));
   // Against the map worn before the switch (dropProbe already lent the cars the sky's on the way).
   const size=t=>t?.image?.height??0;if(size(carEnvironment())!==size(before))programs=true;
   // A bake or a probe newly asked for draws the whole scene into its own target: in the Simples look those
@@ -73,10 +79,10 @@ export class CarReflections {
  }
  setFar(far){if(!this.cubeCamera)return;for(const c of this.cubeCamera.children)if(c.far!==far){c.far=far;c.updateProjectionMatrix();}}
  dropProbe(){
-  if(!this.cube)return;if(carEnvironment()===this.probeTarget.texture)setCarEnvironment(this.sky.carEnvironment,'ceu');
+  if(!this.cube)return;if(carEnvironment()===this.probeTarget.texture)this.wear(this.sky.carEnvironment,'ceu');
   this.cube.dispose();this.probeTarget.dispose();this.probePmrem.dispose();this.cube=this.cubeCamera=this.probeTarget=this.probePmrem=null;
  }
- dropBake(){if(!this.bakeTarget)return;if(carEnvironment()===this.bakeTarget.texture)setCarEnvironment(this.sky.carEnvironment,'ceu');this.bakeTarget.dispose();this.bakeTarget=null;}
+ dropBake(){if(!this.bakeTarget)return;if(carEnvironment()===this.bakeTarget.texture)this.wear(this.sky.carEnvironment,'ceu');this.bakeTarget.dispose();this.bakeTarget=null;}
  // The map the cars wear now. onTrack false (the story's paddock): the grid's picture would be the
  // wrong place, the sky's is neutral; the probe is where the car is, so it stays.
  environment(onTrack=true){
@@ -85,21 +91,25 @@ export class CarReflections {
   if(this.level.source==='bake'&&onTrack&&this.bakeTarget)return this.bakeTarget.texture;
   return this.sky.carEnvironment;
  }
+ // A map on every car: the sky's own says so (car-finish.js: its coat then takes Baixo's values).
+ wear(env,owner='corrida'){return setCarEnvironment(env,owner,!!env&&env===this.sky.carEnvironment);}
  // The race's map back on the cars (the car screen's studio lends them its own) before the circuit's
  // programs compile, so they compile for the map the race shows (a probe's size is another program).
- useRaceMap(){setCarEnvironment(this.environment(true),'corrida');}
+ useRaceMap(){this.wear(this.environment(true));}
  // Hides what must not reflect (the player's car, the ghost, smoke and other screen-sized sprites, the
  // rivals' name tags) or costs a capture more than it shows (CAPTURE_SKIP), and shows the rivals as
  // their one-draw distant model. restore() undoes it.
  conceal(scene,hide,rivals,lod){
   const list=this.hidden;list.length=0;const set=(o,v)=>{if(o&&o.visible!==v){list.push(o,o.visible);o.visible=v;}};
+  this.sky.setCaptureSun?.(CAPTURE_SUN);
   for(const o of hide)set(o,false);
   for(const o of scene.children){if(CAPTURE_SKIP.has(o.name))set(o,false);else if(o.name==='Paisagem')for(const c of o.children)if(CAPTURE_SKIP.has(c.name))set(c,false);}
   // The rivals' headlight glare too (headlights.js): ten times white, blurred by the prefilter it greyed every paint.
   for(const r of rivals??[]){if(!r.visible)continue;const u=r.userData;set(u.nameLabel,false);set(u.headlights,false);
-   if(!lod)set(r,false);else if(u.far&&u.detail){set(u.detail,false);set(u.far,true);}}
+   // (the light copy too, car-lod.js: shown beside the distant model it drew the rival twice in the probe's faces)
+   if(!lod)set(r,false);else if(u.far&&u.detail){set(u.detail,false);set(u.mid,false);set(u.far,true);}}
  }
- restore(){const list=this.hidden;for(let i=list.length-2;i>=0;i-=2)list[i].visible=list[i+1];list.length=0;}
+ restore(){const list=this.hidden;for(let i=list.length-2;i>=0;i-=2)list[i].visible=list[i+1];list.length=0;this.sky.setCaptureSun?.(1);}
  // The circuit from the grid, once: at the race's first frame (while loading, the track, stands and
  // asphalt round the grid are not shown yet: the map came out sky and horizon only) or the first after
  // choosing Pista. Cars, ghost and sprites hidden; the sun's shadows as they are. A cube camera's six
@@ -109,11 +119,13 @@ export class CarReflections {
   const r=this.renderer,t0=performance.now(),pmrem=cappedPmrem(r),previous=r.getRenderTarget(),shadows=r.shadowMap.autoUpdate;
   const cube=new THREE.WebGLCubeRenderTarget(this.level.bake,{type:THREE.HalfFloatType,generateMipmaps:false}),camera=new THREE.CubeCamera(.3,this.level.far??600,cube);
   camera.coordinateSystem=r.coordinateSystem;camera.updateCoordinateSystem();camera.position.copy(CarReflections.gridPoint(data));camera.updateMatrixWorld(true);
-  this.conceal(scene,hide,rivals,false);r.shadowMap.autoUpdate=false;
+  // The sun's shadows drawn again with the cars hidden: the grid's shadows stayed on the asphalt of the picture, and a
+  // black tail mirrored them as a void wherever the race took it (L 6 at the Curva do Sol).
+  this.conceal(scene,hide,rivals,false);r.shadowMap.autoUpdate=false;r.shadowMap.needsUpdate=true;
   try{camera.update(r,scene);this.stats.bakeDrawMs=Math.round(performance.now()-t0);const target=pmrem.fromCubemap(cube.texture);this.dropBake();this.bakeTarget=target;}
   finally{this.restore();r.shadowMap.autoUpdate=shadows;cube.dispose();pmrem.dispose();r.setRenderTarget(previous);}
   this.stats.bakes++;this.stats.bakeMs=Math.round(performance.now()-t0);
-  setCarEnvironment(this.environment(true),'corrida');
+  this.wear(this.environment(true));
  }
  // Each race frame, before the main picture: the cars take the race's map back (from the car
  // screen's studio) and the probe redraws its next faces round centre (the player's car).
@@ -122,7 +134,10 @@ export class CarReflections {
   // While the captures' programs compile (compile()) the bake waits and the probe holds its last picture.
   const waiting=!!this.pending;
   if(!waiting&&!this.skyOnly&&this.bakeWanted>0&&data&&--this.bakeWanted===0)this.bake(scene,data,{hide,rivals});
-  setCarEnvironment(this.environment(onTrack),'corrida');
+  const env=this.environment(onTrack);this.wear(env);
+  // The coat finds the road it mirrors from the probe's centre (car-finish.js setCarProbe): main.js draws it a metre
+  // over the car's ground.
+  setCarProbe(env&&env===this.probeTarget?.texture?center:null,center.y-PROBE_HEIGHT);
   if(waiting||this.skyOnly||this.level.source!=='probe'||!this.cube)return;
   const r=this.renderer,fresh=this.fresh,faces=fresh?6:this.level.faces,previous=r.getRenderTarget(),shadows=r.shadowMap.autoUpdate;this.fresh=false;
   this.cubeCamera.position.copy(center);this.cubeCamera.updateMatrixWorld(true);
@@ -148,7 +163,7 @@ export class CarReflections {
   this.pending=done;return done;
  }
  // clearCircuit: the grid's picture belongs to the circuit left; the cars go back to the sky's map.
- clearCircuit(){this.dropBake();if(this.level.source==='bake')this.bakeWanted=BAKE_DELAY;this.fresh=true;setCarEnvironment(this.environment(true),'corrida');}
+ clearCircuit(){this.dropBake();if(this.level.source==='bake')this.bakeWanted=BAKE_DELAY;this.fresh=true;this.wear(this.environment(true));}
  // The maps no circuit clean-up may dispose (main.js clearCircuit's keep set).
  textures(){return [this.sky.carEnvironment,this.bakeTarget?.texture,this.probeTarget?.texture,this.cube?.texture].filter(Boolean);}
  // For checks: the probe's six faces as a cross (PNG data URL, simple tone curve, rows as the cube

@@ -45,10 +45,14 @@ with sync_playwright() as p:
     g = info(page)
     check('desktop_auto_is_alto', g['level'] == 'alto' and g['auto'] and g['changed'] == [], g)
     page.click('#settingsButton'); page.click('#tab-graphics')
-    check('tab_visible', page.is_visible('#settings-graphics') and page.locator('.graphics-level').count() == 5 and page.locator('#graphicsControls select').count() == 19)
+    check('tab_visible', page.is_visible('#settings-graphics') and page.locator('.graphics-level').count() == 5 and page.locator('#graphicsControls select').count() == 20)
     check('high_refresh_choices', page.locator('#gfx-fpsLimit option[value="160"]').count() == 1 and page.locator('#gfx-targetFps option[value="144"]').count() == 1)
     check('race_tab_lost_old_controls', page.locator('#cinematicLevel').count() == 0 and page.locator('#realisticWater').count() == 0)
     page.locator('#settings').screenshot(path=str(OUT / 'aba_graficos_desktop.png'))
+    # The cards say which machine each level is for; Automático, what it picked here and why (the video chip).
+    cards = {lv: page.inner_text(f'#gfxLevel-{lv} small') for lv in ('auto', 'baixo', 'medio', 'alto', 'ultra')}
+    check('cards_name_the_machine', 'vídeo integrado' in cards['baixo'] and 'intermediário' in cards['medio'] and 'placa de vídeo' in cards['alto'] and 'forte' in cards['ultra'], cards)
+    check('auto_card_says_why', 'Alto neste computador' in cards['auto'] and g['device']['reason'] in cards['auto'] and g['device']['tier'], {'card': cards['auto'], 'device': g['device']})
     # Manual change in the menu: shows as a change, Restore drops it.
     page.select_option('#gfx-shadows', 'media')
     g = info(page)
@@ -89,11 +93,12 @@ with sync_playwright() as p:
     wait_js(page, '!interlagosGraficos.info().compiling')
     g = info(page)
     check('dynamic_target_respects_cap_and_screen', 0 < g['resolution']['targetFps'] <= min(120,g['resolution']['cadence']), g['resolution'])
-    # Manual settings in a race: mirrors off, light film look, no motion blur, 30 FPS.
+    # Manual settings in a race: mirrors off, light film look, no motion blur, 30 FPS (33 on a 165 Hz screen: whole
+    # screen frames, graphics-settings.js FrameLimiter).
     page.evaluate("interlagosGraficos.set({level:'alto',overrides:{mirrors:'off',post:'lite',fpsLimit:30,antialias:0}})")
     page.wait_for_timeout(3500)
     g = info(page)
-    check('manual_in_race', g['cinematic']['level'] == 'lite' and g['cinematic']['samples'] == 0 and g['fpsLimit'] == 30 and g['debug']['fps'] < 33, {'c': g['cinematic'], 'fps': g['debug']['fps']})
+    check('manual_in_race', g['cinematic']['level'] == 'lite' and g['cinematic']['samples'] == 0 and g['fpsLimit'] == 30 and g['debug']['fps'] < 36, {'c': g['cinematic'], 'fps': g['debug']['fps']})
     # Cockpit with mirrors off renders no mirror pass.
     page.evaluate("interlagosGraficos.set({level:'alto',overrides:{mirrors:'off'}})")
     page.keyboard.press('KeyC'); page.keyboard.press('KeyC'); page.keyboard.press('KeyC')
@@ -107,6 +112,27 @@ with sync_playwright() as p:
         page.screenshot(path=str(OUT / 'interna_retrovisor.png'))
     else:
         print('camera after 3x C:', mode)
+    # A heavy race: Automático steps down one level, says so and remembers it, taking the step at the next pause (never
+    # mid-race: its programs compile with the game stopped); a level by hand only gets a hint.
+    page.evaluate("interlagosGraficos.set({level:'auto',overrides:{}})")
+    g = page.evaluate('interlagosGraficos.heavy()')
+    check('auto_step_waits_for_a_pause', g['level'] == 'alto' and g['device']['drop'] == 'medio' and 'Médio' in page.inner_text('#status') and 'pausa' in page.inner_text('#status'), {'level': g['level'], 'device': g['device'], 'status': page.inner_text('#status')})
+    page.keyboard.press('KeyP'); wait_js(page, 'interlagos.state.paused')
+    g = page.evaluate('interlagosGraficos.info()')
+    check('auto_steps_down_once', g['level'] == 'medio' and g['stored'] == {'level': 'auto', 'overrides': {}} and g['device']['drop'] == 'medio', {'level': g['level'], 'device': g['device']})
+    page.keyboard.press('KeyP'); wait_js(page, '!interlagos.state.paused')
+    g = page.evaluate('interlagosGraficos.forget()')
+    check('forget_brings_auto_back', g['level'] == 'alto' and g['device']['drop'] is None, g['device'])
+    page.evaluate("interlagosGraficos.set({level:'ultra',overrides:{}})")
+    g = page.evaluate('interlagosGraficos.heavy()')
+    check('hand_level_only_hinted', g['level'] == 'ultra' and g['stored']['level'] == 'ultra' and 'Alto' in page.inner_text('#status'), page.inner_text('#status'))
+    # The rivals' levels of detail follow Detalhe dos carros.
+    lods = {}
+    for level, near in (('baixo', 7), ('ultra', 32)):
+        page.evaluate("l=>interlagosGraficos.set({level:l,overrides:{}})", level); wait_js(page, '!interlagosGraficos.info().compiling'); page.wait_for_timeout(600)
+        lods[level] = page.evaluate('interlagos.rivalLod()')
+    check('rival_detail_per_level', lods['baixo']['near'] == 7 and lods['ultra']['near'] == 32 and lods['baixo']['far'] < lods['ultra']['far'], lods)
+    page.evaluate("interlagosGraficos.set({level:'alto',overrides:{}})")
     # Scenery: a change waits for the next start, then rebuilds the circuit.
     trees = page.evaluate('interlagos.sceneryInfo().trees')
     page.evaluate("interlagosGraficos.set({level:'alto',overrides:{scenery:'basico'}})")

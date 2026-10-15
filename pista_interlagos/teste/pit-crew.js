@@ -111,11 +111,12 @@ const SCALARS=['y','lean','head','turn','twist','tilt','sway','lid'],PAIRS=['thi
 const clonePose=p=>({...p,twist:p.twist??0,tilt:p.tilt??0,sway:p.sway??0,lid:p.lid??0,thigh:[...p.thigh],knee:[...p.knee],arm:[...p.arm],elbow:[...p.elbow],spread:[...p.spread],roll:[...(p.roll??[0,0])]});
 function copyPose(to,from){for(const key of SCALARS)to[key]=from[key]??0;for(const key of PAIRS)for(const i of [0,1])to[key][i]=from[key]?.[i]??0;}
 function applyPose(rig,p){
- rig.hips.position.y=.93+p.y;rig.torso.rotation.z=-p.lean;rig.head.rotation.z=-p.head;rig.head.rotation.y=p.turn;
+ // (stature: a Crowd's standing people are a little taller or shorter, the whole body scaled from the hips.)
+ const tall=rig.stature??1;rig.hips.position.y=(.93+p.y)*tall;rig.torso.rotation.z=-p.lean;rig.head.rotation.z=-p.head;rig.head.rotation.y=p.turn;
  // Weight on one leg: the hips slide over it, the legs lean in to keep the feet put
  // and the chest leans back over the middle.
  const sway=p.sway??0,splay=Math.asin(Math.max(-.3,Math.min(.3,sway/.86)));
- rig.hips.position.z=sway;rig.torso.rotation.x=-splay*.8;rig.torso.rotation.y=p.twist??0;rig.head.rotation.x=p.tilt??0;
+ rig.hips.position.z=sway*tall;rig.torso.rotation.x=-splay*.8;rig.torso.rotation.y=p.twist??0;rig.head.rotation.x=p.tilt??0;
  // Open eyelids fold away into the brow line; closing, they come down from it.
  if(rig.lids){const lid=Math.max(0,Math.min(1,p.lid??0));if(lid<.02)rig.lids.scale.setScalar(.001);else rig.lids.scale.set(1,Math.max(.08,lid),1);}
  for(const [i,side] of [[0,-1],[1,1]]){const l=rig.limbs[side];l.leg.rotation.z=p.thigh[i];l.leg.rotation.x=splay;l.shin.rotation.z=-p.knee[i];l.arm.rotation.z=p.arm[i];l.arm.rotation.x=-side*p.spread[i];l.fore.rotation.z=p.elbow[i];l.fore.rotation.y=side*(p.roll?.[i]??0);}
@@ -348,6 +349,10 @@ class Crowd{
    const spot=bone(e.name??'Lugar',null,e.x,e.y,e.z);spot.rotation.y=e.yaw;roots.push(spot);let feet=spot,camera=null;
    if(e.camera){const c=e.camera;spot.position.set(c.x,c.y,c.z);camera={spot,tilt:bone('Camera_tv',spot),pan:0,speed:0,step:0,busy:0,back:c.back};feet=bone('Operador',spot,-c.back,-c.drop,0);}
    feet.add(rig.hips);for(const b of own){slot.set(b,bones.length);bones.push(b);}
+   // Taller or shorter (about ±6%), standing people only: the seated ones keep the height of their stool or chair.
+   // (From the spot's place, not the crowd's dice: the idles stay as they were.)
+   // (by the pose, not the idle: Box 99's desk engineers sit on stools with the 'desk' idle, their hands on the desk)
+   if(!['sit','stool'].includes(e.pose)&&!e.camera){const h=Math.abs(Math.sin(e.x*12.9898+e.z*78.233)*43758.5453)%1;rig.stature=.94+.12*h;rig.hips.scale.setScalar(rig.stature);rig.hips.position.y=.93*rig.stature;}
    const carried=e.props??KIND_PROPS[kind]??[],props={};for(const name of carried)props[name]=bone('Objeto_'+name,rig.limbs[1].hand);
    spot.updateMatrixWorld(true);
    for(const [g,b] of parts)skin(g,b);skin(head,rig.head);for(const name of carried)skin(PROPS[name](),props[name]);if(camera)skin(cameraHead(),camera.tilt);
@@ -359,9 +364,14 @@ class Crowd{
   // Culled as a group: the spots, with room for raised arms and the camera heads.
   const box=new THREE.Box3();for(const r of roots)box.expandByPoint(r.position);box.expandByScalar(2.6);mesh.boundingBox=box;mesh.boundingSphere=box.getBoundingSphere(new THREE.Sphere());
   this.centre=mesh.boundingSphere.center.clone();this.radius=mesh.boundingSphere.radius;this.due=0;this.tick=0;this.attached=false;
+  // The mesh never moves; its bones only when this crowd is updated (hold): the rest of the time three.js need not
+  // recompute their matrices every frame (perf-probe.js freezeStatic freezes what holds it).
+  this.bones=bones;this.held=false;mesh.matrixAutoUpdate=false;
   for(const f of this.folk){for(const [name,b] of Object.entries(f.props))b.scale.setScalar(f.always.includes(name)?1:1e-4);applyPose(f.rig,f.show);}
   LIVE.add(this);
  }
+ // Bones still (on) while the crowd is not updated: they keep the matrices of their last pose.
+ hold(on){if(this.held===on)return;this.held=on;for(const b of this.bones)b.matrixAutoUpdate=!on;}
  // The nearest car within `range` of a spot, as seen from its heading (null if none, or behind).
  sight(f,range,cars,eye){
   if(!range||!cars.length)return null;AT.copy(f.spot.position).applyMatrix4(this.mesh.matrixWorld);let best=null,d2=range*range;
@@ -535,15 +545,24 @@ export function takePeopleEvents(){return EVENTS.splice(0);}
 // every fourth, beyond 300 m not at all; past 200 m they cast no shadow and past 800 m (a
 // pixel or two tall) they are not drawn. cars: Object3Ds (the player's car and the rivals) whose positions catch the
 // eye of marshals, cameramen and spectators.
+// How far the idle crowds show (graphics-settings.js PEOPLE_REACH by the scenery level): beyond 250 m a person is a few
+// pixels tall, and the light build's video spent a millisecond on them from across the circuit.
+// The reach, the idling's pace and the cut-off go by how big a person looks: the distance shortened by the camera's lens
+// (the broadcast camera's long lens shows a marshal 400 m off as big as the chase view at 40: landscape.js crowdNear's
+// rule, 29° the chase lens's half height); the shadow stays in metres (the sun's map knows no lens).
+let peopleReach=800;export const setPeopleReach=metres=>{peopleReach=metres;};
+const LENS_REF=Math.tan(29*Math.PI/180);
 export function updatePeople(dt,camera,cars=[]){
  CARS.length=0;for(const o of cars)if(o&&shown(o)){const v=POOL[CARS.length]??(POOL[CARS.length]=new THREE.Vector3());CARS.push(v.setFromMatrixPosition(o.matrixWorld));}
  EYE.setFromMatrixPosition(camera.matrixWorld);
+ const zoom=camera.isPerspectiveCamera?Math.min(1,Math.tan(camera.fov*Math.PI/360)/(camera.zoom||1)/LENS_REF):1;
  for(const c of LIVE){
   let root=c.mesh;while(root.parent)root=root.parent;
-  if(!root.isScene){if(c.attached)LIVE.delete(c);continue;}c.attached=true;
-  CENTRE.copy(c.centre).applyMatrix4(c.mesh.matrixWorld);const far=CENTRE.distanceTo(EYE)-c.radius;c.mesh.visible=far<800;c.mesh.castShadow=far<200;
-  if(far>300||!shown(c.mesh)){c.due=0;continue;}
-  c.due+=dt;if(far>90&&(c.tick=(c.tick+1)%4))continue;c.update(c.due,CARS);c.due=0;
+  // A crowd put aside for a while (immersive-visuals.js park: keepPeople) waits; one taken out of the scene for good goes.
+  if(!root.isScene){if(c.attached&&!root.userData.keepPeople)LIVE.delete(c);continue;}c.attached=true;
+  CENTRE.copy(c.centre).applyMatrix4(c.mesh.matrixWorld);const metres=CENTRE.distanceTo(EYE)-c.radius,far=metres*zoom;c.mesh.visible=far<peopleReach;c.mesh.castShadow=metres<200;
+  if(far>300||!shown(c.mesh)){c.due=0;c.hold(true);continue;}
+  c.due+=dt;if(far>90&&(c.tick=(c.tick+1)%4)){c.hold(true);continue;}c.hold(false);c.update(c.due,CARS);c.due=0;
  }
 }
 export {ARMS as IDLE_ARMS,GESTURES as IDLE_GESTURES,KINDS as IDLE_KINDS,applyPose,clonePose};
@@ -676,6 +695,9 @@ export class PitCrew{
   this.pole=new THREE.Mesh(new THREE.CylinderGeometry(.015,.015,1,8),people.material);this.pole.geometry.deleteAttribute('uv');
   const colors=new Float32Array(this.pole.geometry.attributes.position.count*3).fill(.12);this.pole.geometry.setAttribute('color',new THREE.BufferAttribute(colors,3));
   this.disc=new THREE.Mesh(new THREE.CircleGeometry(.23,28),this.discs.stop);this.root.add(this.pole,this.disc);
+  // The can, the pole and the disc are placed by hand every frame (below): never frozen with the still scenery
+  // (perf-probe.js freezeStatic; frozen, they stood at the world's origin, 30 m off the box).
+  this.can.userData.live=this.pole.userData.live=this.disc.userData.live=true;
   this.handPos=new THREE.Vector3();this.poleDir=new THREE.Vector3();this.up=new THREE.Vector3(0,1,0);this.visible=true;
  }
  update(dt,{car,active,jobs=[],finished,departing,near}){

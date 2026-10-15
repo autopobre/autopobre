@@ -16,14 +16,18 @@ export const CAMERA_FRAMES=Object.freeze({
 });
 export const FOLLOW_FRAMES=Object.freeze(Object.keys(CAMERA_FRAMES));
 // The other views' lens at 16:9 and their widening at speed (the cockpit already sees wide, as the eyes do).
-// grid: the story's low three-quarter shot of the car on the grid.
-const VIEW_LENS={cockpit:{fov:74,kick:5},hood:{fov:58,kick:6},aerial:{fov:58,kick:0},orbit:{fov:58,kick:0},tv:{fov:58,kick:0},grid:{fov:48,kick:0}};
+// grid: the story's low three-quarter shot of the car on the grid. The bonnet view sees about 83° side to side at
+// rest and 89° at speed (at 58° it saw 89° to 95°: the road ahead shrank and the braking boards read late).
+const VIEW_LENS={cockpit:{fov:74,kick:5},hood:{fov:53,kick:5},aerial:{fov:58,kick:0},orbit:{fov:58,kick:0},tv:{fov:58,kick:0},grid:{fov:48,kick:0}};
 // The widest a screen sees side to side: a 20:9 phone gets a narrower vertical lens (Hor+ up to here), so
 // the car is as big on it as on a 16:9 monitor instead of shrinking into a 100° panorama.
 export const MAX_HFOV=90;
 // The widest the speed lens may open side to side, kick included (past it the grandstands and the flags
-// stretch at the edges); a view already wider than MAX_HFOV at rest (the cockpit) keeps its own widening.
-export const MAX_SPEED_HFOV=95;
+// stretch at the edges); a view already wider than MAX_HFOV at rest (the cockpit) keeps its own widening. A 20:9
+// phone, at MAX_HFOV already at rest in the follow views, keeps the old 95° (PHONE_SPEED_HFOV), or its lens would
+// hardly open at all; screens between take the share between.
+export const MAX_SPEED_HFOV=92,PHONE_SPEED_HFOV=95;
+export const speedHfovCap=aspect=>MAX_SPEED_HFOV+(PHONE_SPEED_HFOV-MAX_SPEED_HFOV)*clamp((aspect-REFERENCE_ASPECT)/(20/9-REFERENCE_ASPECT),0,1);
 // How much of the lens kick a Movimento da câmera keeps: the lens is not the shake, so Reduzido (Baixo, Médio,
 // phones) still opens most of the way; Desligado and the system's reduced motion (motion 0) not at all.
 export const LENS_FLOOR=.85;
@@ -57,7 +61,7 @@ export function widen(base,frameFov,extra){return deg(2*Math.atan(Math.tan(rad(b
 // itself (Reduzido, the comfortable setting, keeps them at its own 35%).
 export function speedFov(mode,aspect,{speed=0,top=60,motion=1,surge=0,punch=0}={}){
  const l=lens(mode),base=baseFov(mode,aspect),scale=lensScale(motion);if(!l.kick||scale<=0)return base;
- const own=horizontalFov(l.fov,REFERENCE_ASPECT),cap=verticalFov(own>MAX_HFOV?horizontalFov(l.fov+l.kick,REFERENCE_ASPECT):MAX_SPEED_HFOV,aspect);
+ const own=horizontalFov(l.fov,REFERENCE_ASPECT),cap=verticalFov(own>MAX_HFOV?horizontalFov(l.fov+l.kick,REFERENCE_ASPECT):speedHfovCap(aspect),aspect);
  return Math.max(base,Math.min(cap,widen(base,l.fov,scale*l.kick*speedEase(speed,top)+motion*Math.min(1,l.kick/6)*(2.6*surge+1.4*punch))));
 }
 // The lens eased toward this frame's speedFov: fast open, slow release.
@@ -100,17 +104,28 @@ export const YAW_OMEGA=6.5,MAX_LAG=.2;
 // faster than this (rad/s): the aim may not jump, but if it ever does, it is eased in, never a one-frame pop.
 export const CATCH_RATE=2;
 const PITCH_OMEGA=6,PULL_OMEGA=3.5,LIFT_OMEGA=9,LOOK_RATE=2.6,TUMBLE_RATE=4;
+// The kerb's jolt through the camera's mount (the eye only, metres): a ride on the ridges shakes it up to `ride`, the
+// moment the wheels climb on adds `hit` that dies away at `decay` per second, both at the mount's own 13-18 Hz (hz),
+// scaled by the wheels on it (kerb-contact.js kerbRide) and by Movimento da câmera (none with it off).
+export const KERB_JOLT=Object.freeze({ride:.009,hit:.011,decay:9,hz:[14.2,17.6]});
+export function kerbJolt(t,ride,kick,motion){
+ if(motion<=0)return 0;
+ return motion*(KERB_JOLT.ride*ride+KERB_JOLT.hit*kick)*(.62*Math.sin(t*2*Math.PI*KERB_JOLT.hz[0])+.38*Math.sin(t*2*Math.PI*KERB_JOLT.hz[1]+1.3));
+}
 
 export class CameraRig{
- constructor(){this.yaw={x:0,v:0};this.pitch={x:0,v:0};this.pull={x:0,v:0};this.lift={x:0,v:0};this.side=0;this.punch=0;this.gear=0;this.tumble=0;this.heading=0;this.ready=false;this.out={back:0,up:0,ahead:0,lookUp:0,yaw:0,pitch:0,lift:0,side:0,pull:0,lag:0};}
+ constructor(){this.yaw={x:0,v:0};this.pitch={x:0,v:0};this.pull={x:0,v:0};this.lift={x:0,v:0};this.side=0;this.punch=0;this.gear=0;this.tumble=0;this.heading=0;this.ready=false;this.clock=0;this.kerb=0;this.kick=0;this.out={back:0,up:0,ahead:0,lookUp:0,yaw:0,pitch:0,lift:0,side:0,pull:0,lag:0,jolt:0};}
  // The next update starts the camera in place (a new view, a new car, a reset): no swing from where it was.
  reset(){this.ready=false;}
  // c: {dt, mode, aspect, body, heading: the nose's yaw (rad, physics heading: +y left), pitch: the nose's
  // pitch, travel: the velocity's yaw, speed (m/s), yawRate (rad/s), longAccel (m/s2), heave: the car's ground
  // point above the road under it (bumps, kerbs, jumps; the road's own slope is followed rigidly), tumbling,
- // motion (0..1), gear, keep: dolly (1: none)}.
+ // motion (0..1), gear, keep: dolly (1: none), kerb: the car's kerbRide (0..1)}.
  update(c){
-  const f=frameFor(c.mode,c),dt=c.dt??0,motion=c.motion??1,speed=c.speed??0,tumbling=!!c.tumbling;
+  const f=frameFor(c.mode,c),dt=c.dt??0,motion=c.motion??1,speed=c.speed??0,tumbling=!!c.tumbling,kerb=Math.max(0,Math.min(1,c.kerb??0));
+  // The kerb's jolt keeps its own clock (paused: held where it is).
+  if(!this.ready||dt>=1){this.kick=0;this.kerb=kerb;}
+  else if(dt>0){this.clock=(this.clock+dt)%100;this.kick=Math.min(1,this.kick*Math.exp(-dt*KERB_JOLT.decay)+Math.max(0,kerb-this.kerb)*1.6);this.kerb=kerb;}
   // Rolling over eases in and out (a step of the slip term or of the spring's rate turned the view in one frame).
   if(!this.ready||dt>=1)this.tumble=tumbling?1:0;else if(dt>0)this.tumble+=((tumbling?1:0)-this.tumble)*(1-Math.exp(-dt*TUMBLE_RATE));
   // Past about 70° of slip (a spin, reversing) it lets go and stays behind the nose instead of swinging round;
@@ -136,6 +151,7 @@ export class CameraRig{
   const keep=c.keep??1,o=this.out;
   o.back=f.back*keep+this.pull.x;o.up=f.up*dollyUp(keep);o.ahead=f.ahead;o.lookUp=f.lookUp;o.yaw=this.yaw.x;o.pitch=this.pitch.x;
   o.lift=clamp(this.lift.x-(c.heave??0),-.3,.3);o.side=this.side;o.pull=this.pull.x;o.lag=wrap(this.yaw.x-aim);
+  o.jolt=kerbJolt(this.clock,this.kerb,this.kick,motion);
   return o;
  }
 }

@@ -5,6 +5,8 @@ import {sceneryBands} from './track-clearance.js';
 import {LakeWaves,waveVertexCommon,waveVertex,waveFragmentCommon,waveClip} from './lake-waves.js';
 import {createVergeVegetation} from './verge-vegetation.js';
 import {carShadowPatch} from './car-shadow.js';
+import {EFFECT_LIGHT} from './weather.js';
+import {skyMirror} from './sky.js';
 
 // Land cover is read from the 2020 GeoSampa orthophoto already packed in the
 // track GLB: woods become 3D trees, orange roofs become houses, dark smooth
@@ -13,6 +15,8 @@ const FIELD_RANGE=80;
 const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
 function random(seed){let s=(seed>>>0)||1;return()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296;};}
 const shared={time:{value:0}};
+// The camera's far plane (main.js applyViewDistance): the skyline's towers are wholly fog before it cuts them.
+export const SKYLINE_FAR={value:1900};
 
 export function terrainHeight(data,x,y){
  const t=data.terrain,fx=clamp((x-t.x0)/t.step,0,t.nx-1.001),fy=clamp((y-t.y0)/t.step,0,t.ny-1.001),ix=Math.floor(fx),iy=Math.floor(fy),u=fx-ix,v=fy-iy,k=iy*t.nx+ix;
@@ -231,7 +235,8 @@ normal=normalize(normal+(viewMatrix*vec4(ripple.x,0.0,ripple.y,0.0)).xyz);`);
  };
  if(patch)material.defines={LAKE_WAVES:''};
  material.customProgramCacheKey=()=>'lake-simple-v4'+(patch?'-waves':'');
- return material;
+ // (the sky it mirrors at its full colour: sky.js SKY_REFLECTION)
+ return skyMirror(material);
 }
 
 function waterMesh(field,bodies,waves,shore){
@@ -419,7 +424,8 @@ function lakeMaterial(uniforms,mobile,patch=false){
  material.defines={LAKE_OCTAVES:mobile?4:6,...(patch?{LAKE_WAVES:''}:{})};
  material.customProgramCacheKey=()=>'lake-realistic-v3'+(mobile?'-mobile':'')+(patch?'-waves':'');
  material.userData.planarWeight=planarWeight;
- return material;
+ // (the sky it mirrors past the planar picture at its full colour: sky.js SKY_REFLECTION)
+ return skyMirror(material);
 }
 
 // One flat surface per body over its bounding box; the shore field cuts the outline.
@@ -660,10 +666,11 @@ roughnessFactor=mix(roughnessFactor,.63,bankM*.7);`)
 // (thousands of fans and trees). p.attrs: extra per-part floats (the fans' limb) as attributes;
 // p.colors: per-vertex data in place of p.color (the fans' flag cloth).
 function merge(parts){
- let count=0,indexCount=0;const extra=new Set();
- for(const p of parts){p.facet??=.35;const g=p.geometry;count+=g.attributes.position.count;indexCount+=g.index?g.index.count:g.attributes.position.count;for(const k of Object.keys(p.attrs??{}))extra.add(k);}
+ // An attr is a float or an array (a vector attribute: the trees' lobe centre); its size from the first part that has it.
+ let count=0,indexCount=0;const extra=new Map();
+ for(const p of parts){p.facet??=.35;const g=p.geometry;count+=g.attributes.position.count;indexCount+=g.index?g.index.count:g.attributes.position.count;for(const [k,v] of Object.entries(p.attrs??{}))if(!extra.has(k))extra.set(k,Array.isArray(v)?v.length:1);}
  const position=new Float32Array(count*3),normal=new Float32Array(count*3),color=new Float32Array(count*3),mask=new Float32Array(count),uvs=new Float32Array(count*2);
- const index=count>65535?new Uint32Array(indexCount):new Uint16Array(indexCount),more=Object.fromEntries([...extra].map(k=>[k,new Float32Array(count)]));let offset=0,at=0;
+ const index=count>65535?new Uint32Array(indexCount):new Uint16Array(indexCount),more=Object.fromEntries([...extra].map(([k,n])=>[k,new Float32Array(count*n)]));let offset=0,at=0;
  for(const p of parts){
   const pos=p.geometry.attributes.position,nor=p.geometry.attributes.normal,uv=p.leaf?p.geometry.attributes.uv:null;
   for(let i=0;i<pos.count;i++){
@@ -674,12 +681,12 @@ function merge(parts){
    // Leaf cards use the cluster drawn in the atlas; everything else its solid corner.
    if(uv)uvs.set([uv.getX(i)*LEAF_SPAN,uv.getY(i)*LEAF_SPAN],o*2);else uvs.set(SOLID_UV,o*2);
   }
-  for(const k of extra)more[k].fill(p.attrs?.[k]??0,offset,offset+pos.count);
+  for(const [k,n] of extra){const v=p.attrs?.[k]??0;if(n===1)more[k].fill(v,offset,offset+pos.count);else if(Array.isArray(v))for(let i=0;i<pos.count;i++)more[k].set(v,(offset+i)*n);}
   const idx=p.geometry.index;if(idx)for(let i=0;i<idx.count;i++)index[at++]=offset+idx.getX(i);else for(let i=0;i<pos.count;i++)index[at++]=offset+i;
   offset+=pos.count;
  }
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(position,3));g.setAttribute('normal',new THREE.BufferAttribute(normal,3));g.setAttribute('color',new THREE.BufferAttribute(color,3));g.setAttribute('partMask',new THREE.BufferAttribute(mask,1));g.setAttribute('uv',new THREE.BufferAttribute(uvs,2));
- for(const k of extra)g.setAttribute(k,new THREE.BufferAttribute(more[k],1));
+ for(const [k,n] of extra)g.setAttribute(k,new THREE.BufferAttribute(more[k],n));
  g.setIndex(new THREE.BufferAttribute(index,1));g.computeBoundingSphere();return g;
 }
 // Leaf atlas: one cluster of leaves over most of the square, and an opaque white corner
@@ -713,22 +720,24 @@ function leafTexture(){
 }
 // A crown of crossed leaf cards on an ellipsoid shell. Normals point out of the crown
 // (soft, rounded light like a real canopy); inner and lower cards are darker.
-function leafCrown(parts,rand,{center,radii,cards,size}){
+// lobe: the first lobe id of this crown; its cards fall in three sectors round it, each a lobe of its own (TREE_SHAPE).
+function leafCrown(parts,rand,{center,radii,cards,size},lobe=1){
  for(let i=0;i<cards;i++){
   const u=rand()*2-1,a=rand()*Math.PI*2,shell=.55+.45*Math.cbrt(rand()),h=Math.sqrt(1-u*u);
   const c=[center[0]+Math.cos(a)*h*radii[0]*shell,center[1]+u*radii[1]*shell,center[2]+Math.sin(a)*h*radii[2]*shell];
-  const s=size*(.8+rand()*.45),depth=shell;
+  const s=size*(.8+rand()*.45),depth=shell,sector=Math.floor(a/(Math.PI*2/3)),mid=(sector+.5)*Math.PI*2/3;
+  const attrs={lobe:lobe+sector,lobeC:[center[0]+Math.cos(mid)*radii[0]*.4,center[1],center[2]+Math.sin(mid)*radii[2]*.4]};
   for(let k=0;k<2;k++){
    const g=new THREE.PlaneGeometry(s,s);g.rotateX((rand()-.5)*1.6);g.rotateY(rand()*Math.PI);g.rotateZ((rand()-.5)*.8);g.translate(...c);
-   parts.push({geometry:g,mask:1,leaf:true,center,facet:.18,color:(x,y)=>{const low=smooth(center[1]-radii[1],center[1]+radii[1]*.8,y),v=(.5+.5*low)*(.62+.38*depth);return [v,v,v];}});
+   parts.push({geometry:g,mask:1,leaf:true,center,facet:.18,attrs,color:(x,y)=>{const low=smooth(center[1]-radii[1],center[1]+radii[1]*.8,y),v=(.5+.5*low)*(.62+.38*depth);return [v,v,v];}});
   }
  }
 }
-function branch(parts,from,to,r0,r1,bark){
+function branch(parts,from,to,r0,r1,bark,lobe=0){
  const d=new THREE.Vector3(...to).sub(new THREE.Vector3(...from)),len=d.length();
  const g=new THREE.CylinderGeometry(r1,r0,len,5,1,true).translate(0,len/2,0);
  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize()));g.translate(...from);
- parts.push({geometry:g,mask:0,color:()=>bark});
+ parts.push({geometry:g,mask:0,color:()=>bark,attrs:{lobe,lobeC:[0,0,0]}});
 }
 // Near trees: trunk, a few limbs and a leaf-card crown (1 m tall unit; instances scale them).
 // form (near crowns of the full builds, one mesh each): 0 the plain crown; round 1 a spreading
@@ -738,22 +747,22 @@ function foliageTreeGeometry(kind,seed,detail=1,form=0){
  const rand=random(seed),parts=[],bark=[.13,.11,.09],far=detail===0;
  if(kind==='tall'){
   if(form===1){
-   branch(parts,[0,0,0],[.03,.9,0],.03,.011,bark);
-   for(let i=0;i<3;i++){const a=rand()*Math.PI*2,y=.6+i*.08;branch(parts,[.02,y,0],[Math.cos(a)*.13,y+.14,Math.sin(a)*.13],.008,.004,bark);}
-   leafCrown(parts,rand,{center:[.03,.8,0],radii:[.25,.16,.22],cards:20,size:.2});leafCrown(parts,rand,{center:[-.05,.63,.04],radii:[.15,.11,.14],cards:10,size:.18});
+   branch(parts,[0,0,0],[.03,.9,0],.03,.011,bark,10);
+   for(let i=0;i<3;i++){const a=rand()*Math.PI*2,y=.6+i*.08;branch(parts,[.02,y,0],[Math.cos(a)*.13,y+.14,Math.sin(a)*.13],.008,.004,bark,10);}
+   leafCrown(parts,rand,{center:[.03,.8,0],radii:[.25,.16,.22],cards:20,size:.2},11);leafCrown(parts,rand,{center:[-.05,.63,.04],radii:[.15,.11,.14],cards:10,size:.18},14);
   }else{
-   branch(parts,[0,0,0],[0,.8,0],.028,.012,bark);
-   if(!far)for(let i=0;i<3;i++){const a=rand()*Math.PI*2,y=.5+i*.1;branch(parts,[0,y,0],[Math.cos(a)*.11,y+.12,Math.sin(a)*.11],.009,.004,bark);}
-   leafCrown(parts,rand,form===2?{center:[0,.62,0],radii:[.25,.32,.23],cards:30,size:.21}:{center:[0,.7,0],radii:[.2,.3,.2],cards:far?9:30,size:far?.3:.2});
+   branch(parts,[0,0,0],[0,.8,0],.028,.012,bark,10);
+   if(!far)for(let i=0;i<3;i++){const a=rand()*Math.PI*2,y=.5+i*.1;branch(parts,[0,y,0],[Math.cos(a)*.11,y+.12,Math.sin(a)*.11],.009,.004,bark,10);}
+   leafCrown(parts,rand,form===2?{center:[0,.62,0],radii:[.25,.32,.23],cards:30,size:.21}:{center:[0,.7,0],radii:[.2,.3,.2],cards:far?9:30,size:far?.3:.2},11);
   }
  }else if(form===1){
   branch(parts,[0,0,0],[.02,.3,0],.055,.04,bark);
   for(const [x,z] of [[.2,.05],[-.17,-.07]])branch(parts,[.02,.28,0],[x,.5,z],.035,.018,bark);
-  leafCrown(parts,rand,{center:[.17,.58,.06],radii:[.32,.22,.3],cards:21,size:.29});leafCrown(parts,rand,{center:[-.16,.55,-.07],radii:[.3,.2,.28],cards:19,size:.28});
+  leafCrown(parts,rand,{center:[.17,.58,.06],radii:[.32,.22,.3],cards:21,size:.29},1);leafCrown(parts,rand,{center:[-.16,.55,-.07],radii:[.3,.2,.28],cards:19,size:.28},4);
  }else{
   branch(parts,[0,0,0],[.02,form===2?.5:.42,0],.05,.03,bark);
   if(!far)for(let i=0;i<4;i++){const a=i/4*Math.PI*2+rand()*.8;branch(parts,[.02,.36+rand()*.06,0],[Math.cos(a)*.22,.6+rand()*.12,Math.sin(a)*.22],.022,.01,bark);}
-  leafCrown(parts,rand,form===2?{center:[0,.68,0],radii:[.35,.33,.35],cards:40,size:.28}:{center:[0,.64,0],radii:[.44,.3,.44],cards:far?12:40,size:far?.42:.3});
+  leafCrown(parts,rand,form===2?{center:[0,.68,0],radii:[.35,.33,.35],cards:40,size:.28}:{center:[0,.64,0],radii:[.44,.3,.44],cards:far?12:40,size:far?.42:.3},1);
  }
  return merge(parts);
 }
@@ -766,21 +775,27 @@ function leafBlob(detail,seed,amount){const g=mergeVertices(new THREE.Icosahedro
 // detail 1: near crowns (rounded lumps, ~250 triangles); detail 0: distant crowns, one lump (26
 // triangles), both on a trunk so a far crown never floats.
 // lean (Básico): every near lump the plain one, as the light build had before the rounder crowns.
+// Every part carries its lobe (attribute lobe: 0 the trunk, 1.. each lump of the crown; +10 on the tall kind) and the
+// lump's centre (lobeC), so TREE_SHAPE moves and sizes each lump on its own per tree: one mesh, many crowns. A distant
+// crown's one lump is lobe 9 (FAR_LUMP): the whole crown's average, sized and seated as its near lumps are together
+// (each tree's near and far crowns within about a tenth of each other in size and 1 cm in height, median), so the
+// switch at the block's distance (Baixo 55 m, Médio 80 m) does not make a crown jump.
+const FAR_LUMP=9;
 function treeGeometry(kind,seed,detail=1,lean=false){
- const rand=random(seed),parts=[],bark=[.09,.07,.05],far=detail===0;
+ const rand=random(seed),parts=[],bark=[.12,.1,.075],far=detail===0,base=kind==='tall'?10:0;
  const shade=(low,high)=>(x,y)=>{const s=.5+.5*smooth(low,high,y);return [s,s,s];};
  if(kind==='tall'){
-  parts.push({geometry:far?new THREE.CylinderGeometry(.02,.034,.62,3,1,true).translate(0,.31,0):new THREE.CylinderGeometry(.018,.034,.72,4,1,true).translate(0,.36,0),mask:0,color:()=>bark});
-  if(far)parts.push({geometry:leafBlob(0,rand()*100,.18).scale(.2,.4,.2).translate(0,.72,0),mask:1,center:[0,.72,0],facet:.12,color:shade(.4,1)});
+  parts.push({geometry:far?new THREE.CylinderGeometry(.02,.034,.62,3,1,true).translate(0,.31,0):new THREE.CylinderGeometry(.018,.034,.72,4,1,true).translate(0,.36,0),mask:0,color:()=>bark,attrs:{lobe:base,lobeC:[0,0,0]}});
+  if(far)parts.push({geometry:leafBlob(0,rand()*100,.18).scale(.264,.352,.264).translate(0,.7,0),mask:1,center:[0,.7,0],facet:.12,color:shade(.4,1),attrs:{lobe:base+FAR_LUMP,lobeC:[0,.7,0]}});
   else for(let i=0;i<4;i++){const y=.56+i*.36/4*1.3,r=.2-i*.1/4,c=[(rand()-.5)*.08,y,(rand()-.5)*.08];
-   parts.push({geometry:leafBlob(i<2&&!lean?1:0,rand()*100,.3).scale(r,r*.8,r).translate(...c),mask:1,center:c,facet:.12,color:shade(.45,1)});}
+   parts.push({geometry:leafBlob(i<2&&!lean?1:0,rand()*100,.3).scale(r,r*.8,r).translate(...c),mask:1,center:c,facet:.12,color:shade(.45,1),attrs:{lobe:base+1+i,lobeC:c}});}
  }else{
-  parts.push({geometry:far?new THREE.CylinderGeometry(.03,.05,.42,3,1,true).translate(0,.21,0):new THREE.CylinderGeometry(.03,.055,.5,4,1,true).translate(0,.25,0),mask:0,color:()=>bark});
-  const blobs=far?[[0,.62,0,.42]]:[[0,.72,0,.3],[.2,.58,.1,.24],[-.18,.6,.14,.23],[.05,.58,-.22,.24],[-.12,.5,-.1,.2]];
+  parts.push({geometry:far?new THREE.CylinderGeometry(.03,.05,.42,3,1,true).translate(0,.21,0):new THREE.CylinderGeometry(.03,.055,.5,4,1,true).translate(0,.25,0),mask:0,color:()=>bark,attrs:{lobe:0,lobeC:[0,0,0]}});
+  const blobs=far?[[0,.65,0,.46]]:[[0,.72,0,.3],[.2,.58,.1,.24],[-.18,.6,.14,.23],[.05,.58,-.22,.24],[-.12,.5,-.1,.2]];
   // The two largest lumps are rounder; the small ones only break the outline.
   blobs.forEach(([x,y,z,r],i)=>{const c=[x+(rand()-.5)*.06,y,z+(rand()-.5)*.06];
-   const g=leafBlob(far||lean||i>1?0:1,rand()*100,far?.28:.35).scale(r,r*(far?.75:.85),r).translate(...c);
-   parts.push({geometry:g,mask:1,center:[0,.6,0],facet:.12,color:shade(.35,.95)});});
+   const g=leafBlob(far||lean||i>1?0:1,rand()*100,far?.28:.35).scale(r,r*(far?.77:.85),r).translate(...c);
+   parts.push({geometry:g,mask:1,center:[0,.6,0],facet:.12,color:shade(.35,.95),attrs:{lobe:far?FAR_LUMP:1+i,lobeC:c}});});
  }
  return merge(parts);
 }
@@ -790,19 +805,19 @@ function houseGeometry(flat){
  // A round building (the Mané Garrincha, a gymnasium): a drum in the instance colour, the
  // concourse below a white roof band. Unit diameter, height like the boxes (base sunk 0.35).
  if(flat==='round'){
-  const parts=[{geometry:new THREE.CylinderGeometry(.5,.5,1.13,64,1,true).translate(0,.215,0),mask:1,color:()=>[.82,.82,.8]},
+  const parts=[{geometry:new THREE.CylinderGeometry(.5,.5,1.13,64,1,true).translate(0,.215,0),mask:1,color:()=>[.82,.82,.8],attrs:{towerPart:0}},
    {geometry:new THREE.CylinderGeometry(.505,.505,.22,64,1,true).translate(0,.89,0),mask:1,color:()=>[1.1,1.1,1.08]},
    {geometry:new THREE.CylinderGeometry(.505,.505,.02,64).translate(0,.99,0),mask:1,color:()=>[.9,.9,.88]}];
   return merge(parts);
  }
  if(flat==='laje'){
-  const parts=[{geometry:new THREE.BoxGeometry(1,1.35,1).translate(0,.325,0),mask:3,color:()=>[1,1,1]},
+  const parts=[{geometry:new THREE.BoxGeometry(1,1.35,1).translate(0,.325,0),mask:3,color:()=>[1,1,1],attrs:{towerPart:0}},
    {geometry:new THREE.BoxGeometry(1.04,.05,1.04).translate(0,1.02,0),mask:1,color:()=>[1,1,1]},
    {geometry:new THREE.CylinderGeometry(.07,.07,.13,10).translate(.22,1.11,-.2),mask:2,color:()=>[.08,.2,.42]},
    {geometry:new THREE.BoxGeometry(1.02,.08,.03).translate(0,1.07,.5),mask:3,color:()=>[1,1,1]}];
   return merge(parts);
  }
- const walls=new THREE.BoxGeometry(1,1.35,1).translate(0,.325,0),parts=[{geometry:walls,mask:0,color:()=>[1,1,1]}];
+ const walls=new THREE.BoxGeometry(1,1.35,1).translate(0,.325,0),parts=[{geometry:walls,mask:0,color:()=>[1,1,1],attrs:{towerPart:0}}];
  if(flat)parts.push({geometry:new THREE.BoxGeometry(1.02,.06,1.02).translate(0,1.03,0),mask:1,color:()=>[1,1,1]});
  else{
   const roof=new THREE.BufferGeometry(),e=.54,top=1.36,ridge=.22;
@@ -813,19 +828,51 @@ function houseGeometry(flat){
  }
  return merge(parts);
 }
+// A horizon tower: the walls in two boxes, the upper one (towerPart 1) set back on some towers (TOWER_VERTEX), its roof
+// and a plant room on the roof (towerPart 2: moved, sized or left off per tower). The same unit as houseGeometry(true).
+function towerGeometry(){
+ return merge([{geometry:new THREE.BoxGeometry(1,1.07,1).translate(0,.185,0),mask:0,color:()=>[1,1,1],attrs:{towerPart:0}},
+  {geometry:new THREE.BoxGeometry(1,.28,1).translate(0,.86,0),mask:0,color:()=>[1,1,1],attrs:{towerPart:1}},
+  {geometry:new THREE.BoxGeometry(1.02,.06,1.02).translate(0,1.03,0),mask:1,color:()=>[1,1,1],attrs:{towerPart:1}},
+  {geometry:new THREE.BoxGeometry(.4,.05,.36).translate(0,1.085,0),mask:1,color:()=>[.78,.78,.8],attrs:{towerPart:2}}]);
+}
 // Per-instance shape of a tree, from the hash of its position (the same in the colour pass and the
 // shadow pass): a crown with its own lobes, height and seat on the trunk, a wider or narrower spread
 // across each axis and a lean that grows up the trunk.
+// The crown's form, per tree (x spread across, y squash toward its base, z lift on a longer trunk, w how far its lumps
+// stray): round kind a dome, an umbrella (wide and flat, high on its trunk: tipuanas, sibipirunas), an old uneven one
+// (lumps flung apart, one lower) or an oval; tall kind a column for a third of them (under a tenth of all the trees, no
+// more rows of cypresses) and otherwise a eucalyptus, a rounder crown high on a bare trunk. Each lump then moves,
+// sinks or rises and grows or shrinks on its own (lobe, lobeC: treeGeometry), so no two crowns are alike, and the
+// whole stands a little taller or squatter. The lumps' reach is eased in under the cap the placement keeps clear
+// (CROWN_REACH: .56 of the width round the trunk before the warps below, .27 for the tall kind).
 const TREE_SHAPE=`
+attribute float lobe;attribute vec3 lobeC;
 float treeSeedOf(){return fract(sin(dot(instanceMatrix[3].xz,vec2(12.9898,78.233)))*43758.5453);}
+vec4 treeForm(float seed,bool tall){
+ float f=fract(seed*7.13);
+ if(tall)return f<.35?vec4(1.0,1.0,0.0,.3):vec4(1.15,.6,.1,1.0);
+ return f<.35?vec4(1.0,1.0,0.0,.45):f<.6?vec4(1.25,.62,.09,.6):f<.85?vec4(1.1,.92,0.0,1.0):vec4(.82,1.22,.02,.35);
+}
 void treeShape(inout vec3 p,float seed){
- float h1=fract(seed*91.7),h2=fract(seed*37.3),h3=fract(seed*13.1),h4=fract(seed*5.9),h5=fract(seed*23.7);
+ float h1=fract(seed*91.7),h2=fract(seed*37.3),h3=fract(seed*13.1),h4=fract(seed*5.9),h5=fract(seed*23.7),h6=fract(seed*61.9);
+ bool tall=lobe>9.5;vec4 form=treeForm(seed,tall);float crownBase=tall?.5:.34;
  if(partMask>.5){
+  float id=lobe-(tall?10.0:0.0),l1=fract(sin(seed*113.1+id*17.37)*43758.5453),l2=fract(l1*47.3+.17),l3=fract(l1*29.1+.53);
+  // A distant crown's one lump (FAR_LUMP) stands for the whole crown: no stray, the mean size and seat, and spread by
+  // the form as the near lumps' centres are.
+  bool whole=id>${FAR_LUMP-.5};if(whole){l1=.5;l2=.5;}
+  vec2 stray=whole?vec2(0.0):vec2(cos(l3*6.283),sin(l3*6.283))*form.w*(tall?.13:.09);
+  vec3 c=vec3(lobeC.xz*form.x+stray,crownBase+(lobeC.y-crownBase)*form.y+form.z+(l2-.5)*.09*form.w).xzy;
+  float k=.84+.32*l1;
+  p=c+(p-lobeC)*k*(whole?form.xyx:vec3(mix(1.0,form.x,.5),mix(1.0,form.y,.6),mix(1.0,form.x,.5)));
+  float r=length(p.xz),cap=tall?.27:.56,knee=cap*.7;
+  if(r>knee)p.xz*=(knee+(cap-knee)*(1.0-exp(-(r-knee)/(cap-knee))))/r;
   float a=atan(p.z,p.x+1e-5);
   p.xz*=1.0+.16*sin(a*3.0+h1*6.283)+.08*sin(a*5.0+h2*6.283);
   p.y=.4+(p.y-.4)*(.85+.3*h3)-.06*h4;
- }
- p.x*=.87+.26*h2;p.z*=.87+.26*h5;
+ }else p.y+=form.z*smoothstep(.12,.45,p.y);
+ p.x*=.87+.26*h2;p.z*=.87+.26*h5;p.y*=.84+.32*h6;
  p.xz+=vec2(cos(h1*6.283+h4*3.0),sin(h1*6.283+h4*3.0))*(.015+.045*h3)*p.y*p.y;
 }`;
 // The tree's own vertex work, shared by the colour and shadow passes; each tree sways on its own.
@@ -840,7 +887,10 @@ const TREE_VERTEX=`
 // Poses: 0 seated, 1 arms folded, 2 phone up, 3 elbows on knees, 4 standing, 5 standing and cheering,
 // 6 waving a flag seated, 7 standing with it. Limbs (attribute): 0 torso, 1-2 left upper arm and
 // forearm, 3-4 right, 5 thighs, 6 shins, 7 head, 8 the flag in the right hand.
+// The flag hand's elbow and hand (fanGeometry), and the top of the flag's stick, where its cloth hangs from.
+const FAN_ELBOW=[.21,.47,.1],FAN_HAND=[.12,.35,.34],FLAG_TOP=(()=>{const d=FAN_HAND.map((v,i)=>v-FAN_ELBOW[i]),l=Math.hypot(...d);return FAN_HAND.map((v,i)=>v+d[i]/l*.62);})();
 const FAN_POSE=`
+const vec3 FLAG_TOP=vec3(${FLAG_TOP.map(v=>v.toFixed(4)).join(',')});
 mat3 fanX(float a){float c=cos(a),s=sin(a);return mat3(1.0,0.0,0.0,0.0,c,s,0.0,-s,c);}
 mat3 fanY(float a){float c=cos(a),s=sin(a);return mat3(c,0.0,-s,0.0,1.0,0.0,s,0.0,c);}
 void fanPose(inout vec3 p,inout vec3 n){
@@ -860,8 +910,9 @@ void fanPose(inout vec3 p,inout vec3 n){
  else if(pose<5.5){a=-2.65+(.15+.25*excite)*sin(t*6.0+side);b=.25;c=side*.3;}
  else if(side>0.0){a=-2.35+.45*sin(t*4.5);b=.1;}
  else if(standing){a=.22;b=1.0;}
- // The cloth ripples away from the stick (colour: distance from it, face side).
- if(flagPart&&partMask>4.5)p+=normal*color.g*sin(t*11.0-color.r*5.0)*.06*color.r;
+ // Every flag its own size (.7-1.3, from the top of the stick); the cloth ripples away from the stick (colour:
+ // distance from it, face side).
+ if(flagPart&&partMask>4.5){p=FLAG_TOP+(p-FLAG_TOP)*(.7+.6*fract(seed*3.77));p+=normal*color.g*sin(t*11.0-color.r*5.0)*.06*color.r;}
  if(limb>.5&&limb<4.5||flagPart){
   vec3 S=vec3(side*.2,.76,0.0),E=vec3(side*.21,.47,.1);
   if(limb>1.5&&limb<2.5||limb>3.5){mat3 f=fanY(c)*fanX(b);p=E+f*(p-E);n=f*n;}
@@ -878,9 +929,9 @@ void fanPose(inout vec3 p,inout vec3 n){
   if(limb<5.5){p=H+r*(p-H);n=r*n;}else p+=H+r*(K-H)-K;
  }
  p.y+=standing?.33:excite*max(0.0,sin(t*7.0))*.035;
- // Build and the way they sit: slim or broad, tall or short, turned a little.
- vec3 build=vec3(.88+.3*fract(seed*3.31),.94+.12*fract(seed*9.17),.9+.2*fract(seed*3.31));
- mat3 y=fanY((fract(seed*5.13)-.5)*.6);p=y*(p*build);n=normalize(y*(n/build));
+ // Build and the way they sit: slim or broad, tall or short, turned toward a neighbour or the action (about ±22°).
+ vec3 build=vec3(.88+.3*fract(seed*3.31),.92+.16*fract(seed*9.17),.9+.2*fract(seed*3.31));
+ mat3 y=fanY((fract(seed*5.13)-.5)*.76);p=y*(p*build);n=normalize(y*(n/build));
 }`;
 // A house's own shape, shared by the colour and shadow passes (houseDepthMaterial).
 const HOUSE_VERTEX=`
@@ -895,6 +946,19 @@ const HOUSE_VERTEX=`
   // A laje's water tank: on any corner, or none.
   transformed.xz*=vec2(fract(houseSeed*7.3)<.5?-1.0:1.0,fract(houseSeed*3.1)<.5?-1.0:1.0);
   if(fract(houseSeed*11.7)<.3)transformed=vec3(0.0);
+ }`;
+// A horizon tower (towerGeometry) set back once, about four in ten of the tall ones: the upper floors narrower from a
+// height of its own, the lower block's roof a terrace. Colour pass only: the horizon casts no shadows.
+const TOWER_VERTEX=`
+ if(towerPart>1.5){
+  // The plant room: off centre, its own size, and on about a third of the towers none.
+  vec2 plantAt=(vec2(fract(houseSeed*3.7),fract(houseSeed*9.3))-.5)*.4;
+  transformed.xz=plantAt+position.xz*(.6+.8*fract(houseSeed*6.1));transformed.y=1.06+(position.y-1.06)*(.4+.8*fract(houseSeed*2.9));
+  if(fract(houseSeed*12.3)<.33)transformed=vec3(0.0,1.0,0.0);
+ }
+ if(vPartScale.y>30.0&&fract(houseSeed*17.9)<.42){
+  if(abs(position.y-.72)<.005)transformed.y=.3+.5*fract(houseSeed*8.1);
+  if(towerPart>.5)transformed.xz*=.6+.25*fract(houseSeed*5.3);
  }`;
 function sceneryMaterial(kind,{foliage=false,plain=false}={}){
  const material=new THREE.MeshStandardMaterial({name:{tree:'Arvores_instanciadas',house:'Casas_instanciadas',crowd:'Torcida_instanciada'}[kind],vertexColors:true,roughness:kind==='tree'?.88:.82,metalness:0});
@@ -925,10 +989,10 @@ diffuseColor*=leafTexel;`).replace('#include <normal_fragment_begin>',`#include 
   shader.vertexShader=shader.vertexShader.replace('#include <common>',`#include <common>
 attribute float partMask;uniform float landTime;varying float vPart;varying vec3 vPartLocal,vPartNormal,vPartScale;
 #ifdef CROWD
-varying vec2 vFanLight;
+varying vec2 vFanLight;varying vec3 vFlag,vFlagB;
 #endif
 #ifdef HOUSES
-varying float vHouseSeed;
+varying float vHouseSeed;attribute float towerPart;
 #endif
 #if defined(TREES)&&defined(USE_INSTANCING)
 ${TREE_SHAPE}
@@ -946,7 +1010,7 @@ vColor=vec4(1.0);
  vColor.rgb*=color;
 #endif
 #ifdef CROWD
- vFanLight=vec2(1.0);
+ vFanLight=vec2(1.0);vFlag=vec3(0.0,0.0,-1.0);vFlagB=vec3(1.0);
 #endif
 #ifdef HOUSES
  vHouseSeed=0.0;
@@ -960,7 +1024,8 @@ vColor=vec4(1.0);
   vec3 wall=seed<.3?vec3(.62,.6,.55):seed<.5?vec3(.66,.55,.36):seed<.65?vec3(.55,.36,.27):seed<.8?vec3(.38,.46,.5):vec3(.48,.47,.44);
   // Paint ages differently on every building; towers drift toward concrete, beige, terracotta or blue glass.
   wall*=.84+.26*fract(seed*7.7);
-  if(vPartScale.y>9.0){float k=fract(seed*19.3);wall=mix(wall,k<.3?vec3(.5,.5,.48):k<.55?vec3(.6,.53,.42):k<.7?vec3(.46,.3,.24):vec3(.2,.26,.32),.6)*(.72+.34*fract(seed*43.1));}
+  // (A third of them dark blue-grey glass, so the skyline is not one pale grey.)
+  if(vPartScale.y>9.0){float k=fract(seed*19.3);wall=mix(wall,k<.28?vec3(.5,.5,.48):k<.5?vec3(.6,.53,.42):k<.64?vec3(.46,.3,.24):vec3(.1,.13,.17),k<.64?.6:.8)*(.66+.42*fract(seed*43.1));}
   // Laje houses: mostly bare orange brick, some grey block, some painted.
   vec3 brick=seed<.55?vec3(.4,.19,.1)*(.85+.3*fract(seed*17.0)):seed<.75?vec3(.36,.36,.34):wall;
   // Water tanks: blue fibreglass, grey fibre cement or a concrete box.
@@ -975,8 +1040,13 @@ vColor=vec4(1.0);
   vec3 trousers=who3<.45?vec3(.05,.08,.15):who3<.7?vec3(.03,.03,.035):who3<.85?vec3(.28,.24,.16):vec3(.36,.36,.38);
   vec3 hairOrCap=who<.22?instanceColor.rgb*.8:who<.3?vec3(.7,.7,.68):who<.36?vec3(.03,.03,.035):who3<.2?vec3(.25,.18,.1):vec3(.03,.025,.02);
   #ifdef USE_INSTANCING
-   // Brazil's green or the fan's own colours.
-   vec3 flag=fract(fanData.y*5.7)<.55?vec3(.02,.28,.07):instanceColor.rgb;
+   // Each flag from the clubs' colours: Brazil's green (with its yellow diamond on some), Brazil's yellow, white, a
+   // blue or a red team's, or the fan's own shirt; plain or in two halves, across or down (FLAG_PATTERN).
+   float fk=fract(fanData.y*5.7),fp=fract(fanData.y*29.1);
+   vec3 green=vec3(.02,.24,.07),yellow=vec3(.5,.4,.04),white=vec3(.55,.55,.53),blue=vec3(.03,.07,.26),red=vec3(.36,.04,.04);
+   vec3 flag=fk<.3?green:fk<.45?yellow:fk<.55?white:fk<.66?blue:fk<.77?red:instanceColor.rgb;
+   vFlagB=fk<.3?yellow:fk<.45?green:fk<.55?(fp<.5?red:blue):fk<.66?white:fk<.77?(fp<.5?white:vec3(.03)):white;
+   vFlag=vec3(color.r,color.b,partMask>4.5?(fk<.3&&fp>.55?3.0:fp<.35?0.0:fp<.7?1.0:2.0):-1.0);
    vFanLight=fanData.zw;
   #else
    vec3 flag=instanceColor.rgb;
@@ -988,6 +1058,14 @@ vColor=vec4(1.0);
   float tint=fract(sin(dot(instanceMatrix[3].xz,vec2(12.9898,78.233)))*43758.5453);
   vec3 leaf=instanceColor.rgb*(.86+.28*fract(tint*17.3))*mix(vec3(1.05,1.0,.84),vec3(.93,1.0,1.08),fract(tint*31.7));
   leaf*=mix(vec3(1.0),vec3(1.08,1.05,.84),smoothstep(.55,.95,position.y)*fract(tint*7.7));
+  // Each lump a shade of its own (a younger, yellower one now and then), and the crown's shade: a lump's underside and
+  // the lower lumps darker, so a crown has a lit top and a deep core instead of flat facets (the untextured crowns).
+  float lump=fract(sin(tint*91.3+lobe*7.77)*4375.5);
+  leaf*=(.9+.2*lump)*mix(vec3(1.0),vec3(1.07,1.04,.85),step(.78,fract(lump*13.1))*.7);
+  #ifndef USE_MAP
+   vec3 fromLump=position-lobeC;
+   leaf*=mix(.66,1.0,smoothstep(-.8,.55,fromLump.y/max(length(fromLump),1e-3)))*mix(.86,1.0,smoothstep(lobe>9.5?.55:.48,lobe>9.5?.85:.7,lobeC.y));
+  #endif
   vColor.rgb*=partMask>.5?leaf:vec3(.75+.5*fract(tint*53.1));
  #else
   vColor.rgb*=mix(vec3(1.0),instanceColor.rgb,partMask);
@@ -1001,12 +1079,26 @@ ${TREE_VERTEX}
 #endif
 #if defined(HOUSES)&&defined(USE_INSTANCING)
 ${HOUSE_VERTEX}
+${TOWER_VERTEX}
+ vPartLocal=transformed;
 #endif`);
   if(kind==='crowd'){
-   shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vFanLight;').replace('#include <lights_fragment_end>',`#include <lights_fragment_end>
+   shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vFanLight;varying vec3 vFlag,vFlagB;').replace('#include <color_fragment>',`#include <color_fragment>
+// A flag's second colour (vFlag: across and down the cloth, pattern): on one half, across or down, or Brazil's diamond.
+vec2 flagEdge=fwidth(vFlag.xy)+.02;
+if(vFlag.z>-.5){
+ float second=vFlag.z<.5?0.0:vFlag.z<1.5?smoothstep(.5-flagEdge.x,.5+flagEdge.x,vFlag.x):vFlag.z<2.5?smoothstep(.5-flagEdge.y,.5+flagEdge.y,vFlag.y):1.0-smoothstep(.4-flagEdge.x,.4+flagEdge.x,abs(vFlag.x-.5)*1.3+abs(vFlag.y-.5));
+ diffuseColor.rgb=mix(diffuseColor.rgb,vFlagB,second);
+}`).replace('#include <lights_fragment_end>',`#include <lights_fragment_end>
 // Under the stand's roof: the sun reaches only some rows, and the back rows see little sky.
 reflectedLight.directDiffuse*=vFanLight.x;reflectedLight.directSpecular*=vFanLight.x;
-reflectedLight.indirectDiffuse*=vFanLight.y;reflectedLight.indirectSpecular*=vFanLight.y;`);
+reflectedLight.indirectDiffuse*=vFanLight.y;reflectedLight.indirectSpecular*=vFanLight.y;
+#if NUM_DIR_LIGHTS > 0
+ // Even in the roof's shade a fan has a side toward the sun (the light bounced off the sunlit track and apron) and one
+ // away from it, and more sky on the shoulders than the lap: wrapped light, so torsos are not lit flat like cut-outs.
+ float fanWrap=clamp((dot(normal,directionalLights[0].direction)+.6)/1.6,0.0,1.0);
+ reflectedLight.indirectDiffuse*=mix(.8,1.3,fanWrap)*(.9+.16*inverseTransformDirection(normal,viewMatrix).y);
+#endif`);
   }
   if(kind==='tree'){
    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying float vPart;varying vec3 vPartLocal,vPartNormal,vPartScale;').replace('#include <color_fragment>',`#include <color_fragment>
@@ -1025,12 +1117,22 @@ if(vPart<.5){
 // so a lump reads as foliage rather than a smooth ball; gone before it would shimmer. Not on Básico
 // (TREE_PLAIN): the cheapest level keeps its plain lumps and saves the eight hashes a crown pixel.
 vec3 clump=vPartLocal*vec3(19.0,23.0,19.0);
-float clumpDetail=(1.0-smoothstep(.35,.9,fwidth(clump.y)))*step(.5,vPart);
+float clumpDetail=(1.0-smoothstep(.35,.9,fwidth(clump.y)))*step(.5,vPart),leafBump=.5;
 if(clumpDetail>0.0){
  vec3 ci=floor(clump),cf=fract(clump);cf=cf*cf*(3.0-2.0*cf);
  #define CLUMP(o) fract(sin(dot(ci+o,vec3(12.99,78.23,37.71)))*43758.55)
  float cn=mix(mix(mix(CLUMP(vec3(0,0,0)),CLUMP(vec3(1,0,0)),cf.x),mix(CLUMP(vec3(0,1,0)),CLUMP(vec3(1,1,0)),cf.x),cf.y),mix(mix(CLUMP(vec3(0,0,1)),CLUMP(vec3(1,0,1)),cf.x),mix(CLUMP(vec3(0,1,1)),CLUMP(vec3(1,1,1)),cf.x),cf.y),cf.z);
  diffuseColor.rgb*=mix(1.0,.66+.62*cn*cn,clumpDetail)*mix(vec3(1.0),vec3(1.06,1.04,.9),cn*clumpDetail);
+ leafBump=cn;
+}
+// The clumps also stand out of the lump (about 20 cm), lit on their own: the big flat facets of a near crown break up.
+vec2 leafSlope=vec2(dFdx(leafBump),dFdy(leafBump))*.22*clumpDetail;
+#endif`).replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+#if !defined(USE_MAP)&&!defined(TREE_PLAIN)
+{
+ vec3 leafSx=dFdx(-vViewPosition),leafSy=dFdy(-vViewPosition),leafR1=cross(leafSy,normal),leafR2=cross(normal,leafSx);
+ float leafDet=dot(leafSx,leafR1);
+ if(vPart>.5&&abs(leafDet)>1e-12)normal=normalize(abs(leafDet)*normal-sign(leafDet)*(leafSlope.x*leafR1+leafSlope.y*leafR2));
 }
 #endif`).replace('#include <lights_fragment_end>',`#include <lights_fragment_end>
 #ifndef USE_MAP
@@ -1046,8 +1148,10 @@ if(vPart>.5){
 #endif`);
   }
   if(kind!=='house')return;
-  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying float vPart,vHouseSeed;varying vec3 vPartLocal,vPartNormal,vPartScale;').replace('#include <color_fragment>',`#include <color_fragment>
-float houseWindow=0.0;
+  shader.uniforms.houseLight=EFFECT_LIGHT;shader.uniforms.skylineFar=SKYLINE_FAR;
+  shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying float vPart,vHouseSeed;varying vec3 vPartLocal,vPartNormal,vPartScale;uniform float houseLight,skylineFar;').replace('#include <color_fragment>',`#include <color_fragment>
+// Night (weather.js EFFECT_LIGHT: 1 by day, .62 at dusk, under .05 at night): a share of the windows lit from inside.
+float houseWindow=0.0,houseNight=1.0-smoothstep(.08,.75,houseLight);
 // Every building its own window grid: cell width and floor height, window size, ribbon glazing
 // on some towers, and each window dark, lit or curtained. (Derivatives taken before the branch.)
 float hs=vHouseSeed,h2=fract(hs*13.7),h3=fract(hs*29.3),h4=fract(hs*51.9);
@@ -1070,11 +1174,27 @@ if((vPart<.5||vPart>2.5)&&abs(vPartNormal.y)<.5){
  float crown=tower*step(vPartScale.y-1.5-2.5*h3,up);
  float state=fract(sin(dot(floor(g)+hs*17.0,vec2(12.99,78.23)))*43758.55);
  vec3 glass=state<.62?vec3(.02,.025,.03):state<.86?vec3(.09,.08,.065):vec3(.17,.14,.1);
- vec3 near=diffuseColor.rgb*grime*(1.0-streak-course)+slab;
+ // Tenants: blocks of a few bays and floors, each with its own blinds, glass tone and lights, so a tower far off is still
+ // mottled instead of one flat pale box (blockDetail: while a block is a few pixels or more), and a plant floor of
+ // louvres every 6-11 floors on the towers.
+ vec2 blockSize=vec2(3.0+2.0*fract(hs*5.1),2.0+2.0*fract(hs*8.7)),gb=floor(g/blockSize);
+ float blk=fract(sin(dot(gb+hs*31.0,vec2(41.3,17.9)))*43758.55),blockDetail=1.0-smoothstep(.45,1.1,max(fwidth(g.x)/blockSize.x,fwidth(g.y)/blockSize.y));
+ float plantEvery=6.0+floor(6.0*fract(hs*2.3)),plant=tower*inside*step(fract(g.y/plantEvery)*plantEvery,1.0),plantDetail=1.0-smoothstep(.3,.7,fwidth(g.y));
+ houseWindow*=1.0-plant;
+ vec3 near=diffuseColor.rgb*grime*(1.0-streak-course)*mix(.93,1.06,blk)+slab;
  near=mix(near,vec3(.78,.77,.74),frame*.8);
- near=mix(near,glass,houseWindow*.92);
- vec3 far=mix(diffuseColor.rgb*grime,vec3(.04,.045,.05),fill.x*fill.y*.8*inside);
+ near=mix(near,glass*mix(.8,1.25,blk),houseWindow*.92);
+ near=mix(near,vec3(.16,.165,.17),plant*.85);
+ vec3 far=mix(diffuseColor.rgb*grime,vec3(.04,.045,.05)*mix(.7,1.8,blk*blockDetail),fill.x*fill.y*.8*inside);
+ far*=mix(1.0,mix(.74,1.16,blk),blockDetail*tower)*(1.0-plant*plantDetail*.3);
  diffuseColor.rgb=mix(far,near,detail)*(1.0-crown*.3);
+ // At night about a quarter of the blocks are in (warm homes, a cool office now and then): their windows lit one by one up
+ // close, as the block's average glow farther off, and as the building's own share beyond that.
+ if(houseNight>0.0){
+  float occupied=pow(blk,2.6)*(1.0-plant);
+  float lit=mix(mix(.2*fill.x*fill.y*inside,fill.x*fill.y*inside*occupied,blockDetail),houseWindow*step(fract(state*7.13),occupied*.95),detail);
+  totalEmissiveRadiance+=houseNight*lit*mix(vec3(1.0,.66,.34),vec3(.72,.78,.86),step(.72,fract(blk*9.1)))*1.1;
+ }
  houseWindow*=detail;
 }`).replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
 // Glass is smooth: it mirrors the sky and the neighbours instead of looking painted on.
@@ -1083,10 +1203,24 @@ roughnessFactor=mix(roughnessFactor,.06,houseWindow);`).replace('#include <norma
 // takes its normal from the screen derivatives; walls and the round drums keep their own (a flat-shaded drum
 // showed its 64 facets as stripes). Derivatives taken before the branch.
 vec3 houseFacet=normalize(cross(dFdx(vViewPosition),dFdy(vViewPosition)));
-if(vPart>.5&&vPart<2.5&&vPartLocal.y>1.0){normal=houseFacet;nonPerturbedNormal=normal;}`);
+if(vPart>.5&&vPart<2.5&&vPartLocal.y>1.0){normal=houseFacet;nonPerturbedNormal=normal;}`).replace('#include <fog_fragment>',`#ifdef USE_FOG
+ // The skyline's towers stand beyond the fog's far end: their feet melt into the ground haze with the land round them,
+ // but above it up to half of their own tone stays, so their facades, setbacks and lit blocks read through the haze.
+ // Only where the fog reaches far (a clear day's Média view and beyond: a short view, a drizzle or the rain keep them in
+ // it, as the land round them), and every tower is wholly fog before the view's far end cuts it (skylineFar: the
+ // camera's far plane, main.js applyViewDistance; Curta's 1.9 km sliced the towers standing past it).
+ #ifdef FOG_EXP2
+  float fogFactor=1.0-exp(-fogDensity*fogDensity*vFogDepth*vFogDepth),fogReach=0.0;
+ #else
+  float fogFactor=smoothstep(fogNear,fogFar,vFogDepth),fogReach=fogFar;
+ #endif
+ if(vPartScale.y>30.0)fogFactor=min(fogFactor,mix(1.0,.45,smoothstep(6.0,55.0,up)*smoothstep(1850.0,2300.0,fogReach)));
+ fogFactor=max(fogFactor,smoothstep(skylineFar*.8,skylineFar*.97,vFogDepth));
+ gl_FragColor.rgb=mix(gl_FragColor.rgb,fogColor,fogFactor);
+#endif`);
  };
  material.defines={tree:{TREES:'',...(plain?{TREE_PLAIN:''}:{})},house:{HOUSES:''},crowd:{CROWD:''}}[kind];
- material.customProgramCacheKey=()=>'scenery-'+kind+(foliage?'-foliage':'')+(plain?'-plain':'')+'-v10';
+ material.customProgramCacheKey=()=>'scenery-'+kind+(foliage?'-foliage':'')+(plain?'-plain':'')+'-v11';
  return material;
 }
 // The trees' shadows take the same shape as the trees (lean, crown): the shadow pass draws them
@@ -1104,7 +1238,7 @@ attribute float partMask;uniform float landTime;
 ${TREE_SHAPE}
 #endif`).replace('#include <begin_vertex>','#include <begin_vertex>\n'+TREE_VERTEX);
  };
- material.customProgramCacheKey=()=>'scenery-tree-depth-v2';
+ material.customProgramCacheKey=()=>'scenery-tree-depth-v3';
  return material;
 }
 // The same for the houses that reshape (pitched roofs, laje tanks): their shadows take each roof's pitch and
@@ -1151,12 +1285,25 @@ function composeTree(item,matrix,color){
  color.setRGB(...item.color);
 }
 // mobile: the untextured lumps show their albedo bare, so they get a darker, greyer palette.
+const muted=(c,s,k)=>{const l=.2126*c[0]+.7152*c[1]+.0722*c[2];return c.map(v=>(l+(v-l)*s)*k);};
+function treeGreen(a,b,dry=0,mobile=false){const c=TREE_GREENS[Math.floor(a*TREE_GREENS.length)],k=.85+b*.3,green=[c[0]*k+dry*.05,c[1]*k+dry*.01,c[2]*k];return mobile?muted(green,.72,.93):green;}
+// A flowering ipê (yellow or dusty pink, part of the São Paulo landscape), a little greyer than the paint would be.
+const ipeColor=(pink,mobile)=>pink?muted([.52,.16,.3],mobile?.34:.42,mobile?.78:.9):muted([.62,.44,.04],mobile?.68:.82,mobile?.8:.92);
 function treeColor(rand,dry=0,mobile=false){
- const pick=rand(),muted=(c,s,k)=>{const l=.2126*c[0]+.7152*c[1]+.0722*c[2];return c.map(v=>(l+(v-l)*s)*k);};
- // A few flowering ipês (yellow, dusty pink) are part of the São Paulo landscape.
- if(pick<.012)return muted([.62,.44,.04],mobile?.75:.9,mobile?.82:.95);if(pick<.022)return muted([.52,.16,.3],mobile?.42:.5,mobile?.82:1);
- const c=TREE_GREENS[Math.floor(rand()*TREE_GREENS.length)],k=.85+rand()*.3,green=[c[0]*k+dry*.05,c[1]*k+dry*.01,c[2]*k];
- return mobile?muted(green,.72,.93):green;
+ // The draws stay as they were (the trees' places follow from the same stream); a pick that once made an ipê is only
+ // marked: plantIpes decides where the ipês flower.
+ const pick=rand();
+ if(pick<.022)return Object.assign(ipeColor(pick>=.012,mobile),{ipe:true});
+ return treeGreen(rand(),rand(),dry,mobile);
+}
+// Ipês flower in small groves, where a slow noise peaks (about 2-3 trees in a hundred), a little shorter than the wood
+// round them. A tall column or a shrub never wears the blossom: the lone mauve obelisk drew every eye.
+function plantIpes(trees,others,mobile){
+ for(const t of trees){
+  if(valueNoise(t.x/60+11.3,t.y/60-4.1)>.78&&hash2(t.x*.37,t.y*.53)<.55){t.color=ipeColor(valueNoise(t.x/170-2.2,t.y/170+6.6)>.55,mobile);t.height*=.8;t.ipe=true;}
+  else if(t.color.ipe)t.color=treeGreen(hash2(t.x*.13,t.y*.29),hash2(t.y*.71,t.x*.11),0,mobile);
+ }
+ for(const t of others)if(t.color.ipe)t.color=treeGreen(hash2(t.x*.13,t.y*.29),hash2(t.y*.71,t.x*.11),0,mobile);
 }
 
 // Circuits from open data pass cover (data.scenery.cover: a class per terrain cell) and
@@ -1274,7 +1421,7 @@ export function createLandscape({data,field,ortho=null,cover=null,buildings=null
    }
   }
  }
- stats.shrubs=shrubs.length;
+ stats.shrubs=shrubs.length;plantIpes(trees,[...tall,...shrubs],mobile);stats.ipes=trees.filter(t=>t.ipe).length;
  // Trees are chunked in 200 m blocks; each block shows its near or its distant crowns, picked every
  // frame. The distant crowns are one mesh per block. Near, on the full builds, every kind has three
  // crown forms and each tree wears the one its position picks: one mesh per form in the block (two
@@ -1462,7 +1609,7 @@ function createHorizon(data,field,rand,{mobile,urban,rural=false,cityAngle=Math.
   }
   const material=sceneryMaterial('house'),compose=(item,matrix,color)=>{matrix.compose(new THREE.Vector3(item.x,item.z,-item.y),new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),item.turn),new THREE.Vector3(item.w,item.h,item.d));color.setRGB(...item.color);};
   root.add(chunked('Horizonte_casas',houseGeometry(false),material,items,compose,{size:1100,shadows:false}));
-  root.add(chunked('Horizonte_predios',houseGeometry(true),material,towers,compose,{size:3000,shadows:false}));
+  root.add(chunked('Horizonte_predios',towerGeometry(),material,towers,compose,{size:3000,shadows:false}));
   buildings=items.length+towers.length;
  }else if(rural){
   // Farmhouses and sheds scattered over the fields, one or two hundred metres apart.
@@ -1487,10 +1634,12 @@ const SHIRT_MIX=[['white',18],['black',13],['grey',8],['navy',10],['denim',5],['
 const FAN_CLUBS=[null,[['yellow',45],['green',30],['navy',10],['white',15]],[['red',45],['white',25],['black',30]],[['navy',35],['sky',25],['white',30],['yellow',10]]];
 const hash2=(i,j)=>{const h=Math.sin(i*127.1+j*311.7)*43758.5453;return h-Math.floor(h);};
 function valueNoise(x,y){const i=Math.floor(x),j=Math.floor(y),u=x-i,v=y-j,su=u*u*(3-2*u),sv=v*v*(3-2*v);return (hash2(i,j)*(1-su)+hash2(i+1,j)*su)*(1-sv)+(hash2(i,j+1)*(1-su)+hash2(i+1,j+1)*su)*sv;}
+// Worn and washed: a shirt is about 15% greyer than its dye (the flat, full colours read as toys).
+const washed=c=>{const l=.2126*c[0]+.7152*c[1]+.0722*c[2];return c.map(v=>l+(v-l)*.85);};
 function pickShirt(table,rand){
  let r=rand()*table.reduce((s,[,w])=>s+w,0);
  for(const [name,w] of table)if((r-=w)<=0){
-  if(name)return SHIRTS[name];
+  if(name)return washed(SHIRTS[name]);
   const c=[.08+rand()*.3,.08+rand()*.26,.08+rand()*.26],l=(c[0]+c[1]+c[2])/3;return c.map(v=>l+(v-l)*.7);
  }
  return SHIRTS.white;
@@ -1498,32 +1647,35 @@ function pickShirt(table,rand){
 // A seated fan facing +z (origin on the seat, limb ids for the pose in sceneryMaterial's FAN_POSE):
 // torso, arms resting on the thighs, legs down to the step below, head, and a small flag on a stick
 // in the right hand, folded away unless the fan waves it.
-function fanGeometry(mobile){
- const parts=[],white=()=>[1,1,1],sides=mobile?4:6,limb=(r,from,to,mask,id)=>{
+// far: the figure seen from beyond CROWD_NEAR, about a third to a half of the triangles: three-sided limbs, a four-sided
+// torso, a low head and cap, no neck and no shoes (under a pixel there). The same limbs and masks, so it takes the same
+// pose, colours and flag in the same program.
+function fanGeometry(mobile,far=false){
+ const parts=[],white=()=>[1,1,1],sides=far?3:mobile?4:6,limb=(r,from,to,mask,id)=>{
   const a=new THREE.Vector3(...from),b=new THREE.Vector3(...to),d=b.clone().sub(a),len=d.length();
   const g=new THREE.CylinderGeometry(r,r*.9,len,sides,1,true);
   g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize()));g.translate(...a.add(b).multiplyScalar(.5).toArray());
   parts.push({geometry:g,mask,color:white,attrs:{limb:id}});
  };
- parts.push({geometry:new THREE.CylinderGeometry(.165,.14,.5,sides+2).scale(1,1,.62).translate(0,.53,0),mask:1,color:white,attrs:{limb:0}});
+ parts.push({geometry:new THREE.CylinderGeometry(.165,.14,.5,far?4:sides+2).scale(1,1,.62).translate(0,.53,0),mask:1,color:white,attrs:{limb:0}});
  for(const x of [-1,1]){
   // T-shirt sleeves, bare forearms.
   limb(.055,[x*.2,.76,0],[x*.21,.47,.1],1,x<0?1:3);limb(.04,[x*.21,.47,.1],[x*.12,.35,.34],2,x<0?2:4);
   limb(.075,[x*.09,.3,.02],[x*.1,.31,.36],3,5);limb(.06,[x*.1,.3,.38],[x*.1,-.08,.42],3,6);
-  parts.push({geometry:new THREE.BoxGeometry(.1,.08,.24).translate(x*.1,-.13,.47),mask:0,color:()=>[.05,.05,.055],attrs:{limb:6}});
+  if(!far)parts.push({geometry:new THREE.BoxGeometry(.1,.08,.24).translate(x*.1,-.13,.47),mask:0,color:()=>[.05,.05,.055],attrs:{limb:6}});
  }
- parts.push({geometry:new THREE.CylinderGeometry(.05,.055,.1,6,1,true).translate(0,.81,0),mask:2,color:white,attrs:{limb:7}});
- parts.push({geometry:new THREE.SphereGeometry(.105,mobile?6:8,mobile?4:6).scale(.92,1.12,1).translate(0,.95,.01),mask:2,color:white,attrs:{limb:7}});
- parts.push({geometry:new THREE.SphereGeometry(.112,mobile?6:8,3,0,Math.PI*2,0,Math.PI*.42).scale(.94,1.1,1.02).translate(0,.97,-.01),mask:4,color:white,attrs:{limb:7}});
+ if(!far)parts.push({geometry:new THREE.CylinderGeometry(.05,.055,.1,6,1,true).translate(0,.81,0),mask:2,color:white,attrs:{limb:7}});
+ parts.push({geometry:new THREE.SphereGeometry(.105,far?4:mobile?6:8,far?3:mobile?4:6).scale(.92,1.12,1).translate(0,far?.93:.95,.01),mask:2,color:white,attrs:{limb:7}});
+ parts.push({geometry:new THREE.SphereGeometry(.112,far?4:mobile?6:8,far?2:3,0,Math.PI*2,0,Math.PI*.42).scale(.94,1.1,1.02).translate(0,far?.95:.97,-.01),mask:4,color:white,attrs:{limb:7}});
  // The flag: the stick carries on from the forearm (raised, it points up), the cloth hangs from its
  // top on both faces; colour data: distance from the stick and the face side, for the ripple.
- const E=new THREE.Vector3(.21,.47,.1),H=new THREE.Vector3(.12,.35,.34),dir=H.clone().sub(E).normalize(),top=H.clone().addScaledVector(dir,.62);
+ const E=new THREE.Vector3(...FAN_ELBOW),H=new THREE.Vector3(...FAN_HAND),dir=H.clone().sub(E).normalize(),top=new THREE.Vector3(...FLAG_TOP);
  const stick=new THREE.CylinderGeometry(.01,.01,.66,3,1,true);stick.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dir));stick.translate(...H.clone().addScaledVector(dir,.29).toArray());
  parts.push({geometry:stick,mask:0,color:()=>[.12,.1,.08],attrs:{limb:8}});
  const across=new THREE.Vector3(1,0,0).addScaledVector(dir,-dir.x).normalize(),face=new THREE.Vector3().crossVectors(across,dir).normalize();
  for(const s of [1,-1]){
   const pos=[],nor=[],col=[],idx=[];
-  for(let v=0;v<2;v++)for(let u=0;u<3;u++){pos.push(...top.clone().addScaledVector(across,u/2*.46).addScaledVector(dir,-v*.31).toArray());nor.push(...face.clone().multiplyScalar(s).toArray());col.push(u/2,s,0);}
+  for(let v=0;v<2;v++)for(let u=0;u<3;u++){pos.push(...top.clone().addScaledVector(across,u/2*.46).addScaledVector(dir,-v*.31).toArray());nor.push(...face.clone().multiplyScalar(s).toArray());col.push(u/2,s,v);}
   for(let u=0;u<2;u++)idx.push(...(s>0?[u,u+3,u+1,u+1,u+3,u+4]:[u,u+1,u+3,u+1,u+4,u+3]));
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));g.setIndex(idx);
   parts.push({geometry:g,mask:5,colors:new Float32Array(col),attrs:{limb:8}});
@@ -1536,8 +1688,9 @@ function fanGeometry(mobile){
 // how deep the row sits under a roof (0 front, 1 back) and the share of it the sun reaches.
 // Friends sit together in one colour, fan clubs fill sectors, seats empty in patches; some fans
 // stand, cheer or wave a flag, and everyone moves on their own clock. One draw call per circuit.
-export function createCrowd(steps,{mobile=false}={}){
- const rand=random(steps.length*131+7),items=[],spacing=mobile?.98:.69;
+// lean (Baixo, integrated video): seats a quarter further apart, a fifth fewer fans.
+export function createCrowd(steps,{mobile=false,lean=false}={}){
+ const rand=random(steps.length*131+7),items=[],spacing=lean?1.22:mobile?.98:.69;
  for(const step of steps){
   const corners=step.corners??step,face=step.face;
   // Order the four corners around the centre so consecutive points share an edge.
@@ -1564,17 +1717,38 @@ export function createCrowd(steps,{mobile=false}={}){
    items.push({x:cx+ux*along-uz*depth,y:-(cz+uz*along+ux*depth),z:y,turn,color:own.map(v=>v*bright),scale:.93+rand()*.14,pose,seed:rand(),sun,sky:sky*(.93+rand()*.14)});
   }
  }
- const geometry=fanGeometry(mobile),material=sceneryMaterial('crowd'),root=new THREE.Group(),matrix=new THREE.Matrix4(),color=new THREE.Color(),blocks=new Map();root.name='Torcida';
- for(const item of items){const key=Math.floor(item.x/2000)+':'+Math.floor(item.y/2000);if(!blocks.has(key))blocks.set(key,[]);blocks.get(key).push(item);}
+ // Blocks of CROWD_CELL metres, each drawn near or far (fanGeometry far) as it looks to the camera of that draw (crowdNear:
+ // within CROWD_NEAR through that camera's lens or not): the choice is made in the draw itself (onBeforeRender, one instance count or the other at
+ // zero), so the main view, the cars' reflection probe and the mirrors each pick their own, with no update to call.
+ // Most of a lap sees every fan far; on the main straight only the blocks beside the car are near.
+ const near=fanGeometry(mobile),far=fanGeometry(mobile,true),material=sceneryMaterial('crowd'),root=new THREE.Group(),matrix=new THREE.Matrix4(),color=new THREE.Color(),blocks=new Map(),eye=new THREE.Vector3();root.name='Torcida';
+ for(const item of items){const key=Math.floor(item.x/CROWD_CELL)+':'+Math.floor(item.y/CROWD_CELL);if(!blocks.has(key))blocks.set(key,[]);blocks.get(key).push(item);}
  for(const list of blocks.values()){
-  // Each block its own geometry over the shared buffers, for its per-fan pose data.
-  const g=new THREE.BufferGeometry(),data=new Float32Array(list.length*4);for(const [k,v] of Object.entries(geometry.attributes))g.setAttribute(k,v);g.setIndex(geometry.index);g.boundingSphere=geometry.boundingSphere.clone();g.boundingSphere.radius+=1;
-  const mesh=new THREE.InstancedMesh(g,material,list.length);mesh.name='Torcida_bloco';
-  list.forEach((item,i)=>{matrix.compose(new THREE.Vector3(item.x,item.z,-item.y),new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),item.turn),new THREE.Vector3(item.scale,item.scale,item.scale));mesh.setMatrixAt(i,matrix);mesh.setColorAt(i,color.setRGB(...item.color));data.set([item.pose,item.seed,item.sun,item.sky],i*4);});
-  g.setAttribute('fanData',new THREE.InstancedBufferAttribute(data,4));
-  mesh.computeBoundingSphere();mesh.castShadow=false;mesh.receiveShadow=true;root.add(mesh);
+  // Each block its own geometries over the shared buffers, for its per-fan pose data (shared by its two meshes).
+  const data=new Float32Array(list.length*4),fanData=new THREE.InstancedBufferAttribute(data,4),n=list.length;
+  const [close,distant]=[near,far].map(geometry=>{
+   const g=new THREE.BufferGeometry();for(const [k,v] of Object.entries(geometry.attributes))g.setAttribute(k,v);g.setIndex(geometry.index);g.boundingSphere=geometry.boundingSphere.clone();g.boundingSphere.radius+=1;g.setAttribute('fanData',fanData);
+   const mesh=new THREE.InstancedMesh(g,material,n);mesh.castShadow=false;mesh.receiveShadow=true;return mesh;
+  });
+  close.name='Torcida_bloco';distant.name='Torcida_bloco_longe';distant.userData.farCrowd=true;
+  list.forEach((item,i)=>{matrix.compose(new THREE.Vector3(item.x,item.z,-item.y),new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),item.turn),new THREE.Vector3(item.scale,item.scale,item.scale));color.setRGB(...item.color);for(const mesh of [close,distant]){mesh.setMatrixAt(i,matrix);mesh.setColorAt(i,color);}data.set([item.pose,item.seed,item.sun,item.sky],i*4);});
+  close.computeBoundingSphere();distant.boundingSphere=close.boundingSphere.clone();
+  // (each camera keeps its last choice for crowdNear's give; both meshes of the block agree within a pass)
+  const {center,radius}=close.boundingSphere,chosen=new WeakMap(),isNear=camera=>{const near=crowdNear(eye.setFromMatrixPosition(camera.matrixWorld).distanceTo(center)-radius,camera,chosen.get(camera));chosen.set(camera,near);return near;};
+  close.onBeforeRender=(renderer,scene,camera)=>{close.count=isNear(camera)?n:0;};
+  distant.onBeforeRender=(renderer,scene,camera)=>{distant.count=isNear(camera)?0:n;};
+  root.add(close,distant);
  }
  return {root,count:items.length};
+}
+const CROWD_CELL=60,CROWD_NEAR=50,CROWD_GIVE=4,LENS_REF=Math.tan(29*Math.PI/180);
+// Near or far by how big a block looks, not by its metres alone: the distance shortened by the lens (the broadcast
+// camera's long lens showed far fans 55-91 px tall; immersive-visuals.js detailLevel's rule, 29° the chase lens's
+// half height), with CROWD_GIVE metres of give either way from the camera's last choice (was: undefined the first time),
+// so a block on the line keeps its figure instead of flickering between the two from frame to frame.
+export function crowdNear(distance,camera,was){
+ const zoom=camera.isPerspectiveCamera?Math.tan(camera.fov*Math.PI/360)/(camera.zoom||1)/LENS_REF:1;
+ return distance*zoom<CROWD_NEAR+(was===undefined?0:was?CROWD_GIVE:-CROWD_GIVE);
 }
 
 // Static circuit buildings from the GLB and the Curvelo scene get world-mapped
@@ -1586,7 +1760,8 @@ export function structureMaterial(material,textures,cache=new Map()){
  if(!kind)return material;
  const key=material.uuid;if(cache.has(key))return cache.get(key);
  const upgraded=material.clone();upgraded.name=material.name+'_v2';
- if(kind==='glass'){upgraded.color.setRGB(.02,.035,.045);upgraded.roughness=.06;upgraded.metalness=.4;upgraded.envMapIntensity=1.4;}
+ // (the glass mirrors the sky at its full colour: sky.js SKY_REFLECTION, at the scene's strength as it always had)
+ if(kind==='glass'){upgraded.color.setRGB(.02,.035,.045);upgraded.roughness=.06;upgraded.metalness=.4;skyMirror(upgraded);}
  else{
   upgraded.roughness=kind==='metal'?.42:kind==='roof'?.55:kind==='paint'?.62:.92;upgraded.metalness=kind==='metal'?.55:0;
   if(kind==='concrete')upgraded.color.setRGB(.56,.56,.54);

@@ -16,6 +16,7 @@ import {podiumBanner,podiumPlate,podiumRibbon,signBoard} from './pit-textures.js
 import {fuscaCar,rivalCabin,FUSCA_PROFILE,FUSCA_SEAT} from './fusca.js';
 import {finishMaterial,setCarDirt,setCarTone} from './car-finish.js';
 import {carContact} from './contact-shadows.js';
+import {midLevel,sharedMidShapes} from './car-lod.js';
 import {trunkInside,showTrunkInside,liveryPlates,liveryMaterial,sharedLivery,LIVERY_SLOTS,liveryLook,rimMaterial,sharedRims,RIM_STYLES} from './car-livery.js';
 // V06 parts a rival never shows on track (engine and fuel cell stay under shut panels); the
 // exporter also flags every other hidden mesh (bay, trunk, hinges) with the extra "interno".
@@ -39,6 +40,11 @@ export const teamPaint=(cache,{color,stripe,finish=null,dirt=null,tone=null})=>m
 export const rivalDirt=number=>{let h=7;for(const ch of String(number))h=(h*31+ch.charCodeAt(0))%1000003;const a=(h%997)/997,b=(h%613)/613;return [a<.2?.08:.22+.4*(a-.2),b*40];};
 // The number plates in numberPlates' order: both rear quarters, the roof, the tail.
 export const PLATE_NAMES=Object.freeze(['Numero_lateral_','Numero_lateral_','Numero_teto_','Numero_traseiro_']);
+// The middle level of detail (car-lod.js midLevel): the team's paint keeps its own materials; the cabin, the engine
+// bay, the lamps' reflectors (behind their lenses) and the brake discs behind the rims stay out (by material or group
+// name), as the driver does. The floor pan (Metal_escuro) stays: from a low camera the road showed under the bumpers.
+const MID_KEEP=/^(Pintura_preta|Faixa_amarela|Pintura_fusca|Paralama_fusca)$/;
+const MID_SKIP=/^(Refletor|Gaiola|Mangueira|Rede_tecido|Pintura_preta_interna|Pintura_interna|Chapa_|Fio_|Aluminio_fundido|Disco_aco|Motor_|Aco_tanque|Aco_escuro|Tubo_|Filtro|Tampa_azul|Forro_teto|Vinil_preto|Banco_|Fusca_painel|Volante|Interior_leve|Estrutura_cabine|Piloto_|Luz_de_freio|Farois)/;
 // The distant rivals' side profile (farProxy; the car screen's card icons, car-select.js): metres in the
 // car frame, nose to +x: the body, the side windows, the axles along the car and the wheels' radius; the
 // body's width, the wheels' track (half), the tail and head lamps (x, y, z either side, width across, height)
@@ -49,6 +55,8 @@ export const FAR_PROFILE=Object.freeze({
  glass:[[.9,.92],[.08,1.37],[-.97,1.37],[-1.7,.99]],axles:[1.55,-1.117],wheel:.316,
  width:1.84,track:.8,tail:{x:-2.37,y:.95,z:.55,w:.35,h:.08},head:{x:2.45,y:.63,z:.605,w:.25,h:.1},bumpers:[[2.47,.42],[-2.41,.45]],bumperWidth:1.8});
 const up=new THREE.Vector3(0,1,0);
+// A rival's wheel turn, every frame for every car: no new objects (they fed the garbage collector's pauses).
+const SPIN_AXIS=new THREE.Vector3(0,0,1),wheelSpin=new THREE.Quaternion();
 // A side profile's part below height y (one Sutherland-Hodgman pass): a two-tone's lower band on the distant model.
 export function clipBelow(points,y){
  const out=[];for(let i=0;i<points.length;i++){const a=points[i],b=points[(i+1)%points.length],ina=a[1]<=y,inb=b[1]<=y;
@@ -130,6 +138,8 @@ export class ImmersiveVisuals {
  constructor(scene,carRoot,data,driver,car,rivalTemplate){
   this.scene=scene;this.driver=driver;this.carRoot=carRoot;this.data=data;this.root=new THREE.Group();this.root.visible=false;scene.add(this.root);
   this.materials={};this.time=0;
+  // Levels of detail by apparent distance (detailLevel; main.js setCarDetail, graphics-settings.js CAR_DETAIL).
+  this.lod={near:14,far:45};
   // The podium's stage: a clear, level spot near the line, off the track (circuits.js podium: metres along the
   // track and across it), else 35 m past the line and 32 m to the side.
   const [podiumS,podiumD]=CIRCUITS[circuitId(data.meta.id)]?.podium??[35,-32];
@@ -389,9 +399,31 @@ export class ImmersiveVisuals {
  // Swap detailed and distant rival models around the player.
  // Detailed car or light proxy by how big it looks: distance to the camera shortened by the lens
  // zoom (the broadcast camera's long lens), or to the player's car when no camera is known.
- detailLevel(obj){const u=obj.userData;if(!u.far)return;const cam=this.viewCamera;
-  const far=cam?obj.position.distanceTo(cam.position)*Math.tan(cam.fov*Math.PI/360)/Math.tan(29*Math.PI/180)>40:obj.position.distanceToSquared(this.carRoot.position)>40*40;
-  u.far.visible=far;u.detail.visible=!far;}
+ // Three levels: the detailed car up to lod.near, the light one (car-lod.js) up to lod.far, then the proxy; 5% either
+ // side of each swap, so a car holding its distance does not flicker between two.
+ detailLevel(obj){const u=obj.userData;if(!u.far)return;const cam=this.viewCamera,{near,far}=this.lod;
+  const d=cam?obj.position.distanceTo(cam.position)*Math.tan(cam.fov*Math.PI/360)/Math.tan(29*Math.PI/180):obj.position.distanceTo(this.carRoot.position);
+  const level=d>far*(u.far.visible?.95:1.05)?2:u.mid&&d>near*(u.mid.visible?.95:1.05)?1:0;
+  // The close model, hidden, leaves the scene graph: every frame three.js walks it all for the matrices, hidden or not, and
+  // it is a hundred objects a car. The light ones stay (the reflection captures show the distant one: car-reflections.js).
+  u.far.visible=level===2;u.detail.visible=level===0;if(u.mid)u.mid.visible=level===1;
+  if(level===0&&u.detail.parent!==obj)obj.add(u.detail);else if(level!==0&&u.detail.parent===obj)obj.remove(u.detail);}
+ // The Gráficos tab's Detalhe dos carros: where each level of detail takes over ({near, far} in metres).
+ setCarDetail(lod){if(lod)this.lod={near:lod.near,far:lod.far};}
+ // The light level of a rival (car-lod.js midLevel), its lamps and its numbers: shapes shared per model (key).
+ addMid(root,{detail,wheels,radius,key,lamps}){
+  const mid=midLevel({detail,root,keep:MID_KEEP,skip:MID_SKIP,wheels,radius,material:this.materials.farCar,cache:this.midShapes??=new Map(),key});
+  // The numbers and stickers on the body (decals drawn over it) show on the light level too: meshes of its own over the
+  // same shapes and materials (the close model keeps its own, where the rest of the game looks for them).
+  root.updateMatrixWorld(true);const inverse=root.matrixWorld.clone().invert();
+  detail.traverse(o=>{if(!o.isMesh||!(o.renderOrder>0)||!/^(Numero_|Raio_)/.test(o.name))return;const copy=new THREE.Mesh(o.geometry,o.material);
+   Object.assign(copy,{name:'Rival_medio_'+o.name,renderOrder:o.renderOrder,receiveShadow:o.receiveShadow});copy.matrix.multiplyMatrices(inverse,o.matrixWorld).decompose(copy.position,copy.quaternion,copy.scale);mid.add(copy);});
+  if(lamps)mid.add(lamps);root.add(mid);root.userData.mid=mid;
+  // A close model out of the scene graph (detailLevel) is still found by name and walked, as when it was in.
+  root.getObjectByName=function(name){return THREE.Object3D.prototype.getObjectByName.call(this,name)??(this.userData.detail&&!this.userData.detail.parent?this.userData.detail.getObjectByName(name):undefined);};
+  root.traverse=function(callback){THREE.Object3D.prototype.traverse.call(this,callback);const d=this.userData.detail;if(d&&!d.parent)d.traverse(callback);};
+  return mid;
+ }
  // Modo Corrida's car selection (race-roster.js fieldRoster): while the player races the car `number`,
  // its place among the rivals' models is the Opala 99's, driven, in its own livery (built on first use,
  // from the template as loaded: main.js paints the player's car only after). '99' puts them all back
@@ -422,10 +454,11 @@ export class ImmersiveVisuals {
   const own=car.getObjectByName('Volante_Fusca');if(own)own.visible=false;
   const driver=createRivalDriver({color:entry.color,number:entry.number});driver.root.position.add(new THREE.Vector3(...FUSCA_SEAT));detail.add(driver.root);
   const far=this.farProxy(entry.color,FUSCA_PROFILE,entry.stripe),lamps=createBrakeLights({far:FUSCA_PROFILE.lamps});far.add(lamps);root.add(far);
+  const midLamps=createBrakeLights({far:FUSCA_PROFILE.lamps});root.userData.detail=detail;this.addMid(root,{detail,wheels:car.userData.wheels.map(obj=>({obj})),radius:FUSCA_PROFILE.wheel,key:`${template.uuid}|fusca`,lamps:midLamps});
   // Its headlamps, lit at dusk, at night and in the rain (headlights.js; main.js updateLamps shows them).
   const heads=createHeadlights('fusca');root.add(heads);Object.assign(root.userData,{headlights:heads,lampSet:'fusca'});
   Object.assign(root.userData,{detail,far,driver,fusca:car,wheels:car.userData.wheels.map(obj=>({obj,base:obj.quaternion.clone()})),
-   brake:v=>{car.userData.brake(v);lamps.userData.set(v);},nameLabel:name?this.tag(root,name,[0,2.2,0],2.7,.30,'#fff','#172a2ddb'):null});
+   brake:v=>{car.userData.brake(v);lamps.userData.set(v);midLamps.userData.set(v);},nameLabel:name?this.tag(root,name,[0,2.2,0],2.7,.30,'#fff','#172a2ddb'):null});
   return root;
  }
  // Frees what rivalCar made for one car (merged bodywork, distant model, interior, driver, labels,
@@ -433,9 +466,10 @@ export class ImmersiveVisuals {
  // the cabin structure of the player's car, this.materials, the brake lights', the drivers' suits and
  // three.js's sprite quad.
  disposeCar(obj,template){
+  if(obj.userData.detail&&!obj.userData.detail.parent)obj.add(obj.userData.detail);
   const keep=new Set(),hold=root=>root?.traverse(o=>{if(o.geometry)keep.add(o.geometry);for(const m of [o.material??[]].flat())keep.add(m);});
   hold(template);hold(this.carRoot.getObjectByName('Estrutura_cabine_V04'));
-  for(const r of [...(this.plateShapes?.get(template)??[]),...Object.values(this.materials),...sharedBrakeLights(),...sharedHeadlights(),...sharedDriverMaterials(),...sharedLivery(),...sharedRims()])keep.add(r);
+  for(const r of [...(this.plateShapes?.get(template)??[]),...Object.values(this.materials),...sharedBrakeLights(),...sharedHeadlights(),...sharedDriverMaterials(),...sharedLivery(),...sharedRims(),...sharedMidShapes(this.midShapes??new Map())])keep.add(r);
   obj.traverse(o=>{if(o.geometry&&!o.isSprite&&!keep.has(o.geometry))o.geometry.dispose();for(const m of [o.material??[]].flat())if(!keep.has(m)){if(m.map?.isCanvasTexture)m.map.dispose();m.dispose();}});
  }
  // driven: a rival out on track, with its driver (rival-driver.js) in the team's suit and helmet;
@@ -473,7 +507,8 @@ export class ImmersiveVisuals {
   if(driven){const driver=createRivalDriver({color,number});detail.add(driver.root);root.userData.driver=driver;}
   const far=this.farProxy(color,FAR_PROFILE,color,look.tone);root.add(far);root.userData.detail=detail;root.userData.far=far;
   // Brake lights on both levels of detail, lit while its driver brakes (userData.brake).
-  const lamps=[createBrakeLights(),createBrakeLights({far:true})];detail.add(lamps[0]);far.add(lamps[1]);root.userData.brake=v=>{for(const l of lamps)l.userData.set(v);};
+  const lamps=[createBrakeLights(),createBrakeLights({far:true}),createBrakeLights()];detail.add(lamps[0]);far.add(lamps[1]);root.userData.brake=v=>{for(const l of lamps)l.userData.set(v);};
+  const mid=()=>this.addMid(root,{detail,wheels:pivots,radius:FAR_PROFILE.wheel,key:`${template.uuid}|${livery99?'99':'equipe'}`,lamps:lamps[2]});
   // Headlights on both levels (the auxiliary lamps where the template has them), lit at dusk, at night and in the
   // rain (headlights.js; main.js updateLamps shows them while it races).
   const heads=createHeadlights(lampSetFor(template));root.add(heads);root.userData.headlights=heads;root.userData.lampSet=heads.userData.lampSet;
@@ -483,12 +518,12 @@ export class ImmersiveVisuals {
   // The Opala 99 itself (livery99) keeps its own.
   // The spinning wheels' disc takes the rims' style (contact-shadows.js).
   root.userData.rimStyle=RIM_STYLES[look.rim]?.style??0;
-  if(livery99){root.userData.wheels=pivots;root.userData.nameLabel=label;return root;}
+  if(livery99){root.userData.wheels=pivots;root.userData.nameLabel=label;mid();return root;}
   // Its livery (car-livery.js): sponsors and stripes merged into the four number stickers, one material for the field.
   const plates=this.numberPlates(template,detail),livery=liveryPlates({number,stripe},plates,this.liveryShapes(template,detail));
   const material=livery?liveryMaterial():numberSticker(number);
   (livery?.plates??plates).forEach((g,i)=>{const decal=new THREE.Mesh(g,material);decal.name=PLATE_NAMES[i]+number;decal.renderOrder=2;detail.add(decal);});
-  root.userData.wheels=pivots;root.userData.nameLabel=label;return root;
+  root.userData.wheels=pivots;root.userData.nameLabel=label;mid();return root;
  }
  // The tow strap: a flat ribbon along the 25 points of its path (immersive-state.js strapPath),
  // laid by layStrap; also the strap of multiplayer.js's tow trucks.
@@ -608,17 +643,29 @@ export class ImmersiveVisuals {
  }
  // focus: the car the cameras watch (main.js, recon lap), else the player's: name tags show round it.
  // A short field (solo practice, 1x1) races some of the cars: each rival drives its roster place's car.
- updateFree(rivals,dt){this.time+=dt;this.dress('proprio');this.leoDoor?.scale.setScalar(1);this.root.visible=true;this.damage.visible=false;this.carRoot.visible=true;for(const child of this.root.children)child.visible=this.rivals.includes(child);const focus=this.focus??this.carRoot.position,short=rivals.length<this.rivals.length;this.rivals.forEach((obj,i)=>{const r=short?rivals.find(r=>r.rosterIndex===i):rivals[i];if(!r){obj.visible=false;return;}const c=r.car;if(obj.userData.nameLabel)obj.userData.nameLabel.visible=Math.hypot(c.x-focus.x,c.y+focus.z)<45;this.setCarPose(obj,c);this.lean(obj,c);this.detailLevel(obj);obj.userData.brake?.(r.input?.brake??0);obj.userData.driver?.update(c,dt,obj.userData.detail.visible);for(const w of obj.userData.wheels||[])w.obj.quaternion.copy(w.base).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-c.spin));this.groundContact(obj,c);});}
+ // Free racing shows the rivals only: the story's paddock (the vaquinha, Kléber's box, the people) leaves the scene graph
+ // meanwhile, a thousand and more hidden objects three.js walked every frame for their matrices; the story brings it
+ // back (update). A car that joins the field (seatOpala99, the Fuscas) comes back at once.
+ park(on){
+  // The holder is never in the scene; its people keep their idle crowds (pit-crew.js updatePeople: keepPeople).
+  const holder=this.parking??=Object.assign(new THREE.Group(),{name:'Paddock_guardado'});holder.userData.keepPeople=true;
+  if(!on){while(holder.children.length)this.root.add(holder.children[0]);return;}
+  for(const child of [...holder.children])if(this.rivals.includes(child))this.root.add(child);
+  for(const child of [...this.root.children])if(!this.rivals.includes(child)){child.visible=false;holder.add(child);}
+ }
+ // Everything back in the graph (the paddock, the close models out of it): before the circuit's disposal walks it.
+ restoreGraph(){this.park(false);for(const o of new Set([...this.rivals,...(this.rosterCars??[]),...(this.fuscaCars??[]),this.opala99,this.fusca99]))if(o?.userData.detail&&!o.userData.detail.parent)o.add(o.userData.detail);}
+ updateFree(rivals,dt){this.time+=dt;this.dress('proprio');this.leoDoor?.scale.setScalar(1);this.root.visible=true;this.damage.visible=false;this.carRoot.visible=true;this.park(true);for(const child of this.root.children)child.visible=this.rivals.includes(child);const focus=this.focus??this.carRoot.position,short=rivals.length<this.rivals.length;this.rivals.forEach((obj,i)=>{const r=short?rivals.find(r=>r.rosterIndex===i):rivals[i];if(!r){obj.visible=false;return;}const c=r.car;if(obj.userData.nameLabel)obj.userData.nameLabel.visible=Math.hypot(c.x-focus.x,c.y+focus.z)<45;this.setCarPose(obj,c);this.lean(obj,c);this.detailLevel(obj);obj.userData.brake?.(r.input?.brake??0);obj.userData.driver?.update(c,dt,obj.userData.detail.visible);if(obj.userData.detail?.visible!==false)for(const w of obj.userData.wheels||[])w.obj.quaternion.copy(w.base).multiply(wheelSpin.setFromAxisAngle(SPIN_AXIS,-c.spin));this.groundContact(obj,c);});}
  // Its contact shadow on both levels of detail, its wheels' blur close up (contact-shadows.js).
  groundContact(obj,c){carContact.car(obj,c,obj.userData.fusca?'fusca':'opala',obj.userData.detail?.visible?obj.userData.wheels:null);}
  update(state,car,dt,rivals,projectile,towOrigin){
-  this.time+=dt;this.root.visible=this.damage.visible=state.active;if(!state.active)return;this.ownOpenings?.update(dt);
+  this.time+=dt;this.root.visible=this.damage.visible=state.active;if(!state.active)return;this.park(false);this.ownOpenings?.update(dt);
   // The pilot's clothes follow the story (story-career.js outfitOf); in Kléber's box the stage has its own
   // Stevan, so the paddock's waits out of sight (not while the opening shots play).
   this.dress(outfitOf(state.profile.career));this.storyScene?.update(dt);
   const cutscene=this.cutscene();if(cutscene&&this.hero.visible){this.hero.visible=false;this.heroCut=true;}else if(!cutscene&&this.heroCut){this.hero.visible=!this.inCar;this.heroCut=false;}showTrunkInside(this.own?.userData.trunkInside,this.ownOpenings);
   const staged=['crowd','podium'].includes(state.phase);this.stage.visible=state.phase==='podium';this.crowd.visible=state.phase==='crowd';this.podium.visible=state.phase==='podium';this.carRoot.visible=!staged||!!this.inCar;if(this.own)this.own.visible=!this.inCar;if(this.inCar)this.hero.visible=false;
-  this.rivals.forEach((obj,i)=>{obj.visible=['starting','grid','race'].includes(state.phase);if(obj.visible){const c=rivals[i].car;if(obj.userData.nameLabel)obj.userData.nameLabel.visible=Math.hypot(c.x-this.carRoot.position.x,c.y+this.carRoot.position.z)<45;this.setCarPose(obj,c);this.lean(obj,c);this.detailLevel(obj);obj.userData.brake?.(state.phase==='race'?rivals[i].input?.brake??0:0);obj.userData.driver?.update(c,dt,obj.userData.detail.visible);for(const w of obj.userData.wheels||[])w.obj.quaternion.copy(w.base).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-rivals[i].progress/.31595));this.groundContact(obj,c);}});
+  this.rivals.forEach((obj,i)=>{obj.visible=['starting','grid','race'].includes(state.phase);if(obj.visible){const c=rivals[i].car;if(obj.userData.nameLabel)obj.userData.nameLabel.visible=Math.hypot(c.x-this.carRoot.position.x,c.y+this.carRoot.position.z)<45;this.setCarPose(obj,c);this.lean(obj,c);this.detailLevel(obj);obj.userData.brake?.(state.phase==='race'?rivals[i].input?.brake??0:0);obj.userData.driver?.update(c,dt,obj.userData.detail.visible);if(obj.userData.detail?.visible!==false)for(const w of obj.userData.wheels||[])w.obj.quaternion.copy(w.base).multiply(wheelSpin.setFromAxisAngle(SPIN_AXIS,-rivals[i].progress/.31595));this.groundContact(obj,c);}});
   // The sign (seen through walls) fades out as the camera comes within a few metres of it.
   if(this.deskMarker){const m=this.deskMarker,show=state.phase==='crowd'&&!this.inCar&&!state.desk&&!cutscene,pulse=.5+.5*Math.sin(this.time*3.2);m.marker.visible=m.sign.visible=show;
    if(show){m.beam.material.opacity=.36+.24*pulse;m.ring.material.opacity=.7+.3*pulse;m.arrow.position.y=2.2+.1*Math.sin(this.time*2.4);m.arrow.rotation.y=this.time*1.6;
