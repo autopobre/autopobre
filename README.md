@@ -54,17 +54,24 @@ Com o proxy desligado, o Cloudflare só responde o DNS e o GitHub cuida do HTTPS
 
 O domínio, o certificado e a origem do Pages ficam neste repositório, então a migração não mexe no DNS.
 
-1. Traga o histórico e as **tags** do jogo. O fluxo de publicação do jogo escolhe as versões por tag (`apr-1.0`, `apr-2.1`, `apr-3.0`…), então elas precisam vir junto. No clone do repositório antigo:
+1. Traga o histórico e as **tags** do jogo. O fluxo de publicação do jogo escolhe as versões por tag (`apr-1.0`, `apr-2.1`, `apr-3.0`…), então elas precisam vir junto. O clone do repositório antigo usa o token pessoal, que não alcança a organization; as quatro primeiras linhas fazem só aquela pasta usar o token da organization guardado no Windows (o mesmo deste repositório):
 
    ```sh
-   git remote add novo <URL deste repositório>
+   git config --local --add credential.https://github.com.helper ""
+   git config --local --add credential.https://github.com.helper manager
+   git config --local credential.https://github.com.useHttpPath true
+   git config --local credential.gitHubAuthModes pat
+   git remote add novo https://github.com/autopobre/autopobre.git
    git push novo main --force   # substitui a página provisória pelo jogo
    git push novo --tags
    ```
 
    Se quiser guardar a página provisória, crie antes uma branch `em-construcao` neste repositório.
-2. Rode o fluxo **Publicar Auto-Pobre Racing** em Actions. O domínio continua configurado em **Settings → Pages**.
-3. Atualize os textos que citam `inteligenciamilgrau.github.io/autopobre` (descrições do fluxo e README do jogo).
-4. No repositório antigo, troque o jogo por uma página que leve ao domínio novo, para não quebrar links já compartilhados.
+2. Libere o domínio novo no servidor das salas. O Worker `sala-autopobre` só aceita páginas listadas em `ORIGENS` (`sala-cloudflare/wrangler.jsonc`); sem `https://autopobre.com.br` nessa lista, o multiplayer de `/dev/` recebe "Origem não permitida". Acrescente o endereço, mantendo os antigos durante a transição, e rode `.\wrangler deploy` na pasta `sala-cloudflare`.
+3. Rode o fluxo **Publicar Auto-Pobre Racing** em Actions. O domínio continua configurado em **Settings → Pages**.
+4. Atualize os textos que citam `inteligenciamilgrau.github.io/autopobre` (descrições do fluxo e README do jogo).
+5. No repositório antigo, troque o jogo por uma página que leve ao domínio novo, para não quebrar links já compartilhados.
+
+O servidor das salas pode continuar em `sala.inteligenciamilgrau.com.br`. Para levá-lo a `sala.autopobre.com.br`, acrescente essa rota em `routes` no `wrangler.jsonc` (o deploy cria o DNS e o certificado, desde que o domínio esteja na mesma conta do Cloudflare do Worker), troque `ROOM_SERVER` em `pista_interlagos/teste/net-link.js` e em `pista_interlagos/scripts/publicacao.py`, e troque o endereço procurado pela verificação "multiplayer só em /dev/" do fluxo de publicação; sem essa última troca, a verificação deixa de proteger o link principal sem avisar. Remova a rota antiga quando ninguém mais usar a versão anterior.
 
 O jogo não usa caminhos fixos de `/autopobre/`, então funciona na raiz do domínio sem ajustes. Recordes, saldo e preferências ficam no `localStorage`, que é separado por endereço: quem já jogava em `inteligenciamilgrau.github.io` começa do zero no domínio novo, a menos que o jogo ganhe uma forma de exportar e importar esses dados.
