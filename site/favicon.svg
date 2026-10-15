@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Auto-Pobre Racing — 99</title>
+  <rect x="1" y="1" width="62" height="62" rx="13" fill="#111b16"/>
+  <rect x="3" y="3" width="58" height="58" rx="11" fill="none" stroke="#f4ce39" stroke-width="3"/>
+  <g fill="#fff5dc" fill-rule="evenodd" transform="translate(10 14) skewX(-8)">
+    <path d="M5 0H18L22 4V26L17 31H3V24H13L15 22V19H5L0 14V5ZM7 7V12H15V7Z"/>
+    <path transform="translate(25)" d="M5 0H18L22 4V26L17 31H3V24H13L15 22V19H5L0 14V5ZM7 7V12H15V7Z"/>
+  </g>
+  <path d="M10 51H55L52 55H7Z" fill="#f4ce39"/>
+  <path d="M11 57H39L37 59H9Z" fill="#269b60"/>
+</svg>
