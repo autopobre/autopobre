@@ -2,14 +2,18 @@
 // www.inteligenciamilgrau.com.br/autopobre/, and a browser keeps each site's saves apart. The old
 // address now holds a redirect page that loads this module from autopobre.com.br, packs that
 // browser's game keys into the link (#migrar=…, the part of a link never sent to a server) and
-// opens migrar.html here, which stores them before going on to the page the player asked for.
+// opens migrar.html here, which stores them and goes on, unseen, to the page the player asked for.
+// A first visit here that never came through the old address hops there once (migration-check.js)
+// and back. Either way migrar.html sets MIGRATED_KEY, and with it set nothing here runs again.
 // The old page imports moveToNewAddress by name: keep that export and the link format working.
-export const NEW_ADDRESS='https://autopobre.com.br';
-export const SAVE_PARAM='migrar',DESTINATION_PARAM='destino';
+export const NEW_ADDRESS='https://autopobre.com.br',OLD_ADDRESS='https://www.inteligenciamilgrau.com.br/autopobre/';
+export const SAVE_PARAM='migrar',DESTINATION_PARAM='destino',BACK_PARAM='volta';
+// migration-check.js reads the same key.
+export const MIGRATED_KEY='autopobre-migrado-v1';
 // ghost-lap.js GHOST_KEY: the bulkiest save, trimmed from the oldest lap until the link fits.
 export const GHOST_KEY='autopobre-ghosts-v1';
 // The multiplayer group key is a secret the player types again: it stays behind.
-const LEFT_BEHIND=new Set(['autopobre-chave-grupo']);
+const LEFT_BEHIND=new Set(['autopobre-chave-grupo',MIGRATED_KEY]);
 // Browsers open far longer links; this keeps a wide margin under every one of them.
 export const MAX_LINK=480000;
 const MAX_VALUE=1000000,MAX_DATA=8000000,MAX_KEYS=64;
@@ -71,20 +75,35 @@ export async function importSaves(text,storage=browserStorage()){
 // migrar.html: the saves, the destination and the link's other parts (#desafio=NOME and the like).
 export function readMigrationLink(hash){
  const params=new URLSearchParams(String(hash??'').replace(/^#/,''));
+ const migration=params.has(DESTINATION_PARAM)||params.has(SAVE_PARAM);
  const saves=params.get(SAVE_PARAM)??'',destination=safeDestination(params.get(DESTINATION_PARAM));
  params.delete(SAVE_PARAM);params.delete(DESTINATION_PARAM);
  const rest=params.toString();
- return {saves,destination,rest};
+ return {migration,saves,destination,rest};
 }
-// The old address's redirect page: the same path here (/autopobre/dev/ becomes /dev/), with the
-// saves when this browser has any. Without them, or when packing fails, it goes straight there.
+// migrar.html, without a word on screen: stores the saves, marks this browser as migrated (with or
+// without saves, so the first-visit hop never repeats) and returns the page to open.
+export async function arriveFromOldAddress(hash,storage=browserStorage()){
+ const {migration,saves,destination,rest}=readMigrationLink(hash);
+ const result=saves?await importSaves(saves,storage):{ok:true,brought:[],kept:[]};
+ if(migration)try{storage?.setItem(MIGRATED_KEY,JSON.stringify({v:1,at:new Date().toISOString(),brought:result.brought.length}));}catch{}
+ return {target:destination+(rest?'#'+rest:''),result};
+}
+// A page on this site and its link, from the old address's #volta (migration-check.js wrote it).
+function backTo(text){
+ const value=String(text??''),cut=value.indexOf('#');
+ return {destination:safeDestination(cut<0?value:value.slice(0,cut)),fragment:new URLSearchParams(cut<0?'':value.slice(cut+1))};
+}
+// The old address's redirect page: the same path here (/autopobre/dev/ becomes /dev/), or the page
+// a first visit hopped from (#volta), through migrar.html with the saves when this browser has any.
 export async function moveToNewAddress(base='/autopobre',place=globalThis.location,storage=browserStorage()){
- const path=(place.pathname.startsWith(base)?place.pathname.slice(base.length):place.pathname)||'/';
- const destination=safeDestination((path.startsWith('/')?path:'/'+path)+place.search);
+ const own=new URLSearchParams(String(place.hash??'').replace(/^#/,''));
+ let destination,fragment;
+ if(own.has(BACK_PARAM))({destination,fragment}=backTo(own.get(BACK_PARAM)));
+ else{const path=(place.pathname.startsWith(base)?place.pathname.slice(base.length):place.pathname)||'/';destination=safeDestination((path.startsWith('/')?path:'/'+path)+place.search);fragment=own;}
  let saves='';try{saves=await packSaves(storage);}catch{}
- if(!saves){place.replace(NEW_ADDRESS+destination+place.hash);return 'direct';}
- const params=new URLSearchParams(String(place.hash??'').replace(/^#/,''));
- params.delete(SAVE_PARAM);params.delete(DESTINATION_PARAM);
- params.set(DESTINATION_PARAM,destination);params.set(SAVE_PARAM,saves);
- place.replace(NEW_ADDRESS+'/migrar.html#'+params.toString());return 'saves';
+ for(const name of [SAVE_PARAM,DESTINATION_PARAM,BACK_PARAM])fragment.delete(name);
+ fragment.set(DESTINATION_PARAM,destination);fragment.set(SAVE_PARAM,saves);
+ place.replace(NEW_ADDRESS+'/migrar.html#'+fragment.toString());
+ return saves?'saves':'none';
 }

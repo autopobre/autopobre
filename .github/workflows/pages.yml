@@ -124,9 +124,16 @@ jobs:
             mkdir "site/$pasta"
             cp -a "$pasta/dist/." "site/$pasta/"
           done
-          for arquivo in migrar.html migrar.js migrar.css save-migration.js; do
+          for arquivo in migrar.html migrar.js migrar.css save-migration.js migration-check.js; do
             [ ! -e "site/$arquivo" ] || { echo "::error::A versao principal ja tem $arquivo; a pagina de migracao nao pode substitui-lo."; exit 1; }
             cp "atual/pista_interlagos/migracao/$arquivo" site/
+          done
+          # Every version checks, before the game starts, whether this browser still has saves at the
+          # old address (migration-check.js). The tags stay as they are: the line goes in at publishing.
+          for pagina in site/index.html site/apr_v1/index.html site/apr_v2/index.html site/dev/index.html; do
+            [ -f "$pagina" ] || continue
+            grep -q '<script type="importmap">' "$pagina" || { echo "::error::$pagina nao tem import map: a checagem dos dados antigos nao tem onde entrar."; exit 1; }
+            sed -i '0,/<script type="importmap">/s//<script src="\/migration-check.js"><\/script><script type="importmap">/' "$pagina"
           done
       # A commit from before the build knew --multiplayer always packs it: that one cannot go to these addresses.
       - name: Conferir que o multiplayer e a bancada de som ficaram so em /dev/
