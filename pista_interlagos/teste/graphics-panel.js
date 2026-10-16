@@ -14,7 +14,7 @@ const LEVEL_TEXT={
 const NEEDS=[['ao',v=>v.post==='full','Só no visual de cinema Completo.'],['lens',v=>v.post==='full','Só no visual de cinema Completo.'],['motionBlur',v=>v.post!=='off','Desligado no visual Simples.'],['targetFps',v=>v.dynamicResolution,'Ligue a resolução dinâmica para usar esta meta.']];
 const element=(tag,props={},...children)=>{const e=Object.assign(document.createElement(tag),props);e.append(...children);return e;};
 export class GraphicsPanel {
- constructor({root,touch=false,device=null,graphics,onChange,screen=()=>({width:innerWidth,height:innerHeight,ratio:devicePixelRatio||1})}){
+ constructor({root,touch=false,device=null,graphics,onChange,onApply=()=>{},screen=()=>({width:innerWidth,height:innerHeight,ratio:devicePixelRatio||1})}){
   this.root=root;this.touch=touch;this.device=device;this.onChange=onChange;this.screen=screen;this.graphics=graphics;
   this.levels=root.querySelector('#graphicsLevels');this.summary=root.querySelector('#graphicsSummary');this.restore=root.querySelector('#graphicsRestore');
   this.cards=new Map();this.selects=new Map();
@@ -40,6 +40,12 @@ export class GraphicsPanel {
    controls.append(set);
   }
   this.restore.onclick=()=>this.change(chooseGraphicsLevel(this.graphics.level));
+  // Cenário e vegetação is built with the track: picked mid-race it waits for the next start (pending()), and the button
+  // starts the race again now when the pause menu offers that.
+  this.pendingText=element('span');this.applyNow=element('button',{type:'button',id:'graphicsApplyScenery'},'Aplicar agora (recomeça a corrida)');
+  this.applyNow.onclick=()=>onApply();
+  this.pendingNote=element('p',{id:'graphicsPending',className:'graphics-pending',hidden:true},this.pendingText,this.applyNow);
+  this.summary.closest('.graphics-status').after(this.pendingNote);
   this.show(graphics);
  }
  // "Escolhe pelo aparelho: Baixo neste computador · detectamos vídeo integrado."
@@ -57,6 +63,14 @@ export class GraphicsPanel {
    list.push([value,`${label} · ${Math.round(width*ratio)}×${Math.round(height*ratio)}${ratio===this.screen().ratio?' (nativa)':''}`]);
   }
   return list;
+ }
+ // The scenery the race's track was built with and the one now chosen, or null: {built, wanted, restart} (restart: the
+ // race can start again now).
+ pending(state){
+  this.pendingNote.hidden=!state;if(!state)return;
+  const name=v=>GRAPHICS_OPTIONS.scenery.choices.find(([c])=>c===v)?.[1]??v;
+  this.pendingText.textContent=`Cenário e vegetação: esta pista foi montada no ${name(state.built)}. O ${name(state.wanted)} entra quando a corrida recomeçar; o resto do nível já está valendo.`;
+  this.applyNow.hidden=!state.restart;
  }
  // While the new look's shaders compile (main.js precompileGraphics) the picture holds.
  busy(on){this.root.classList.toggle('graphics-busy',on);if(on)this.summary.textContent='Preparando o novo visual: a imagem volta em instantes.';else this.show(this.graphics);}

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {TestCar,guardrailClearance,guardrailSections,onDeck,inTunnel} from './physics.js';
 import {canvasTexture} from './pit-textures.js';
+import {splitByCells} from './perf-probe.js';
 
 // The walls of a street circuit (Floripa, meta.barrier 'street'): a line of concrete New Jersey blocks on each side,
 // set a few decimetres off the asphalt (wall_right_m / wall_left_m, physics.js guardrailClearance), with a catch fence
@@ -166,7 +167,14 @@ diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.07),scuff*.55);`);
   for(const [u,v,w] of CAP)back?indices.push(c+u,c+v,c+w):indices.push(c+u,c+w,c+v);
  }
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));g.setAttribute('wallUv',new THREE.Float32BufferAttribute(wallUv,2));g.setIndex(indices);g.computeVertexNormals();g.computeBoundingSphere();
- const rails=new THREE.Mesh(g,concrete);rails.name='Muro_concreto';rails.castShadow=rails.receiveShadow=true;root.add(rails);
+ // Drawn in pieces of 300 m (perf-probe.js splitByCells): over a whole circuit's both sides the blocks are some 200
+ // thousand triangles, drawn whole in the picture and again in the sun's map; in pieces only those in view (and in the
+ // sun's box round the car) are. rails, the whole wall in one mesh, stays out of the scene: the cameras' obstacle
+ // (main.js cameraObstacles, on-foot.js clearView cuts it for its rays).
+ const rails=new THREE.Mesh(g,concrete);rails.name='Muro_concreto';
+ const pieces=new THREE.Group();pieces.name='Muro_concreto_trechos';
+ for(const piece of splitByCells(g,300)){const mesh=new THREE.Mesh(piece,concrete);mesh.name='Muro_concreto';mesh.castShadow=mesh.receiveShadow=true;pieces.add(mesh);}
+ root.add(pieces);
  const fg=new THREE.BufferGeometry();fg.setAttribute('position',new THREE.Float32BufferAttribute(fence,3));fg.setAttribute('uv',new THREE.Float32BufferAttribute(fenceUv,2));fg.setIndex(fenceIdx);fg.computeVertexNormals();fg.computeBoundingSphere();
  const fenceMesh=new THREE.Mesh(fg,fenceMaterial);fenceMesh.name='Alambrado';fenceMesh.castShadow=true;root.add(fenceMesh);
  const postMesh=new THREE.InstancedMesh(new THREE.CylinderGeometry(.045,.05,FENCE_TOP-.81+.05,6).translate(0,(FENCE_TOP-.81)/2,0),steel,posts.length);

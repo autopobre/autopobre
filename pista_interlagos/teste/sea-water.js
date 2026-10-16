@@ -65,7 +65,9 @@ normal=normalize((viewMatrix*vec4(wn,0.)).xyz);}`);
 roughnessFactor=mix(.16,.05,smoothstep(80.,1500.,length(vSeaWorld-cameraPosition)));`);
  };
  material.customProgramCacheKey=()=>'sea-water-v1';
- const mesh=new THREE.Mesh(geometry,material);mesh.name='Mar_superficie';mesh.position.y=level;mesh.receiveShadow=!mobile;mesh.frustumCulled=false;mesh.renderOrder=-1;
+ // Drawn after the opaque world and the ground (renderOrder: the ground .25, the far rings .27, the sky .5): its costly
+ // chop runs only on the water that shows, not under the city, the bridges and the land that cover the plane.
+ const mesh=new THREE.Mesh(geometry,material);mesh.name='Mar_superficie';mesh.position.y=level;mesh.receiveShadow=!mobile;mesh.frustumCulled=false;mesh.renderOrder=.3;
  root.add(mesh);
  const boats=createBoats(data,level,{mobile});root.add(boats.root);
  // After dark: the boats' lamps and their streaks on the water, and the seafront's lamps (beira-mar.js) in the bay.

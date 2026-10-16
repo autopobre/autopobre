@@ -535,7 +535,16 @@ mat2 landTurn(vec2 h){vec2 r=normalize(h-.5+1e-4);return mat2(r.x,r.y,-r.y,r.x);
 `).replace('#include <map_fragment>',`
 vec4 field=texture2D(trackField,vec2((vLandWorld.x-fieldBounds.x)/fieldBounds.z,(-vLandWorld.z-fieldBounds.y)/fieldBounds.w));
 float edgeDist=field.r,lateral=field.g,waterBed=field.b,viewDist=length(vLandWorld-cameraPosition);
-vec2 w=vLandWorld.xz;
+vec2 w=vLandWorld.xz,wdx=dFdx(w),wdy=dFdy(w);
+// Inside the city's map (LAND_CITY) the ground is the city's: the land's own layers below are not worked out there.
+// What is worked out only where it shows (an if) reads its textures with explicit gradients (textureGrad, textureLod):
+// a lookup that takes its own inside a branch makes Direct3D's compiler run both sides.
+#ifdef LAND_CITY
+vec2 cw=vec2(vLandWorld.x,-vLandWorld.z),cuv=(cw-cityBounds.xy)/cityBounds.zw;
+float inCity=step(0.0,cuv.x)*step(cuv.x,1.0)*step(0.0,cuv.y)*step(cuv.y,1.0);
+#else
+const float inCity=0.0;
+#endif
 #ifdef LAND_STEEP
 vec3 landN=normalize(cross(dFdx(vLandWorld),dFdy(vLandWorld)));float landSteep=smoothstep(.1,.35,1.0-abs(landN.y));
 #endif
@@ -597,6 +606,8 @@ treeM*=1.0-waterBed;
 vec2 landSide=abs(landN.x)>abs(landN.z)?vLandWorld.zy:vLandWorld.xy;
 grass=mix(grass,texture2D(grassMap,landSide/3.3).rgb,landSteep);wild=mix(wild,texture2D(wildMap,landSide/4.2).rgb,landSteep);
 #endif
+vec3 ground=vec3(0.0);float runoffRubber=0.0;
+if(inCity<.5){
 // Mown verge beside the asphalt, with stripes parallel to the track. The cut lays the
 // blades one way per stripe: seen along the cut a stripe is light, against it dark, so
 // the pattern swaps as the view turns, like the verges of a real circuit.
@@ -608,7 +619,7 @@ float mowLine=lateral+(macroFar-.5)*5.0,mowStrength=.45+.75*macroNear;
 float sheen=sin(mowLine*1.0472)*.25*mowStrength;
 #else
 vec2 fieldUV=vec2((vLandWorld.x-fieldBounds.x)/fieldBounds.z,(-vLandWorld.z-fieldBounds.y)/fieldBounds.w);
-vec2 across=vec2(texture2D(trackField,fieldUV+vec2(3.0/fieldBounds.z,0.0)).g-lateral,texture2D(trackField,fieldUV+vec2(0.0,3.0/fieldBounds.w)).g-lateral);
+vec2 across=vec2(textureLod(trackField,fieldUV+vec2(3.0/fieldBounds.z,0.0),0.0).g-lateral,textureLod(trackField,fieldUV+vec2(0.0,3.0/fieldBounds.w),0.0).g-lateral);
 vec2 cut=normalize(vec2(-across.y,across.x)+1e-5);cut.y=-cut.y;
 float parity=step(.5,fract(mowLine/6.0))*2.0-1.0,stripeEdge=smoothstep(.0,.06,abs(fract(mowLine/6.0)-.5))*smoothstep(.0,.06,.5-abs(fract(mowLine/6.0)-.5));
 vec2 mowView=normalize(vLandWorld.xz-cameraPosition.xz+1e-4);
@@ -625,11 +636,11 @@ vec3 soil=wild*vec3(.8,.72,.6);
 lawn=mix(lawn,mix(vec3(dot(soil,vec3(.3,.55,.15))),soil,.55),worn*.65);
 #ifndef LAND_SIMPLE
  // Small exposed stones in the worn edge, fading before they can shimmer.
- vec3 grit=texture2D(gravelMap,w/1.4).rgb*vec3(.58,.52,.4);
+ vec3 grit=textureGrad(gravelMap,w/1.4,wdx/1.4,wdy/1.4).rgb*vec3(.58,.52,.4);
  float closeDetail=1.0-smoothstep(25.0,95.0,viewDist);
  lawn=mix(lawn,grit,worn*closeDetail*.28);
 #endif
-vec3 ground=wild*vec3(.84,.94,.72)*mix(vec3(1.0),wildTint,.5)*mix(.8,1.1,macro);
+ground=wild*vec3(.84,.94,.72)*mix(vec3(1.0),wildTint,.5)*mix(.8,1.1,macro);
 ground=mix(ground,wild*vec3(.36,.42,.26),treeM);
 ground=mix(ground,lawn,groomed*(1.0-pavedM)*(1.0-paintM));
 vec3 asphalt=concrete*vec3(.33,.34,.35);
@@ -638,7 +649,6 @@ ground=mix(ground,paved,pavedM*(1.0-paintM));
 // Painted run-off (the aerial photo's blue-green): paint long faded to a dull grey-olive, worn back to
 // the asphalt in patches, with dark tyre streaks along the track where the cars went wide.
 // Only where there is paint: most of the ground has none.
-float runoffRubber=0.0;
 if(paintM>.001){
  vec3 runoff=mix(vec3(.078,.083,.066),vec3(.066,.066,.064),smoothstep(.45,.75,landNoise(w*.31+1.7)*.65+landNoise(w*1.7)*.35));
  // The aggregate shows through the paint (the concrete lookup's grain, about a third of its contrast).
@@ -652,69 +662,86 @@ ground=mix(ground,concrete*.55,roofM*(1.0-groomed));
 ground=mix(ground,mix(wild*vec3(.62,.45,.32),ortho*1.3,.6),bareM*(1.0-groomed*.8));
 // The aerial photograph reads correctly from afar and hides texture repetition.
 ground=mix(ground,ortho*vec3(.9,.94,.86),smoothstep(220.0,1100.0,viewDist)*.75);
+}
 float cityCover=0.0,cityRough=.9;
 #ifdef LAND_CITY
 {
- vec2 cw=vec2(vLandWorld.x,-vLandWorld.z),cuv=(cw-cityBounds.xy)/cityBounds.zw;
- float inCity=step(0.0,cuv.x)*step(cuv.x,1.0)*step(0.0,cuv.y)*step(cuv.y,1.0);
  vec2 cuvA=vec2(cuv.x,cityStack.y+clamp(cuv.y,0.0,1.0)*cityStack.x),cuvB=vec2(cuv.x,clamp(cuv.y,0.0,1.0)*cityStack.x);
  vec3 da=(texture2D(cityMap,cuvA).rgb*2.0-1.0)*cityRange,db=(texture2D(cityMap,cuvB).rgb*2.0-1.0)*cityRange;
  float roadM=cityInside(da.r),walkM=cityInside(da.g),plazaM=cityInside(da.b),cycleM=cityInside(db.r),greenM=cityInside(db.g),parkM=cityInside(db.b);
  float cn=landNoise(cw*.07),cn2=landNoise(cw*.55+3.1),fine=1.0-smoothstep(18.0,60.0,viewDist);
  // The concrete texture lends its grain only (its own colour is a warm gravel): each surface keeps a neutral tone of its own.
  float grain=mix(1.0,dot(concrete,vec3(.3,.55,.15))/max(dot(texture2D(concreteMap,vec2(.5),12.0).rgb,vec3(.3,.55,.15)),.04),.65);
- // The city's asphalt: the race's own asphalt photograph (track-surface.js, a 2 m tile), twice at other scales and turns
- // so the tile never lines up, toned a little greyer: the side streets look like the street the lap is. (Their patches,
- // cracks and manholes lie along each street: city-streets.js.)
- vec2 aRot=mat2(.8,-.6,.6,.8)*cw;
- vec3 aTex=mix(texture2D(gravelMap,cw/2.3).rgb,texture2D(gravelMap,aRot/3.1+.37).rgb,smoothstep(.3,.7,landNoise(cw*.11)));
- vec3 asphaltC=mix(vec3(dot(aTex,vec3(.3,.55,.15))),aTex,.6)*1.85*mix(.86,1.12,cn)*mix(.94,1.05,cn2);
  // The curb: 15 cm of concrete along the road's edge, the gutter's dark line at its foot. Thinner than a pixel far away
  // it fades into the sidewalk instead of shimmering.
  float curbAa=max(fwidth(da.r),.01),curbSeen=clamp(.15/(curbAa*2.5),0.0,1.0);
  float curbM=(1.0-smoothstep(.15-curbAa,.15+curbAa,da.r))*smoothstep(-curbAa,curbAa,da.r)*curbSeen*(1.0-roadM);
- float gutterM=smoothstep(-.18,-.02,da.r)*roadM*curbSeen;
+ float gutterM=smoothstep(-.18,-.02,da.r)*roadM*curbSeen,curbW=curbM*max(walkM,max(plazaM,max(greenM,.6)));
+ float jointAa=max(fwidth(cw.x),fwidth(cw.y));vec2 cdx=dFdx(cw),cdy=dFdy(cw);
+ // How much of each surface shows, from the top one down (the mixes below lay them in the other order): a surface under
+ // another one whole, or out of the map, is not worked out (most of the ground is one surface, the edges two).
+ float under=inCity,vRoad=roadM*under;under*=1.0-roadM;float vCycle=cycleM*under;under*=1.0-cycleM;float vCurb=curbW*under;under*=1.0-curbW;
+ float vWalk=walkM*under;under*=1.0-walkM;float vPlaza=plazaM*under;under*=1.0-plazaM;float vPark=parkM*under;under*=1.0-parkM;under*=1.0-greenM;float vLot=under;
+ // The city's asphalt: the race's own asphalt photograph (track-surface.js, a 2 m tile), twice at other scales and turns
+ // so the tile never lines up, toned a little greyer: the side streets look like the street the lap is. (Their patches,
+ // cracks and manholes lie along each street: city-streets.js.)
+ vec3 asphaltC=vec3(0.0);
+ if(vRoad>0.0||vPark>0.0){
+  mat2 aTurn=mat2(.8,-.6,.6,.8);vec2 aRot=aTurn*cw;
+  vec3 aTex=mix(textureGrad(gravelMap,cw/2.3,cdx/2.3,cdy/2.3).rgb,textureGrad(gravelMap,aRot/3.1+.37,aTurn*cdx/3.1,aTurn*cdy/3.1).rgb,smoothstep(.3,.7,landNoise(cw*.11)));
+  asphaltC=mix(vec3(dot(aTex,vec3(.3,.55,.15))),aTex,.6)*1.85*mix(.86,1.12,cn)*mix(.94,1.05,cn2);
+ }
  vec3 curbC=vec3(.4,.395,.38)*grain*mix(.85,1.06,cn2);
  // Sidewalks: each stretch (40 m cells, roughly a block's frontage) its own paving: concrete slabs, the hexagonal
  // blocks of the island's streets or small Portuguese stones, each a little its own grey. The joints fade out before
  // they can shimmer.
- float style=landHash(floor(cw/41.0+.37)),jointAa=max(fwidth(cw.x),fwidth(cw.y));
- vec2 slab=abs(fract(cw+.5)-.5);float slabJoint=1.0-smoothstep(0.0,max(jointAa*1.2,.012),.5-max(slab.x,slab.y));
- float hexJoint=1.0-smoothstep(0.0,max(jointAa*1.2,.008),cityHex(cw,.3));
- float stones=landNoise(cw*14.0)*.6+landNoise(cw*31.0)*.4;
- vec3 walkC=mix(vec3(.3,.295,.285),vec3(.27,.26,.245),landHash(floor(cw/41.0+.37)+2.7))*grain*mix(.88,1.06,cn);
- float joints=style<.45?slabJoint*.35:style<.8?hexJoint*.4:0.0;
- walkC*=1.0-joints*fine;
- walkC=mix(walkC,mix(vec3(.2,.195,.185),vec3(.34,.33,.31),stones),step(.8,style)*fine*.7);
- // Grime along the curb and the building line, where the sweepers do not reach.
- walkC*=mix(.8,1.0,smoothstep(0.0,.9,-da.g))*mix(.86,1.0,smoothstep(0.0,.6,da.r));
+ vec3 walkC=vec3(0.0);
+ if(vWalk>0.0){
+  float style=landHash(floor(cw/41.0+.37));
+  walkC=mix(vec3(.3,.295,.285),vec3(.27,.26,.245),landHash(floor(cw/41.0+.37)+2.7))*grain*mix(.88,1.06,cn);
+  if(fine>0.0){
+   float joints=0.0;
+   if(style<.45){vec2 slab=abs(fract(cw+.5)-.5);joints=(1.0-smoothstep(0.0,max(jointAa*1.2,.012),.5-max(slab.x,slab.y)))*.35;}
+   else if(style<.8)joints=(1.0-smoothstep(0.0,max(jointAa*1.2,.008),cityHex(cw,.3)))*.4;
+   walkC*=1.0-joints*fine;
+   if(style>=.8){float stones=landNoise(cw*14.0)*.6+landNoise(cw*31.0)*.4;walkC=mix(walkC,mix(vec3(.2,.195,.185),vec3(.34,.33,.31),stones),fine*.7);}
+  }
+  // Grime along the curb and the building line, where the sweepers do not reach.
+  walkC*=mix(.8,1.0,smoothstep(0.0,.9,-da.g))*mix(.86,1.0,smoothstep(0.0,.6,da.r));
+ }
  // Squares and the seafront promenade: interlocking concrete pavers (40 x 20 cm, running bond), grey with the odd
  // terracotta band and patches of a different batch; the joints fade out with distance.
- vec2 pv=cw/vec2(.4,.2);pv.x+=step(1.0,mod(floor(pv.y),2.0))*.5;vec2 pvf=abs(fract(pv)-.5);
- float paverJoint=1.0-smoothstep(0.0,max(jointAa*1.2,.006),min((.5-pvf.x)*.4,(.5-pvf.y)*.2));
- float band=step(.5,fract(cw.y/9.0+landNoise(cw*.02)*.6))*step(.62,landHash(floor(cw/23.0)+1.7));
- vec3 plazaC=mix(vec3(.29,.285,.27),vec3(.25,.13,.09),band*.8)*mix(1.0,mix(.9,1.06,landHash(floor(pv)+floor(cw/7.0))),fine)*mix(.92,1.04,cn);
- plazaC*=1.0-paverJoint*.3*fine;
+ vec3 plazaC=vec3(0.0);
+ if(vPlaza>0.0){
+  vec2 pv=cw/vec2(.4,.2);pv.x+=step(1.0,mod(floor(pv.y),2.0))*.5;vec2 pvf=abs(fract(pv)-.5);
+  float paverJoint=1.0-smoothstep(0.0,max(jointAa*1.2,.006),min((.5-pvf.x)*.4,(.5-pvf.y)*.2));
+  float band=step(.5,fract(cw.y/9.0+landNoise(cw*.02)*.6))*step(.62,landHash(floor(cw/23.0)+1.7));
+  plazaC=mix(vec3(.29,.285,.27),vec3(.25,.13,.09),band*.8)*mix(1.0,mix(.9,1.06,landHash(floor(pv)+floor(cw/7.0))),fine)*mix(.92,1.04,cn);
+  plazaC*=1.0-paverJoint*.3*fine;
+ }
  // Cycleways: red asphalt with a white line along each edge.
  float cycleEdge=smoothstep(-.3,-.24,db.r)*(1.0-smoothstep(-.16,-.1,db.r))*fine;
  vec3 cycleC=mix(vec3(.2,.042,.032)*grain*mix(.85,1.1,cn),vec3(.42,.42,.4),cycleEdge);
  // Lawns of squares, medians and the seafront parks, a little uneven.
  vec3 lawnC=grass*vec3(.34,.5,.24)*mix(.82,1.08,cn)*mix(.92,1.06,cn2);
  // Car parks: asphalt a shade lighter, oil darker where the cars stand.
- vec3 parkC=asphaltC*1.18*mix(1.0,.78,smoothstep(.55,.85,landNoise(cw*.35)));
+ vec3 parkC=vPark>0.0?asphaltC*1.18*mix(1.0,.78,smoothstep(.55,.85,landNoise(cw*.35))):vec3(0.0);
  // What is left (yards and lots between the buildings, the ground under the odd shed): packed earth and old concrete,
  // weeds in patches. Woods keep their own ground.
- float weeds=smoothstep(.6,.8,landNoise(cw*.09+1.3)*.7+landNoise(cw*.5)*.3);
- vec3 lotC=mix(mix(vec3(.12,.115,.105),vec3(.17,.165,.155),landNoise(cw*.03+4.0))*grain,lawnC*.75,weeds*.45);
- lotC=mix(lotC,wild*vec3(.3,.34,.22),treeM*.8);
- lotC=mix(lotC,ortho*vec3(.9,.94,.86),smoothstep(260.0,1100.0,viewDist)*.5);
+ vec3 lotC=vec3(0.0);
+ if(vLot>0.0){
+  float weeds=smoothstep(.6,.8,landNoise(cw*.09+1.3)*.7+landNoise(cw*.5)*.3);
+  lotC=mix(mix(vec3(.12,.115,.105),vec3(.17,.165,.155),landNoise(cw*.03+4.0))*grain,lawnC*.75,weeds*.45);
+  lotC=mix(lotC,wild*vec3(.3,.34,.22),treeM*.8);
+  lotC=mix(lotC,ortho*vec3(.9,.94,.86),smoothstep(260.0,1100.0,viewDist)*.5);
+ }
  ground=mix(ground,lotC,inCity);
  vec3 city=ground;
  city=mix(city,lawnC,greenM);
  city=mix(city,parkC,parkM);
  city=mix(city,plazaC,plazaM);
  city=mix(city,walkC,walkM);
- city=mix(city,curbC,curbM*max(walkM,max(plazaM,max(greenM,.6))));
+ city=mix(city,curbC,curbW);
  city=mix(city,cycleC,cycleM);
  city=mix(city,asphaltC*mix(1.0,.55,gutterM),roadM);
  cityCover=max(max(roadM,walkM),max(max(plazaM,cycleM),max(greenM,parkM)))*inCity;
@@ -1514,19 +1541,20 @@ export function createLandscape({data,field,ortho=null,cover=null,buildings=null
   }
  }
  stats.shrubs=shrubs.length;plantIpes(trees,[...tall,...shrubs],mobile);stats.ipes=trees.filter(t=>t.ipe).length;
- // Trees are chunked in 200 m blocks; each block shows its near or its distant crowns, picked every
- // frame. The distant crowns are one mesh per block. Near, on the full builds, every kind has three
+ // Trees are chunked in blocks (200 m on the light builds; 400 m on the full ones, whose computers have the video card
+ // for the extra crowns and whose processor felt the 300 draws of the smaller blocks); each block shows its near or its
+ // distant crowns, picked every frame. The distant crowns are one mesh per block. Near, on the full builds, every kind has three
  // crown forms and each tree wears the one its position picks: one mesh per form in the block (two
  // more draws only in the near blocks, and no vertex work for crowns a tree does not wear).
  const seeds={round:[11,37,59],tall:[23,71,97]},forms=mobile?1:3;
  const treeMaterial=sceneryMaterial('tree',{foliage:!mobile,plain:lean}),treeShadow=treeDepthMaterial();
- const lodBlocks=[],geometries=[],matrix=new THREE.Matrix4(),color=new THREE.Color();
+ const lodBlocks=[],geometries=[],matrix=new THREE.Matrix4(),color=new THREE.Color(),treeBlock=mobile?200:400;
  for(const [list,kind,name] of [[[...trees,...shrubs],'round','Arvores'],[tall,'tall','Arvores_altas']]){
   if(!list.length)continue;
   const far=mobile?treeGeometry(kind,seeds[kind][0],0):foliageTreeGeometry(kind,seeds[kind][0],0);
   const near=seeds[kind].slice(0,forms).map((seed,form)=>mobile?treeGeometry(kind,seed,1,lean):foliageTreeGeometry(kind,seed,1,form));geometries.push(far,...near);
   const group=new THREE.Group(),blocks=new Map();group.name=name;root.add(group);
-  for(const item of list){item.kind=kind;item.form=Math.floor(hash2(item.x*.731,item.y*.917)*forms);const key=Math.floor(item.x/200)+':'+Math.floor(item.y/200);if(!blocks.has(key))blocks.set(key,[]);blocks.get(key).push(item);}
+  for(const item of list){item.kind=kind;item.form=Math.floor(hash2(item.x*.731,item.y*.917)*forms);const key=Math.floor(item.x/treeBlock)+':'+Math.floor(item.y/treeBlock);if(!blocks.has(key))blocks.set(key,[]);blocks.get(key).push(item);}
   const instanced=(geometry,items,slot)=>{
    const mesh=new THREE.InstancedMesh(geometry,treeMaterial,items.length);mesh.name=name+'_bloco';mesh.customDepthMaterial=treeShadow;mesh.castShadow=mesh.receiveShadow=true;
    items.forEach((item,i)=>{composeTree(item,matrix,color);mesh.setMatrixAt(i,matrix);mesh.setColorAt(i,color);item[slot]={mesh,index:i};});

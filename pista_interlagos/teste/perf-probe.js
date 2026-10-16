@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 // What a frame costs, part by part of the scene: for medir_pc_fraco.py and for tuning the light levels (Baixo on a
 // notebook's integrated video). count() tallies every draw the renderer makes over a few frames (the picture,
 // the sun's shadow map, mirrors and reflection captures) by the part it belongs to (parts(): main.js names the
@@ -15,6 +16,33 @@ export function freezeStatic(root){
  let frozen=0;root.updateMatrixWorld(true);
  root.traverse(o=>{if(live.has(o)&&o!==root||!o.matrixAutoUpdate)return;o.matrixAutoUpdate=false;frozen++;});
  return frozen;
+}
+// A big still mesh cut into pieces of `cell` metres (by each triangle's centre, x and z of the scene). One mesh over a
+// whole circuit (an open circuit's ground, a street circuit's walls) was drawn whole in every pass: the picture, the
+// sun's shadow map, the mirrors; in pieces three.js culls what is out of each view, and the sun's box takes the few
+// round the car. Every attribute is kept (the normals were worked out over the whole first, so no seam shows); the
+// pieces share the material. Returns the geometries (the one given when it all falls in one cell).
+export function splitByCells(geometry,cell){
+ const index=geometry.index?.array,pos=geometry.attributes.position.array,count=geometry.attributes.position.count,n=index?index.length:count,cells=new Map();
+ for(let t=0;t<n;t+=3){
+  const a=index?index[t]:t,b=index?index[t+1]:t+1,c=index?index[t+2]:t+2;
+  const key=(Math.floor((pos[a*3]+pos[b*3]+pos[c*3])/(3*cell))+32768)*65536+Math.floor((pos[a*3+2]+pos[b*3+2]+pos[c*3+2])/(3*cell))+32768;
+  let list=cells.get(key);if(!list)cells.set(key,list=[]);list.push(a,b,c);
+ }
+ if(cells.size<2)return [geometry];
+ const stamp=new Int32Array(count).fill(-1),local=new Int32Array(count),out=[];let id=0;
+ for(const list of cells.values()){
+  const order=[],idx=new Uint32Array(list.length);
+  for(let i=0;i<list.length;i++){const v=list[i];if(stamp[v]!==id){stamp[v]=id;local[v]=order.length;order.push(v);}idx[i]=local[v];}
+  const g=new THREE.BufferGeometry();
+  for(const [name,attr] of Object.entries(geometry.attributes)){
+   const s=attr.itemSize,src=attr.array,dst=new src.constructor(order.length*s);
+   for(let i=0;i<order.length;i++)for(let j=0;j<s;j++)dst[i*s+j]=src[order[i]*s+j];
+   g.setAttribute(name,new THREE.BufferAttribute(dst,s,attr.normalized));
+  }
+  g.setIndex(new THREE.BufferAttribute(order.length>65535?idx:Uint16Array.from(idx),1));g.computeBoundingSphere();out.push(g);id++;
+ }
+ return out;
 }
 export class PerfProbe {
  constructor({renderer,scene,parts=()=>[]}){this.renderer=renderer;this.scene=scene;this.parts=parts;this.hidden=new Map();this.counting=null;this.rendered=0;}

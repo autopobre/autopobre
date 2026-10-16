@@ -54,7 +54,7 @@ import {CarAudio} from './car-audio.js?v=20260913-immersive';
 import {PlayerPreferences,CAMERA_MODES,LAPS} from './player-preferences.js';
 import {createSky,SUN_DIRECTION} from './sky.js';
 import {weatherProfile,weatherCaption,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,drawWeather,chosenWeather,EFFECT_LIGHT,TIMES_OF_DAY,RAIN_LEVELS,nextTimeOfDay,nextRainLevel,weatherName} from './weather.js';
-import {createCinematic,SMEAR_CARS} from './cinematic.js';
+import {createCinematic,SMEAR_CARS,compileInSlices} from './cinematic.js';
 import {SunPlacement} from './sun-light.js';import {CarShadow} from './car-shadow.js';
 import {createLandscape,loadTerrainTextures,buildTrackField,readOrtho,looseGround,terrainMaterial,structureMaterial,createCrowd,SKYLINE_FAR} from './landscape.js';
 import {LakeContact} from './lake-contact.js';
@@ -88,7 +88,7 @@ import {CinematicIntro} from './intro-cinematic.js';
 import {resolveGraphics,resolutionFloor,ResolutionPace,gpuTier,autoLevel,autoReason,lowerLevel,FrameWatch,FrameLimiter,DisplayCadence,adaptivePixelRatio,SHADOW_LEVELS,VIEW_DISTANCES,VALLEY_VIEW,SCENERY_LEVELS,MIRROR_SIZES,CAR_DETAIL,PEOPLE_REACH,GRAPHICS_LEVEL_NAMES,GRAPHICS_OPTIONS,DEBUG_OVERLAY_MODES,DEBUG_OVERLAY_CORNERS} from './graphics-settings.js';
 import {GraphicsPanel} from './graphics-panel.js';
 import {DebugOverlay} from './debug-overlay.js';
-import {PerfProbe,freezeStatic} from './perf-probe.js';
+import {PerfProbe,freezeStatic,splitByCells} from './perf-probe.js';
 import {RaceAction,ActionNotice} from './race-action.js';
 import {GhostRecorder,loadGhost,saveGhost} from './ghost-lap.js';
 import {GhostCar} from './ghost-car.js';
@@ -204,7 +204,7 @@ const device=(()=>{
 const saveDevice=()=>{try{localStorage.setItem(AUTO_KEY,JSON.stringify({renderer:device.renderer,drop:device.drop,goodRaces:device.goodRaces,ratios:device.ratios}));}catch{}};
 let graphics=resolveGraphics(preferences.values.graphics,{touch:touchDevice,device}),sceneryBuilt=null;
 // Picking Automático again (from a level chosen by hand) forgets a step down a heavy race took: the player asks anew.
-const graphicsPanel=new GraphicsPanel({root:$('settings-graphics'),touch:touchDevice,device,graphics:preferences.values.graphics,onChange:value=>{
+const graphicsPanel=new GraphicsPanel({root:$('settings-graphics'),touch:touchDevice,device,graphics:preferences.values.graphics,onApply:()=>{$('settings').close();beginRace(true);},onChange:value=>{
  if(value?.level==='auto'&&preferences.values.graphics?.level!=='auto'&&device.drop){device.drop=null;device.goodRaces=0;saveDevice();}
  preferences.update({graphics:value});applyGraphics();}});
 // The performance overlay (debug-overlay.js): the tab's two selects, and F3 cycles it.
@@ -337,6 +337,29 @@ function cabinVisibility(){
  if(cockpit){const outside=!fuscaBody.active&&!inside&&!!model,batch=cockpit.outsideBatch(outside);if(batch)batch.visible=outside;
   cockpit.root.visible=!fuscaBody.active&&(inside||!!model&&!(batch&&outside));cockpit.setView({inside,classic:classic&&!fuscaBody.active});if(driver)driver.root.position.set(seatShift.x,cockpit.drop()+seatShift.y,seatShift.z);}
  if(model){model.visible=!inside||!classic;carStructure.visible=!(inside&&classic);}
+ trimCasters(inside);
+}
+// The sun's map draws every caster once more each frame, a draw call each: the player's car keeps the ones whose shadow
+// that map can show. Parts under a texel and a half across (bolts, switches, pedals; more of them at the lower levels'
+// coarser maps) and the see-through ones (stickers lying on a panel, whose shadow is the panel's; lenses, smoked plastic)
+// cast nothing it holds. Outside the cockpit view the driver and the cabin seen through the windows sit under the roof:
+// their shadow falls inside the shut body. In the cockpit they cast (the arms on the dash and the door, the cage).
+// wantShadow: what each mesh was made to cast, before this.
+const casterRadius=new WeakMap(),wantShadow=new WeakMap();
+function trimCasters(inside=mode==='cockpit'&&!gridPreview()&&!watchedRival()&&!intro.active){
+ const shadow=SHADOW_LEVELS[graphics?.values.shadows];if(!shadow||!renderer)return;
+ const texel=2*shadow.reach/Math.min(shadow.size,renderer.capabilities.maxTextureSize),cabin=new Set([driver?.root,cockpit?.root,cockpit?.outsideBatch?.(false)].filter(Boolean));
+ const trim=(o,inCabin)=>{
+  if(cabin.has(o))inCabin=true;
+  if(o.isMesh){
+   if(!wantShadow.has(o))wantShadow.set(o,o.castShadow);
+   let r=casterRadius.get(o.geometry);if(r===undefined){if(!o.geometry.boundingSphere)o.geometry.computeBoundingSphere();r=o.geometry.boundingSphere.radius;casterRadius.set(o.geometry,r);}
+   const clear=[o.material].flat().every(m=>m.transparent),small=!o.isSkinnedMesh&&!o.isInstancedMesh&&r*o.matrixWorld.getMaxScaleOnAxis()<texel*.75;
+   o.castShadow=wantShadow.get(o)&&!clear&&!small&&(inside||!inCabin);
+  }
+  for(const c of o.children)trim(c,inCabin);
+ };
+ carBody.updateMatrixWorld(true);trim(carBody,false);
 }
 const suspension={roll:0,rollRate:0,pitch:0,pitchRate:0},bodyPivot=new THREE.Vector3(.3,.38,0),bodyTilt=new THREE.Quaternion(),bodyTiltInverse=new THREE.Quaternion(),bodyEuler=new THREE.Euler(),wheelOffset=new THREE.Vector3();
 function springTo(key,target,dt,frequency,damping){const rate=key+'Rate';suspension[rate]+=((target-suspension[key])*frequency*frequency-2*damping*frequency*suspension[rate])*dt;suspension[key]+=suspension[rate]*dt;}
@@ -462,7 +485,7 @@ function applyGraphics(){
   Object.assign(sun.shadow.camera,{left:-shadow.reach,right:shadow.reach,top:shadow.reach,bottom:-shadow.reach});sun.shadow.camera.updateProjectionMatrix();sun.shadow.radius=shadow.radius;
  }
  // Alto/Ultra: the cars' crisp map (uniforms only: the ground shaders always carry the lookup).
- carShadow.configure(shadow?.car??null);
+ carShadow.configure(shadow?.car??null);trimCasters();
  cinematic.setLevel(cinematicLevel());cinematic.setQuality(graphics.level);cinematic.setFeatures(cinematicFeatures());
  roadSurface?.setQuality(g.materials);roadRails?.setQuality(g.materials);rain?.setCount(RAIN_DROPS[g.materials]??RAIN_DROPS.alto);roadCurbs?.userData.setQuality(g.materials);
  // The cars' finish and reflections (car-reflections.js); another map size, the flake or a capture in the
@@ -482,14 +505,42 @@ function applyGraphics(){
  // goes with the track detail (off on Baixo), whose change already precompiles below.
  carContact.setQuality(g);setTyreDetail(g.materials!=='baixo');
  if(ready&&(reflectionPrograms||materialQualityChanged||wasOff!==(cinematic.level==='off')||hadShadows!==sun.castShadow))precompileGraphics();
+ sceneryNotice();
+}
+// Cenário e vegetação (trees, houses, grass, a city's people and traffic) is built with the track (sceneryBuilt): a level
+// picked mid-race shows the rest at once, and the Gráficos tab says the scenery comes with the next start, with a button
+// that starts the race again now when the pause menu offers that (#restartRace). Closing the settings repeats it on the
+// track for a few seconds.
+let sceneryToastDue=false;
+// Back on the track (menu(false)) after a change that waits for the next start: said for a few seconds, a moment after the
+// mouse is captured again (capturing it clears the status line).
+function sceneryToast(){
+ if(!sceneryToastDue)return;sceneryToastDue=false;const text='Cenário e vegetação mudam quando a corrida recomeçar (Gráficos › Aplicar agora).';
+ setTimeout(()=>{if(paused||!sessionStarted)return;status(text);setTimeout(()=>{if($('status').textContent===text)status('');},6000);},500);
+}
+function sceneryNotice(){
+ const pending=ready&&sessionStarted&&!!sceneryBuilt&&sceneryBuilt!==graphics.values.scenery;
+ graphicsPanel.pending(pending?{built:sceneryBuilt,wanted:graphics.values.scenery,restart:!$('restartRace').hidden}:null);
+ return pending;
 }
 // The Simples look (other tone mapping) and shadows on or off need every material's program again:
 // compiled the first time on the next frame, that froze the page for seconds. They compile in
 // parallel instead, a slice at a time (cinematic.js compileInSlices), while the picture and the game
 // hold (frame), and the tab says so.
 let graphicsCompiling=null;
+// The Simples look (cinematic off) draws the picture with the screen's programs; the rear-view mirror's target takes the
+// linear ones (no tone mapping), a hundred or so: built inside the first frame of the cockpit view, they froze the page
+// for 9 s on a notebook's integrated video. They are built a slice at a time (cinematic.js compileInSlices) the first
+// time the mirror is wanted, the mirror (and the door mirrors) left out meanwhile; the film look's programs are the
+// mirror's already. mirrorPrograms: null (to build for the programs in use), a Promise (building), true (built).
+let mirrorPrograms=null;const MIRROR_FAR=2200;
+function mirrorReady(){
+ if(cinematic.level!=='off'||mirrorPrograms===true)return true;
+ if(!mirrorPrograms){const target=cockpit.mirrorTarget,job=mirrorPrograms=compileInSlices(renderer,scene,cockpit.rearCamera,()=>target).catch(err=>console.warn(err)).finally(()=>{if(mirrorPrograms===job)mirrorPrograms=true;});}
+ return false;
+}
 function precompileGraphics(){
- const token=graphicsCompiling={};graphicsPanel.busy(true);
+ const token=graphicsCompiling={};graphicsPanel.busy(true);mirrorPrograms=null;
  // Never held for good: after 30 s the picture comes back and whatever is left compiles as before. Not
  // sooner: the page answers meanwhile, and a busy machine took over 8 s for the Simples look's hundred
  // programs; coming back then built the rest inside one frame, the very freeze this avoids. The cars'
@@ -676,9 +727,13 @@ function flattenStatic(root){
   if(!batches.has(key))batches.set(key,{mat:ob.material,gs:[],obs:[]});const b=batches.get(key);b.gs.push(g);b.obs.push(ob);
  });
  for(const b of batches.values()){
-  const g=mergeGeometries(b.gs,false);if(!g)continue;const m=new THREE.Mesh(g,b.mat);m.castShadow=!b.mat.userData.terrain;m.receiveShadow=true;
-  // The ground after the rest of the opaque world (and before the sky): its costly shading skips what the road, stands and cars cover.
-  if(b.mat.userData.terrain)m.renderOrder=.25;scene.add(m);b.obs.forEach(o=>o.removeFromParent());b.gs.forEach(g=>g.dispose());
+  const g=mergeGeometries(b.gs,false);if(!g)continue;
+  // The ground in pieces of 400 m (perf-probe.js splitByCells): out of view they are not drawn (one mesh of 370 thousand
+  // triangles was, every frame). After the rest of the opaque world (and before the sky): its costly shading skips what
+  // the road, stands and cars cover.
+  const pieces=b.mat.userData.terrain?splitByCells(g,400):[g];
+  for(const piece of pieces){const m=new THREE.Mesh(piece,b.mat);m.castShadow=!b.mat.userData.terrain;m.receiveShadow=true;if(b.mat.userData.terrain)m.renderOrder=.25;scene.add(m);}
+  if(pieces[0]!==g)g.dispose();b.obs.forEach(o=>o.removeFromParent());b.gs.forEach(g=>g.dispose());
  }
  scene.add(root);
  return standTops;
@@ -1438,13 +1493,16 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(
  // Mirrors switched off in the Gráficos tab skip this extra pass.
  // A Fusca's (fusca-cockpit.js) take the same picture, from its own mirror's height.
  const mirrors=fuscaBody.active?fuscaMirrors:sideMirrors;
- if(mode==='cockpit'&&!gridPreview()&&!watchedCar&&MIRROR_SIZES[graphics.values.mirrors]){
+ if(mode==='cockpit'&&!gridPreview()&&!watchedCar&&MIRROR_SIZES[graphics.values.mirrors]&&mirrorReady()){
   // The mirror sees the road behind, not the body round it (the classic view hides it anyway).
   const bodyShown=!!model?.visible,cockpitShown=cockpit.root.visible;cockpit.root.visible=false;driver.root.visible=false;if(model)model.visible=false;if(fuscaBody.car)fuscaBody.car.visible=false;
   const mirrorHeight=fuscaBody.active?1.28:1.14,rear=cockpit.rearCamera,mirrorTarget=cockpit.mirrorTarget;
   rear.position.set(-.65,mirrorHeight,0).applyMatrix4(carBody.matrixWorld);
   look.set(-30,mirrorHeight,0).applyMatrix4(carBody.matrixWorld);
   rear.up.set(0,1,0).transformDirection(carBody.matrixWorld);rear.lookAt(look);
+  // No further than the fog's end (Baixo's view: 1.6 km): past it everything is the fog's colour, and the mirror drew a
+  // million triangles of it on a notebook's integrated video.
+  const rearFar=Math.min(MIRROR_FAR,scene.fog?.far??MIRROR_FAR);if(rear.far!==rearFar){rear.far=rearFar;rear.updateProjectionMatrix();}
   const oldShadowUpdate=renderer.shadowMap.autoUpdate;renderer.shadowMap.autoUpdate=false;
   tyreSmoke.material.uniforms.viewport.value=mirrorTarget.height;
   renderer.setRenderTarget(mirrorTarget);renderer.render(scene,rear);
@@ -1570,7 +1628,7 @@ function hold(on){
  keys.clear();mobile?.clear();cameraReturn.reset(performance.now());$('pauseBadge').hidden=!on;
 }
 $('pauseBadge').onclick=()=>hold(false);
-function menu(show){held=false;$('pauseBadge').hidden=true;if(!show&&!immersive?.active&&immersive?.freeResultReady)show=true;paused=show;if(show)takeDrop();updateMenuLabels();carAudio.setPaused(show);if(!show)carAudio.unlock();if(show&&document.pointerLockElement===$('view'))document.exitPointerLock();cameraReturn.reset(performance.now());updateScreens();keys.clear();mobile?.clear();status('');}
+function menu(show){if(!show)sceneryToast();held=false;$('pauseBadge').hidden=true;if(!show&&!immersive?.active&&immersive?.freeResultReady)show=true;paused=show;if(show)takeDrop();updateMenuLabels();carAudio.setPaused(show);if(!show)carAudio.unlock();if(show&&document.pointerLockElement===$('view'))document.exitPointerLock();cameraReturn.reset(performance.now());updateScreens();keys.clear();mobile?.clear();status('');}
 function updateScreens(){
  const free=paused&&!sessionStarted,tracks=free&&screen==='tracks',cars=free&&screen==='cars';
  // The arena's panel and editor pause the car without the menu (drift-arena-mode.js).
@@ -1635,7 +1693,7 @@ function renderStoryCareer(){
   +MORALE.map(k=>`<div class="career-bar" data-key="${k}" data-low="${c.morale[k]<=20}"><span>${MORALE_NAMES[k]}</span><i><b style="width:${c.morale[k]}%"></b></i><em>${c.morale[k]}%</em></div>`).join('')+goal;
 }
 // The Gráficos tab's pixel sizes follow the window: refreshed whenever the settings open.
-const openSettings=setupSettings(()=>{menu(true);showRoster();graphicsPanel.show(preferences.values.graphics);},returnToMainMenu);
+const openSettings=setupSettings(()=>{menu(true);showRoster();graphicsPanel.show(preferences.values.graphics);sceneryNotice();},returnToMainMenu);
 // For checks: the graphics in force and what the renderer really uses; set() takes {level, overrides}.
 window.interlagosGraficos={
  info:()=>({...graphics,stored:structuredClone(preferences.values.graphics),pixelRatio:renderer?.getPixelRatio()??null,resolution:{max:resolution.max,min:resolution.min,dynamic:resolution.dynamic,changes:resolution.changes,targetFps:dynamicTarget(),cadence:displayCadence.hz,cadenceMeasured:displayCadence.measured,gpuMs:debugOverlay.frameGpuMs},fpsLimit:frameCap.limit,
@@ -1734,6 +1792,7 @@ $('wheelLock').onchange=()=>{preferences.update({wheelLock:Number($('wheelLock')
 wheelPanel=new WheelPanel({wheel,gearbox,manual:manualGearbox,onManual:()=>{preferences.update({gearbox:'manual'});$('gearbox').value='manual';}});
 // Closing the settings ends a wheel setup left half done.
 $('settings').addEventListener('close',()=>wheelPanel.cancel());
+$('settings').addEventListener('close',()=>{sceneryToastDue=sceneryNotice();});
 // For checks: what the wheel reads and the gear asked for (from the opening menu on).
 window.interlagosVolante={info:()=>({configured:wheel.configured,connected:wheel.connected,learning:wheel.learning,steering:wheel.steering,degrees:wheel.degrees,throttle:wheel.throttle,brake:wheel.brake,clutch:wheel.clutch,lever:wheel.lever,held:[...wheel.held],map:structuredClone(wheel.map),lock:wheel.lock,gear:gearbox.gear,manual:manualGearbox(),carGear:car?.gear??null,carManual:!!car?.manualGear})};
 // The controls tab says how the wheel stands; a race in progress says so for a moment when it comes or goes.
@@ -2161,7 +2220,7 @@ async function loadCircuit(){
  carReflections.useRaceMap();await carReflections.compile(scene);
  // The cabin's batched copy for the outside views (cockpit.js outsideBatch) is built now, so its programs compile here.
  updateCar(1);updateCamera(1);cockpit.outsideBatch();landscape.revealWaves(true);try{await cinematic.compile(scene,camera);await landscape.compileWater(renderer,scene,camera);}catch(err){console.warn(err);}finally{landscape.revealWaves(false);}
- ready=true;loadedCircuit=circuit.id;sceneryBuilt=sceneryLevel;setCameraMode(preferences.values.camera);$('skinButton').disabled=false;updateCar(1);cockpit.update(car,0);driver.update(car,0);updateCamera(1);cameraHint();hud();$('start').disabled=false;
+ ready=true;loadedCircuit=circuit.id;sceneryBuilt=sceneryLevel;mirrorPrograms=null;setCameraMode(preferences.values.camera);$('skinButton').disabled=false;updateCar(1);cockpit.update(car,0);driver.update(car,0);updateCamera(1);cameraHint();hud();$('start').disabled=false;
  window.interlagos={ready:true,circuit:circuit.id,car,explosionInfo:()=>explosions?.info()??null,fallInfo:()=>({timeScale:fallView.timeScale,active:fallView.active,shot:!!fallView.shot,sight:fallInSight(fallView,car,camera)}),renderAhead,telemetry:()=>car.telemetry(),setLivery,reset:()=>reset(),reposition:index=>{car.reset(index);driver.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();cockpit.resetPhone();updateCar(1);updateCamera(1);},setTour:value=>{if(immersive.active)return;automatic=value;menu(false);},
   immersiveInfo:()=>immersive.info(),pitInfo:()=>pitstop?.info()??null,walkInfo:()=>walker?.info()??null,
   audioInfo:()=>carAudio.info(),mobileInfo:()=>({enabled:touchDevice,steering:mobile?.steering??0,throttle:mobile?.throttle??0,brake:mobile?.brake??0,pressed:[...(mobile?.pressed??[])],pixelRatio:renderer.getPixelRatio()}),gamepadInfo:()=>({connected:gamepad.connected,name:gamepad.connected?gamepad.name:'',steering:gamepad.steering,throttle:gamepad.throttle,brake:gamepad.brake,held:[...gamepad.held],rumble:gamepad.rumble,curve:gamepad.curve}),

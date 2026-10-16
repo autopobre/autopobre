@@ -8,6 +8,7 @@
 .graphics-bars{display:flex;gap:3px;align-items:flex-end;height:14px}.graphics-bars i{width:7px;border-radius:2px;background:#ffffff1c}.graphics-bars i:nth-child(1){height:5px}.graphics-bars i:nth-child(2){height:8px}.graphics-bars i:nth-child(3){height:11px}.graphics-bars i:nth-child(4){height:14px}.graphics-bars i.on{background:#edca50}
 .graphics-status{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 16px}.settings-content .graphics-status p{margin:0;flex:1 1 260px;color:#c6d3c8}
 .graphics-status button{font-size:11px;padding:8px 12px;background:#213a2e}
+.settings-content .graphics-pending{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:-4px 0 16px;padding:10px 12px;border:1px solid #edca5066;border-radius:10px;background:#edca5012;color:#efe2b0;font-size:12px;line-height:1.45}.settings-content .graphics-pending[hidden]{display:none}.graphics-pending span{flex:1 1 260px}.graphics-pending button{font-size:11px;padding:8px 12px;background:#3b3313;border-color:#edca5088}
 .graphics-manual{border-top:1px solid #ffffff18;padding-top:6px}.graphics-manual summary{cursor:pointer;padding:12px 0;font-size:15px;font-weight:700;color:#f2f3ea}.graphics-manual summary small{font-weight:400;font-size:11px;color:#91a795;margin-left:8px}
 .graphics-controls{display:grid;gap:16px;margin-bottom:8px}
 .graphics-group{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px 18px;margin:0;padding:14px 16px 16px;border:1px solid #ffffff14;border-radius:10px;background:#ffffff04}

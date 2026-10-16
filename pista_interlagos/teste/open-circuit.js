@@ -6,6 +6,7 @@ import {RIVAL_ROSTER,GRID_ROW_SPACING,GRID_START_BACK} from './race-roster.js';
 import {canvasTexture} from './pit-textures.js';
 import {gantryPosts,groundHeight} from './track-clearance.js';
 import {cliffShownHeights,createCliff} from './cliff-scenery.js';
+import {splitByCells} from './perf-probe.js';
 
 // Circuits rebuilt from open data (Cascavel, ECPA): data/pista_<id>.json carries the
 // centre line and widths measured on 2025 aerial imagery over the OSM trace, the ANADEM
@@ -36,7 +37,18 @@ export function terrainMesh(data,heights,material){
  let n=0;
  for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){const a=j*nx+i,b=a+1,c=a+nx+1,d=a+nx;index[n++]=a;index[n++]=b;index[n++]=c;index[n++]=a;index[n++]=c;index[n++]=d;}
  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));geometry.setAttribute('uv',new THREE.BufferAttribute(uvs,2));geometry.setIndex(new THREE.BufferAttribute(index,1));geometry.computeVertexNormals();
- const mesh=new THREE.Mesh(geometry,material);mesh.name='Terreno_ANADEM';mesh.receiveShadow=true;return mesh;
+ // A coastal circuit (meta.sea_level_m, sea-water.js): the bed under the sea's opaque plane is never seen, so its
+ // triangles (all three corners half a metre under the surface) are left out, and with them their shading (the normals
+ // were worked out with them: the shore's look stays).
+ const sea=data.meta.sea_level_m;
+ if(sea!=null){const deep=sea-.5;let kept=0;for(let k=0;k<n;k+=3)if(heights[index[k]]>=deep||heights[index[k+1]]>=deep||heights[index[k+2]]>=deep){index[kept++]=index[k];index[kept++]=index[k+1];index[kept++]=index[k+2];}geometry.setIndex(new THREE.BufferAttribute(index.subarray(0,kept),1));}
+ // In pieces of 400 m (perf-probe.js splitByCells): the 400 to 500 thousand triangles of the grid were all drawn every
+ // frame. After the rest of the opaque world, as Interlagos' ground (main.js): its costly shading skips what the road,
+ // the buildings, the walls and the cars cover.
+ const group=new THREE.Group();group.name='Terreno_ANADEM';
+ for(const piece of splitByCells(geometry,400)){const mesh=new THREE.Mesh(piece,material);mesh.name='Terreno_ANADEM';mesh.receiveShadow=true;mesh.renderOrder=.25;group.add(mesh);}
+ if(group.children.length>1)geometry.dispose();
+ return group;
 }
 
 export async function createOpenCircuit(data,roadSurface,{heights,textures,field,groundUrl,label,mobile=false,city=null}){
