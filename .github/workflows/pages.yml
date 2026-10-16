@@ -2,7 +2,7 @@ name: Publicar Auto-Pobre Racing
 
 # Publishing is manual: pushes to main no longer replace the live game.
 # Actions -> Publicar Auto-Pobre Racing -> Run workflow, choosing what to publish.
-# The main link shows `versao` (the announced release, apr-3.0) and /dev/ shows `versao_dev` (the
+# The main link shows `versao` (the announced version, apr-3.1-rc1) and /dev/ shows `versao_dev` (the
 # one in progress, main). Each is built from its own checkout, tested and packed into one Pages
 # site. An empty versao_dev leaves /dev/ out. The legacy versions (apr-1.0, apr-2.1) are no longer
 # published: they stay as tags. The multiplayer test room is published only under /dev/; the run
@@ -13,7 +13,7 @@ on:
       versao:
         description: 'Link principal (autopobre.com.br): qual versão do jogo vai ali. Tag (apr-3.0), branch (main) ou commit.'
         required: true
-        default: apr-3.0
+        default: apr-3.1-rc1
       versao_dev:
         description: 'Endereço autopobre.com.br/dev/ (versão em teste, a única com multiplayer): qual versão vai ali. Se apagar este campo, o /dev/ sai do ar.'
         required: false
