@@ -2,18 +2,19 @@ name: Publicar Auto-Pobre Racing
 
 # Publishing is manual: pushes to main no longer replace the live game.
 # Actions -> Publicar Auto-Pobre Racing -> Run workflow, choosing what to publish.
-# The main link shows `versao` (the announced version, apr-3.1-rc1) and /dev/ shows `versao_dev` (the
-# one in progress, main). Each is built from its own checkout, tested and packed into one Pages
-# site. An empty versao_dev leaves /dev/ out. The legacy versions (apr-1.0, apr-2.1) are no longer
+# The main link shows `versao` (the announced version; its `default` below is the only place that
+# names it) and /dev/ shows `versao_dev` (the one in progress, main). Each is built from its own
+# checkout, tested and packed into one Pages site; the same commit on both is tested once. An
+# empty versao_dev leaves /dev/ out. The legacy versions (apr-1.0, apr-2.1) are no longer
 # published: they stay as tags. The multiplayer test room is published only under /dev/; the run
 # fails if the main link would carry it.
 on:
   workflow_dispatch:
     inputs:
       versao:
-        description: 'Link principal (autopobre.com.br): qual versão do jogo vai ali. Tag (apr-3.0), branch (main) ou commit.'
+        description: 'Link principal (autopobre.com.br): qual versão do jogo vai ali. Tag (apr-X.Y), branch (main) ou commit.'
         required: true
-        default: apr-3.1-rc1
+        default: apr-3.1-rc2
       versao_dev:
         description: 'Endereço autopobre.com.br/dev/ (versão em teste, a única com multiplayer): qual versão vai ali. Se apagar este campo, o /dev/ sai do ar.'
         required: false
@@ -73,12 +74,18 @@ jobs:
           done
       - name: Verificar cada versao (preferencias, audio, contatos, corrida, boxes)
         run: |
-          for pasta in principal dev; do
+          pastas="principal dev"
+          # Both addresses on one commit (the usual case right after a release): test it once, as /dev/.
+          if [ -d dev ] && [ "$(git -C principal rev-parse HEAD)" = "$(git -C dev rev-parse HEAD)" ]; then
+            echo "::notice::principal e dev sao o mesmo commit: os testes rodam uma vez, em dev."
+            pastas=dev
+          fi
+          for pasta in $pastas; do
             [ -d "$pasta" ] || continue
             echo "::group::Testes de $pasta"
             for teste in testar_preferencias testar_audio testar_eventos_audio testar_colisoes testar_saldo testar_imersivo testar_voltas testar_derrapadas testar_terreno_rivais testar_aderencia testar_direcao testar_bandeirada testar_recordes testar_pilotos_largada testar_curvelo testar_pitstop testar_controle testar_retorno_camera testar_volante testar_freio_re testar_graficos testar_luz testar_fantasma testar_camera testar_colisao_fusca testar_mecanica_fusca testar_multiplayer testar_estados_sala testar_zebras testar_particulas testar_bandeiras testar_beira testar_contato testar_pintura testar_grid_fusca testar_clima testar_arena_drift testar_muro_curvas testar_passeio_cidade testar_a_pe testar_ajustes_som testar_migracao; do
-              # A release from before a test was written (apr-3.0 lacks the newer ones, e.g. testar_a_pe, testar_migracao)
-              # skips it; /dev/ must have every one.
+              # Only an older tag published again to roll back can predate a test (e.g. testar_a_pe,
+              # testar_migracao) and skips it; /dev/ must have every one.
               if [ "$pasta" != dev ] && [ ! -f "$pasta/pista_interlagos/scripts/$teste.mjs" ]; then
                 echo "::notice::$pasta nao tem $teste (versao anterior ao teste): pulado."
                 continue
