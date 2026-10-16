@@ -95,6 +95,31 @@ const CARS={
 export const CITY_CAR_SIZE=Object.fromEntries(Object.entries(CARS).map(([k,d])=>[k,{L:d.L,W:d.W}]));
 CITY_CAR_SIZE.moto={L:2.0,W:.8};
 
+// A bus's destination display (on its front, over the windscreen: 1.7 x 0.28 m) and the places it shows: the island's
+// classics, TICEN - TICAN, the beaches and the old bairros (real places are public signage; user, 2026-10-15).
+export const BUS_SIGN={w:1.7,h:.28};
+export const BUS_DESTINATIONS=['TICEN - TICAN','CANASVIEIRAS','INGLESES','RIO VERMELHO','CAMPECHE','JOAQUINA','LAGOA DA CONCEIÇÃO','BARRA DA LAGOA',
+ 'JURERÊ','SANTO ANTÔNIO DE LISBOA','RIBEIRÃO DA ILHA','PÂNTANO DO SUL','TRINDADE · UFSC','ESTREITO','CAPOEIRAS'];
+// One display drawn into the canvas rectangle (x, y, w, h) that the display shows whole: amber LEDs on black, the text as
+// tall as the display takes it (in two lines where one would squeeze it), drawn wider by as much as the rectangle is wider
+// than the display so it reads in its own proportions on the bus; the LED dots square on the bus.
+export function drawBusSign(ctx,x,y,w,h,text){
+ const k=(w/h)/(BUS_SIGN.w/BUS_SIGN.h),room=w*.95/k,font=s=>`400 ${s}px Impact,"Arial Narrow","Arial Black",sans-serif`;
+ ctx.save();ctx.fillStyle='#050505';ctx.fillRect(x,y,w,h);ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();
+ ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#ffb21e';
+ const line=(t,cy,size)=>{ctx.font=font(size);const m=ctx.measureText(t).width;ctx.save();ctx.translate(x+w/2,cy);ctx.scale(k*Math.min(1,room/m),1);ctx.fillText(t,0,0);ctx.restore();};
+ ctx.font=font(h*.84);const words=text.split(' ');
+ if(ctx.measureText(text).width>room*1.25&&words.length>1){
+  // Two lines, split where they come out most even.
+  let cut=1,diff=Infinity;for(let i=1;i<words.length;i++){const d=Math.abs(ctx.measureText(words.slice(0,i).join(' ')).width-ctx.measureText(words.slice(i).join(' ')).width);if(d<diff){diff=d;cut=i;}}
+  line(words.slice(0,cut).join(' '),y+h*.27,h*.46);line(words.slice(cut).join(' '),y+h*.75,h*.46);
+ }else line(text,y+h*.54,h*.84);
+ // The dots: 22 rows of LEDs, the columns at the same pitch on the bus.
+ const rows=22,cols=Math.round(rows*BUS_SIGN.w/BUS_SIGN.h);ctx.fillStyle='rgba(0,0,0,.5)';
+ for(let i=0;i<=cols;i++)ctx.fillRect(x+i*w/cols-.5,y,1,h);for(let j=0;j<=rows;j++)ctx.fillRect(x,y+j*h/rows-.5,w,1);
+ ctx.restore();
+}
+
 const C={glass:lin(0x121820),under:lin(0x070707),rubber:lin(0x141414),black:lin(0x0d0e10),cladding:lin(0x1c1d1f),vinyl:lin(0x101011),lamp:lin(0xe8e6dc),tail:lin(0xb0141a),amber:lin(0xff9a1c),plate:lin(0xeceee8),plateBand:lin(0x1d3f9a),white:[1,1,1]};
 
 function carShape(d,far){

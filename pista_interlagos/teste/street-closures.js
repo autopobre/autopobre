@@ -4,7 +4,7 @@ import {sceneryBands,bandClearance,standLayout} from './track-clearance.js';
 import {billboardSpots,billboardFormat} from './track-surface.js';
 import {marshalSpots,towerSpots} from './trackside.js';
 import {createPeople} from './pit-crew.js';
-import {Shape,CityBatch,cityMaterial,cityCarTemplate,carFrame,frameAt,pickCarType,carPaint,rimColor,random,lin,FINISH,GLOW,ROLE,CITY_CAR_SIZE} from './city-cars.js';
+import {Shape,CityBatch,cityMaterial,cityCarTemplate,carFrame,frameAt,pickCarType,carPaint,rimColor,random,lin,FINISH,GLOW,ROLE,CITY_CAR_SIZE,BUS_DESTINATIONS,drawBusSign} from './city-cars.js';
 import {addRoamSolids} from './physics.js';
 
 // A real city closed for a race weekend, like Monaco (Floripa, data.scenery.city.closures from gerar_cidade_floripa.py): where
@@ -23,14 +23,18 @@ import {addRoamSolids} from './physics.js';
 const TILE=250,GROUP=3,QUEUE_NEAR=42,PARK_FULL=450,LOD_NEAR=80,LENS_REF=Math.tan(29*Math.PI/180);
 // Sign atlas (1024 px square): the white corner the plain parts sample, the boards, banners and a bus's destination, the
 // cloth banner strung across a street (and its back, the print seen through the cloth), and a strip per named street
-// (512 x 56 from y 448, two to a row). [x0, y0, x1, y1] in pixels.
-const ATLAS=1024,NAME_TOP=448,NAMES_MAX=18;
+// (512 x 56 from y 448, two to a row); below the square, the queued buses' destination displays (512 x 64, two to a row).
+// [x0, y0, x1, y1] in pixels.
+const ATLAS=1024,ATLAS_H=1280,NAME_TOP=448,NAMES_MAX=18,DEST_TOP=1024;
 const R={white:[0,0,128,128],interditada:[128,0,384,128],bloqueada:[384,0,640,128],desvioR:[640,0,896,128],zebraRed:[896,0,1024,64],zebraOrange:[896,64,1024,128],
  desvioL:[0,128,256,256],credenciados:[256,128,512,256],impedido:[512,128,768,256],atencao:[768,128,1024,256],
- proibida:[0,256,512,320],restrita:[512,256,1024,320],destino:[0,320,512,352],destino2:[512,320,1024,352],faixa:[0,352,1024,448],faixaBack:[0,952,1024,1024]};
-const uvRect=([x0,y0,x1,y1],inset=3)=>[(x0+inset)/ATLAS,1-(y1-inset)/ATLAS,(x1-inset)/ATLAS,1-(y0+inset)/ATLAS];
+ proibida:[0,256,512,320],restrita:[512,256,1024,320],faixa:[0,352,1024,448],faixaBack:[0,952,1024,1024]};
+// The buses held at the closures: turned away (DESVIO, ESPECIAL) or on their way to the island's classics.
+const BUS_SIGNS=['DESVIO · CENTRO','ESPECIAL · TICEN',...BUS_DESTINATIONS.slice(0,6)];
+const destRect=k=>[(k%2)*512,DEST_TOP+Math.floor(k/2)*64,(k%2)*512+512,DEST_TOP+Math.floor(k/2)*64+64];
+const uvRect=([x0,y0,x1,y1],inset=3)=>[(x0+inset)/ATLAS,1-(y1-inset)/ATLAS_H,(x1-inset)/ATLAS,1-(y0+inset)/ATLAS_H];
 const nameRect=k=>[(k%2)*512,NAME_TOP+Math.floor(k/2)*56,(k%2)*512+512,NAME_TOP+Math.floor(k/2)*56+56];
-const WHITE_UV=[64/ATLAS,1-64/ATLAS];
+const WHITE_UV=[64/ATLAS,1-64/ATLAS_H];
 const BOLD='"Arial Black","Arial Bold",Arial,sans-serif',CONDENSED='Impact,"Arial Narrow","Arial Black",sans-serif';
 
 // The street's name as its plates abbreviate it, without the nickname in brackets.
@@ -65,11 +69,10 @@ function drawAtlas(names){
   {const r=R.faixa,[cx,cy,w,h]=mid(r);fill(r,'#f2f0e8');fill([r[0],r[1]+6,r[2],r[1]+14],'#1f4f9e');fill([r[0],r[3]-14,r[2],r[3]-6],'#1f4f9e');write('VIA INTERDITADA · CORRIDA',cx,cy+2,h*.5,'#c4161c',w*.92);}
   {const r=R.faixaBack,[cx,cy,w,h]=mid(r);fill(r,'#e4e1d8');fill([r[0],r[1]+4,r[2],r[1]+10],'#a9b4c8');fill([r[0],r[3]-10,r[2],r[3]-4],'#a9b4c8');ctx.save();ctx.translate(cx,0);ctx.scale(-1,1);write('VIA INTERDITADA · CORRIDA',0,cy+2,h*.52,'#d4aaa6',w*.92);ctx.restore();}
   // A bus's destination display: amber LEDs on black.
-  for(const [r,t] of [[R.destino,'DESVIO · CENTRO'],[R.destino2,'ESPECIAL · TICEN']]){const [cx,cy,w,h]=mid(r);fill(r,'#050505');write(t,cx,cy+1,h*.72,'#ffb21e',w*.92,CONDENSED,'400');
-   ctx.fillStyle='rgba(0,0,0,.55)';for(let x=r[0];x<r[2];x+=4)ctx.fillRect(x,r[1],1,h);for(let y=r[1];y<r[3];y+=4)ctx.fillRect(r[0],y,w,1);}
+  BUS_SIGNS.forEach((t,k)=>{const r=destRect(k);drawBusSign(ctx,r[0],r[1],r[2]-r[0],r[3]-r[1],t);});
   // Street names: the city's blue plates.
   names.forEach((n,k)=>{const r=nameRect(k),[cx,cy,w,h]=mid(r);fill(r,'#1f4f9e');frame(r,'#f4f2ec',4,5);write(shortName(n),cx,cy+2,h*.5,'#f4f2ec',w*.9,BOLD,'800');});
- },ATLAS,ATLAS);
+ },ATLAS,ATLAS_H);
 }
 
 // ---------- The closure's pieces (templates; x along the piece, y toward its front, z up) ----------
@@ -105,6 +108,29 @@ function pieceTemplates(){
   else{const n=Math.round((x1-x0)/.125);for(let k=1;k<n;k++){const x=x0+(x1-x0)*k/n;sh.post([x,0,.2],[x,0,1.08],.008,.008,3,g,P.galvanized,{role:ROLE.paint});}}
   return sh.template(.9);};
  T.gradil=[2.0,2.5].map(l=>({l,h:1.1,near:gradil(l),far:gradil(l,true)}));
+ // The lots' own walls along a zone's edge (lotWalls). A stretch of wall 1 x 1 x 1 m scaled to its length, thickness and
+ // height, its foot 25 cm in the ground (a slope under it), the plaster painted, rain splash darker at the foot; the same
+ // block makes the pillars. Its cap (pingadeira) in the second colour.
+ {const slab=far=>{const sh=new Shape();sh.box(-.5,.5,-.5,.5,-.25,1,far?white:grime(white,1),P.concrete,{role:ROLE.paint});return sh.template(.3);};
+  T.wallSlab={near:slab(),far:slab(true)};
+  const cap=new Shape();cap.box(-.5,.5,-.5,.5,0,1,white,P.concrete,{role:ROLE.accent});T.wallCap=cap.template(.3);}
+ // An iron railing (grade) 2 m long and 1 m high (scaled): rails top and bottom, a bar every 11 cm, in the rim colour.
+ {const grade=far=>{const sh=new Shape(),n=far?6:18;
+   for(const z of [.05,.95])sh.box(-1,1,-.022,.022,z-.03,z+.03,white,P.steel,{role:ROLE.rim,skip:''});
+   for(let k=0;k<n;k++){const x=-1+(k+.5)*2/n;sh.box(x-.011,x+.011,-.011,.011,0,1,white,P.steel,{role:ROLE.rim,skip:'bottom top'});}
+   return sh.template(.3);};
+  T.grade={near:grade(),far:grade(true)};}
+ // A sheet-metal gate 1 m wide and 1 m high (scaled to its opening): the sheet with its ribs on both faces, in the rim colour.
+ {const gate=far=>{const sh=new Shape();sh.box(-.5,.5,-.025,.025,.03,1,white,P.steel,{role:ROLE.rim});
+   if(!far)for(let k=1;k<8;k++){const x=-.5+k/8;for(const s of [-1,1])sh.box(x-.012,x+.012,s>0?.025:-.04,s>0?.04:-.025,.07,.96,white,P.steel,{role:ROLE.rim,skip:'bottom top'});}
+   return sh.template(.3);};
+  T.gate={near:gate(),far:gate(true)};}
+ // A building site's hoarding (tapume) 1 m long and 1 m high: painted sheets on two battens, the posts behind.
+ {const tapume=far=>{const sh=new Shape();sh.box(-.5,.5,-.02,.02,-.1,1,grime(white,1),P.board,{role:ROLE.paint});
+   if(!far){for(const x of [-.25,.25])sh.box(x-.02,x+.02,.02,.045,-.05,1,white,P.board,{role:ROLE.paint,skip:'bottom'});
+    for(const z of [.18,.82])sh.box(-.5,.5,-.09,-.02,z-.04,z+.04,C.wood,P.board,{skip:''});}
+   return sh.template(.3);};
+  T.tapume={near:tapume(),far:tapume(true)};}
  // Concrete Jersey block, 2 m (the big avenues).
  const jersey=far=>{const sh=new Shape(),prof=[[-.3,0],[.3,0],[.28,.08],[.13,.33],[.08,.81],[-.08,.81],[-.13,.33],[-.28,.08]];
   extrude(sh,far?[[-.28,0],[.28,0],[.08,.81],[-.08,.81]]:prof,-.99,.99,far?white:grime(white,.81),P.concrete,{role:ROLE.paint});return sh.template(.5);};
@@ -220,6 +246,9 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
  const surface=(x,y)=>map?map.at(x,y):null;
  // Room taken (closure pieces, queued cars): discs in a hash, so the parked cars keep out of them.
  const taken=new Map(),TCELL=6,take=(x,y,r)=>{const k=cellOf(x,y,TCELL);if(!taken.has(k))taken.set(k,[]);taken.get(k).push([x,y,r]);};
+ // The pieces of the closures on a zone's edge (meta.roam), where the edge needs nothing more (lotWalls, the zones' fences).
+ const edgeTaken=new Map(),markEdge=(x,y)=>{const k=cellOf(x,y,TCELL);if(!edgeTaken.has(k))edgeTaken.set(k,[]);edgeTaken.get(k).push([x,y]);};
+ const edgeCovered=(x,y,r)=>{const cx=Math.floor(x/TCELL),cy=Math.floor(y/TCELL);for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(const [px,py] of edgeTaken.get((cx+i)+','+(cy+j))??[])if(Math.hypot(px-x,py-y)<r)return true;return false;};
  const isTaken=(x,y,r)=>{const cx=Math.floor(x/TCELL),cy=Math.floor(y/TCELL);for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(const [px,py,pr] of taken.get((cx+i)+','+(cy+j))??[])if(Math.hypot(px-x,py-y)<pr+r)return true;return false;};
 
  // ---- Tiles: each TILE square has its near batch and its people; groups of GROUP x GROUP tiles share a far batch, whose
@@ -234,7 +263,7 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
  const T=pieceTemplates(),names=[...new Set(list.map(c=>c.name).filter(Boolean))].slice(0,NAMES_MAX),atlas=drawAtlas(names);
  // (Off the cheap levels the near meshes switch their cars between the full build and the box by the camera's distance.)
  const lod=!mobile&&!lean,material=cityMaterial(atlas,{lod}),farMaterial=cityMaterial(atlas,{hide:true,uniforms:material.userData.uniforms});
- const signUv=Object.fromEntries(Object.entries(R).map(([k,r])=>[k,uvRect(r)])),nameUv=n=>{const k=names.indexOf(n);return k<0?null:uvRect(nameRect(k));};
+ const signUv=Object.fromEntries(Object.entries(R).map(([k,r])=>[k,uvRect(r)])),nameUv=n=>{const k=names.indexOf(n);return k<0?null:uvRect(nameRect(k));},busUv=BUS_SIGNS.map((t,k)=>uvRect(destRect(k)));
  const clearings=[],skip=(why,ci)=>{stats.skipped++;(stats.skippedWhy[why]??=[]).push(ci);};stats.skippedWhy={};
  // The queued vehicles [x, y, closure], for the checks (not enumerable: the stats print stays short).
  const queued=[];Object.defineProperty(stats,'queued',{value:queued});
@@ -309,7 +338,7 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
   // ground; far: its far version (null: none).
   const put=(tpl,far,u,v,turn,opts={},{lift=0,pitch=0,roll=0,s=[1,1,1]}={})=>{const o={shade:.86+rand()*.14,...opts};
    const [x,y]=P(u,v),z=ground(x,y);if(z==null||!(c0.zone?freeOfStands(x,y,.3):free(x,y,.3))||corridor(x,y)<.3)return false;
-   const f=frameAt(x,y,z+lift,H+Math.PI/2+turn,{pitch,roll,s});tile.near.add(tpl,f,o);if(far)tile.far.add(far,f,o);stats.pieces++;farthest=Math.max(farthest,u);take(x,y,.9);return true;};
+   const f=frameAt(x,y,z+lift,H+Math.PI/2+turn,{pitch,roll,s});tile.near.add(tpl,f,o);if(far)tile.far.add(far,f,o);stats.pieces++;farthest=Math.max(farthest,u);take(x,y,.9);if(c0.zone)markEdge(x,y);return true;};
   // ---- The barrier line ----
   const pair=rand()<.55?['orange','white']:rand()<.8?['red','white']:['orange','red'];
   const plasticColor=k=>rand()<.035?PLASTIC.yellow:PLASTIC[pair[k%2]];
@@ -341,7 +370,8 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
   const sidewalk=[];
   for(const [side,{curb,edge}] of [[1,c.left],[-1,c.right]]){
    if(edge-curb<.8)continue;const r=rand(),v0=side>0?curb+.1:-edge,v1=side>0?edge:-curb-.1;
-   if(r<.55)fill(v0,v1,'gradil',(rand()-.5)*.3);
+   // (On a zone's edge never left open: the car would stop at nothing there.)
+   if(r<.55||c0.zone&&r>=.75)fill(v0,v1,'gradil',(rand()-.5)*.3);
    else if(r<.75)fill(v0,v1,main==='jersey'?'plastic':main==='mixed'?'gradil':main==='gradil'?'gradil':'plastic',0);
    else{sidewalk.push({side,curb,edge});const pts=[];for(const v of [side*(curb+.35),side*(edge-.2)])if(put(T.cone,T.coneFar,.05+(rand()-.5)*.2,v,rand()*6))pts.push([0,v]);if(rand()<.6)chainSpan(pts);}
   }
@@ -446,7 +476,7 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
      if(d&&d.road<-.5&&e.every(r=>r&&r.road<.15)&&!inBuilding(x,y)&&!isTaken(x,y,1.2)&&corridor(x,y)>2&&free(x,y,1.5)){ok=true;break;}}
     const f=ok&&carFrame(type,x,y,q.h+Math.PI+(rand()-.5)*.05,ground,{s:(z=>[z,z,z*(1+(rand()-.5)*.04)])(1+(rand()-.5)*.06),lift:(rand()-.5)*.03});
     if(!f){u+=1.5;continue;}
-    const o={paint:type==='bus'?lin(0xf2f2ee):carPaint(rand),rim:rimColor(rand),accent:lin([0x1f5fb0,0x2f8a3c,0xe06a14,0xc8202a,0x6b3fa0][Math.floor(rand()*5)]),brake:rand()<.4,signA:rand()<.5?signUv.destino:signUv.destino2};
+    const o={paint:type==='bus'?lin(0xf2f2ee):carPaint(rand),rim:rimColor(rand),accent:lin([0x1f5fb0,0x2f8a3c,0xe06a14,0xc8202a,0x6b3fa0][Math.floor(rand()*5)]),brake:rand()<.4,signA:busUv[(u=>u<.3?Math.floor(u/.3*2):2+Math.floor((u-.3)/.7*(BUS_SIGNS.length-2)))(rand())]};
     // (Down the street, past QUEUE_NEAR metres from the line, the box at a distance and the full build when the camera comes
     // near: from the street's sidewalks; on the cheap levels the box.)
     if(u<=QUEUE_NEAR)tile.near.add(cityCarTemplate(type),f,o);else if(lod)tile.near.add(cityCarTemplate(type),f,{...o,lod:1}).add(cityCarTemplate(type,true),f,{...o,lod:-1});else tile.near.add(cityCarTemplate(type,true),f,o);
@@ -485,23 +515,87 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
   }
  }
  // ---- The zones of the city open to roam (meta.roam: physics.js RoamWorld) ----
- // Where a zone's edge crosses open ground (a square, a lawn, a wide sidewalk: its `fences`, gerar_cidade_floripa.py) a
- // line of galvanized crowd fences, each panel a little out of line, set 0.3 m out from the edge so the car stops at their
- // feet; the closures across its streets are the ones above. The parked cars in a zone are solid for the car driving there.
+ // Nowhere on a zone's edge does the car stop at nothing (user, 2026-10-15: "nos lugares que tem barreira invisível coloca
+ // algum objeto pra sinalizar que o carro/pessoa vai bater"). gerar_cidade_floripa.py bordas_passeio leaves out the edge
+ // along facades, landmarks and the lap's walls and hands the rest over: where it cuts across the city (a square, a lawn,
+ // the seafront, a street the closures above left uncovered) its `fences`, galvanized crowd fences; along the lots, the
+ // back of the sidewalk with no facade on it, its `walls`: the lots' own walls ('frente': a building just behind, 'lote':
+ // none) or, on a traffic island with no sidewalk ('canteiro'), the organisers' concrete or plastic barriers. All set just
+ // out from the edge, so the car stops at their feet and the walker at their face; a stretch the closures above already
+ // hold is skipped. The parked cars in a zone are solid for the car driving there.
  if(roam){
-  const rand=random(5303);
-  for(const z of data.meta.roam.zones)for(const line of z.fences??[]){
-   const pts=[];for(let k=0;k+1<line.length;k+=2)pts.push([line[k],line[k+1]]);
+  const rand=random(5303),OUT=.12;
+  // A line [x0, y0, x1, y1, ...]: its points, the distance along it and the point and heading at a distance.
+  const polyline=line=>{const pts=[];for(let k=0;k+1<line.length;k+=2)pts.push([line[k],line[k+1]]);
    const acc=[0];for(let k=1;k<pts.length;k++)acc.push(acc[k-1]+Math.hypot(pts[k][0]-pts[k-1][0],pts[k][1]-pts[k-1][1]));
    const at=u=>{let k=1;while(k<pts.length-1&&acc[k]<u)k++;const [ax,ay]=pts[k-1],[bx,by]=pts[k],l=acc[k]-acc[k-1]||1,f=Math.max(0,Math.min(1,(u-acc[k-1])/l));return {x:ax+(bx-ax)*f,y:ay+(by-ay)*f,h:Math.atan2(by-ay,bx-ax)};};
-   let u=rand()*.2,k=0;
-   while(u<acc.at(-1)-.8){
-    const pick=T.gradil[Math.floor(rand()*T.gradil.length)],q=at(Math.min(u+pick.l/2,acc.at(-1))),out=.3+(rand()-.5)*.06,x=q.x+Math.sin(q.h)*out,y=q.y-Math.cos(q.h)*out,zz=ground(x,y);
-    if(zz!=null&&!inBuilding(x,y)){const tile=tileAt(x,y),f=frameAt(x,y,zz,q.h+(k%2?.05:-.05)+(rand()-.5)*.04),o={paint:lin(rand()<.08?0x9a8a74:0xffffff,.86+rand()*.16),shade:.88+rand()*.14};
-     tile.near.add(pick.near,f,o);tile.far.add(pick.far,f,o);stats.pieces++;stats.roamFences=(stats.roamFences??0)+1;}
-    u+=pick.l+.03+rand()*.1;k++;
+   return {pts,acc,at,total:acc.at(-1)};};
+  // Pieces of a closure's kind (crowd fences, Jersey blocks, water-filled barriers) one after another along a line, each a
+  // little out of line, `out` m out from it, end to end to the line's very end.
+  const barrierLine=(line,opts,out,paint,count)=>{const L=polyline(line);let u=rand()*.1,k=0;
+   while(u<L.total-.05){
+    const pick=opts[Math.floor(rand()*opts.length)],q=L.at(Math.min(u+pick.l/2,L.total)),o=out+(rand()-.5)*.06,x=q.x+Math.sin(q.h)*o,y=q.y-Math.cos(q.h)*o,zz=ground(x,y);
+    if(zz!=null&&!inBuilding(x,y)&&!edgeCovered(q.x,q.y,1.4)){const tile=tileAt(x,y),f=frameAt(x,y,zz,q.h+(pick.zig?(k%2?.05:-.05):0)+(rand()-.5)*.04),look={paint:paint(k),shade:.88+rand()*.14};
+     tile.near.add(pick.near,f,look);tile.far.add(pick.far,f,look);stats.pieces++;stats[count]=(stats[count]??0)+1;}
+    u+=pick.l+(pick.zig?.03+rand()*.1:.01+rand()*.04);k++;
+   }};
+  const galv=()=>lin(rand()<.08?0x9a8a74:0xffffff,.86+rand()*.16),gradis=T.gradil.map(g=>({...g,zig:true}));
+  for(const z of data.meta.roam.zones)for(const line of z.fences??[])barrierLine(line,gradis,.3,galv,'roamFences');
+  // The traffic islands: a line of Jersey blocks or of water-filled barriers in a closure's pair of colours.
+  for(const z of data.meta.roam.zones)for(const w of z.walls??[])if(w.kind==='canteiro'){
+   if(rand()<.55)barrierLine(w.line,[T.jersey],.36,()=>lin(rand()<.15?0xa59a7e:0x9c9b95,.82+rand()*.24),'roamIslands');
+   else{const pair=rand()<.6?['orange','white']:['red','white'];barrierLine(w.line,T.plastic,.3,k=>rand()<.035?PLASTIC.yellow:PLASTIC[pair[k%2]],'roamIslands');}}
+  // The lots' walls, lot by lot (6 to 14 m, in front of a building 8 to 18), each its owner's: in front of a building a low
+  // wall with an iron railing (now and then the railing alone, or a plain wall to the chest); an open lot a plastered wall
+  // painted any colour, bare concrete blocks or a building site's hoarding. Pillars at the lot's ends and every 2.6 m at
+  // most (on a slope each stretch stands on its own ground: the wall steps, as real ones do), a sheet-metal gate in some.
+  // (The cheap levels draw the railings with a bar every 33 cm, as from afar.)
+  const PAINTS=[0xeee6d2,0xe8d6a8,0xd9a66b,0xe3a48d,0xc8d9b0,0xa9c7d6,0xf2f0ea,0xb8664c,0xe9c2c0,0xc9c5bc,0xf0d77a,0x9fb59a,0xd7c3e0,0xf3e3c3,0xe7b77c];
+  const IRON=[0x1d1f22,0xf0f0ec,0x2e4a36,0x5a5f63,0x6b3b24,0x24324a,0x7a2420],HOARD=[0x1f5fa0,0x2f7a46,0xcfd2d0,0xe6e3dc,0xf2d23a,0x8a2f2a];
+  const pick=list=>list[Math.floor(rand()*list.length)];
+  const lotStyle=kind=>{const paint=lin(pick(PAINTS),.9+rand()*.14),cap=rand()<.6?lin(0xf2f0ea,.92+rand()*.08):lin(0xa9a7a0,.9+rand()*.15),iron=lin(pick(IRON),.85+rand()*.2),r=rand();
+   const st={paint,cap,iron,thick:.15,pillar:.28+rand()*.06,gate:rand()<.35};
+   if(kind==='frente'){
+    if(r<.6)return {...st,base:.45+rand()*.5,rail:.8+rand()*.6};
+    if(r<.8)return {...st,base:.18+rand()*.1,rail:1.4+rand()*.5,pillar:.1,steel:true};
+    return {...st,base:1.1+rand()*.5,rail:0};}
+   if(r<.6)return {...st,base:1.9+rand()*.6,rail:0};
+   if(r<.82)return {...st,base:1.8+rand()*.6,rail:0,paint:lin(0x9d9b95,.82+rand()*.2),cap:null};
+   return {...st,base:2.1+rand()*.25,rail:0,paint:lin(pick(HOARD),.85+rand()*.2),cap:null,tapume:true,gate:rand()<.25,pillar:.1,steel:true};};
+  const lotWalls=(line,kind)=>{
+   const L=polyline(line);if(L.total<.2)return;
+   const cuts=[0];while(cuts.at(-1)<L.total-.01)cuts.push(Math.min(L.total,cuts.at(-1)+(kind==='frente'?8+rand()*10:6+rand()*8)));
+   if(cuts.length>2&&cuts.at(-1)-cuts.at(-2)<2.5)cuts.splice(cuts.length-2,1);
+   const put=(tpl,far,x,y,z,h,s,look)=>{const tile=tileAt(x,y),f=frameAt(x,y,z,h,{s});tile.near.add(tpl,f,look);if(far)tile.far.add(far,f,look);stats.pieces++;};
+   for(let li=0;li+1<cuts.length;li++){
+    const st=lotStyle(kind),u0=cuts[li],u1=cuts[li+1],H=st.base+st.rail,breaks=[u0];
+    for(let k=1;k<L.pts.length-1;k++)if(L.acc[k]>u0+.05&&L.acc[k]<u1-.05)breaks.push(L.acc[k]);breaks.push(u1);
+    const spans=[];for(let i=0;i+1<breaks.length;i++){const a=breaks[i],b=breaks[i+1],n=Math.max(1,Math.ceil((b-a)/2.6));for(let j=0;j<n;j++)spans.push([a+(b-a)*j/n,a+(b-a)*(j+1)/n]);}
+    // The gate: the stretch nearest the lot's middle that is 2.2 m or more.
+    let gate=-1;if(st.gate){let best=Infinity;spans.forEach(([a,b],i)=>{const d=Math.abs((a+b)/2-(u0+u1)/2);if(b-a>=2.2&&d<best){best=d;gate=i;}});}
+    spans.forEach(([a,b],i)=>{
+     const A=L.at(a),B=L.at(b),h=Math.atan2(B.y-A.y,B.x-A.x),len=Math.hypot(B.x-A.x,B.y-A.y),o=OUT+st.thick/2,mx=(A.x+B.x)/2+Math.sin(h)*o,my=(A.y+B.y)/2-Math.cos(h)*o;
+     if(len<.05||edgeCovered((A.x+B.x)/2,(A.y+B.y)/2,1.2))return;
+     const z=ground(mx,my);if(z==null)return;const shade=.92+rand()*.1,look={paint:st.paint,accent:st.cap??st.paint,rim:st.iron,shade};
+     if(i===gate){put(T.gate.near,T.gate.far,mx,my,z,h,[len,1,Math.max(1.6,H-.05)],{...look,rim:lin(pick(IRON),.8+rand()*.25)});stats.roamGates=(stats.roamGates??0)+1;}
+     else if(st.tapume)put(T.tapume.near,T.tapume.far,mx,my,z,h,[len+.04,1,H],look);
+     else{
+      put(T.wallSlab.near,T.wallSlab.far,mx,my,z,h,[len+st.thick*.9,st.thick,st.base],look);
+      if(st.cap)put(T.wallCap,null,mx,my,z+st.base,h,[len+st.thick,st.thick+.05,.05],look);
+      if(st.rail)put(mobile||lean?T.grade.far:T.grade.near,T.grade.far,mx,my,z+st.base+(st.cap?.05:0),h,[len/2,1,st.rail-(st.cap?.05:0)],look);
+     }
+     // A pillar at each end of the stretch (masonry, or a steel post for a railing on its own and for a hoarding), down to
+     // the lower of the two grounds.
+     for(const P of i===0?[A,B]:[B]){const px=P.x+Math.sin(h)*o,py=P.y-Math.cos(h)*o,pz=ground(px,py);if(pz==null)continue;
+      const w=st.pillar,top=H+(st.steel?.02:.1),z0=Math.min(pz,z),tall=top+Math.max(0,z-pz);
+      put(T.wallSlab.near,st.steel?null:T.wallSlab.far,px,py,z0,h,[w,w,tall],st.steel?{paint:st.iron,shade}:look);
+      if(st.cap&&!st.steel)put(T.wallCap,null,px,py,z0+tall,h,[w+.06,w+.06,.06],look);}
+     stats.roamWallM=(stats.roamWallM??0)+len;
+    });
    }
-  }
+   stats.roamWalls=(stats.roamWalls??0)+1;
+  };
+  for(const z of data.meta.roam.zones)for(const w of z.walls??[])if(w.kind!=='canteiro')lotWalls(w.line,w.kind);
   // At each gap a DESVIO board on a tall stand just behind the wall's end before it, turned to the cars coming, its arrow
   // into the side street: the way out to the city.
   for(const z of data.meta.roam.zones)for(const g of z.gaps){

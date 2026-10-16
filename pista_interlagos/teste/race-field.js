@@ -1,4 +1,4 @@
-import {TestCar,clamp,wrap,steerLimit,WHEELBASE,OPALA_BODY,sameLevel} from './physics.js?v=20260923-capotagem';
+import {TestCar,clamp,wrap,steerLimit,WHEELBASE,OPALA_BODY,sameLevel} from './physics.js';
 import {RIVAL_ROSTER,ACE_NUMBER,AI_LEVELS,gridSlot,playerGridSlot} from './race-roster.js';
 import {pitGeometry,wallContact,pitLane,curveloPitFrame,CURVELO_PIT} from './pit-lane.js';
 import {trackFall} from './cliff-fall.js';

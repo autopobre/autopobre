@@ -150,7 +150,9 @@ export class FreeWalk {
  passes(from,pos,elevation){
   const a=this.side(from.x,-from.z),b=this.side(pos.x,-pos.z);if(b.q.abyss)return false;
   if(!a.pit&&!b.pit&&a.side===b.side&&(a.out>0)!==(b.out>0)&&(a.rail||b.rail)&&(this.street||elevation<b.q.z-.055+RAIL-.5))return false;
-  const roam=this.car.roam;if(!roam||b.out<=0)return true;
+  // (The pit lane and its garages are behind the lap's walls but no zone's: their own walls hold him, footGround. Under
+  // the zones' rule there he could only walk toward the lap, one way along the lane; user, 2026-10-15.)
+  const roam=this.car.roam;if(!roam||b.out<=0||b.pit)return true;
   const x=pos.x,y=-pos.z,zone=roam.zones.find(z=>roam.inside(z,x,y)),was=roam.zones.find(z=>roam.inside(z,from.x,-from.z));
   if(!zone&&b.out>1.5&&(was||b.out>=a.out))return false;
   for(const it of roam.query(x,y,.3))if(it.t===2&&near(x,y,it.x,it.y)<it.r+.25||it.t===1&&inQuad(it.xs,it.ys,x,y))return false;

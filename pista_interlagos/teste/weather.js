@@ -7,6 +7,10 @@
 // The light on what draws its own colour (smoke, spray, dust, falling leaves, splashes: no lights in their shaders),
 // one uniform shared by all of them; main.js applyWeather sets it from weatherProfile().ambient (1 by day).
 export const EFFECT_LIGHT={value:1};
+// The grandstands' lamps after dark (user, 2026-10-15: "o pessoal das arquibancadas fica no escuro total"): the fixtures
+// under their roofs glow and light the stands and the fans (interlagos-stands.js, landscape.js createCrowd). One uniform
+// shared by them; main.js applyWeather sets it: 1 at night, .45 at dusk, 0 by day.
+export const STAND_LIGHTS={value:0};
 export const TIMES_OF_DAY=Object.freeze([['dia','Dia (padrão)'],['fim_de_tarde','Fim de tarde'],['noite','Noite']]);
 export const RAIN_LEVELS=Object.freeze([['seco','Seco (padrão)'],['garoa','Garoa'],['chuva','Chuva forte']]);
 export const TIME_DEFAULT='dia',RAIN_DEFAULT='seco';

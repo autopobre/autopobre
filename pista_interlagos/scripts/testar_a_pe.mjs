@@ -141,6 +141,22 @@ const outAt=(data,car,walk)=>walk.side(walk.hero.position.x,-walk.hero.position.
  at=outAt(data,car,walk);assert.ok(at.out<=0,`jumping does not take him over it (${at.out.toFixed(2)})`);
 }
 
+// 8b. A city open to roam (Floripa): in its pit lane, behind the lap's walls but in no zone, he walks every way (the
+// zones' rule there let him walk only toward the lap: one way along the lane; user, 2026-10-15).
+{
+ const {data,car,walk}=setup('floripa'),pit=data.pit,c=Object.fromEntries(pit.columns.map((k,i)=>[k,i]));
+ const p=pit.samples[Math.floor(pit.samples.length*.6)],d=(p[c.lane_lo]+p[c.lane_hi])/2,h=Math.atan2(p[c.ty],p[c.tx]);
+ car.index=Math.round(p[c.main_s]/data.meta.reconstructed_xy_m*data.samples.length)%data.samples.length;
+ Object.assign(car,{x:p[c.x]+p[c.lx]*d,y:p[c.y]+p[c.ly]*d,heading:h,vx:0,vy:0});car.settle();
+ walk.request();brakeOut(car,walk,1);assert.ok(walk.active,'out in the pit lane');assert.ok(outAt(data,car,walk).pit,'beside the car, in the pits');
+ for(const turn of [0,Math.PI]){
+  const s=walk.foot,from=walk.hero.position.clone();s.yaw=h+turn;walkFor(walk,2.5,{throttle:1,brake:0,left:0,right:0});
+  // (Metres made good along the lane his way: blocked, he only slid sideways along the axes.)
+  const moved=(walk.hero.position.x-from.x)*Math.cos(h+turn)-(walk.hero.position.z-from.z)*Math.sin(h+turn);
+  assert.ok(moved>5.5,`along the pit lane ${turn?'backward':'forward'} he walks (${moved.toFixed(2)} m)`);
+ }
+}
+
 // 9. The clothes: the 99's red overalls, another car's team colour, the story's stage.
 assert.equal(pilotOutfit(),OUTFITS.driver);
 assert.equal(pilotOutfit({entry:{color:0x2266cc}}).top,0x2266cc);assert.equal(pilotOutfit({entry:{color:0x2266cc}}).back,false,'no 99 on another team');

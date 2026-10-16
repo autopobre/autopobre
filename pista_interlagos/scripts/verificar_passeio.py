@@ -30,8 +30,8 @@ PILOTO = r"""async()=>{
  const P=await import('./physics.js'),car=interlagos.car,data=car.data,w=P.roamWorld(data),a=data.samples;
  const station=s=>{const i=a.findIndex(p=>p[0]>=s);return i<0?0:i;},wrapA=x=>Math.atan2(Math.sin(x),Math.cos(x));
  const grid=z=>{const S=2,nx=Math.ceil((z.x1-z.x0)/S),ny=Math.ceil((z.y1-z.y0)/S),free=new Uint8Array(nx*ny);
-  // (Clear of the solids too: a box's corners, a post.)
-  const clear=(x,y)=>w.query(x,y,5).every(it=>it.t===1?it.xs.every((v,k)=>Math.hypot(v-x,it.ys[k]-y)>2.2)&&Math.hypot(it.xs.reduce((s,v)=>s+v,0)/4-x,it.ys.reduce((s,v)=>s+v,0)/4-y)>2.6:it.t===2?Math.hypot(it.x-x,it.y-y)>it.r+1.8:true);
+  // (Clear of the solids too: a box's corners, a post; and of the trees' trunks, tree-contact.js car.posts.)
+  const clear=(x,y)=>(car.posts?.near(x,y,4)??[]).every(t=>Math.hypot(t.x-x,t.y-y)>t.r+3.4)&&w.query(x,y,5).every(it=>it.t===1?it.xs.every((v,k)=>Math.hypot(v-x,it.ys[k]-y)>2.2)&&Math.hypot(it.xs.reduce((s,v)=>s+v,0)/4-x,it.ys.reduce((s,v)=>s+v,0)/4-y)>2.6:it.t===2?Math.hypot(it.x-x,it.y-y)>it.r+1.8:true);
   for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const x=z.x0+(i+.5)*S,y=z.y0+(j+.5)*S;if(w.inside(z,x,y)&&!w.edge(x,y,2.6,z,w.query(x,y,2.6))&&clear(x,y))free[j*nx+i]=1;}
   return {S,nx,ny,free,xy:k=>[z.x0+(k%nx+.5)*S,z.y0+(Math.floor(k/nx)+.5)*S]};};
  const route=(name,length)=>{

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {sceneryBands,bandClearance} from './track-clearance.js';
 import {canvasTexture} from './pit-textures.js';
-import {Shape,cityCarTemplate,CITY_CAR_SIZE,carPaint,rimColor,random,lin,FINISH,GLOW,ROLE} from './city-cars.js';
+import {Shape,cityCarTemplate,CITY_CAR_SIZE,carPaint,rimColor,random,lin,FINISH,GLOW,ROLE,BUS_DESTINATIONS,drawBusSign} from './city-cars.js';
 import {raceTrafficBlocks} from './city-race.js';
 import {roamZoneAt} from './physics.js';
 
@@ -360,12 +360,12 @@ function boatShape(kind){
  return sh.template(.7);
 }
 
-// The destination displays of the buses: amber LEDs on black (real neighbourhoods are public signage).
-const DESTS=['CENTRO','TICEN','ESTREITO','CAPOEIRAS','TRINDADE','SACO DOS LIMÕES','COQUEIROS'];
+// The destination displays of the buses (city-cars.js drawBusSign): a white row on top (what is not a display samples it),
+// then one row per place, DEST_ROWS rows of 512 x 64 in all.
+const DEST_ROWS=16;
 function destinationAtlas(){
- return canvasTexture((ctx,W,H)=>{ctx.fillStyle='#ffffff';ctx.fillRect(0,0,W,H);const rowH=H/8;
-  DESTS.forEach((t,k)=>{const y=(k+1)*rowH;ctx.fillStyle='#050505';ctx.fillRect(0,y,W,rowH);ctx.font=`400 ${rowH*.72}px Impact,"Arial Narrow","Arial Black",sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#ffb21e';ctx.fillText(t,W/2,y+rowH/2+1,W*.9);
-   ctx.fillStyle='rgba(0,0,0,.55)';for(let x=0;x<W;x+=4)ctx.fillRect(x,y,1,rowH);for(let yy=y;yy<y+rowH;yy+=4)ctx.fillRect(0,yy,W,1);});},512,256);
+ return canvasTexture((ctx,W,H)=>{ctx.fillStyle='#ffffff';ctx.fillRect(0,0,W,H);const rowH=H/DEST_ROWS;
+  BUS_DESTINATIONS.slice(0,DEST_ROWS-1).forEach((t,k)=>drawBusSign(ctx,0,(k+1)*rowH,W,rowH,t));},512,64*DEST_ROWS);
 }
 
 // The material of the moving vehicles: city-cars.js's look (each vertex its roughness, metalness and lamp), each copy placed
@@ -394,7 +394,7 @@ function trafficMaterial(dataTex,atlas,uniforms,depth=false){
  if(rl==1.)tint=texelFetch(trafficData,ivec2(2,r),0).rgb;else if(rl==4.)tint=texelFetch(trafficData,ivec2(3,r),0).rgb;else if(rl==5.)tint=texelFetch(trafficData,ivec2(4,r),0).rgb;
  float lit=step(.5/255.,surf.z);vColor.rgb*=tint*mix(texelFetch(trafficData,ivec2(2,r),0).a,1.,lit);vSurf=surf;vFlags=tfQ.z;}`)
     .replace('#include <uv_vertex>',`#include <uv_vertex>
-{tfSetup();float rl=floor(role+.5);vMapUv=rl==2.?vec2(uv.x,1.-(floor(tfQ.w+.5)+2.-uv.y)/8.):vec2(.5,.97);}`);
+{tfSetup();float rl=floor(role+.5);vMapUv=rl==2.?vec2(uv.x,1.-(floor(tfQ.w+.5)+2.-uv.y)/${DEST_ROWS}.):vec2(.5,.985);}`);
    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec4 vSurf;varying float vFlags;uniform float cityNight;')
     .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=vSurf.x;')
     .replace('#include <metalnessmap_fragment>','#include <metalnessmap_fragment>\nmetalnessFactor=vSurf.y;')
@@ -409,7 +409,7 @@ if(kind==5.)totalEmissiveRadiance+=diffuseColor.rgb*(1.4+1.6*cityNight);}`);
   }
   shader.vertexShader=vs;
  };
- m.customProgramCacheKey=()=>'city-traffic-v1'+(depth?'-depth':'');
+ m.customProgramCacheKey=()=>'city-traffic-v2'+(depth?'-depth':'');
  return m;
 }
 
@@ -500,7 +500,7 @@ export async function createCityTraffic(data,{mobile=false,lean=false,ground=nul
  const JACKETS=[0x1d1f24,0x2b3346,0x50555a,0xa8c43a,0x7a1d22,0xc8541a,0x2a5aa8],BOXES=[0xc81d25,0xf4f1ea,0x1d1f22,0xe07a1a,0xd8b21a];
  const dress=v=>{
   const r=random((v.id+1)*7919+stats.respawns*31);
-  if(v.bus){const k=r();v.paint=k<.6?lin(0xf2f2ee):k<.85?lin(0xe8e2d0):lin(0xd8dde2);v.rim=lin(0x9a9da0);v.accent=lin([0x1f5fb0,0x2f8a3c,0xe06a14,0xc8202a,0x6b3fa0][Math.floor(r()*5)]);v.sign=Math.floor(r()*DESTS.length);v.drl=true;}
+  if(v.bus){const k=r();v.paint=k<.6?lin(0xf2f2ee):k<.85?lin(0xe8e2d0):lin(0xd8dde2);v.rim=lin(0x9a9da0);v.accent=lin([0x1f5fb0,0x2f8a3c,0xe06a14,0xc8202a,0x6b3fa0][Math.floor(r()*5)]);v.sign=Math.floor(r()*Math.min(BUS_DESTINATIONS.length,DEST_ROWS-1));v.drl=true;}
   else if(v.moto){v.paint=lin([0xf2f2ef,0xc81d25,0x1d1f22,0xd8b21a,0x2a5aa8][Math.floor(r()*5)]);v.rim=lin(JACKETS[Math.floor(r()*JACKETS.length)]);v.accent=lin(BOXES[Math.floor(r()*BOXES.length)]);v.drl=true;}
   else{v.paint=carPaint(r);v.rim=rimColor(r);v.accent=lin(0x2a2a2a);v.drl=r()<.35;}
   v.shade=.9+r()*.12;v.v0k=(v.moto?1.08:v.bus?.85:1)*(.86+r()*.26);v.T=HEADWAY*(.8+r()*.5)*(v.moto?.8:1);look(v,v.id);};

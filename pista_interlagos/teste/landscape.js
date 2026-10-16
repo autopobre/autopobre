@@ -5,7 +5,7 @@ import {sceneryBands} from './track-clearance.js';
 import {LakeWaves,waveVertexCommon,waveVertex,waveFragmentCommon,waveClip} from './lake-waves.js';
 import {createVergeVegetation} from './verge-vegetation.js';
 import {carShadowPatch} from './car-shadow.js';
-import {EFFECT_LIGHT} from './weather.js';
+import {EFFECT_LIGHT,STAND_LIGHTS} from './weather.js';
 import {skyMirror} from './sky.js';
 
 // Land cover is read from the 2020 GeoSampa orthophoto already packed in the
@@ -1076,6 +1076,8 @@ const TOWER_VERTEX=`
   if(abs(position.y-.72)<.005)transformed.y=.3+.5*fract(houseSeed*8.1);
   if(towerPart>.5)transformed.xz*=.6+.25*fract(houseSeed*5.3);
  }`;
+// The stands' lamps on a fan after dark (as a light of this intensity; the moon is .2, the day's sun 7).
+const STAND_LAMP=2.2;
 function sceneryMaterial(kind,{foliage=false,plain=false}={}){
  const material=new THREE.MeshStandardMaterial({name:{tree:'Arvores_instanciadas',house:'Casas_instanciadas',crowd:'Torcida_instanciada'}[kind],vertexColors:true,roughness:kind==='tree'?.88:.82,metalness:0});
  if(foliage)Object.assign(material,{map:leafTexture(),alphaTest:.45,alphaToCoverage:true,side:THREE.DoubleSide});
@@ -1105,7 +1107,7 @@ diffuseColor*=leafTexel;`).replace('#include <normal_fragment_begin>',`#include 
   shader.vertexShader=shader.vertexShader.replace('#include <common>',`#include <common>
 attribute float partMask;uniform float landTime;varying float vPart;varying vec3 vPartLocal,vPartNormal,vPartScale;
 #ifdef CROWD
-varying vec2 vFanLight;varying vec3 vFlag,vFlagB;
+varying vec2 vFanLight;varying vec3 vFlag,vFlagB,vFanFront;varying float vLampPool;
 #endif
 #ifdef HOUSES
 varying float vHouseSeed;attribute float towerPart;
@@ -1126,7 +1128,7 @@ vColor=vec4(1.0);
  vColor.rgb*=color;
 #endif
 #ifdef CROWD
- vFanLight=vec2(1.0);vFlag=vec3(0.0,0.0,-1.0);vFlagB=vec3(1.0);
+ vFanLight=vec2(1.0);vFlag=vec3(0.0,0.0,-1.0);vFlagB=vec3(1.0);vFanFront=vec3(0.0,0.0,1.0);vLampPool=1.0;
 #endif
 #ifdef HOUSES
  vHouseSeed=0.0;
@@ -1164,6 +1166,11 @@ vColor=vec4(1.0);
    vFlagB=fk<.3?yellow:fk<.45?green:fk<.55?(fp<.5?red:blue):fk<.66?white:fk<.77?(fp<.5?white:vec3(.03)):white;
    vFlag=vec3(color.r,color.b,partMask>4.5?(fk<.3&&fp>.55?3.0:fp<.35?0.0:fp<.7?1.0:2.0):-1.0);
    vFanLight=fanData.zw;
+   // Where the fan looks (the figure's +z) and how near a lamp of the stand's roof it sits: the fixtures every few metres
+   // along the row, each pool a little off the last (vLampPool, 1 under a lamp).
+   mat3 fanTurn=mat3(modelMatrix)*mat3(instanceMatrix);vec3 fanRow=normalize(fanTurn*vec3(1.0,0.0,0.0));vFanFront=normalize(fanTurn*vec3(0.0,0.0,1.0));
+   float fanAlong=dot((modelMatrix*instanceMatrix[3]).xz,fanRow.xz);
+   vLampPool=(.5+.5*cos(fanAlong*1.05+who*.7))*(.78+.22*cos(fanAlong*.19+who2*2.0));
   #else
    vec3 flag=instanceColor.rgb;
   #endif
@@ -1199,7 +1206,8 @@ ${TOWER_VERTEX}
  vPartLocal=transformed;
 #endif`);
   if(kind==='crowd'){
-   shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vFanLight;varying vec3 vFlag,vFlagB;').replace('#include <color_fragment>',`#include <color_fragment>
+   shader.uniforms.standLights=STAND_LIGHTS;
+   shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying vec2 vFanLight;varying vec3 vFlag,vFlagB,vFanFront;varying float vLampPool;uniform float standLights;').replace('#include <color_fragment>',`#include <color_fragment>
 // A flag's second colour (vFlag: across and down the cloth, pattern): on one half, across or down, or Brazil's diamond.
 vec2 flagEdge=fwidth(vFlag.xy)+.02;
 if(vFlag.z>-.5){
@@ -1214,7 +1222,15 @@ reflectedLight.indirectDiffuse*=vFanLight.y;reflectedLight.indirectSpecular*=vFa
  // away from it, and more sky on the shoulders than the lap: wrapped light, so torsos are not lit flat like cut-outs.
  float fanWrap=clamp((dot(normal,directionalLights[0].direction)+.6)/1.6,0.0,1.0);
  reflectedLight.indirectDiffuse*=mix(.8,1.3,fanWrap)*(.9+.16*inverseTransformDirection(normal,viewMatrix).y);
-#endif`);
+#endif
+// After dark the stands' lamps (STAND_LIGHTS, weather.js): the fixtures along the roof's front edge over the rows and the
+// track's floodlights before them, a warm light from above and in front of each fan (under the roof too: the lamps hang
+// there), stronger under a fixture, wrapped round the shoulders so a torso is not lit flat.
+if(standLights>0.0){
+ vec3 lampUp=normalize((viewMatrix*vec4(0.0,1.0,0.0,0.0)).xyz),lampFront=normalize((viewMatrix*vec4(vFanFront,0.0)).xyz);
+ float lampLit=clamp((dot(normal,normalize(lampUp*.8+lampFront*.6))+.5)/1.5,0.0,1.0)*(.7+.3*vLampPool);
+ reflectedLight.directDiffuse+=diffuseColor.rgb*RECIPROCAL_PI*vec3(1.0,.9,.76)*(${STAND_LAMP.toFixed(2)}*standLights*lampLit);
+}`);
   }
   if(kind==='tree'){
    shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nvarying float vPart;varying vec3 vPartLocal,vPartNormal,vPartScale;').replace('#include <color_fragment>',`#include <color_fragment>
@@ -1336,7 +1352,7 @@ if(vPart>.5&&vPart<2.5&&vPartLocal.y>1.0){normal=houseFacet;nonPerturbedNormal=n
 #endif`);
  };
  material.defines={tree:{TREES:'',...(plain?{TREE_PLAIN:''}:{})},house:{HOUSES:''},crowd:{CROWD:''}}[kind];
- material.customProgramCacheKey=()=>'scenery-'+kind+(foliage?'-foliage':'')+(plain?'-plain':'')+'-v11';
+ material.customProgramCacheKey=()=>'scenery-'+kind+(foliage?'-foliage':'')+(plain?'-plain':'')+'-v12';
  return material;
 }
 // The trees' shadows take the same shape as the trees (lean, crown): the shadow pass draws them

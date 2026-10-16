@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {TestCar,clamp,wrap,recognitionInput,RIGHTING_DELAY,OPALA_BODY,FUSCA_BODY} from './physics.js?v=20260923-capotagem';
+import {TestCar,clamp,wrap,recognitionInput,RIGHTING_DELAY,OPALA_BODY,FUSCA_BODY} from './physics.js';
 import {PLAYER_ENTRY,ACE_NUMBER,playerGridSlot,carEntry,fieldRoster,duelRivalFor,cssColor,MODEL_NAMES} from './race-roster.js';
 import {CarSelect} from './car-select.js';
 import {CarLivery,trunkInside,showTrunkInside,trimDecalTails} from './car-livery.js';
@@ -53,7 +53,7 @@ import {setupSettings} from './settings.js';
 import {CarAudio} from './car-audio.js?v=20260913-immersive';
 import {PlayerPreferences,CAMERA_MODES,LAPS} from './player-preferences.js';
 import {createSky,SUN_DIRECTION} from './sky.js';
-import {weatherProfile,weatherCaption,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,drawWeather,chosenWeather,EFFECT_LIGHT,TIMES_OF_DAY,RAIN_LEVELS,nextTimeOfDay,nextRainLevel,weatherName} from './weather.js';
+import {weatherProfile,weatherCaption,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,drawWeather,chosenWeather,EFFECT_LIGHT,STAND_LIGHTS,TIMES_OF_DAY,RAIN_LEVELS,nextTimeOfDay,nextRainLevel,weatherName} from './weather.js';
 import {createCinematic,SMEAR_CARS,compileInSlices} from './cinematic.js';
 import {SunPlacement} from './sun-light.js';import {CarShadow} from './car-shadow.js';
 import {createLandscape,loadTerrainTextures,buildTrackField,readOrtho,looseGround,terrainMaterial,structureMaterial,createCrowd,SKYLINE_FAR} from './landscape.js';
@@ -573,7 +573,7 @@ function applyWeather(){
  // Headlights: the rivals' and the tail lamps follow the weather; the player's spot lights come into the scene with it
  // (new programs: compiled in slices when a race already shows), lit as the start decides (startLights) or H.
  TAIL_LIGHTS.on=weather.lights;setGlare(weather.lamps);playerLamps.setStrength(weather.lamps);
- floods?.setLevel(weather.night?1:weather.time==='fim_de_tarde'?.45:0);
+ floods?.setLevel(weather.night?1:weather.time==='fim_de_tarde'?.45:0);STAND_LIGHTS.value=weather.night?1:weather.time==='fim_de_tarde'?.45:0;
  for(const extra of circuitExtras){extra.setNight?.(weather.night?1:weather.time==='fim_de_tarde'?.45:0);extra.setRain?.(weather.wetness);}
  // At night the cars reflect the night sky only (car-reflections.js setSkyOnly): another map size, other programs.
  const programs=playerLamps.install(weather.lights)|carReflections.setSkyOnly(weather.night);

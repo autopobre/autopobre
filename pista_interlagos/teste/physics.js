@@ -453,7 +453,9 @@ export class TestCar {
   const b=this.body,reach=this.data.meta.barrier==='street'?WALL_REACH:RAIL_REACH,far=Math.hypot(b.halfLength+Math.abs(b.wallAhead),b.halfWidth);
   // Out in a zone of the city (meta.roam): its own edges, the walls from behind and what stands in it (RoamWorld). Out
   // behind the walls elsewhere (not by the pits): the walls from behind too, never pulled back through them onto the lap
-  // (with a deck's plane above, that threw a car in the air). Down under a deck: no walls at all, they stand up there.
+  // (with a deck's plane above, that threw a car in the air). Down under a deck: no walls at all, they stand up there; but a car that came down there out of a zone (under the
+  // Colombo Salles' approach viaduct beside the Aterro) is still that zone's, held by its edge (user, 2026-10-15: the car
+  // went on under the viaduct, out into the whole city, and the pilot got out there).
   const zone=this.roam?this.roam.zoneOf(this,reach):null,behind=!!this.roam&&!zone&&!this.underDeck&&this.roam.behind(this,reach);this.roamZone=zone;
   // (The car out in a zone is the one the city's walkers keep out of the way of: city-life.js.)
   if(zone)this.roam.player=this;
@@ -739,7 +741,7 @@ export function roamZoneAt(data,x,y){const w=roamWorld(data);return w?w.zones.fi
 function roamGapEnd(data,side,x){for(const z of data.meta.roam.zones??[])for(const g of z.gaps)if(Math.sign(g.side)===(side<0?-1:1)&&(Math.abs(g.s0-x)<1e-6||Math.abs(g.s1-x)<1e-6))return true;return false;}
 class RoamWorld{
  constructor(data){
-  this.data=data;this.cells=new Map();this.zones=[];this.stamp=0;this.v=[0,0,0];this.near=[];this.keep=[];this.solids=0;
+  this.data=data;this.cells=new Map();this.zones=[];this.stamp=0;this.v=[0,0,0];this.near=[];this.keep=[];this.deep=[];this.solids=0;
   const a=data.samples,N=a.length,L=data.meta.reconstructed_xy_m,reach=data.meta.barrier==='street'?WALL_REACH:RAIL_REACH;
   data.meta.roam.zones.forEach((z,index)=>{
    const zone={index,name:z.name,label:z.label??z.name,gaps:z.gaps,x0:Infinity,y0:Infinity,x1:-Infinity,y1:-Infinity,rows:new Map(),grass:null};
@@ -767,8 +769,8 @@ class RoamWorld{
  }
  put(x0,y0,x1,y1,item){for(let i=Math.floor(x0/ROAM_CELL);i<=Math.floor(x1/ROAM_CELL);i++)for(let j=Math.floor(y0/ROAM_CELL);j<=Math.floor(y1/ROAM_CELL);j++){const k=i*73856093^j*19349663;let c=this.cells.get(k);if(!c)this.cells.set(k,c=[]);c.push(item);}}
  // Everything in the cells within r of (x, y), each once (the list is reused: read it before the next call).
- query(x,y,r){
-  const out=this.near;out.length=0;const stamp=++this.stamp;
+ query(x,y,r,out=this.near){
+  out.length=0;const stamp=++this.stamp;
   for(let i=Math.floor((x-r)/ROAM_CELL);i<=Math.floor((x+r)/ROAM_CELL);i++)for(let j=Math.floor((y-r)/ROAM_CELL);j<=Math.floor((y+r)/ROAM_CELL);j++){const c=this.cells.get(i*73856093^j*19349663);if(c)for(const it of c)if(it.seen!==stamp){it.seen=stamp;out.push(it);}}
   return out;
  }
@@ -799,12 +801,13 @@ class RoamWorld{
  cap(s,side){let out=null;for(const z of this.zones)for(const g of z.gaps){if(Math.sign(g.side)!==(side<0?-1:1))continue;
   if(s<=g.s0&&g.s0-s<2.5&&!(out?.dist<=g.s0-s))out={dist:g.s0-s,dir:1};if(s>=g.s1&&s-g.s1<2.5&&!(out?.dist<=s-g.s1))out={dist:s-g.s1,dir:-1};}return out;}
  // The car's centre of mass in a zone: off the lap's corridor (asphalt and the strip to the walls' face) and on the
- // zone's open ground; a car just pushed back in from its edge stays in it.
+ // zone's open ground; a car just pushed back in from its edge stays in it, and one down on the ground under a deck
+ // (the lap's corridor overhead, nowhere a car may be) whatever its distance from the edge.
  zoneOf(car,reach){
   const r=car.surface,n=Math.hypot(r.lx,r.ly)||1,side=Math.sign(r.d)||1;
-  if(Math.abs(r.d)/n<=r.width/2+guardrailClearance(this.data,r.s,side)+reach)return null;
+  if(!car.underDeck&&Math.abs(r.d)/n<=r.width/2+guardrailClearance(this.data,r.s,side)+reach)return null;
   for(const z of this.zones)if(this.inside(z,car.x,car.y))return z;
-  const was=car.roamZone;return was&&this.edge(car.x,car.y,2.5,was,this.query(car.x,car.y,2.5))?was:null;
+  const was=car.roamZone;return was&&(car.underDeck||this.edge(car.x,car.y,2.5,was,this.query(car.x,car.y,2.5)))?was:null;
  }
  // The car's centre of mass behind the walls (past their face), not by the pit lane (its own walls have it).
  behind(car,reach){const r=car.surface;if(r.pit||r.pitS!==null)return false;const n=Math.hypot(r.lx,r.ly)||1;return Math.abs(r.d)/n>r.width/2+guardrailClearance(this.data,r.s,Math.sign(r.d)||1)+reach;}
@@ -823,15 +826,18 @@ class RoamWorld{
     for(const it of near)if(it.t===1&&inQuad(it,px,py)){const e=quadEdge(it,px,py);take(e.d+.002,(e.qx-px)/(e.d||1),(e.qy-py)/(e.d||1),px,py);}
     if(!walls)continue;
     const q=car.sample(px,py,car.index),qs=Math.sign(q.d)||1,n=Math.hypot(q.lx,q.ly)||1,at=Math.abs(q.d)/n,face=q.width/2+guardrailClearance(data,q.s,qs)+reach;
-    // On the lap's own ground (the gap's mouth): nothing of the zone's there.
-    if(at<=face)continue;
+    // (A deck's corridor overhead: the car is on the ground far below it.)
+    const below=car.level!==undefined&&data.samples[q.i][3]-car.level>3&&onDeck(data,q.s);
+    // On the lap's own ground (the gap's mouth): nothing of the zone's there. Under a deck's corridor it is no lap's:
+    // the zone's edge there holds the car (below).
+    if(at<=face&&!below)continue;
     // The lap's wall from behind, or out through its end by a gap (not a deck's, up over a car on the ground below it).
-    if(at<face+ROAM_BACK&&guardrailPresent(data,q.s,qs)&&!(car.level!==undefined&&data.samples[q.i][3]-car.level>3&&onDeck(data,q.s))){
+    if(at<face+ROAM_BACK&&guardrailPresent(data,q.s,qs)&&!below){
      const depth=face+ROAM_BACK-at,cap=this.cap(q.s,qs);
      if(cap&&cap.dist<depth)take(cap.dist,cap.dir*q.tx/n,cap.dir*q.ty/n,px,py);else take(depth,qs*q.lx/n,qs*q.ly/n,px,py);
     }
-    // Past the zone's edge: back in, to its nearest point.
-    if(zone&&!this.inside(zone,px,py)){const e=this.edge(px,py,4,zone,near);if(e)take(e.d+.002,(e.qx-px)/(e.d||1),(e.qy-py)/(e.d||1),px,py);}
+    // Past the zone's edge: back in, to its nearest point (from under a deck's corridor, however deep).
+    if(zone&&!this.inside(zone,px,py)){const e=this.edge(px,py,below?16:4,zone,below?this.query(px,py,16,this.deep):near);if(e)take(e.d+.002,(e.qx-px)/(e.d||1),(e.qy-py)/(e.d||1),px,py);}
    }
    // Corners and posts into the body: the facades' and curbs' corners, the walls' ends, the boxes' corners, the posts.
    const corner=(x,y,r)=>{
