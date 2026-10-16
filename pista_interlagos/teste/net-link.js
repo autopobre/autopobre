@@ -4,7 +4,7 @@
 // server's token (sessionStorage) so a reload comes back as the same player. Room (net-room.js)
 // speaks the same messages over this link as over the BroadcastChannel of the same-machine test.
 // The server's address is also in the page's content policy (scripts/publicacao.py ROOM_SERVER).
-export const ROOM_SERVER='wss://sala.inteligenciamilgrau.com.br';
+export const ROOM_SERVER='wss://sala.autopobre.com.br';
 // wrangler dev on this machine (&servidor=local), for the checks.
 export const LOCAL_SERVER='ws://127.0.0.1:8787';
 // Why the server closed the connection (sala-cloudflare/src/index.js CLOSE): the game says so. Its

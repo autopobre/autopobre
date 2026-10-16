@@ -25,7 +25,7 @@ Dentro desta pasta, no cmd ou no PowerShell. O atalho `wrangler.cmd` usa o Node 
 
 (Numa cópia nova do projeto, rode antes `npm install` nesta pasta.)
 
-O servidor fica em `https://sala.inteligenciamilgrau.com.br`, num domínio próprio cujo DNS está no Cloudflare: o `deploy` cria o registro e o certificado sozinho (`routes` em `wrangler.jsonc`). O endereço `workers.dev` da conta fica desligado (`workers_dev: false`). Esse endereço, com `wss://`, precisa estar em `ROOM_SERVER` de `pista_interlagos/teste/net-link.js` e de `pista_interlagos/scripts/publicacao.py` (a regra de segurança do site). O teste `testar_multiplayer.mjs` confere que os dois batem.
+O servidor fica em `https://sala.autopobre.com.br`, no domínio do jogo cujo DNS está no Cloudflare: o `deploy` cria o registro e o certificado sozinho (`routes` em `wrangler.jsonc`). O endereço `workers.dev` da conta fica desligado (`workers_dev: false`). Esse endereço, com `wss://`, precisa estar em `ROOM_SERVER` de `pista_interlagos/teste/net-link.js` e de `pista_interlagos/scripts/publicacao.py` (a regra de segurança do site). O teste `testar_multiplayer.mjs` confere que os dois batem.
 
 Para trocar a chave do grupo, rode `.\wrangler secret put CHAVE_GRUPO` de novo; ninguém precisa publicar o site.
 

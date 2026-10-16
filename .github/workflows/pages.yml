@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       versao:
-        description: 'Link principal (inteligenciamilgrau.github.io/autopobre/): qual versão do jogo vai ali. Tag (apr-3.0), branch (main) ou commit.'
+        description: 'Link principal (autopobre.com.br): qual versão do jogo vai ali. Tag (apr-3.0), branch (main) ou commit.'
         required: true
         default: apr-3.0
       versao_v1:
@@ -133,7 +133,7 @@ jobs:
                 exit 1
               fi
             done
-            if grep -rqF 'sala.inteligenciamilgrau.com.br' --include='*.js' --include='*.html' "$pasta/dist"; then
+            if grep -rqE 'sala[.](autopobre|inteligenciamilgrau)[.]com[.]br' --include='*.js' --include='*.html' "$pasta/dist"; then
               echo "::error::A versao de $pasta conecta ao servidor das salas; o multiplayer so pode ir para /dev/."
               exit 1
             fi

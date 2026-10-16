@@ -119,7 +119,7 @@ def contained_file(root, relative):
 # The multiplayer room server (sala-cloudflare), the page's only connection outside its own origin;
 # the same address as ROOM_SERVER in teste/net-link.js. The local preview also allows wrangler dev.
 # A build without the multiplayer connects to nothing outside its origin.
-ROOM_SERVER = 'wss://sala.inteligenciamilgrau.com.br'
+ROOM_SERVER = 'wss://sala.autopobre.com.br'
 LOCAL_ROOM_SERVER = 'ws://127.0.0.1:8787'
 
 

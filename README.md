@@ -77,7 +77,7 @@ Validação: `medir_pc_fraco.py`, `testar_graficos.mjs`, `testar_superficie_visu
 
 Em **Settings → Pages → Build and deployment → Source**, selecione **GitHub Actions**. O fluxo [Publicar Auto-Pobre Racing](.github/workflows/pages.yml) instala a dependência pelo lock, testa as preferências, gera `dist/` e publica somente esse conteúdo. A publicação é manual: enviar para `main` não muda o jogo no ar. Para publicar, abra **Actions → Publicar Auto-Pobre Racing → Run workflow**. Cada campo aceita uma branch, uma tag ou um commit, e cada endereço é testado e gerado a partir da própria versão: **versao** vai para o link principal (padrão `apr-3.0`), **versao_v1** para `/apr_v1/` (padrão `apr-1.0`, a primeira versão, legada), **versao_v2** para `/apr_v2/` (padrão `apr-2.1`, a última 2.x, legada) e **versao_dev** para `/dev/` (padrão `main`, a versão em desenvolvimento). Deixar **versao_v1**, **versao_v2** ou **versao_dev** vazio tira esse endereço do ar. Só `/dev/` recebe o multiplayer de teste; se a versão do link principal ou de `/apr_v1/` vier com ele (um commit anterior a essa separação), a execução falha antes de publicar. O Pages mantém a última versão publicada até a próxima execução. As versões lançadas recebem tags `apr-X.Y` (candidatas: `apr-X.Y-rcN`), que podem ser republicadas para voltar atrás.
 
-Endereço do jogo: **https://inteligenciamilgrau.github.io/autopobre/**. Aguarde o fluxo concluir com sucesso antes de abrir. Não selecione a raiz de `main` em “Deploy from a branch”: ela contém o código-fonte, e o jogo precisa da etapa de geração.
+Endereço do jogo: **https://autopobre.com.br/** (as legadas em `/apr_v1/` e `/apr_v2/`, a de testes em `/dev/`). Aguarde o fluxo concluir com sucesso antes de abrir. Não selecione a raiz de `main` em “Deploy from a branch”: ela contém o código-fonte, e o jogo precisa da etapa de geração.
 
 No GitHub Pages, a CSP incorporada no HTML protege o carregamento do jogo. O arquivo `_headers` é destinado a outros provedores; não configura cabeçalhos personalizados no Pages.
 
@@ -132,7 +132,7 @@ Código do jogo e scripts, documentação, `package.json`/`package-lock.json`, a
 
 O `.gitignore` mantém fora do repositório segredos/configurações locais, dependências, caches, relatórios de testes, fotos originais, gerações intermediárias, arquivos Blender e levantamentos brutos. As pastas de trabalho continuam no disco; mantenha um backup separado dos originais. As cópias necessárias ao jogo permanecem versionáveis.
 
-Repositório: [inteligenciamilgrau/autopobre](https://github.com/inteligenciamilgrau/autopobre). Antes de cada commit, confira `git status` e os arquivos preparados para commit. O `.gitignore` não remove arquivos de um histórico Git existente.
+Repositório: [autopobre/autopobre](https://github.com/autopobre/autopobre). Antes de cada commit, confira `git status` e os arquivos preparados para commit. O `.gitignore` não remove arquivos de um histórico Git existente.
 
 Veja [a revisão de segurança](SEGURANCA.md) e [as regras do modo imersivo](pista_interlagos/VERSAO_IMERSIVA.md).
 
