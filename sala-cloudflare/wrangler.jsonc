@@ -6,12 +6,8 @@
   "main": "src/index.js",
   "compatibility_date": "2026-09-01",
   // On the game's own domain (its DNS is on Cloudflare): the deploy creates the record and the
-  // certificate. The account's workers.dev address stays off. sala.inteligenciamilgrau.com.br
-  // serves the old site's /dev/ until it becomes a redirect; then it goes, with its origins below.
-  "routes": [
-    { "pattern": "sala.autopobre.com.br", "custom_domain": true },
-    { "pattern": "sala.inteligenciamilgrau.com.br", "custom_domain": true }
-  ],
+  // certificate. The account's workers.dev address stays off.
+  "routes": [{ "pattern": "sala.autopobre.com.br", "custom_domain": true }],
   "workers_dev": false,
   "preview_urls": false,
   "durable_objects": {
@@ -20,7 +16,9 @@
   // The free plan runs SQLite-backed Durable Objects only.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sala"] }],
   "vars": {
-    // Pages allowed to open a room: the site, and the local preview server (INICIAR_TESTE).
-    "ORIGENS": "https://autopobre.com.br,https://www.inteligenciamilgrau.com.br,https://inteligenciamilgrau.github.io,http://127.0.0.1:8799"
+    // Pages allowed to open a room: the site, and the local preview server (INICIAR_TESTE). The old
+    // address (www.inteligenciamilgrau.com.br, an origin all of that account's Pages projects share)
+    // only redirects here now, so it no longer opens rooms.
+    "ORIGENS": "https://autopobre.com.br,http://127.0.0.1:8799"
   }
 }
