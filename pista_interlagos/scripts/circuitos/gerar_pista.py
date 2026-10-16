@@ -183,6 +183,97 @@ def quadro(P, fechado=True):
     return T, np.column_stack([-T[:, 1], T[:, 0]])
 
 
+def distancia_ate(geom, X, Y, ate):
+    """Distancia (m) de cada ponto (X, Y) ate a area `geom` (0 dentro dela), ate `ate` m (alem disso, inf)."""
+    import shapely
+    pts = []
+    for p in (list(geom.geoms) if hasattr(geom, 'geoms') else [geom]):
+        if p.geom_type != 'Polygon' or p.is_empty:
+            continue
+        for anel in [p.exterior, *p.interiors]:
+            A = np.array(anel.coords)[:, :2]
+            for q, d in zip(A[:-1], np.diff(A, axis=0)):
+                m = max(1, int(np.hypot(*d) / .5))
+                pts.append(q + d * (np.arange(m)[:, None] / m))
+    if not pts:
+        return np.full(np.shape(X), np.inf)
+    d = cKDTree(np.vstack(pts)).query(np.column_stack([np.ravel(X), np.ravel(Y)]), distance_upper_bound=ate)[0]
+    shapely.prepare(geom)
+    d[shapely.contains_xy(geom, np.ravel(X), np.ravel(Y))] = 0.0
+    return d.reshape(np.shape(X))
+
+
+def aplainar_ruas(Z, passo, dist, fixo=None, sigma=8.0, borda=8.0, corte=1.0, voltas=4, limite=1.6):
+    """As ruas da cidade sem o sobe e desce do levantamento (usuario, 16/10/2026: "as ruas fora da pista estao todas
+    irregulares"): o MDT de 1 m tirado nos nos da grade (`passo` m) traz meios-fios, carros e o ruido da restituicao
+    para o chao. `dist`: a distancia (m) de cada no ate a area lisa (as ruas e as calcadas; 0 dentro, inf longe).
+    Cada no vai a um plano ajustado ao chao em volta (peso gaussiano de `sigma` m), robusto: os pesos de Tukey a `corte` m
+    do plano, em `voltas` passadas (a primeira a partir do chao do proprio no, com o dobro do corte). O plano segue as
+    rampas e os cruzamentos de verdade e deixa de fora os calombos e o outro nivel: uma via no aterro ou na trincheira ao
+    lado de outra (o trevo da Via Expressa, as ruas sob o Minhocao) nao se mistura com ela, e uma rampa entre os dois nao
+    vira degrau. Onde os vizinhos ficam numa linha (a rua estreita na diagonal da grade) a inclinacao de lado tende a zero.
+    Primeiro a area lisa, so com ela (a rua fica na altura medida dela, sem puxar o chao dos lotes, mais alto); depois a
+    beira ate `borda` m, com o chao dela e a rua ja lisa, o peso caindo de 1 a 0 ate la (sem degrau nem vala na emenda,
+    e o morrinho entre duas ruas de alturas diferentes fica; lotes, pracas e morros mais longe ficam como medidos).
+    A correcao e de ruido: ate `limite`/2 vale inteira, ate `limite` some aos poucos, alem fica o medido; e um no na
+    beira entre dois niveis (a borda da trincheira, um muro de arrimo: menos de 80% do peso dos vizinhos no plano dele,
+    a metade ou menos) fica como medido, sem o degrau crescer. `fixo`: nos que nem entram nem mudam (o mar).
+    Devolve o Z novo e o peso de cada no."""
+    ny, nx = Z.shape
+    fixo = np.zeros(Z.shape, bool) if fixo is None else fixo
+    r = int(math.ceil(2.5 * sigma / passo))
+    disco = [(a, b) for a in range(-r, r + 1) for b in range(-r, r + 1) if a * a + b * b <= r * r]
+    g_tot = sum(math.exp(-.5 * (a * a + b * b) * (passo / sigma) ** 2) for a, b in disco)
+
+    def plano(Zx, entra, alvo):
+        """A correcao de cada no de `alvo` ate o plano robusto dos nos de `entra` em volta (0 fora de `alvo`)."""
+        Zp = np.pad(np.where(entra, Zx, np.nan), r, constant_values=np.nan)
+        # O plano de cada no: altura nele (h) e inclinacoes (m/m) para leste (ix) e norte (iy); comeca no chao dele.
+        h, ix, iy = Zx.astype(float).copy(), np.zeros(Z.shape), np.zeros(Z.shape)
+        for volta in range(voltas):
+            c = corte * (2 if volta == 0 else 1)
+            m = {k: np.zeros(Z.shape) for k in ('1', 'x', 'y', 'xx', 'xy', 'yy', 'z', 'zx', 'zy', 'todos')}
+            for a, b in disco:
+                zq = Zp[r + a:r + a + ny, r + b:r + b + nx]
+                dx, dy = b * passo, a * passo
+                u = (zq - (h + ix * dx + iy * dy)) / c
+                g = math.exp(-.5 * (dx * dx + dy * dy) / sigma ** 2)
+                w = np.nan_to_num(g * np.where(np.abs(u) < 1, (1 - u * u) ** 2, 0.0))
+                m['todos'] += g * np.isfinite(zq)
+                zq = np.nan_to_num(zq)
+                m['1'] += w
+                m['x'] += w * dx
+                m['y'] += w * dy
+                m['xx'] += w * dx * dx
+                m['xy'] += w * dx * dy
+                m['yy'] += w * dy * dy
+                m['z'] += w * zq
+                m['zx'] += w * zq * dx
+                m['zy'] += w * zq * dy
+            ok = (m['1'] > 1e-6) & alvo
+            # Minimos quadrados ponderados; a inclinacao paga um pouco (2% da variancia de um disco cheio) para nao sair
+            # do nada quando os vizinhos ficam numa linha.
+            ridge = .02 * m['1'][ok] * sigma ** 2
+            A = np.stack([np.stack([m['1'][ok], m['x'][ok], m['y'][ok]], -1),
+                          np.stack([m['x'][ok], m['xx'][ok] + ridge, m['xy'][ok]], -1),
+                          np.stack([m['y'][ok], m['xy'][ok], m['yy'][ok] + ridge], -1)], -2)
+            sol = np.linalg.solve(A, np.stack([m['z'][ok], m['zx'][ok], m['zy'][ok]], -1)[..., None])[..., 0]
+            h[ok], ix[ok], iy[ok] = sol[:, 0], sol[:, 1], sol[:, 2]
+        # Menos onde quase nao ha chao do mesmo nivel em volta para dar o plano, na beira entre dois niveis e onde a
+        # mudanca passa de um calombo.
+        cobre = np.where(ok, m['1'], 0.0) / g_tot
+        no_plano = np.where(ok, m['1'], 0.0) / np.maximum(m['todos'], 1e-9)
+        return np.where(ok, (h - Zx) * np.clip(cobre / .1, 0, 1) * np.clip((no_plano - .5) / .3, 0, 1)
+                        * np.clip(2 - 2 * np.abs(h - Zx) / limite, 0, 1), 0.0)
+
+    lisa = (dist <= 0) & ~fixo
+    beira = (dist > 0) & (dist <= borda) & ~fixo
+    Z1 = Z + plano(Z, lisa, lisa)
+    t = np.clip(1 - dist / borda, 0, 1)
+    peso = np.where(lisa, 1.0, np.where(beira, t * t * (3 - 2 * t), 0.0))
+    return Z1 + np.where(beira, peso, 0.0) * plano(Z1, lisa | beira, beira), peso
+
+
 def curvatura(P, janela=10.0):
     T, _ = quadro(P)
     rumo = np.unwrap(np.arctan2(T[:, 1], T[:, 0]))

@@ -36,6 +36,7 @@ from shapely.prepared import prep
 import shapely.geometry.polygon
 
 import gerar_floripa as gf
+import gerar_pista as gp
 from compat_scipy import cKDTree
 from config import ASSETS, CIRCUITOS, DADOS, pasta_fontes
 
@@ -338,6 +339,7 @@ class Cidade:
                     ilhas.append(p)
         ilhas_u = unary_union(ilhas).intersection(ruas) if ilhas else Polygon()
         ruas = ruas.difference(ilhas_u)
+        self.ruas_u = ruas
         estrada = unary_union([ruas, self.asfalto_pista, self.boxes])
         self.leito = estrada
         # Calcadas: as faixas de cada lado e os caminhos de pedestre do OSM (os que cruzam ruas viram so a faixa).
@@ -392,6 +394,35 @@ class Cidade:
         self.costa = costa
         log('regioes (m2): ' + ', '.join(f'{k} {g.area:.0f}' for k, g in (('leito', estrada), ('calcada', calcada), ('praca', praca), ('verde', verde),
                                                                          ('ciclovia', ciclovia), ('estacionamento', estacion), ('ilhas', ilhas_u))))
+
+    def aplainar(self):
+        """As ruas sem o sobe e desce do MDT (usuario, 16/10/2026: "as ruas fora da pista estao todas irregulares";
+        gerar_pista.aplainar_ruas): o leito das ruas, as calcadas, os canteiros, as ciclovias e os estacionamentos ficam
+        lisos, e o chao emenda com os lotes em 8 m. A volta e a faixa colada nela (ate 8 m alem do asfalto) e os boxes ficam
+        como gerar_floripa.py os deixou; sob as pontes altas o chao continua no maximo 2,5 m abaixo do tabuleiro."""
+        t = self.t
+        XX, YY = np.meshgrid(self.x0 + np.arange(t['nx']) * t['step'], self.y0 + np.arange(t['ny']) * t['step'])
+        q = np.column_stack([XX.ravel(), YY.ravel()])
+        a = self.A
+        k = cKDTree(a[:, 1:3]).query(q)[1]
+        dd = q - a[k, 1:3]
+        lat = np.sum(dd * a[k, 9:11], axis=1)
+        road = (a[k, 3] + a[k, 6] * np.sum(dd * a[k, 7:9], axis=1) + a[k, 5] * lat).reshape(self.Z.shape)
+        fora = (np.abs(lat) - a[k, 4] / 2).reshape(self.Z.shape)
+        tab = np.zeros(len(a), bool)
+        for s0, s1 in self.base['meta']['decks']:
+            tab |= (a[:, 0] >= s0) & (a[:, 0] <= s1)
+        sob = tab[k].reshape(self.Z.shape) & (road - self.Z > 3.0)
+        dentro = lambda g: shapely.contains_xy(g, XX, YY)
+        lisa = unary_union([self.ruas_u, self.calcada, self.ilhas, self.ciclovia, self.estacionamento, self.boxes])
+        Z, peso = gp.aplainar_ruas(self.Z, t['step'], gp.distancia_ate(lisa, XX, YY, 8.0), fixo=self.Z < .3)
+        manter = ((fora < 8) & ~sob) | dentro(unary_union([self.boxes.buffer(8), self.garagens]))
+        Z = np.where(manter, self.Z, Z)
+        Z = np.where(sob & (fora < 12), np.minimum(Z, road - 2.5), Z)
+        mudou = np.abs(Z - self.Z)
+        log(f'ruas aplainadas: {(mudou > .01).sum()} nos ({(peso > .99).sum()} inteiros), mudanca media {mudou[mudou > .01].mean():.2f} m, '
+            f'p99 {np.percentile(mudou[mudou > .01], 99):.2f}, max {mudou.max():.2f}')
+        self.Z = Z
 
     def costa_linhas(self):
         """A linha da costa do OSM dentro da grade (terra a esquerda), em trechos continuos."""
@@ -1289,6 +1320,7 @@ def main():
     cid.predios()
     cid.vias()
     cid.regioes()
+    cid.aplainar()
     cid.preparar_pontos()
     cid.faixas_e_semaforos()
     cid.bloqueios()
@@ -1306,6 +1338,8 @@ def main():
         cid.planta(cid.pasta / 'planta_cidade_floripa.jpg')
     mapas = cid.mapa()
     d = cid.base
+    # O chao com as ruas aplainadas (Cidade.aplainar).
+    d['terrain']['z'] = np.round(cid.Z, 2).ravel().tolist()
     meta = d['meta']
     # Os muros de uma cidade fechada para a corrida: blocos de concreto cru, sem a pintura de autodromo (street-walls.js).
     meta['wall_paint'] = 'bare'

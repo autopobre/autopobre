@@ -352,7 +352,12 @@ dados da Prefeitura; `--geofloripa` baixa só eles).
   9,5 m e o máximo de 15 m; na Hercílio Luz, os 9,2 m do leito entre as treliças (as calçadas correm por fora delas)
   viram 9,5 m.
 - **Relevo**: MDT de 1 m do aerolevantamento do Estado (SDS, 2010–2012) pelo GeoFloripa, com o ANADEM fora da caixa
-  dele. A Rua Hoepcke desce do morro a 12% (limite do gerador).
+  dele. A Rua Hoepcke desce do morro a 12% (limite do gerador). As ruas da cidade, as calçadas, os canteiros e os
+  estacionamentos são aplainados (`gerar_cidade_floripa.py` → `gerar_pista.aplainar_ruas`, 16/10/2026): o MDT nos nós
+  de 4 m trazia meio-fio, carro e ruído da restituição (o "sobe e desce" acima de 30 cm em 14% das ruas, 2% depois).
+  Cada nó vai a um plano robusto do chão em volta (8 m, sem misturar outro nível nem achatar as rampas), no máximo
+  0,8 m; a beira até 8 m das calçadas entra aos poucos (sem degrau nem vala na emenda), a beira entre dois níveis fica
+  como medida; a volta com a faixa colada nela, os boxes e o mar ficam como estavam.
 - **Pontes**: o tabuleiro sai do MDS de 1 m onde ele passa sobre terra (o MDS não mede nada sobre a água). Hercílio
   Luz: 822 m de estrutura medida (821 m publicados), uma parábola ajustada aos 198 pontos medidos das duas cabeceiras
   (resíduo 0,36 m) dá o vão abaulado a 30,4 m (30,86 m publicados); torres pelos vãos oficiais (222,5 m de viaduto
@@ -420,7 +425,9 @@ os boxes e a arquibancada são desenho de jogo. Gerado por `scripts/circuitos/ge
   tabuleiro inteiro, 14 m de asfalto entre os muros (15,7–16,1 m de borda a borda medidos); a rampa 9,5 m; o túnel 11 m.
 - **Relevo**: o MDT do levantamento LiDAR de 2020 da Prefeitura (GeoSampa, quadros 1:1000 em LAZ, ~10 pontos/m²) numa
   grade de 1 m; sob os prédios, sem pontos de chão, preenchido por convolução normalizada; o ANADEM fora da caixa. O
-  chão cai 30 m da Augusta (768 m) à São João sob o Minhocão (738 m).
+  chão cai 30 m da Augusta (768 m) à São João sob o Minhocão (738 m). O leito das ruas (os vãos entre as quadras
+  viárias do GeoSampa) e 3,5 m de calçada dentro das quadras são aplainados antes de colar o chão na pista
+  (`gerar_pista.aplainar_ruas`, 16/10/2026, como em Floripa): o "sobe e desce" acima de 10 cm caiu de 26% para 2,3% das ruas.
 - **Minhocão**: o pavimento da rampa, do tabuleiro e da descida MEDIDO no MDS 2020 (a superfície, 0,5 m) e rastreado
   estação por estação (o grupo de pontos mais perto da rampa que vinha: o pé da rampa da Ana Cintra passa sob a curva do
   próprio Minhocão, e no fim, antes da Consolação, as duas pistas descem com um vão entre elas): 7,5 a 9,2 m acima do
@@ -442,7 +449,9 @@ os boxes e a arquibancada são desenho de jogo. Gerado por `scripts/circuitos/ge
 - **Chão e árvores**: a cor do chão é a ortofoto de 2020 da Prefeitura (WMS do GeoSampa, pedida a 1 m e reduzida a
   ~1,4 m por pixel); fora das praças e largos do cadastro a cobertura é chão construído (o WorldCover chama de mata a
   copa das árvores de rua) e a Praça Roosevelt, uma laje de concreto; as árvores de rua são as 3.222 do cadastro de
-  arborização do GeoSampa dentro da grade (`scenery.trees`).
+  arborização do GeoSampa dentro da grade (`scenery.trees`), menos as 235 no leito ou no meio-fio (16/10/2026), cada
+  uma com a distância do tronco à rua (coluna `road`: o jogo limita a copa a ~2 m sobre o asfalto, `landscape.js`
+  `fitStreet`, como faz em Floripa pelo mapa da cidade); a mata das praças a menos de 3 m da rua vira gramado.
 - **No jogo**: muros de concreto com alambrado dos dois lados (`street-walls.js`; sem alambrado no tabuleiro e no
   túnel), os boxes à direita da Major Sertório entre o Minhocão e a Ipiranga, a arquibancada diante deles, o
   cruzamento em dois níveis tratado pelo motor (busca de estação com altura, IAs que não freiam por um carro no outro

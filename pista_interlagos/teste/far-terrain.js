@@ -9,10 +9,13 @@ import * as THREE from 'three';
 // model (players, 10-11), so its normals lean toward the vertical (RELIEF of the real ones) and the light only
 // hints at the slopes. Only the steepest faces, the escarpment's walls seen from afar, take a dull sandstone tint.
 // Heights: Int16 decimetres above `offset`, the first row to the north.
-const SANDSTONE=new THREE.Color(.5,.33,.24),RELIEF=.3;
+// The border cell over the grid's edge stays UNDER m below the ground drawn there: Floripa's relief is Copernicus's
+// surface, buildings and all, and in a city open to roam (user, 10-16: the end of the Beira-Mar Norte) the blocks along
+// the seafront rose through the avenue as a slanted sheet.
+const SANDSTONE=new THREE.Color(.5,.33,.24),RELIEF=.3,UNDER=.3;
 // stride: the light build (Baixo) joins every second node (a quarter of the triangles; the grid stays, so the rings and
-// the photograph line up as before).
-async function ring(spec,url,inside,order,stride=1,sea=null){
+// the photograph line up as before). under: the ground drawn inside `inside` at (x,y), or null.
+async function ring(spec,url,inside,order,stride=1,sea=null,under=null){
  const [buffer,image]=await Promise.all([fetch(url+spec.relief).then(r=>{if(!r.ok)throw new Error(spec.relief);return r.arrayBuffer();}),new THREE.TextureLoader().loadAsync(url+spec.image)]);
  const raw=new Uint16Array(buffer),{nx,ny,step,x0,y0,offset,unit}=spec,y1=y0+(ny-1)*step;
  const pos=new Float32Array(nx*ny*3),uv=new Float32Array(nx*ny*2),steep=new Float32Array(nx*ny*2),sunk=new Uint8Array(nx*ny),index=[];
@@ -23,6 +26,7 @@ async function ring(spec,url,inside,order,stride=1,sea=null){
   // corner sunk and one not cut a groove 30-150 m deep along the inner ground's edges).
   const keep=step*stride;
   if(inside&&x>inside.x0+keep&&x<inside.x1-keep&&y>inside.y0+keep&&y<inside.y1-keep){z-=400;sunk[k]=1;}
+  else if(under&&x>=inside.x0&&x<=inside.x1&&y>=inside.y0&&y<=inside.y1){const g=under(x,y);if(g!=null)z=Math.min(z,g-UNDER);}
   pos.set([x,z,-y],k*3);uv.set([i/(nx-1),1-j/(ny-1)],k*2);
   const gx=(h(Math.min(nx-1,i+1),j)-h(Math.max(0,i-1),j))/(2*step),gy=(h(i,Math.min(ny-1,j+1))-h(i,Math.max(0,j-1)))/(2*step);
   // [sandstone tint, blur]: a photograph draped from above smears down a steep slope into streaks (one pixel
@@ -52,12 +56,16 @@ async function ring(spec,url,inside,order,stride=1,sea=null){
  mesh.renderOrder=.27;
  return {mesh,rect:{x0,y0,x1:x0+(nx-1)*step,y1}};
 }
-// url: the folder of the track's images (circuit.ground's). Resolves to {root, stats} or null.
-export async function createFarTerrain(data,url,{stride=1}={}){
+// url: the folder of the track's images (circuit.ground's); heights: the grid's heights as drawn (track-clearance.js
+// fitGround's; the track file's by default). Resolves to {root, stats} or null.
+export async function createFarTerrain(data,url,{stride=1,heights=null}={}){
  const far=data.scenery?.far;if(!far?.medio)return null;
- const t=data.terrain,grid={x0:t.x0,y0:t.y0,x1:t.x0+(t.nx-1)*t.step,y1:t.y0+(t.ny-1)*t.step};
+ const t=data.terrain,grid={x0:t.x0,y0:t.y0,x1:t.x0+(t.nx-1)*t.step,y1:t.y0+(t.ny-1)*t.step},z=heights??t.z;
+ // The grid's ground at (x,y), on its triangles (split along (i,j)-(i+1,j+1), as drawn).
+ const ground=(x,y)=>{const fx=Math.min(t.nx-1.000001,Math.max(0,(x-t.x0)/t.step)),fy=Math.min(t.ny-1.000001,Math.max(0,(y-t.y0)/t.step)),i=Math.floor(fx),j=Math.floor(fy),u=fx-i,v=fy-j,a=j*t.nx+i;
+  return u>=v?z[a]*(1-u)+z[a+1]*(u-v)+z[a+t.nx+1]*v:z[a]*(1-v)+z[a+t.nx+1]*u+z[a+t.nx]*(v-u);};
  const root=new THREE.Group();root.name='Vale';
- const sea=data.meta.sea_level_m??null,medio=await ring(far.medio,url,grid,0,stride,sea);root.add(medio.mesh);
+ const sea=data.meta.sea_level_m??null,medio=await ring(far.medio,url,grid,0,stride,sea,ground);root.add(medio.mesh);
  let vertices=far.medio.nx*far.medio.ny;
  if(far.longe){const longe=await ring(far.longe,url,medio.rect,1,stride,sea);root.add(longe.mesh);vertices+=far.longe.nx*far.longe.ny;}
  return {root,stats:{vertices}};

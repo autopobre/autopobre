@@ -98,6 +98,10 @@ PROFUNDIDADE_TUNEL = 7.0
 FOLGA_TUNEL = 5.8
 BOCA_NORTE = (-23.54728, -46.64752)
 RAMPA_MAX = .10
+# As calcadas do centro (m): ficam dentro das quadras viarias do GeoSampa e aplainam junto com o leito das ruas.
+CALCADA = 3.5
+# A mata das pracas (cobertura) a menos disso do leito vira gramado: nenhum tronco no meio-fio com a copa sobre a rua.
+RUA_MATA = 3.0
 # A largada: metros depois do cruzamento sob o Minhocao, na Major Sertorio (o grid fica entre o elevado e a linha).
 LINHA_APOS_CRUZAMENTO = 150.0
 
@@ -453,10 +457,24 @@ PIT = {'inicio': .09, 'antes_do_fim': 22, 'entrada': 50, 'saida': 50, 'largura':
        'fonte': 'Faixa de boxes de jogo à direita da Rua Major Sertório, entre o Minhocão e a Av. Ipiranga.'}
 
 
-def chao_fixado(P, s, L, z, zc, largura, folga, deck_alto, tunel, pit, rel, MARGEM_, deck=None):
+def ruas_geosampa(pasta, origem):
+    """O leito das ruas da cidade (os vaos entre as quadras viarias editadas do GeoSampa: quadras, pracas e canteiros
+    restituidos dos meios-fios) dentro da caixa baixada, e a caixa. Coordenadas locais."""
+    import shapely
+    from shapely.geometry import box, shape
+    from shapely.ops import unary_union
+    quadras = unary_union([shapely.transform(shape(f['geometry']), lambda c: c - origem)
+                           for f in json.loads((pasta / 'geosampa_quadras.geojson').read_text(encoding='utf-8'))['features']])
+    cx = json.loads((pasta / 'geosampa.json').read_text(encoding='utf-8'))['caixa_utm']
+    caixa = box(cx[0] - origem[0], cx[1] - origem[1], cx[2] - origem[0], cx[3] - origem[1]).buffer(-30)
+    return caixa.difference(quadras), caixa
+
+
+def chao_fixado(P, s, L, z, zc, largura, folga, deck_alto, tunel, pit, rel, MARGEM_, deck=None, ruas=None):
     """A grade do terreno (4 m): o relevo, colado ao plano da pista junto das ruas (o nivel de baixo no cruzamento),
     livre sob o tabuleiro alto (no maximo 2,5 m abaixo dele), e no tunel so num corredor estreito sobre a pista (fora
-    dele o chao e a praca e as ruas por cima). O pit como em Floripa."""
+    dele o chao e a praca e as ruas por cima). O pit como em Floripa. `ruas`: as ruas da cidade com as calcadas
+    (ruas_geosampa e CALCADA), aplainadas antes de tudo (gerar_pista.aplainar_ruas)."""
     todos = np.vstack([P, np.array(pit['xy'])])
     x0 = math.floor((todos[:, 0].min() - MARGEM_ - MARGEM_OESTE_EXTRA) / PASSO) * PASSO
     x1 = todos[:, 0].max() + MARGEM_
@@ -467,6 +485,13 @@ def chao_fixado(P, s, L, z, zc, largura, folga, deck_alto, tunel, pit, rel, MARG
     XX, YY = np.meshgrid(gx, gy)
     q = np.column_stack([XX.ravel(), YY.ravel()])
     zt = rel.terreno(q[:, 0], q[:, 1], ordem=1)
+    if ruas is not None:
+        # As ruas sem o sobe e desce do LiDAR (usuario, 16/10/2026: "as ruas fora da pista estao todas irregulares").
+        Zr, peso = gp.aplainar_ruas(zt.reshape(ny, nx), PASSO, gp.distancia_ate(ruas, XX, YY, 8.0))
+        mudou = np.abs(Zr.ravel() - zt)
+        print(f'ruas aplainadas: {(mudou > .01).sum()} nos ({(peso > .99).sum()} inteiros), mudanca media '
+              f'{mudou[mudou > .01].mean():.2f} m, p99 {np.percentile(mudou[mudou > .01], 99):.2f}, max {mudou.max():.2f}')
+        zt = Zr.ravel()
     T, E = gp.quadro(P)
     seg = np.linalg.norm(np.roll(P, -1, 0) - P, axis=1)
     grade = (np.roll(z, -1) - np.roll(z, 1)) / (seg + np.roll(seg, 1))
@@ -519,11 +544,13 @@ def chao_fixado(P, s, L, z, zc, largura, folga, deck_alto, tunel, pit, rel, MARG
     return terrain, gx, gy, zt.reshape(ny, nx)
 
 
-def praca_paga(scenery, pasta, origem, gx, gy):
+def praca_paga(scenery, pasta, origem, gx, gy, leito=None):
     """O chao da cidade: no centro de Sao Paulo tudo o que nao e praca e calcada, asfalto ou quintal cimentado; o
     WorldCover chama de mata a copa das arvores de rua. Fora das pracas e largos do cadastro do GeoSampa (onde fica a
     cobertura medida: a grama e as arvores da Republica, do Arouche) a cobertura vira chao construido (pavimentado no
-    jogo). A Praca Roosevelt e uma laje de concreto (reforma de 2012) sobre o tunel: construido tambem."""
+    jogo). A Praca Roosevelt e uma laje de concreto (reforma de 2012) sobre o tunel: construido tambem. `leito`
+    (ruas_geosampa): a mata que a praca do cadastro leva para cima da rua vira via pavimentada, e a menos de RUA_MATA m
+    dela, gramado (o tronco no meio-fio, a copa no meio da rua: usuario, 16/10/2026)."""
     from shapely.geometry import shape
     from shapely import affinity
     import shapely
@@ -543,14 +570,20 @@ def praca_paga(scenery, pasta, origem, gx, gy):
             praca |= dentro
     cidade = ~praca & (classes != '6') & (classes != '7')
     classes[cidade | roosevelt] = '4'
+    if leito is not None:
+        na_rua, mata = gp.distancia_ate(leito, XX, YY, RUA_MATA), np.isin(classes, ['1', '2'])
+        classes[mata & (na_rua <= 0)] = '7'
+        classes[mata & (na_rua > 0) & (na_rua <= RUA_MATA)] = '0'
     cov['classes'] = ''.join(classes.ravel())
     print(f'cobertura da cidade: {int(cidade.sum())} celulas construidas, {int(praca.sum())} em pracas, '
           f'{int(roosevelt.sum())} na laje da Praca Roosevelt')
 
 
-def arvores_rua(pasta, origem, gx, gy, buildings, o):
+def arvores_rua(pasta, origem, gx, gy, buildings, o, leito=None):
     """As arvores de rua do cadastro do GeoSampa (pontos): as que caem na grade, fora das edificacoes e dos marcos. O jogo
-    (landscape.js, scenery.trees) ainda tira as que ficam perto da pista, dos boxes e das arquibancadas."""
+    (landscape.js, scenery.trees) ainda tira as que ficam perto da pista, dos boxes e das arquibancadas. Com o `leito`
+    (ruas_geosampa) cada uma leva a distancia do tronco a rua (m, ate 20; o jogo limita a copa por ela: landscape.js
+    fitStreet) e as que caem no leito ou no meio-fio saem."""
     from shapely.geometry import Polygon
     from shapely import STRtree
     import shapely
@@ -574,7 +607,13 @@ def arvores_rua(pasta, origem, gx, gy, buildings, o):
     arv = STRtree(caixas)
     livre = np.array([not len(arv.query(shapely.Point(q), predicate='intersects')) for q in Q], bool)
     print(f'arvores de rua (GeoSampa): {len(pts)} na caixa, {int(dentro.sum())} na grade, {int(livre.sum())} fora dos predios')
-    return np.round(Q[livre], 2).tolist()
+    Q = Q[livre]
+    if leito is None:
+        return np.round(Q, 2).tolist()
+    d = np.minimum(gp.distancia_ate(leito, Q[:, 0], Q[:, 1], 20.0), 20.0)
+    fora = d >= .4
+    print(f'arvores de rua: {int((~fora).sum())} no leito ou no meio-fio saem; tronco a rua mediana {np.median(d[fora]):.1f} m')
+    return [[round(float(x), 2), round(float(y), 2), round(float(r), 1)] for (x, y), r in zip(Q[fora], d[fora])]
 
 
 def solo_geosampa(pasta, origem, gx, gy, lado=1536):
@@ -1000,19 +1039,21 @@ def main():
     rails = {'-1': gf.trechos_de(tem_d, s, L), '1': [[0.0, L]]}
 
     # --- Terreno.
-    terrain, gx, gy, zgrade = chao_fixado(P, s, L, z, zc, largura, folga, deck_alto, tunel, pit, rel, MARGEM, deck)
+    leito, caixa = ruas_geosampa(pasta, origem)
+    terrain, gx, gy, zgrade = chao_fixado(P, s, L, z, zc, largura, folga, deck_alto, tunel, pit, rel, MARGEM, deck,
+                                          leito.buffer(CALCADA).intersection(caixa))
 
     # --- Cenario: cobertura e solo, edificacoes do OSM, o Minhocao e o tunel.
     gp.PASSO = PASSO
     scenery = gp.cenario(NOME, pasta, epsg, np.r_[origem, 0.0], 1.0, gx, gy, P, largura, pit, s, L, T, E, {'arquibancadas': ARQUIBANCADAS})
-    praca_paga(scenery, pasta, origem, gx, gy)
+    praca_paga(scenery, pasta, origem, gx, gy, leito)
     o = gf.osm_local(pasta, origem, epsg)
     scenery['buildings'], scenery['skyline'] = edificios(o, P, largura, folga, deck_alto, pit, gx, gy, zgrade, rel, s, L, E)
     scenery['minhocao'] = estruturas(o, P, s, L, z, largura, deck_alto, deck, tunel, ref, rel, attr)
     scenery['landmarks'] = marcos(o, rel)
-    arvores = arvores_rua(pasta, origem, gx, gy, scenery['buildings'], o)
+    arvores = arvores_rua(pasta, origem, gx, gy, scenery['buildings'], o, leito)
     if arvores:
-        scenery['trees'] = {'columns': ['x', 'y'], 'items': arvores}
+        scenery['trees'] = {'columns': ['x', 'y', 'road'], 'items': arvores}
     solo_geosampa(pasta, origem, gx, gy)
 
     frenagens = []

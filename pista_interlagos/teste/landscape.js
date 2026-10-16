@@ -1412,6 +1412,26 @@ const TREE_GREENS=[[.085,.15,.04],[.065,.125,.035],[.11,.17,.05],[.06,.1,.045],[
 // by up to 30%, so the shaped crown keeps its clearance; tighter than that the tree is left out.
 const CROWN_REACH={round:.85,tall:.45};
 function fitCrown(tree,edge,clear,kind='round'){const room=(edge-clear)/CROWN_REACH[kind];if(room<tree.width*.7)return false;tree.width=Math.min(tree.width,room);return true;}
+// A city's street trees (user, 10-16: "árvores no meio da rua" by the Parque da Luz): a trunk on the sidewalk at the kerb
+// under a 10-12 m crown hung low over half the street. A crown reaches at worst STREET_OVERHANG m over a street's roadway
+// (the parking lane); a tree that would reach further is a smaller one (narrower, and shorter by the square root, never
+// under 4.2 m), left out when that is under STREET_MIN_WIDTH or its trunk stands within STREET_CLEAR m of the kerb.
+// road: the trunk's distance to the nearest roadway (m; Infinity when none is known).
+const STREET_OVERHANG=2.2,STREET_MIN_WIDTH=2.4,STREET_CLEAR=.4;
+function fitStreet(tree,road,kind='round'){
+ if(!(road<Infinity))return true;if(road<STREET_CLEAR)return false;
+ const room=(road+STREET_OVERHANG)/CROWN_REACH[kind];if(tree.width<=room)return true;if(room<STREET_MIN_WIDTH)return false;
+ tree.height=Math.max(4.2,tree.height*Math.sqrt(room/tree.width));tree.width=room;return true;
+}
+// The distance from (x,y) to a city map's nearest roadway (city-map.js): its own distance field within `range` m, past
+// that the field at points round it (rings to 14 m: the nearest point's distance plus the field there, at most a few
+// metres long). Infinity with no roadway that near.
+function cityRoad(city,x,y){
+ const r0=city.distance('road',x,y),edge=city.range-.05;if(r0<edge)return r0;
+ let best=Infinity;
+ for(const r of [5,8,11,14]){if(r-edge>=best)break;for(let k=0;k<16;k++){const a=k*Math.PI/8,q=city.distance('road',x+r*Math.cos(a),y+r*Math.sin(a));if(q<edge)best=Math.min(best,r+q);}}
+ return best;
+}
 function composeTree(item,matrix,color){
  matrix.compose(new THREE.Vector3(item.x,item.z,-item.y),new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),item.turn),new THREE.Vector3(item.width,item.height,item.width));
  color.setRGB(...item.color);
@@ -1508,14 +1528,17 @@ export function createLandscape({data,field,ortho=null,cover=null,buildings=null
    if(edge<=9||rand()>(kind==='1'?.72:.22))continue;
    const h=kind==='1'?(edge<25?7:8.5)+rand()*7:3+rand()*3.5,list=kind==='1'&&rand()<.2?tall:trees;
    const tree={x:px,y:py,z:terrainHeight(data,px,py)-.3,height:list===tall?h*1.4:h,width:(list===tall?.75:.95)*h*(.8+rand()*.35),turn:rand()*Math.PI*2,color:treeColor(rand,kind==='2'?.7:0,mobile)};
-   if(edge>tree.width/2+2&&fitCrown(tree,edge,2,list===tall?'tall':'round'))list.push(tree);
+   const shape=list===tall?'tall':'round';
+   if(edge>tree.width/2+2&&fitCrown(tree,edge,2,shape)&&fitStreet(tree,city?cityRoad(city,px,py):Infinity,shape))list.push(tree);
   }
-  // Trees mapped one by one (data.scenery.trees: the DF's isolated trees still standing in 2025).
-  for(const [px,py] of data.scenery?.trees?.items??[]){
+  // Trees mapped one by one (data.scenery.trees: the DF's isolated trees still standing in 2025, a city's street trees);
+  // a third column, when there, is the trunk's distance to the nearest roadway (the Minhocão's, from its generator).
+  for(const [px,py,road] of data.scenery?.trees?.items??[]){
    const cell=field.cell(px,py);if(cell<0)continue;const edge=field.edge[cell];if(edge<=6)continue;
    const h=6+rand()*6,list=rand()<.2?tall:trees;
    const tree={x:px,y:py,z:terrainHeight(data,px,py)-.3,height:list===tall?h*1.35:h,width:(list===tall?.8:1)*h*(.8+rand()*.35),turn:rand()*Math.PI*2,color:treeColor(rand,0,mobile)};
-   if(edge>tree.width/2+1.5&&fitCrown(tree,edge,1.5,list===tall?'tall':'round'))list.push(tree);
+   const shape=list===tall?'tall':'round';
+   if(edge>tree.width/2+1.5&&fitCrown(tree,edge,1.5,shape)&&fitStreet(tree,road??(city?cityRoad(city,px,py):Infinity),shape))list.push(tree);
   }
   // Real buildings: OSM and Microsoft footprints, each its own oriented rectangle; from a local
   // cadastre (the DF's) also apartment blocks ('predio') and round ones ('redondo', a drum).

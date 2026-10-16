@@ -2090,7 +2090,7 @@ async function loadCircuit(){
   const open=await createOpenCircuit(data,roadSurface,{heights:groundFit.heights,textures:terrainTextures,field:landscapeField,groundUrl:circuit.ground,label:`${circuit.track} · AUTO-POBRE RACING`,mobile:scenery.mobile,city:cityMap});
   scene.add(open.root);cameraObstacles.push(...open.obstacles);
   // The valley out to 22 km below a plateau circuit (Chapada dos Sonhos), from the same folder as its ground photo.
-  const far=data.scenery.far?await createFarTerrain(data,circuit.ground.replace(/[^/]*$/,''),{stride:sceneryLevel==='basico'?2:1}):null;if(far)scene.add(far.root);applyViewDistance();
+  const far=data.scenery.far?await createFarTerrain(data,circuit.ground.replace(/[^/]*$/,''),{stride:sceneryLevel==='basico'?2:1,heights:groundFit.heights}):null;if(far)scene.add(far.root);applyViewDistance();
   explosions=data.scenery.cliff?new Explosions(scene,{mobile:scenery.mobile}):null;
   // A coastal street circuit (Floripa): the sea at its level, the bridges round the decks the road runs on and the
   // city's landmarks, each with its own model.
