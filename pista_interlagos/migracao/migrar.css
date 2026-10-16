@@ -1,0 +1,83 @@
+:root {
+  --asfalto: #111b16;
+  --amarelo: #f4ce39;
+  --amarelo-claro: #ffe265;
+  --verde: #269b60;
+  --creme: #fff5dc;
+  --creme-suave: rgba(255, 245, 220, .82);
+  --gutter: clamp(1rem, 6vw, 4rem);
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--asfalto); }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  color: var(--creme);
+  background: var(--asfalto);
+  font: 400 1.0625rem/1.55 Inter, "Segoe UI", Arial, sans-serif;
+}
+
+.faixa {
+  flex: none;
+  height: 12px;
+  background: repeating-linear-gradient(-45deg, var(--amarelo) 0 16px, var(--asfalto) 16px 32px);
+}
+
+.mudanca {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 1.1rem;
+  width: 100%;
+  max-width: calc(36rem + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 3rem var(--gutter);
+}
+
+.selo {
+  margin: 0;
+  padding: .3rem .75rem;
+  border-radius: 999px;
+  background: var(--verde);
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font: 400 clamp(1.9rem, 5vw, 3rem)/1.05 Impact, "Arial Black", sans-serif;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+
+h1 span { color: var(--amarelo); }
+
+.texto { margin: 0; color: var(--creme-suave); }
+
+.botao {
+  display: inline-flex;
+  gap: .55rem;
+  padding: .85rem 1.35rem;
+  border-radius: 6px;
+  background: var(--amarelo);
+  color: var(--asfalto);
+  font-weight: 800;
+  font-size: .95rem;
+  letter-spacing: .06em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.botao:hover { background: var(--amarelo-claro); }
+
+.botao:focus-visible { outline: 3px solid var(--creme); outline-offset: 3px; }

@@ -79,6 +79,8 @@ Em **Settings → Pages → Build and deployment → Source**, selecione **GitHu
 
 Endereço do jogo: **https://autopobre.com.br/** (as legadas em `/apr_v1/` e `/apr_v2/`, a de testes em `/dev/`). Aguarde o fluxo concluir com sucesso antes de abrir. Não selecione a raiz de `main` em “Deploy from a branch”: ela contém o código-fonte, e o jogo precisa da etapa de geração.
 
+Até outubro de 2026 o jogo ficava em `www.inteligenciamilgrau.com.br/autopobre/`. Aquele endereço agora leva para cá e traz os dados salvos naquele navegador: recordes, saldo do Modo História, campeonato, preferências e, se couberem no link, os fantasmas (os mais antigos saem primeiro). A página antiga empacota as chaves do jogo no link (`#migrar=…`, a parte que não vai a servidor nenhum) e abre `migrar.html`, que guarda o que ainda não existe aqui e segue para a mesma página (`/dev/`, `/apr_v1/`…). Um dado que já existe neste endereço nunca é substituído, e a chave do grupo do multiplayer não viaja. O código fica em `pista_interlagos/migracao/`, publicado na raiz do site junto de qualquer versão (o fluxo o copia do commit que o executa), e `testar_migracao.mjs` cobre o formato e os limites. A página antiga importa `moveToNewAddress` de `https://autopobre.com.br/save-migration.js`: esse nome e o formato do link precisam continuar funcionando.
+
 No GitHub Pages, a CSP incorporada no HTML protege o carregamento do jogo. O arquivo `_headers` é destinado a outros provedores; não configura cabeçalhos personalizados no Pages.
 
 ### Gerar para outra hospedagem ou testar o pacote

@@ -70,6 +70,14 @@ jobs:
           ref: ${{ inputs.versao_dev }}
           path: dev
           persist-credentials: false
+      # migrar.html brings the saves from the old address (pista_interlagos/migracao). It is the same
+      # for every version: it comes from the commit this run started from and lands at the site's root.
+      - name: Baixar a pagina que traz os dados do endereco antigo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: atual
+          persist-credentials: false
+          sparse-checkout: pista_interlagos/migracao
       - name: Preparar Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -91,7 +99,7 @@ jobs:
           for pasta in principal apr_v1 apr_v2 dev; do
             [ -d "$pasta" ] || continue
             echo "::group::Testes de $pasta"
-            for teste in testar_preferencias testar_audio testar_eventos_audio testar_colisoes testar_saldo testar_imersivo testar_voltas testar_derrapadas testar_terreno_rivais testar_aderencia testar_direcao testar_bandeirada testar_recordes testar_pilotos_largada testar_curvelo testar_pitstop testar_controle testar_retorno_camera testar_volante testar_freio_re testar_graficos testar_luz testar_fantasma testar_camera testar_colisao_fusca testar_mecanica_fusca testar_multiplayer testar_estados_sala testar_zebras testar_particulas testar_bandeiras testar_beira testar_contato testar_pintura testar_grid_fusca testar_clima testar_arena_drift testar_muro_curvas testar_passeio_cidade testar_a_pe testar_ajustes_som; do
+            for teste in testar_preferencias testar_audio testar_eventos_audio testar_colisoes testar_saldo testar_imersivo testar_voltas testar_derrapadas testar_terreno_rivais testar_aderencia testar_direcao testar_bandeirada testar_recordes testar_pilotos_largada testar_curvelo testar_pitstop testar_controle testar_retorno_camera testar_volante testar_freio_re testar_graficos testar_luz testar_fantasma testar_camera testar_colisao_fusca testar_mecanica_fusca testar_multiplayer testar_estados_sala testar_zebras testar_particulas testar_bandeiras testar_beira testar_contato testar_pintura testar_grid_fusca testar_clima testar_arena_drift testar_muro_curvas testar_passeio_cidade testar_a_pe testar_ajustes_som testar_migracao; do
               # A release from before a test was written (apr-1.0 and apr-2.1 lack the newer ones, e.g. testar_controle, testar_volante, testar_graficos, testar_fantasma, testar_clima)
               # skips it; /dev/ must have every one.
               if [ "$pasta" != dev ] && [ ! -f "$pasta/pista_interlagos/scripts/$teste.mjs" ]; then
@@ -115,6 +123,10 @@ jobs:
             [ -d "$pasta" ] || continue
             mkdir "site/$pasta"
             cp -a "$pasta/dist/." "site/$pasta/"
+          done
+          for arquivo in migrar.html migrar.js migrar.css save-migration.js; do
+            [ ! -e "site/$arquivo" ] || { echo "::error::A versao principal ja tem $arquivo; a pagina de migracao nao pode substitui-lo."; exit 1; }
+            cp "atual/pista_interlagos/migracao/$arquivo" site/
           done
       # A commit from before the build knew --multiplayer always packs it: that one cannot go to these addresses.
       - name: Conferir que o multiplayer e a bancada de som ficaram so em /dev/
