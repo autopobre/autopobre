@@ -28,6 +28,15 @@ body:not(.touch-device) #menu .menu-tools button{display:flex;align-items:center
 body:not(.touch-device) #menu .menu-tools>#startFullscreen{grid-column:1/-1}
 body:not(.touch-device) #menu .menu-tool-icon{display:block;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;color:#efd377}
 #menu article>small{color:#bac6bd;margin-top:14px}
+/* Author credit with the Instagram link: opening screen and the settings footer. */
+.dev-credit{display:flex;flex-wrap:wrap;align-items:center;gap:3px 10px;font-size:11px;line-height:1.5;color:#bac6bd}
+.dev-credit b{color:#efe6cf;font-weight:700}
+.dev-credit a{display:inline-flex;align-items:center;gap:5px;margin:0;color:#efd377;font-size:11px;font-weight:700;text-decoration:none}
+.dev-credit a:hover{color:#ffe574;text-decoration:underline;text-underline-offset:3px}
+.dev-credit-icon{width:16px;height:16px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.dev-credit-icon .dev-credit-dot{fill:currentColor;stroke:none}
+#menu .dev-credit{margin-top:12px}
+#menu.race-finished .dev-credit{display:none}
 #menu select,
 #menu #mute{background:#19302de8}
 @media(max-height:720px) and (min-width:701px){
@@ -85,5 +94,6 @@ body:not(.touch-device) #menu .menu-tool-icon{display:block;width:18px;height:18
  .touch-device #menu .menu-tools button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:44px;width:100%;margin:0;padding:4px 2px;font-size:9px;line-height:1.1;background:#102b27e8;border-color:#8eaa865c;border-radius:7px}
  .touch-device #menu .menu-tools .menu-tool-icon{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;color:#efd377}
  .touch-device #menu .menu-tool-label{display:none}.touch-device #menu .menu-tool-short{display:inline}
+ .touch-device #menu .dev-credit{margin-top:6px;gap:1px 8px;font-size:9px;line-height:1.35}.touch-device #menu .dev-credit a{font-size:9px}.touch-device #menu .dev-credit-icon{width:13px;height:13px}
  .touch-device #menu.race-finished .menu-tools{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
