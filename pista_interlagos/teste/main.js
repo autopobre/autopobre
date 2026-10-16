@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {TestCar,clamp,wrap,recognitionInput,RIGHTING_DELAY,OPALA_BODY,FUSCA_BODY} from './physics.js';
+import {TestCar,clamp,wrap,recognitionInput,RIGHTING_DELAY,OPALA_BODY,FUSCA_BODY,addRoamSolids} from './physics.js';
 import {PLAYER_ENTRY,ACE_NUMBER,playerGridSlot,carEntry,fieldRoster,duelRivalFor,cssColor,MODEL_NAMES} from './race-roster.js';
 import {CarSelect} from './car-select.js';
 import {CarLivery,trunkInside,showTrunkInside,trimDecalTails} from './car-livery.js';
@@ -2113,6 +2113,8 @@ async function loadCircuit(){
   // The trees the land cover put where a landmark's yard or apron is (floripa-landmarks.js) go.
   for(const extra of circuitExtras)if(extra.clearings)landscape.clearAround(extra.clearings);
   const stands=createGrandstands(data,terrainTextures,(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y));scene.add(stands.root);fixed.push(stands.root);cameraObstacles.push(...stands.obstacles);standTops=stands.rows;
+  // Out in a city open to roam the car stands on the ground as drawn (physics.js terrain).
+  if(data.meta.roam)car.heights=groundFit.heights;
   // A city's own sidewalks fill with people behind the fences (city-crowd.js): standing fans, with the stands' in one draw.
   if(cityMap)standTops=[...standTops,...citySpectators(data,{map:cityMap,ground:groundAt,lean:sceneryLevel==='basico',mobile:scenery.mobile})];
   // An extra's own rows of fans (temporary stands, balconies) sit with them, in the same draw.
@@ -2136,7 +2138,9 @@ async function loadCircuit(){
   Object.assign(landscape.stats,{ground:groundFit.stats,stands:stands.stats,legacyStands});
  }
  scene.add(landscape.root);
- const crowd=createCrowd(standTops,{mobile:scenery.mobile,lean:sceneryLevel==='basico'});scene.add(crowd.root);fixed.push(crowd.root);landscape.stats.fans=crowd.count;await ensureCarModel();await fuscaWanted();
+ const crowd=createCrowd(standTops,{mobile:scenery.mobile,lean:sceneryLevel==='basico'});scene.add(crowd.root);fixed.push(crowd.root);landscape.stats.fans=crowd.count;
+ // The fans standing on a city's sidewalks are in the way of a car out in the city (meta.roam).
+ if(data.meta.roam)landscape.stats.fanSolids=addRoamSolids(data,crowd.standing);await ensureCarModel();await fuscaWanted();
  if(circuit.arena){roadRails={root:new THREE.Group(),rails:null,setQuality(){}};roadCurbs=new THREE.Group();roadCurbs.userData.setQuality=()=>{};}
  else{roadRails=createGuardrails(data,{quality:graphics.values.materials});scene.add(roadRails.root);cameraObstacles.push(roadRails.rails);
  roadCurbs=createCurbs(data,{quality:graphics.values.materials});scene.add(roadCurbs);}

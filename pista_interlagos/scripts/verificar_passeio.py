@@ -60,7 +60,7 @@ PILOTO = r"""async()=>{
   state(){return auto&&{hit:auto.hit,k:auto.k,n:auto.path.length,done:auto.done,impact:auto.impact,steps:auto.steps,zone:auto.zone,dz:auto.dz,x:car.x,y:car.y,speed:Math.hypot(car.vx,car.vy),roam:car.roamZone?.name??null,onRoad:car.surface.onRoad,wheels:car.wheelsDown};},
   off(){auto=null;},
   // The nearest point of the zone's edge from the car, a little beyond it (a facade, a closure): to drive into it.
-  edge(name){const z=w.zones.find(q=>q.name===name);let best=null;for(let r=0;r<40&&!best;r+=4){const e=w.edge(car.x,car.y,r+4,z,w.query(car.x,car.y,r+4));if(e)best=e;}
+  edge(name){const z=w.zones.find(q=>q.name===name);let best=null;for(let r=0;r<160&&!best;r+=4){const e=w.edge(car.x,car.y,r+4,z,w.query(car.x,car.y,r+4));if(e)best=e;}
    return best&&[best.qx+(best.qx-car.x)/best.d*3,best.qy+(best.qy-car.y)/best.d*3];}};
  return true;}"""
 
@@ -116,12 +116,12 @@ with sync_playwright() as p:
     page.evaluate(PILOTO)
     zonas = page.evaluate('__passeio.zones')
     assert len(zonas) >= 2, zonas
-    # O transito da cidade nao entra nas zonas (city-traffic.js corta as faixas ali).
+    # O transito da cidade roda na cidade aberta ao carro (city-traffic.js: para atras dele e e solido para ele, movers).
     transito = page.evaluate("async()=>{const P=await import('./physics.js'),d=interlagos.car.data,T=window.interlagosTransito;if(!T)return null;"
                              "const pts=T.network().tracks.flatMap(t=>t.pts),cars=T.vehicles();"
                              "return {pontos:pts.length,dentro:pts.filter(([x,y])=>P.roamZoneAt(d,x,y)).length,carros:cars.length,carrosDentro:cars.filter(v=>P.roamZoneAt(d,v.x,v.y)).length};}")
     print('transito', transito, flush=True)
-    assert transito and transito['pontos'] > 100 and transito['dentro'] == 0 and transito['carrosDentro'] == 0, transito
+    assert transito and transito['pontos'] > 100 and transito['dentro'] > 100 and transito['carrosDentro'] > 10, transito
     camera(page, 'chase')
     for z in zonas:
         nome = z['name']
@@ -167,7 +167,8 @@ with sync_playwright() as p:
         print(nome, json.dumps(resumo[nome], ensure_ascii=False), flush=True)
         assert fim['zone'] == nome and fim['done'], (nome, fim)
         assert fim['impact'] < 4 and fim['dz'] < .3 and fim['wheels'] >= 3, (nome, fim)
-        assert bate['impact'] < 4 and bate['speed'] < .5, (nome, bate)
+        # (Square to a facade it stops; along a wall's back or a fence line it may slide on slowly: no crash either way.)
+        assert bate['impact'] < 4 and bate['speed'] < 2, (nome, bate)
         assert volta['onLap'] and volta['roam'] is None, (nome, volta)
     # Sem zonas, nada disso.
     abrir(page, 'minhocao')

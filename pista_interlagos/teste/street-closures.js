@@ -336,9 +336,11 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
   let farthest=0;
   // Puts a piece at (u, v) of the closure, turned `turn` from the line's direction (its +y then faces the track), on the
   // ground; far: its far version (null: none).
-  const put=(tpl,far,u,v,turn,opts={},{lift=0,pitch=0,roll=0,s=[1,1,1]}={})=>{const o={shade:.86+rand()*.14,...opts};
+  // (solid: [half length, half width] of a box or a post's radius, for a car out in the city open to roam: physics.js.)
+  const put=(tpl,far,u,v,turn,opts={},{lift=0,pitch=0,roll=0,s=[1,1,1],solid=null}={})=>{const o={shade:.86+rand()*.14,...opts};
    const [x,y]=P(u,v),z=ground(x,y);if(z==null||!(c0.zone?freeOfStands(x,y,.3):free(x,y,.3))||corridor(x,y)<.3)return false;
-   const f=frameAt(x,y,z+lift,H+Math.PI/2+turn,{pitch,roll,s});tile.near.add(tpl,f,o);if(far)tile.far.add(far,f,o);stats.pieces++;farthest=Math.max(farthest,u);take(x,y,.9);if(c0.zone)markEdge(x,y);return true;};
+   const f=frameAt(x,y,z+lift,H+Math.PI/2+turn,{pitch,roll,s});tile.near.add(tpl,f,o);if(far)tile.far.add(far,f,o);stats.pieces++;farthest=Math.max(farthest,u);take(x,y,.9);if(c0.zone)markEdge(x,y);
+   if(roam&&solid)roamSolids.push(Array.isArray(solid)?{x,y,h:H+Math.PI/2+turn,hu:solid[0],hv:solid[1]}:{x,y,r:solid});return true;};
   // ---- The barrier line ----
   const pair=rand()<.55?['orange','white']:rand()<.8?['red','white']:['orange','red'];
   const plasticColor=k=>rand()<.035?PLASTIC.yellow:PLASTIC[pair[k%2]];
@@ -353,7 +355,7 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
     // Now and then one pushed out of line (somebody squeezed through, or a car nudged it).
     if(rand()<.06){du+=(rand()<.5?-1:1)*(.15+rand()*.35);turn+=(rand()<.5?-1:1)*(.12+rand()*.3);}
     const color=kind==='plastic'?plasticColor(k):kind==='jersey'?lin(rand()<.15?0xa59a7e:0x9c9b95,.82+rand()*.24):lin(rand()<.08?0x9a8a74:0xffffff,.86+rand()*.16);
-    if(put(pick.near,pick.far,u0+du,vc,turn,{paint:color,shade:.88+rand()*.14}))units.push({kind,u:u0+du,v:vc,turn,l:pick.l,h:pick.h});
+    if(put(pick.near,pick.far,u0+du,vc,turn,{paint:color,shade:.88+rand()*.14},{solid:[pick.l/2,kind==='plastic'?pick.h*.28:.3]}))units.push({kind,u:u0+du,v:vc,turn,l:pick.l,h:pick.h});
     v+=pick.l+(kind==='plastic'?-.02+rand()*.07:kind==='gradil'?.03+rand()*.12:.03+rand()*.06);k++;
    }
   };
@@ -433,7 +435,7 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
    const f=carFrame('pickup',x,y,H+Math.PI/2*s+turn*.3,ground);
    if(f&&free(x,y,1)){const o={paint:lin(0xf3f3f0),rim:lin(0x9a9da0),lamps:true};tile.near.add(cityCarTemplate('pickup'),f,o);tile.far.add(cityCarTemplate('pickup',true),f,o);
     const top=frameAt(f.o[0]+f.z[0]*1.8-f.x[0]*.3,f.o[1]+f.z[1]*1.8-f.x[1]*.3,f.o[2]+f.z[2]*1.8,H+Math.PI/2*s+turn*.3);const lb={phase:rand()};tile.near.add(T.lightbar,top,lb);tile.far.add(T.lightbar,top,lb);
-    stats.flashers++;take(x,y,3);queueFrom=u+4+rand()*2;}
+    stats.flashers++;take(x,y,3);queueFrom=u+4+rand()*2;if(roam)roamSolids.push({x,y,h:H+Math.PI/2*s+turn*.3,hu:CITY_CAR_SIZE.pickup.L/2,hv:CITY_CAR_SIZE.pickup.W/2});}
   }
   // ---- People: an agent in a vest, a few watching the race over the barrier ----
   if(!lean&&!(mobile&&rand()<.6)){
@@ -463,7 +465,8 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
    const u=queueFrom-1.2+k*(1.5+rand()*.8);if(u>qEnd)break;const q=path.at(u),lv=lanesHere.length>1?(lanesHere[0]+lanesHere[1])/2:lanesHere[0]+1.1,x=q.x-Math.sin(q.h)*(lv+(rand()-.5)*.3),y=q.y+Math.cos(q.h)*(lv+(rand()-.5)*.3);
    const d=surface(x,y);if(d&&d.road>-.3)continue;const f=carFrame('moto',x,y,q.h+Math.PI+(rand()-.5)*.25,ground);if(!f||isTaken(x,y,.6)||inBuilding(x,y))continue;
    const o={paint:lin([0xf2f2ef,0xc81d25,0x1d1f22,0xd8b21a,0x2a5aa8][Math.floor(rand()*5)]),rim:lin([0x1d1f24,0x2b3346,0x50555a,0xa8c43a,0x7a1d22][Math.floor(rand()*5)]),accent:lin([0xc81d25,0xf4f1ea,0x1d1f22,0xe07a1a][Math.floor(rand()*4)]),brake:rand()<.6};
-   tile.near.add(cityCarTemplate('moto'),f,o);tile.far.add(cityCarTemplate('moto',true),f,o);take(x,y,.7);queued.push([x,y,ci]);stats.motos++;stats.queueCars++;}}
+   tile.near.add(cityCarTemplate('moto'),f,o);tile.far.add(cityCarTemplate('moto',true),f,o);take(x,y,.7);queued.push([x,y,ci]);stats.motos++;stats.queueCars++;
+   if(roam)roamSolids.push({x,y,h:q.h,hu:1,hv:.4});}}
   lanesHere.forEach((lv,li)=>{
    let u=queueFrom+(lanesHere.length>1?rand()*3:0),count=0;
    while(count<cap){
@@ -481,6 +484,8 @@ export async function createStreetClosures(data,{mobile=false,lean=false,ground=
     // near: from the street's sidewalks; on the cheap levels the box.)
     if(u<=QUEUE_NEAR)tile.near.add(cityCarTemplate(type),f,o);else if(lod)tile.near.add(cityCarTemplate(type),f,{...o,lod:1}).add(cityCarTemplate(type,true),f,{...o,lod:-1});else tile.near.add(cityCarTemplate(type,true),f,o);
     tile.far.add(cityCarTemplate(type,true),f,o);queued.push([x,y,ci]);stats.queueCars++;if(type==="bus")stats.buses++;
+    // (The cars held in the queue stand in the city open to roam: solid, as the parked ones.)
+    if(roam)roamSolids.push({x,y,h:q.h,hu:L/2,hv:CITY_CAR_SIZE[type].W/2});
     for(let k=-L/2+1.1;k<L/2;k+=1.6)take(x+Math.cos(q.h)*k,y+Math.sin(q.h)*k,1.1);count++;
     u+=L+(rand()<.12?3+rand()*4:.9+rand()*2.2);
    }

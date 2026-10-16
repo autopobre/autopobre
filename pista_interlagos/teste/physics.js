@@ -252,8 +252,13 @@ export class TestCar {
  // A car put down at (x, y) by a script, a menu or the network (a teleport): on the stretch at height z there
  // where the lap passes over itself (levelNearest), then seated on its wheels. Without z: the nearest in plan.
  relocate(x,y,z=NaN,heading=this.heading){this.x=x;this.y=y;this.heading=heading;this.index=this.nearest(x,y,true,null,z).i;this.settle();return this;}
- // ground: the heights to read (a plateau circuit's two copies, cliff-edge.js); the track file's grid by default.
- terrain(x,y,ground=this.data.terrain.z){const t=this.data.terrain,z=ground,fx=clamp((x-t.x0)/t.step,0,t.nx-1.001),fy=clamp((y-t.y0)/t.step,0,t.ny-1.001),ix=Math.floor(fx),iy=Math.floor(fy),u=fx-ix,v=fy-iy,k=iy*t.nx+ix;
+ // ground: the heights to read (a plateau circuit's two copies, cliff-edge.js); the track file's grid by default, or the
+ // ground as drawn where a city may be roamed (heights: track-clearance.js fitGround's, lowered round the lap; main.js),
+ // so a car out in the city stands on what is drawn.
+ terrain(x,y,ground=this.heights??this.data.terrain.z){const t=this.data.terrain,z=ground,fx=clamp((x-t.x0)/t.step,0,t.nx-1.001),fy=clamp((y-t.y0)/t.step,0,t.ny-1.001),ix=Math.floor(fx),iy=Math.floor(fy),u=fx-ix,v=fy-iy,k=iy*t.nx+ix;
+  // (The drawn ground's own two triangles a cell, track-clearance.js groundTriangle: on a hill the cell's bilinear
+  // surface stood up to 10 cm off them.)
+  if(z===this.heights)return u>=v?z[k]*(1-u)+z[k+1]*(u-v)+z[k+t.nx+1]*v:z[k]*(1-v)+z[k+t.nx+1]*u+z[k+t.nx]*(v-u);
   return (z[k]*(1-u)+z[k+1]*u)*(1-v)+(z[k+t.nx]*(1-u)+z[k+t.nx+1]*u)*v;
  }
  sample(x,y,hint=null){
@@ -723,9 +728,10 @@ export function recognitionInput(car,{maxSpeed=33,cornerGrip=3.3,braking=3.5,thr
 // edge's left. Its edges are the facades, the shore, the lap's walls and the closures across the streets that leave
 // it. A car whose centre of mass is out there (off the lap's corridor) meets those edges, the walls from behind (their
 // blocks are ROAM_BACK deep) and the solids the scenery modules stand there (addRoamSolids: parked cars, shelters,
-// kiosks, the fan zone's trucks...), instead of the walls from the road. Contacts as the drift arena's: pushed out, an
-// impulse at the point that touched (a clipped corner spins the car), a little bounce, scraping along. A hash of 8 m
-// cells holds only what is near the zones, so a car on the lap pays one empty lookup a step.
+// kiosks, the fan zone's trucks...) and the city's moving cars (movers, from city-traffic.js), instead of the walls from
+// the road. Contacts as the drift arena's: pushed out, an impulse at the point that touched (a clipped corner spins the
+// car), a little bounce, scraping along. A hash of 8 m cells holds only what is near the zones, so a car on the lap pays
+// one empty lookup a step.
 const ROAM_CELL=8,ROAM_ROW=4,ROAM_BACK=.75,ROAM_BOUNCE=.2,ROAM_SCRAPE=.3,ROAM_MARGIN=12;
 const roamWorlds=new WeakMap();
 export function roamWorld(data){
@@ -818,7 +824,10 @@ class RoamWorld{
   for(let pass=0;pass<3;pass++){
    const ch=Math.cos(car.heading),sh=Math.sin(car.heading),cx=car.x+ch*b.wallAhead,cy=car.y+sh*b.wallAhead;let near=this.query(cx,cy,R);
    // (On the lap only the solids and the walls' ends: the zone's own edges and corners stand behind the walls.)
-   if(!zone){const keep=this.keep;keep.length=0;for(const it of near)if(it.t===1||it.t===2||it.wall)keep.push(it);if(!keep.length&&!walls)return impact;near=keep;}
+   if(!zone){const keep=this.keep;keep.length=0;for(const it of near)if(it.t===1||it.t===2||it.wall)keep.push(it);near=keep;}
+   // The city's moving cars round it, boxes where they stand now (movers: city-traffic.js), on the car's own level.
+   this.movers?.(cx,cy,R,near,car.z);
+   if(!zone&&!near.length&&!walls)return impact;
    let best=null;const take=(depth,nx,ny,px,py)=>{if(depth>1e-4&&!(best?.depth>=depth))best={depth,nx,ny,rx:px-car.x,ry:py-car.y};};
    // The body's outline, point by point (BODY_POINTS, as against the walls).
    for(const [u,w] of BODY_POINTS){

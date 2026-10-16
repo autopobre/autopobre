@@ -3,7 +3,7 @@ import {sceneryBands,bandClearance} from './track-clearance.js';
 import {canvasTexture} from './pit-textures.js';
 import {Shape,cityCarTemplate,CITY_CAR_SIZE,carPaint,rimColor,random,lin,FINISH,GLOW,ROLE,BUS_DESTINATIONS,drawBusSign} from './city-cars.js';
 import {raceTrafficBlocks} from './city-race.js';
-import {roamZoneAt} from './physics.js';
+import {roamWorld} from './physics.js';
 
 // The city keeps moving round the race (Floripa, data.scenery.city): a real city closed for a race weekend still has its
 // traffic on the streets that stay open, and that is what makes it read as alive. The streets of the data (OpenStreetMap
@@ -120,8 +120,8 @@ export function buildTrafficNetwork(data,{map=null,ground}){
    const edge=sg=>{if(!roadD)return half;const d=o=>roadD(x+nx*sg*o,y+ny*sg*o),reach=half+3;if(d(0)>-.25||d(reach)<=-.25)return NaN;let lo=0,hi=reach;for(let i=0;i<9;i++){const m=(lo+hi)/2;if(d(m)>-.25)hi=m;else lo=m;}return lo+.25;};
    eL[k]=edge(1);eR[k]=edge(-1);
    const cx=x+nx*((eL[k]||half)-(eR[k]||half))/2,cy=y+ny*((eL[k]||half)-(eR[k]||half))/2;
-   // (Not in a zone of the city open to roam, meta.roam: the player drives about there, the city's cars keep out.)
-   open[k]=ground(x,y)!=null&&(!roadD||roadD(cx,cy)<-.4)&&corridor(x,y)-half>=D_CORR&&!blocked(x,y,1)&&bandClearance(bands,x,y).distance>half+3&&!(roam&&roamZoneAt(data,x,y))?1:0;
+   // (The city open to roam, meta.roam, has its traffic too: it stops for the player's car, which meets its cars: movers.)
+   open[k]=ground(x,y)!=null&&(!roadD||roadD(cx,cy)<-.4)&&corridor(x,y)-half>=D_CORR&&!blocked(x,y,1)&&bandClearance(bands,x,y).distance>half+3?1:0;
   }
   // Curbs not found (junction mouths): the nearest found ones along the way, else the data's width.
   for(const e of [eL,eR]){let last=NaN;const fill=new Float64Array(n);for(let k=0;k<n;k++){if(Number.isFinite(e[k]))last=e[k];fill[k]=last;}last=NaN;
@@ -438,7 +438,13 @@ export async function createCityTraffic(data,{mobile=false,lean=false,ground=nul
  const rand=random(7741),light=mobile||lean;
 
  // ---- The vehicles: their types fixed (each keeps its box copy), looks drawn again whenever they come back ----
- const COUNT=mobile?80:lean?150:260,vehicles=[];
+ const COUNT=mobile?80:lean?150:260,vehicles=[],roamWorldHere=roamWorld(data);
+ // The city's cars as the player's car meets them out in the city (physics.js RoamWorld collide): a box each, where it
+ // stands this frame, near (x, y) and on the car's level (z: not the twin bridge's deck over its head).
+ if(roamWorldHere)roamWorldHere.movers=(x,y,r,out,z)=>{for(const v of vehicles){if(!v.active||!v.track)continue;const R=r+v.L/2;
+  if(Math.abs(v.x-x)>R||Math.abs(v.y-y)>R||z!==undefined&&Math.abs(v.z-z)>3)continue;
+  const c=Math.cos(v.h),s=Math.sin(v.h),hu=v.L/2,hv=v.W/2,xs=[],ys=[];for(const [u,q] of [[-1,-1],[1,-1],[1,1],[-1,1]]){xs.push(v.x+c*u*hu-s*q*hv);ys.push(v.y+s*u*hu+c*q*hv);}
+  out.push({t:1,xs,ys,seen:0});}};
  const carTracks=tracks.filter(T=>!T.bus),busTracks=tracks.filter(T=>T.bus||T.rank>=3);
  // Where vehicles come back: lanes by length, more near the race (that is where they are seen); the twin bridge less (its
  // traffic comes over from the Via Expressa, and it leaves by the one lane the closures leave free at its island end).
@@ -598,6 +604,10 @@ export async function createCityTraffic(data,{mobile=false,lean=false,ground=nul
   const k=Math.min(T.n-1,Math.max(0,Math.round(v.s/STEP)));acc=Math.min(acc,capAcc(v,1,T.VL[k]));
   if(v.plan){const C=v.plan.conn;acc=Math.min(acc,capAcc(v,v.plan.s0-v.s,C.VL[0]),capAcc(v,v.plan.s0-v.s+C.len*.5,C.VL[C.n>>1]));}
   v.why='';const lg=leaderGap(v);if(lg.gap<8)v.why='fila';if(lg.gap<200)acc=Math.min(acc,A_MAX*(1-(v.v/Math.max(v0,.5))**4)+idm(v,lg.gap,lg.v));
+  // The player's car out in the city (physics.js RoamWorld player), ahead in its way: one more car to stop behind.
+  const P=roamWorldHere?.player;
+  if(P?.roamZone){const c=Math.cos(v.h),sn=Math.sin(v.h),dx=P.x-v.x,dy=P.y-v.y,ahead=dx*c+dy*sn,side=-dx*sn+dy*c;
+   if(ahead>0&&ahead<45&&Math.abs(side)<2.6&&Math.abs(P.z-v.z)<3){acc=Math.min(acc,A_MAX*(1-(v.v/Math.max(v0,.5))**4)+idm(v,ahead-v.L/2-2.4,Math.max(0,P.vx*c+P.vy*sn)));v.why='jogador';}}
   // The end of a lane with no way out chosen (should not happen) or a way out of the map: stop there.
   if(!v.plan&&!T.connector&&!T.sink)acc=Math.min(acc,A_MAX+idm(v,T.len-front,0));
   // A bus stop on its lane: stop, wait, go on.

@@ -1854,7 +1854,7 @@ export function createCrowd(steps,{mobile=false,lean=false}={}){
    const pose=standing?(r<.6?4:r<.84?5:7):r<.07?2:r<.19?1:r<.27?3:r<.31?5:r<.345?6:0;
    const depth=(rand()-.5)*.14,along=t+(rand()-.5)*.1;
    const ix=cx+ux*along-uz*depth,iy=-(cz+uz*along+ux*depth);
-   items.push({x:ix,y:iy,z:step.ground?.(ix,iy)??y,turn,color:own.map(v=>v*bright),scale:.93+rand()*.14,pose,seed:rand(),sun,sky:sky*(.93+rand()*.14)});
+   items.push({x:ix,y:iy,z:step.ground?.(ix,iy)??y,turn,color:own.map(v=>v*bright),scale:.93+rand()*.14,pose,seed:rand(),sun,sky:sky*(.93+rand()*.14),street:!!step.stand});
   }
  }
  // Blocks of CROWD_CELL metres, each drawn near or far (fanGeometry far) as it looks to the camera of that draw (crowdNear:
@@ -1879,7 +1879,8 @@ export function createCrowd(steps,{mobile=false,lean=false}={}){
   distant.onBeforeRender=(renderer,scene,camera)=>{distant.count=isNear(camera)?0:n;};
   root.add(close,distant);
  }
- return {root,count:items.length};
+ // (Those standing on the ground, a city's sidewalks: posts where a car may come at them, physics.js addRoamSolids.)
+ return {root,count:items.length,standing:items.filter(it=>it.street).map(it=>({x:it.x,y:it.y,r:.3}))};
 }
 const CROWD_CELL=60,CROWD_NEAR=50,CROWD_GIVE=4,LENS_REF=Math.tan(29*Math.PI/180);
 // Near or far by how big a block looks, not by its metres alone: the distance shortened by the lens (the broadcast
