@@ -42,16 +42,54 @@ export function lakeWater(data){
  const wet=lakeCells(data),t=data.terrain,level=data.meta.sea_level_m??0;if(!wet)return null;
  return (x,y)=>{const i=Math.round((x-t.x0)/t.step),j=Math.round((y-t.y0)/t.step),g=j*t.nx+i;return i<0||j<0||i>=t.nx||j>=t.ny||!wet[g]?null:{depth:level-t.z[g]};};
 }
+// Where a lake's surface does not go (meta.lake_cuts: simple polygons in track metres, the Pampulha spillway's deck,
+// gerar_pampulha.py): the water stops on the cut's edge (the weir's face), not on the grid's 5 m steps. Each cut with
+// its bounding box and its triangles (counter-clockwise: convex pieces to subtract); null without cuts (the sea, a lake
+// without them: nothing changes).
+function lakeCuts(data){
+ const cuts=data.meta.lake?data.meta.lake_cuts:null;if(!cuts?.length)return null;
+ return cuts.map(c=>{const v=c.map(p=>new THREE.Vector2(p[0],p[1]));
+  const tris=THREE.ShapeUtils.triangulateShape(v,[]).map(t=>{const q=t.map(k=>c[k]),a=(q[1][0]-q[0][0])*(q[2][1]-q[0][1])-(q[1][1]-q[0][1])*(q[2][0]-q[0][0]);return a<0?q.reverse():q;});
+  return {tris,box:[Math.min(...c.map(p=>p[0])),Math.min(...c.map(p=>p[1])),Math.max(...c.map(p=>p[0])),Math.max(...c.map(p=>p[1]))]};});
+}
+// The grid's nodes near a cut (one step round its box): the ground there is always drawn (open-circuit.js), its water
+// being only what the cut leaves. Uint8Array over the grid, or null without cuts.
+export function lakeCutNodes(data){
+ const cuts=lakeCuts(data);if(!cuts)return null;const t=data.terrain,{nx,ny,step,x0,y0}=t,out=new Uint8Array(nx*ny);
+ for(const {box} of cuts)for(let j=Math.max(0,Math.floor((box[1]-y0)/step)-1);j<=Math.min(ny-1,Math.ceil((box[3]-y0)/step)+1);j++)for(let i=Math.max(0,Math.floor((box[0]-x0)/step)-1);i<=Math.min(nx-1,Math.ceil((box[2]-x0)/step)+1);i++)out[j*nx+i]=1;
+ return out;
+}
+// A convex piece clipped to one side of the line a→b (left: inside a counter-clockwise polygon).
+function clipSide(poly,a,b,left){
+ const side=p=>((b[0]-a[0])*(p[1]-a[1])-(b[1]-a[1])*(p[0]-a[0]))*(left?1:-1),out=[];
+ for(let i=0;i<poly.length;i++){const p=poly[i],q=poly[(i+1)%poly.length],sp=side(p),sq=side(q);if(sp>=0)out.push(p);if(sp>=0!==sq>=0){const u=sp/(sp-sq);out.push([p[0]+(q[0]-p[0])*u,p[1]+(q[1]-p[1])*u]);}}
+ return out;
+}
+// A convex piece less a convex cut: the pieces outside each of the cut's edges in turn (slivers dropped).
+const pieceArea=p=>{let a=0;for(let i=0;i<p.length;i++){const q=p[i],r=p[(i+1)%p.length];a+=q[0]*r[1]-r[0]*q[1];}return a/2;};
+function subtractCut(poly,cut){
+ const out=[];let rest=poly;
+ for(let i=0;i<cut.length&&rest.length>2;i++){const a=cut[i],b=cut[(i+1)%cut.length],outside=clipSide(rest,a,b,false);if(outside.length>2&&pieceArea(outside)>1e-4)out.push(outside);rest=clipSide(rest,a,b,true);}
+ return out;
+}
 // The lake's surface: a square round each of its nodes and their neighbours (one node out, where the ground already
 // stands over the level all round Pampulha), merged into runs along the rows. The waterline is where the ground rises
-// through it, on the ground's own triangles, not the cells' steps.
+// through it, on the ground's own triangles, not the cells' steps; over a cut (lakeCuts) its edge.
 function lakeGeometry(data,wet){
- const t=data.terrain,{nx,ny,step,x0,y0}=t,grown=new Uint8Array(nx*ny),positions=[],index=[];
+ const t=data.terrain,{nx,ny,step,x0,y0}=t,grown=new Uint8Array(nx*ny),positions=[],index=[],cuts=lakeCuts(data);
  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++)if(wet[j*nx+i])for(let b=Math.max(0,j-1);b<=Math.min(ny-1,j+1);b++)for(let a=Math.max(0,i-1);a<=Math.min(nx-1,i+1);a++)grown[b*nx+a]=1;
+ const over=(box,xa,ya,xb,yb)=>xa<box[2]&&xb>box[0]&&ya<box[3]&&yb>box[1],touches=(xa,ya,xb,yb)=>cuts?.some(c=>over(c.box,xa,ya,xb,yb));
+ // A counter-clockwise piece as a fan (the squares' own winding).
+ const fan=pts=>{const v=positions.length/3;for(const p of pts)positions.push(p[0],0,-p[1]);for(let k=1;k+1<pts.length;k++)index.push(v,v+k,v+k+1);};
  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
   if(!grown[j*nx+i]||i&&grown[j*nx+i-1])continue;
   let e=i;while(e+1<nx&&grown[j*nx+e+1])e++;
   const xa=x0+(i-.5)*step,xb=x0+(e+.5)*step,ya=y0+(j-.5)*step,yb=y0+(j+.5)*step,v=positions.length/3;
+  if(touches(xa,ya,xb,yb)){
+   for(let k=i;k<=e;k++){const sa=x0+(k-.5)*step,sb=sa+step;let pieces=[[[sa,ya],[sb,ya],[sb,yb],[sa,yb]]];
+    for(const c of cuts)if(over(c.box,sa,ya,sb,yb))for(const tri of c.tris)pieces=pieces.flatMap(p=>subtractCut(p,tri));for(const p of pieces)fan(p);}
+   continue;
+  }
   positions.push(xa,0,-ya,xb,0,-ya,xb,0,-yb,xa,0,-yb);index.push(v,v+1,v+2,v,v+2,v+3);
  }
  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(positions.map((_,k)=>k%3===1?1:0),3));g.setIndex(index);

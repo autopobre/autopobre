@@ -486,9 +486,11 @@ def main():
                                       'height': TUNEL['altura']}}
     k, _, lat, road = superficie(q)
     fora = np.abs(lat) - largura[k] / 2
-    agua, zt = fundo_da_lagoa(lago, q, zt, (ny, nx), fora)
+    terra = terra_no_contorno(pasta, lago, q, zt, (ny, nx), rel, marcos_)
+    agua, zt = fundo_da_lagoa(lago, q, zt, (ny, nx), fora, terra)
+    agua, zt, canal = vertedouro(q, zt, agua, (ny, nx))
     sob_tabuleiro = tab[k] & (road - zt > 3.0)
-    peso = np.clip((24 - fora) / 16, 0, 1) * ~sob_tabuleiro * ~agua
+    peso = np.clip((24 - fora) / 16, 0, 1) * ~sob_tabuleiro * ~agua * ~canal
     zt = zt * (1 - peso) + (road - .06) * peso
     zt = np.where(sob_tabuleiro & (fora < 12), np.minimum(zt, road - 2.5), zt)
     pit_xy = np.array(pit['xy'])
@@ -518,6 +520,7 @@ def main():
     classes[(~agua.reshape(ny, nx)) & (classes == '6')] = '0'
     clareiras(classes, q, marcos_, miolo)
     scenery['cover']['classes'] = ''.join(classes.ravel())
+    marcos_na_volta(marcos_, P, s, E, largura)
     scenery['landmarks'] = marcos_
     scenery['buildings'], scenery['skyline'] = edificios(pasta, ORIGEM, P, largura, folga, pit, gx, gy, agua.reshape(ny, nx), rel,
                                                          s, E, scenery['landmarks'])
@@ -558,6 +561,8 @@ def main():
         # A lagoa: o plano da agua no nivel dela, so sobre a mascara de agua (classe '6' da cobertura): abaixo da
         # barragem o vale fica mais baixo que a agua e seco.
         'sea_level_m': round(NIVEL_LAGOA - BASE, 2), 'lake': True,
+        # Onde a superficie da lagoa nao vai (sea-water.js): o deck do vertedouro, a agua para na face da soleira.
+        'lake_cuts': [[[round(x_, 2), round(y_, 2)] for x_, y_ in VERTEDOURO_DECK]],
         # Corridas de uma volta so (pedido): a volta tem mais de 20 km.
         'laps': 1,
         **({'decks': decks} if decks else {}),
@@ -593,6 +598,27 @@ BASE = 800.0
 AGUA_LONGE_M = 8.5
 # Nivel da agua: os pontos do LiDAR de 2015 sobre a lagoa leem 800,76 a 800,85 m (o vertedouro foi alteado a 801,3 m).
 NIVEL_LAGOA = 800.8
+# O contorno LAGOA_PAMPULHA do BHGeo e o espelho d'agua legal: cobre o Parque Ecologico (no assoreamento entre a Ressaca
+# e o Sarandi), o brejo do braco oeste, a ilha do meio, a mata da margem norte e o terreno do Iate. Ali e terra o que o
+# laser de 2015 mediu (chao medido, nao o vazio preenchido) a TERRA_ACIMA_M ou mais sobre a agua e o WorldCover nao ve
+# como agua, em manchas de pelo menos TERRA_MIN_HA. A Casa do Baile e o Iate ficam na agua (NA_AGUA): pampulha-niemeyer.js
+# desenha a ilha e o cais deles.
+TERRA_ACIMA_M = .4
+TERRA_MIN_HA = .25
+NA_AGUA = ('casa_do_baile', 'iate')
+# O vertedouro principal da barragem (canal lateral de 2002 na ombreira esquerda, PAE da barragem: soleira livre de
+# 33,2 m a 801 m, galeria sob o macico): a borda da soleira do lado da lagoa, de oeste para leste, e o fundo do deck da
+# praca sobre o canal, de leste para oeste, medidos na ortofoto de 2015 (10 cm), em coordenadas locais. O deck e o
+# poligono dos dois (pampulha-barragem.js desenha soleira, pilares, deck e a agua vertendo).
+VERTEDOURO_SOLEIRA = [(1219.2, 783.4), (1225.0, 780.0), (1230.0, 777.0), (1235.0, 773.9), (1240.0, 771.1), (1245.0, 768.6),
+                      (1250.0, 766.6), (1254.2, 765.8)]
+VERTEDOURO_DECK = VERTEDOURO_SOLEIRA + [(1260.5, 774.0), (1255.5, 776.5), (1240.0, 783.5), (1225.0, 790.0), (1218.5, 792.0)]
+# O canal sob o deck: ate 8 m para dentro da soleira, escavado ate o fundo dele (797,3 m: a queda da soleira, 3,7 m).
+VERTEDOURO_CANAL_M = 8.0
+VERTEDOURO_FUNDO = 797.3
+# Diante da soleira, ate 6 m dela, lagoa a 1,4 m sob o nivel: a agua chega a face da soleira.
+VERTEDOURO_FRENTE_M = 6.0
+VERTEDOURO_FRENTE_FUNDO = 799.4
 MARGEM = 300.0
 RAMPA_MAX = .12
 # Fracao da reta principal (a partir da Carlos Luz) onde fica a linha de chegada: o grid atras dela, na reta.
@@ -615,6 +641,8 @@ TUNEL = {'fachada_semi': (130.0, 100.0), 'campo_semi': (83.0, 53.5), 'rumo_graus
          'vao_m': 16.0, 'gramado': (105.0, 68.0)}
 # Clareira em volta do Mineirinho (a mata do parque o escondia da volta).
 CLAREIRA_MINEIRINHO_M = 45.0
+# Sem edificacao generica a menos disto das pegadas dos marcos (as casas do cadastro apertavam a Casa Kubitschek).
+MARCO_FOLGA_M = 8.0
 
 
 def elipse(c, semi, rumo, n=180):
@@ -726,7 +754,7 @@ def esplanada(q, zt, forma, miolo, P, z):
 
 def clareiras(classes, q, marcos_, miolo):
     """Sem mata no miolo do Mineirao (piso de concreto; as ruas ficam) nem a CLAREIRA_MINEIRINHO_M m do Mineirinho
-    (grama)."""
+    (grama); o Parque Ecologico e gramado (pampulha-parques.js planta o bosque dele, longe dos caminhos e do lago)."""
     import shapely
     from shapely.geometry import Polygon
     C = classes.ravel()
@@ -737,6 +765,10 @@ def clareiras(classes, q, marcos_, miolo):
         if m_['kind'] == 'mineirinho':
             sel = shapely.contains_xy(Polygon(m_['outline']).buffer(CLAREIRA_MINEIRINHO_M), q[:, 0], q[:, 1])
             print(f'clareira do Mineirinho: {int((sel & np.isin(C, ["1", "2"])).sum())} celulas de mata viram grama')
+            C[sel & np.isin(C, ['1', '2'])] = '0'
+        if m_['kind'] == 'parque_ecologico':
+            sel = shapely.contains_xy(Polygon(m_['outline']), q[:, 0], q[:, 1])
+            print(f'Parque Ecologico: {int((sel & np.isin(C, ["1", "2"])).sum())} celulas de mata viram gramado')
             C[sel & np.isin(C, ['1', '2'])] = '0'
     classes[:] = C.reshape(classes.shape)
 
@@ -795,6 +827,23 @@ class Relevo:
         self.o = np.asarray(origem, float)
         self.an = gp.Raster(pasta / 'anadem.tif', epsg)
         self.mdt = gm.Grade(pasta / 'mdt_bhgeo_2m.npz')
+        self.pasta = pasta
+        self._medido = None
+
+    def medido(self, x, y):
+        """Fracao de chao medido pelo laser (nao preenchido) nas 3 x 3 celulas de 2 m em volta de cada ponto (0 fora)."""
+        from scipy import ndimage
+        if self._medido is None:
+            g = np.load(self.pasta / 'mdt_bhgeo_2m.npz')
+            self._medido = (ndimage.uniform_filter(g['medido'].astype(np.float32), 3), float(g['x0']), float(g['y1']),
+                            float(g['passo']))
+        m, x0, y1, passo = self._medido
+        X, Y = np.asarray(x, float) + self.o[0], np.asarray(y, float) + self.o[1]
+        i, j = np.floor((y1 - Y) / passo).astype(int), np.floor((X - x0) / passo).astype(int)
+        ok = (i >= 0) & (i < m.shape[0]) & (j >= 0) & (j < m.shape[1])
+        out = np.zeros(len(X))
+        out[ok] = m[i[ok], j[ok]]
+        return out
 
     def terreno(self, x, y, ordem=1):
         X, Y = np.asarray(x, float) + self.o[0], np.asarray(y, float) + self.o[1]
@@ -819,13 +868,46 @@ def lagoa(pasta, origem):
     return lago
 
 
-def fundo_da_lagoa(lago, q, zt, forma, fora):
+def terra_no_contorno(pasta, lago, q, zt, forma, rel, marcos_):
+    """A terra dentro do contorno da lagoa (TERRA_ACIMA_M, TERRA_MIN_HA, NA_AGUA): o laser medido e alto, o WorldCover
+    sem agua, as falhas fechadas (duas celulas), so as manchas grandes, nenhuma junto da Casa do Baile e do Iate."""
+    import shapely
+    from shapely.geometry import Polygon
+    from scipy import ndimage
+    dentro = shapely.contains_xy(lago, q[:, 0], q[:, 1])
+    wc = gp.Raster(pasta / 'worldcover.tif', 31983)
+    agua_wc = wc(q[:, 0] + rel.o[0], q[:, 1] + rel.o[1], ordem=0).astype(int) == 80
+    alto = zt > NIVEL_LAGOA - BASE + TERRA_ACIMA_M
+    D = dentro.reshape(forma)
+    T = ndimage.binary_closing((dentro & (rel.medido(q[:, 0], q[:, 1]) > .3) & alto & ~agua_wc).reshape(forma),
+                               iterations=2) & D
+    lab, n = ndimage.label(T)
+    fica = np.zeros(n + 1, bool)
+    fica[1:] = np.asarray(ndimage.sum(T, lab, range(1, n + 1))) * PASSO ** 2 / 1e4 >= TERRA_MIN_HA
+    for m_ in marcos_:
+        if m_['kind'] in NA_AGUA and m_.get('outline'):
+            perto = shapely.contains_xy(Polygon(m_['outline']).buffer(30), q[:, 0], q[:, 1]).reshape(forma)
+            fica[np.unique(lab[perto & T])] = False
+    fica[0] = False
+    T = fica[lab]
+    # O que sobra de agua fora do espelho principal (pocas entre as manchas, canais cortados) tambem e terra: senao vira
+    # fundo de lagoa cavado no gramado.
+    labA, nA = ndimage.label(D & ~T)
+    if nA > 1:
+        maior = 1 + int(np.argmax(ndimage.sum(D & ~T, labA, range(1, nA + 1))))
+        print(f'lagoa: {nA - 1} pocas soltas ({int(((labA > 0) & (labA != maior)).sum())} celulas) viram terra')
+        T = D & (labA != maior)
+    print(f'lagoa: {T.sum() * PASSO ** 2 / 1e4:.1f} ha de terra dentro do contorno do BHGeo ({int(fica.sum())} manchas)')
+    return T.ravel()
+
+
+def fundo_da_lagoa(lago, q, zt, forma, fora, terra):
     """Agua onde a grade cai na lagoa; o fundo desce com a distancia da margem (1 m junto dela, ~5 m a 70 m, 14 m no
     maximo: profundidade media de ~5 m e maxima de 15-16 m publicadas, sem batimetria aberta), suavizado. A terra junto da
     agua fica pelo menos 15 cm acima dela."""
     import shapely
     from compat_scipy import gaussian_filter
-    agua = shapely.contains_xy(lago, q[:, 0], q[:, 1]) & (fora > AGUA_LONGE_M)
+    agua = shapely.contains_xy(lago, q[:, 0], q[:, 1]) & (fora > AGUA_LONGE_M) & ~terra
     nivel = NIVEL_LAGOA - BASE
     W = agua.reshape(forma)
     beira = W & ~(np.roll(W, 1, 0) & np.roll(W, -1, 0) & np.roll(W, 1, 1) & np.roll(W, -1, 1))
@@ -837,6 +919,37 @@ def fundo_da_lagoa(lago, q, zt, forma, fora):
     zt = np.where(~agua & (terra_d < 15), np.maximum(zt, nivel + .15), zt)
     print(f'lagoa: {agua.mean():.1%} da grade, fundo ate {prof[agua].max():.1f} m (medio {prof[agua].mean():.1f} m)')
     return agua, zt
+
+
+def vertedouro(q, zt, agua, forma):
+    """O vertedouro principal sob o deck da praca (VERTEDOURO_*): os nos da grade ate VERTEDOURO_CANAL_M para dentro da
+    soleira descem ao fundo do canal, so os que tem os oito vizinhos sob o deck ou na agua (o declive de 5 m ate os outros
+    fica escondido sob o deck, sem buraco na praca nem na margem); os de ate VERTEDOURO_FRENTE_M diante dela viram lagoa
+    abaixo da crista. Nenhum no sob o deck e lagoa (meta.lake_cuts). Devolve a agua, o terreno e a mascara do canal."""
+    import shapely
+    from shapely.geometry import LineString, Polygon
+    soleira, deck = LineString(VERTEDOURO_SOLEIRA), Polygon(VERTEDOURO_DECK)
+    x0_, y0_, x1_, y1_ = deck.buffer(VERTEDOURO_FRENTE_M + 1).bounds
+    perto = (q[:, 0] > x0_) & (q[:, 0] < x1_) & (q[:, 1] > y0_) & (q[:, 1] < y1_)
+    pts = shapely.points(q[perto])
+    d = np.full(len(q), np.inf)
+    pr = np.zeros(len(q))
+    d[perto] = shapely.distance(soleira, pts)
+    pr[perto] = shapely.line_locate_point(soleira, pts)
+    sob = np.zeros(len(q), bool)
+    sob[perto] = shapely.contains_xy(deck, q[perto, 0], q[perto, 1])
+    frente = ~sob & (d <= VERTEDOURO_FRENTE_M) & (pr > .3) & (pr < soleira.length - .3)
+    agua = (agua & ~sob) | frente
+    zt = np.where(frente, np.minimum(zt, VERTEDOURO_FRENTE_FUNDO - BASE), zt)
+    ok = (sob | agua).reshape(forma)
+    cerca = ok.copy()
+    for a_ in (-1, 0, 1):
+        for b_ in (-1, 0, 1):
+            cerca &= np.roll(np.roll(ok, a_, 0), b_, 1)
+    canal = sob & (d <= VERTEDOURO_CANAL_M) & cerca.ravel()
+    zt = np.where(canal, np.minimum(zt, VERTEDOURO_FUNDO - BASE), zt)
+    print(f'vertedouro: {int(canal.sum())} nos do canal escavados a {VERTEDOURO_FUNDO} m, {int(frente.sum())} de lagoa diante da soleira')
+    return agua, zt, canal
 
 
 def pontes_da_volta(pasta, origem, P, largura, s, L):
@@ -916,6 +1029,31 @@ MARCOS = {
     'mineirao': ((-19.86528, -43.97032), 'Estádio Governador Magalhães Pinto (Mineirão)'),
     'mineirinho': ((-19.86117, -43.97276), 'Ginásio Jornalista Felipe Drummond (Mineirinho)'),
     'igrejinha': ((-19.85860, -43.97860), 'Igreja de São Francisco de Assis (Igrejinha da Pampulha)'),
+    # Rodada 2 (o resto do Conjunto Moderno da Pampulha e a orla): pontos do BHGeo (bens culturais, atrativos turisticos).
+    'casa_do_baile': ((-19.85449, -43.97000), 'Casa do Baile (Centro de Referência de Arquitetura, Urbanismo e Design)'),
+    'museu_de_arte': ((-19.85186, -43.97375), 'Museu de Arte da Pampulha (antigo Cassino)'),
+    'iate': ((-19.85401, -43.97574), 'Iate Tênis Clube'),
+    'casa_kubitschek': ((-19.85495, -43.98041), 'Museu Casa Kubitschek'),
+    'aquario': ((-19.85573, -44.00564), 'Aquário da Bacia do Rio São Francisco'),
+}
+# Marcos de area (o contorno do OSM): o parque de diversoes, o zoologico e o Parque Ecologico.
+MARCOS_AREAS = {
+    'parque_guanabara': (119409503, 'Parque Guanabara'),
+    'zoologico': (4892506, 'Jardim Zoológico'),
+    'parque_ecologico': (223985620, 'Parque Ecológico Francisco Lins do Rêgo'),
+}
+# Marcos de ponto (estatuas, mirantes, pracas, entradas, a barragem): OSM e BHGeo.
+MARCOS_PONTOS = {
+    'iemanja': ((-19.85257, -43.96842), 'Praça de Iemanjá · estátua de Iemanjá'),
+    'portal_da_memoria': ((-19.85260, -43.96824), 'Portal da Memória'),
+    'marco_zero': ((-19.85277, -43.99360), 'Marco Zero da Pampulha (junto do Memorial Minas-Japão)'),
+    'praca_da_pampulha': ((-19.86123, -43.98168), 'Praça da Pampulha (Geralda Damata Pimentel)'),
+    'mirante_sabia': ((-19.84562, -43.99941), 'Mirante do Sabiá'),
+    'mirante_bandeirantes': ((-19.85437, -43.98007), 'Mirante Bandeirantes'),
+    'zoo_entrada': ((-19.85477, -44.00526), 'Praça do Zoológico (entrada do zoológico)'),
+    'parque_ecologico_entrada': ((-19.86045, -43.99666), 'Entrada do Parque Ecológico'),
+    'vertedouro': ((-19.84420, -43.96753), 'Vertedouro da Barragem da Pampulha'),
+    'barragem': ((-19.84638, -43.96697), 'Barragem da Pampulha'),
 }
 
 
@@ -946,7 +1084,33 @@ def marcos(pasta, origem, rel):
                     'roof': round(float(pr.get('ALT_EST_MODAMDE_MINMDT') or 0), 2),
                     'outline': np.round(np.array(g.exterior.coords)[:, :2], 2).tolist()})
         print(f"marco {chave}: pegada de {g.area:.0f} m2, altura {out[-1]['height']} m (telhado tipico {out[-1]['roof']} m)")
+    from shapely.geometry import Polygon
+    o = gf.osm_local(pasta, origem, 31983)
+    for chave, (wid, nome) in MARCOS_AREAS.items():
+        g = Polygon(gf.linha_via(o, next(v for v in o['vias'] if v['id'] == wid))).buffer(0)
+        g = max(g.geoms, key=lambda h: h.area) if g.geom_type == 'MultiPolygon' else g
+        cx, cy = g.centroid.x, g.centroid.y
+        out.append({'kind': chave, 'name': nome, 'x': round(cx, 2), 'y': round(cy, 2), 'area': True,
+                    'ground': round(float(rel.terreno(np.array([cx]), np.array([cy]))[0]), 2),
+                    'outline': np.round(np.array(g.exterior.coords)[:, :2], 2).tolist()})
+        print(f'marco {chave}: area de {g.area / 1e4:.1f} ha (OSM {wid})')
+    for chave, ((la, lo), nome) in MARCOS_PONTOS.items():
+        x, y = para.transform(lo, la)
+        x, y = x - origem[0], y - origem[1]
+        out.append({'kind': chave, 'name': nome, 'x': round(x, 2), 'y': round(y, 2), 'point': True,
+                    'ground': round(float(rel.terreno(np.array([x]), np.array([y]))[0]), 2)})
     return out
+
+
+def marcos_na_volta(marcos_, P, s, E, largura):
+    """Onde cada marco fica em relacao a volta (para os modelos e as conferencias): a estacao mais perto, o lado
+    (1 esquerda, -1 direita: a lagoa fica a direita) e a distancia lateral ao eixo."""
+    kd = cKDTree(P)
+    for m_ in marcos_:
+        d, k = kd.query([m_['x'], m_['y']])
+        lat = (m_['x'] - P[k, 0]) * E[k, 0] + (m_['y'] - P[k, 1]) * E[k, 1]
+        m_['lap'] = {'s': round(float(s[k]), 1), 'side': 1 if lat > 0 else -1, 'd': round(float(abs(lat)), 1),
+                     'edge_d': round(float(abs(lat) - largura[k] / 2), 1)}
 
 
 def edificios(pasta, origem, P, largura, folga, pit, gx, gy, agua, rel, s, E, marcos_):
@@ -966,7 +1130,9 @@ def edificios(pasta, origem, P, largura, folga, pit, gx, gy, agua, rel, s, E, ma
         meio_ = a['lado'] * (largura[idx] / 2 + (de + ate) / 2)
         faixa.append(LineString(P[idx] + E[idx] * meio_[:, None]).buffer((ate - de) / 2 + 12.5))
     arv = STRtree(faixa)
-    marcos_t = STRtree([Polygon(m['outline']).buffer(2) for m in marcos_])
+    # Os marcos: as pegadas com MARCO_FOLGA_M em volta (nada colado neles), as areas (parques, zoologico) pelo centro.
+    predios_t = STRtree([Polygon(m['outline']).buffer(MARCO_FOLGA_M) for m in marcos_ if m.get('outline') and not m.get('area')])
+    areas_t = STRtree([Polygon(m['outline']).buffer(2) for m in marcos_ if m.get('area')])
     kd = cKDTree(P)
     lista, ceu, cont = [], [], {'pista': 0, 'marco': 0, 'lagoa': 0, 'baixa_longe': 0}
     xmin, xmax, ymin, ymax = gx[0] + 8, gx[-1] - 8, gy[0] + 8, gy[-1] - 8
@@ -982,7 +1148,7 @@ def edificios(pasta, origem, P, largura, folga, pit, gx, gy, agua, rel, s, E, ma
             h = 3.4
         h = min(h, 120.0)
         cx, cy = p.centroid.x, p.centroid.y
-        if len(marcos_t.query(p.centroid, predicate='intersects')):
+        if len(areas_t.query(p.centroid, predicate='intersects')) or len(predios_t.query(p, predicate='intersects')):
             cont['marco'] += 1
             continue
         dentro = xmin < cx < xmax and ymin < cy < ymax

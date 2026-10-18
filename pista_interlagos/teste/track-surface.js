@@ -34,6 +34,15 @@ export const ROAD_WEATHER={roadWetness:{value:0},roadRain:{value:0},roadTime:{va
 // (billboardFormat: the 14.4 m one, or any on a bend) would reach over a rail toward the cars.
 const boardCache=new WeakMap();
 // (Pure in the track data, asked for by many modules: worked out once per data.)
+// The stretch of the lap a landmark is seen from (Pampulha's, data.scenery.landmarks with `lap`: the nearest station, the
+// side, the distance from the asphalt's edge): no billboard stands there on that side, in front of a building the lap was
+// laid to show (the Iate's glass front behind "Lanchonete da Tia"). The span grows with the distance; landmarks over
+// 150 m off the asphalt (the Mineirão from the far side of its plaza) are seen over the boards anyway.
+export function landmarkView(data,s,side,half=0){
+ const L=data.meta.reconstructed_xy_m;
+ for(const m of data.scenery?.landmarks??[]){const v=m.lap;if(!v||v.edge_d>150||v.side!==side)continue;let d=Math.abs(s-v.s)%L;d=Math.min(d,L-d);if(d<60+Math.max(0,v.edge_d)*.5+half)return true;}
+ return false;
+}
 export function billboardSpots(data){
  if(!boardCache.has(data))boardCache.set(data,findBillboardSpots(data));
  return boardCache.get(data);
@@ -56,7 +65,7 @@ function findBillboardSpots(data){
    const near=p[4]/2+guardrailClearance(data,p[0],side)+(data.meta.street?6.4:5),reach=boardReach(data,index,side,f,near);if(!(reach<BOARD_REACH))continue;
    const offset=side*(near+reach),x=p[1]-p[8]*offset,y=p[2]+p[7]*offset;
    const clearance=bandClearance(bands,x,y).distance;
-   if(clearance>BOARD_CLEARANCE&&spots.every(b=>Math.hypot(b.x-x,b.y-y)>25)&&closures.every(c=>Math.hypot(c.x-x,c.y-y)>f.w/2+6)&&gaps.every(g=>g.side!==side||s<g.s0-f.w/2-8||s>g.s1+f.w/2+8)){spots.push({slot,index,p,side,x,y,clearance});break search;}
+   if(clearance>BOARD_CLEARANCE&&spots.every(b=>Math.hypot(b.x-x,b.y-y)>25)&&closures.every(c=>Math.hypot(c.x-x,c.y-y)>f.w/2+6)&&gaps.every(g=>g.side!==side||s<g.s0-f.w/2-8||s>g.s1+f.w/2+8)&&!landmarkView(data,s,side,f.w/2)){spots.push({slot,index,p,side,x,y,clearance});break search;}
   }
  }
  return spots;

@@ -153,7 +153,8 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  }
  // Circuito da Pampulha (imaginary street circuit round Belo Horizonte's lake): walls on both sides (open only for the
  // pit lane); one lap of 20 km (circuits.js laps, mirrored in meta.laps) in every race and championship round, never on
- // the story's calendar; the lake is water only over its own cells (sea-water.js lakeCells), the valley below the dam 10
+ // the story's calendar; the lake is water only over its own cells (sea-water.js lakeCells; the park, the island and the
+ // wooded banks inside the city's lake outline are land), the valley below the dam 10
  // to 40 m under its level dry land; and the first block of the Oscar Paschoal raced twice, up one carriageway and down
  // the other some 20 m away: a car anywhere on either is found on its own stretch (physics.js nearest).
  if(id==='pampulha'){
@@ -171,7 +172,7 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
   assert(season.rounds.includes(id)&&season.roundLaps(id)===1&&season.roundLaps('interlagos')===4,'Pampulha: one lap in Todas as pistas');
   const wet=lakeCells(data),level=data.meta.sea_level_m;let lake=0,dry=0;
   for(let k=0;k<wet.length;k++){if(wet[k]){lake++;assert(data.scenery.cover.classes[k]==='6'&&data.terrain.z[k]<level,'Pampulha: lake nodes are water cells under the level');}else if(data.terrain.z[k]<level)dry++;}
-  assert(data.meta.lake&&lake>100000&&dry>30000,`Pampulha: ${lake} lake nodes, ${dry} nodes under its level left dry (the valley below the dam)`);
+  assert(data.meta.lake&&lake>70000&&dry>30000,`Pampulha: ${lake} lake nodes, ${dry} nodes under its level left dry (the valley below the dam)`);
   // The block raced both ways: the stations with another stretch of the lap within 25 m (over 400 m away along it).
   const twin=[];for(let i=0;i<n;i++){const p=a[i];if(a.some(q=>{const d=Math.abs(q[0]-p[0]);return Math.min(d,L-d)>400&&Math.hypot(q[1]-p[1],q[2]-p[2])<25;}))twin.push(p[0]);}
   const shared=[];for(const s0 of twin){const last=shared.at(-1);if(last&&s0-last[1]<10)last[1]=s0;else shared.push([s0,s0]);}

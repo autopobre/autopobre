@@ -7,7 +7,7 @@ import {canvasTexture} from './pit-textures.js';
 import {gantryPosts,groundHeight} from './track-clearance.js';
 import {cliffShownHeights,createCliff} from './cliff-scenery.js';
 import {splitByCells} from './perf-probe.js';
-import {lakeCells} from './sea-water.js';
+import {lakeCells,lakeCutNodes} from './sea-water.js';
 
 // Circuits rebuilt from open data (Cascavel, ECPA): data/pista_<id>.json carries the
 // centre line and widths measured on 2025 aerial imagery over the OSM trace, the ANADEM
@@ -41,9 +41,10 @@ export function terrainMesh(data,heights,material){
  // A coastal circuit (meta.sea_level_m, sea-water.js): the bed under the sea's opaque plane is never seen, so its
  // triangles (all three corners half a metre under the surface) are left out, and with them their shading (the normals
  // were worked out with them: the shore's look stays). On a lake (meta.lake, sea-water.js lakeCells) only the lake's own:
- // the ground round it that lies lower (the valley below Pampulha's dam) is land.
+ // the ground round it that lies lower (the valley below Pampulha's dam) is land; round a cut in it (meta.lake_cuts, the
+ // spillway's channel under its deck) always drawn, the water there being only what the cut leaves.
  const sea=data.meta.sea_level_m;
- if(sea!=null){const deep=sea-.5,wet=lakeCells(data),shown=g=>heights[g]>=deep||!!wet&&!wet[g];let kept=0;for(let k=0;k<n;k+=3)if(shown(index[k])||shown(index[k+1])||shown(index[k+2])){index[kept++]=index[k];index[kept++]=index[k+1];index[kept++]=index[k+2];}geometry.setIndex(new THREE.BufferAttribute(index.subarray(0,kept),1));}
+ if(sea!=null){const deep=sea-.5,wet=lakeCells(data),cut=lakeCutNodes(data),shown=g=>heights[g]>=deep||!!wet&&!wet[g]||!!cut&&!!cut[g];let kept=0;for(let k=0;k<n;k+=3)if(shown(index[k])||shown(index[k+1])||shown(index[k+2])){index[kept++]=index[k];index[kept++]=index[k+1];index[kept++]=index[k+2];}geometry.setIndex(new THREE.BufferAttribute(index.subarray(0,kept),1));}
  // In pieces of 400 m (perf-probe.js splitByCells): the 400 to 500 thousand triangles of the grid were all drawn every
  // frame. After the rest of the opaque world, as Interlagos' ground (main.js): its costly shading skips what the road,
  // the buildings, the walls and the cars cover.

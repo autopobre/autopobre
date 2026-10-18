@@ -75,6 +75,11 @@ import {createMinhocaoLandmarks,hasMinhocaoLandmarks} from './minhocao-landmarks
 import {createPampulhaEstadios,hasPampulhaEstadios} from './pampulha-estadios.js';
 import {createPampulhaIgrejinha,hasPampulhaIgrejinha} from './pampulha-igrejinha.js';
 import {createPampulhaFauna,hasPampulhaFauna} from './pampulha-fauna.js';
+import {createPampulhaGuanabara,hasPampulhaGuanabara} from './pampulha-guanabara.js';
+import {createPampulhaNiemeyer,hasPampulhaNiemeyer} from './pampulha-niemeyer.js';
+import {createPampulhaOrla,hasPampulhaOrla} from './pampulha-orla.js';
+import {createPampulhaBarragem,hasPampulhaBarragem} from './pampulha-barragem.js';
+import {createPampulhaParques,hasPampulhaParques} from './pampulha-parques.js';
 import {createCityStreets} from './city-streets.js';
 import {createStreetClosures} from './street-closures.js';
 import {createCityFurniture} from './city-furniture.js';
@@ -2122,6 +2127,13 @@ async function loadCircuit(){
   // Belo Horizonte's Pampulha (pedido #8): the Mineirão and the Mineirinho by the start, the Igrejinha on the lake shore.
   if(hasPampulhaEstadios(data))circuitExtras.push(createPampulhaEstadios(data,{mobile:scenery.mobile,ground:groundAt}));
   if(hasPampulhaIgrejinha(data))circuitExtras.push(createPampulhaIgrejinha(data,{mobile:scenery.mobile,ground:groundAt}));
+  // Round 2 of the Pampulha (pedido #8): the Parque Guanabara's rides, Niemeyer's other buildings, the shore's monuments and
+  // viewpoints, the dam and its spillway, the zoo and the Parque Ecológico.
+  if(hasPampulhaGuanabara(data))circuitExtras.push(createPampulhaGuanabara(data,{mobile:scenery.mobile,ground:groundAt}));
+  if(hasPampulhaNiemeyer(data))circuitExtras.push(createPampulhaNiemeyer(data,{mobile:scenery.mobile,ground:groundAt}));
+  if(hasPampulhaOrla(data))circuitExtras.push(createPampulhaOrla(data,{mobile:scenery.mobile,ground:groundAt}));
+  if(hasPampulhaBarragem(data))circuitExtras.push(createPampulhaBarragem(data,{mobile:scenery.mobile,ground:groundAt}));
+  if(hasPampulhaParques(data))circuitExtras.push(createPampulhaParques(data,{mobile:scenery.mobile,ground:groundAt}));
   // The lake's capybaras (a family at one bank per race) and now and then the fat caiman (pampulha-fauna.js); they
   // watch the cars passing and shy from the pilot on foot.
   if(hasPampulhaFauna(data))circuitExtras.push(createPampulhaFauna(data,{mobile:scenery.mobile,ground:groundAt,cars:()=>[carRoot,...(immersive?.visual?.rivals??[])],walker:()=>walker?.active?walker.hero:null}));
