@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {canvasTexture} from './pit-textures.js';
 import {guardrailClearance,guardrailPresent} from './physics.js';
+import {branchSpace} from './branch-layout.js';
 import {lightUniforms,nightLights,screenHalf} from './sea-water.js';
 
 // The Parque Guanabara, Belo Horizonte's amusement park on the Pampulha shore by the Igrejinha (a travelling park
@@ -234,12 +235,14 @@ const signUv=key=>{const [x0,y0,x1,y1]=SIGNS[key],u0=(x0+2)/1024,u1=(x1-2)/1024,
 
 // ---------- The lap's driving space (asphalt and walls, DRIVE metres over the road): pampulha-estadios.js's rule.
 function lapSpace(data){
+ // A branch road beside the lap (data.branches, branch-layout.js): its asphalt and walls are driving space too.
+ const branch=branchSpace(data);
  const A=data.samples,N=A.length,CELL=8,cells=new Map(),key=(i,j)=>i*131071+j;
  const st=A.map(p=>{const nl=Math.hypot(p[9],p[10])||1,q={s:p[0],x:p[1],y:p[2],z:p[3],cf:p[5],n:[p[9]/nl,p[10]/nl],back:[0,0]};for(const [k,side] of [[0,-1],[1,1]])q.back[k]=p[4]/2+guardrailClearance(data,p[0],side)+(guardrailPresent(data,p[0],side)?.75:0);return q;});
  for(let i=0;i<N;i++){const p=st[i],q=st[(i+1)%N],r=Math.max(...p.back,...q.back)+2;
   for(let ci=Math.floor((Math.min(p.x,q.x)-r)/CELL);ci<=Math.floor((Math.max(p.x,q.x)+r)/CELL);ci++)for(let cj=Math.floor((Math.min(p.y,q.y)-r)/CELL);cj<=Math.floor((Math.max(p.y,q.y)+r)/CELL);cj++){const k=key(ci,cj);let l=cells.get(k);if(!l)cells.set(k,l=[]);l.push(i);}}
  function at(x,y){
-  const list=cells.get(key(Math.floor(x/CELL),Math.floor(y/CELL))),out=[];if(!list)return out;
+  const list=cells.get(key(Math.floor(x/CELL),Math.floor(y/CELL))),out=branch.at(x,y);if(!list)return out;
   for(const i of list){const p=st[i],q=st[(i+1)%N],dx=q.x-p.x,dy=q.y-p.y,l2=dx*dx+dy*dy||1e-9;let u=((x-p.x)*dx+(y-p.y)*dy)/l2;if(u<-.3||u>1.3)continue;u=clamp(u,0,1);
    const nx=lerp(p.n[0],q.n[0],u),ny=lerp(p.n[1],q.n[1],u),lat=(x-p.x-dx*u)*nx+(y-p.y-dy*u)*ny,k=lat>=0?1:0;
    out.push({s:p.s,lat,road:lerp(p.z,q.z,u)+lerp(p.cf,q.cf,u)*lat,back:lerp(p.back[k],q.back[k],u)});}
@@ -247,7 +250,7 @@ function lapSpace(data){
  }
  // Whether any cell the lap's space reaches lies within r of (x, y): a moving part that reaches no such cell in a pose
  // cannot touch it there.
- const any=(x,y,r)=>{for(let ci=Math.floor((x-r)/CELL);ci<=Math.floor((x+r)/CELL);ci++)for(let cj=Math.floor((y-r)/CELL);cj<=Math.floor((y+r)/CELL);cj++)if(cells.has(key(ci,cj)))return true;return false;};
+ const any=(x,y,r)=>{for(let ci=Math.floor((x-r)/CELL);ci<=Math.floor((x+r)/CELL);ci++)for(let cj=Math.floor((y-r)/CELL);cj<=Math.floor((y+r)/CELL);cj++)if(cells.has(key(ci,cj)))return true;return branch.any(x,y,r);};
  return {at,any};
 }
 
@@ -739,7 +742,7 @@ function railing(K,outline){
  let s=0,panels=0;
  for(let i=0;i+1<pts.length;i++){const a=pts[i],b=pts[i+1],len=Math.hypot(b[0]-a[0],b[1]-a[1]);if(len<.05)continue;const n=Math.ceil(len/2.6);
   for(let j=0;j<n;j++){const p=[lerp(a[0],b[0],j/n),lerp(a[1],b[1],j/n)],q=[lerp(a[0],b[0],(j+1)/n),lerp(a[1],b[1],(j+1)/n)],l=len/n,m=[(p[0]+q[0])/2,(p[1]+q[1])/2];
-   if(Math.hypot(m[0]-gx,m[1]-gy)<5.4){s+=l;continue;}
+   if(Math.hypot(m[0]-gx,m[1]-gy)<5.4||!K.clear(...p)||!K.clear(...q)){s+=l;continue;}
    const gp=gAt(p[0],p[1]),gq=gAt(q[0],q[1]);
    T.signs.quad([p[0],p[1],gp+.04],[q[0],q[1],gq+.04],[q[0],q[1],gq+2],[p[0],p[1],gp+2],[1,1,1],null,[[s/RAIL,v0],[(s+l)/RAIL,v0],[(s+l)/RAIL,v1],[s/RAIL,v1]]);
    S.post([p[0],p[1],gp-.3],[p[0],p[1],gp+2.1],.06,.06,4,lin(0x2b62a8));s+=l;panels++;}
@@ -754,7 +757,7 @@ function paving(K,outline,lawn){
  const col=(x,y)=>{const d=Math.hypot(x-lawn.x,y-lawn.y),n=fbm(x/6,y/6),k=.82+.3*n;if(d<12.3)return mul(lin(0x4f7a32),.85+.3*fbm(x/2.5,y/2.5));if(d<14.9)return mul(lin(0x8d857a),k);return mul(lin(0x7c776e),k*(.94+.1*noise(x*.9,y*.9)));};
  const Z=(x,y)=>gAt(x,y)+.06;let cells=0;
  for(let x=Math.floor(x0/step)*step;x<x1;x+=step)for(let y=Math.floor(y0/step)*step;y<y1;y+=step){
-  if(!inside(x+step/2,y+step/2,outline))continue;const a=[x,y,Z(x,y)],b=[x+step,y,Z(x+step,y)],c=[x+step,y+step,Z(x+step,y+step)],d=[x,y+step,Z(x,y+step)];
+  if(!inside(x+step/2,y+step/2,outline)||![[x,y],[x+step,y],[x+step,y+step],[x,y+step]].every(([u,v])=>K.clear(u,v)))continue;const a=[x,y,Z(x,y)],b=[x+step,y,Z(x+step,y)],c=[x+step,y+step,Z(x+step,y+step)],d=[x,y+step,Z(x,y+step)];
   B.tri(a,b,c,p=>col(p[0],p[1]));B.tri(a,c,d,p=>col(p[0],p[1]));cells++;
  }
  return cells;
@@ -783,7 +786,9 @@ export function createPampulhaGuanabara(data,{ground,mobile=false}={}){
  const signFaces=(a,b,c,d,key,o,back=null,depth=0)=>{signQuad(a,b,c,d,key,o);if(back){const k=mul(o,depth);signQuad(sub(b,k),sub(a,k),sub(d,k),sub(c,k),back,mul(o,-1));}};
  const board=(c,o,w,h,key)=>{const r=[-o[1],o[0]],p=(x,z,k)=>[c[0]+r[0]*x-o[0]*k,c[1]+r[1]*x-o[1]*k,c[2]+z];signQuad(p(-w/2,-h/2,0),p(w/2,-h/2,0),p(w/2,h/2,0),p(-w/2,h/2,0),key,o);
   T.paint.box((u,v,z)=>p(u,z,v),-w/2-.06,w/2+.06,.02,.1,-h/2-.06,h/2+.06,lin(0x30343a),{bottom:true});};
- const K={T,gAt:gridAt,mobile,addBone,bones,sprites,at,board,signFaces,lapDir,rand,paving:T.paving};
+ // clear(x, y): off the driving space by 0.4 m (the avenue's branch road runs along the park's front, its wall's back at
+ // the outline's corner by the lap: the railing and the paving stop short of it).
+ const K={T,gAt:gridAt,mobile,addBone,bones,sprites,at,board,signFaces,lapDir,rand,paving:T.paving,clear:(x,y)=>!lap.at(x,y).some(h=>Math.abs(h.lat)<h.back+.4)};
  const rides=[],built={},tris={},count=()=>T.paint.triangles+T.bulbs.triangles+T.signs.triangles;
  for(const build of BUILDERS){const before=count();try{const r=build(K);if(r){rides.push(r);tris[r.name]=count()-before;}}catch(e){console.warn('Parque Guanabara: brinquedo não montado:',build.name,e);built[build.name]={error:String(e)};}}
  for(const [name,fn] of [['barcos',bumperBoats],['pavilhoes',halls],['portao',gate],['placa',totem],['postes',polesAndFestoons]]){const before=count();try{fn(K);tris[name]=count()-before;}catch(e){console.warn('Parque Guanabara: não montado:',name,e);built[name]={error:String(e)};}}

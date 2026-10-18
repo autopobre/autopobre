@@ -80,6 +80,8 @@ import {createPampulhaNiemeyer,hasPampulhaNiemeyer} from './pampulha-niemeyer.js
 import {createPampulhaOrla,hasPampulhaOrla} from './pampulha-orla.js';
 import {createPampulhaBarragem,hasPampulhaBarragem} from './pampulha-barragem.js';
 import {createPampulhaParques,hasPampulhaParques} from './pampulha-parques.js';
+import {createBranchScenery} from './branch-scenery.js';
+import {hasBranches} from './branch-layout.js';
 import {createCityStreets} from './city-streets.js';
 import {createStreetClosures} from './street-closures.js';
 import {createCityFurniture} from './city-furniture.js';
@@ -848,7 +850,10 @@ let mapBase=null;
 function mapOutline(w,h){
  if(mapBase?.data===data&&mapBase.w===w&&mapBase.h===h&&mapBase.project===projectMap)return mapBase.canvas;
  const canvas=mapBase?.canvas??document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');
- ctx.beginPath();data.samples.forEach((p,i)=>{const [x,y]=projectMap(p[1],p[2]);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.closePath();ctx.lineWidth=8;ctx.strokeStyle='#ffffff16';ctx.stroke();ctx.lineWidth=2;ctx.strokeStyle='#b6c5b5';ctx.stroke();
+ ctx.beginPath();data.samples.forEach((p,i)=>{const [x,y]=projectMap(p[1],p[2]);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.closePath();
+ // A branch road (data.branches) is part of the lap: drawn with it, from where it leaves to where it rejoins.
+ for(const b of data.branches??[]){const c=b.columns,x=c.indexOf('x'),y=c.indexOf('y');b.samples.forEach((p,i)=>{const [px,py]=projectMap(p[x],p[y]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});}
+ ctx.lineWidth=8;ctx.strokeStyle='#ffffff16';ctx.stroke();ctx.lineWidth=2;ctx.strokeStyle='#b6c5b5';ctx.stroke();
  mapBase={data,w,h,project:projectMap,canvas};return canvas;
 }
 function drawMap(){
@@ -1282,7 +1287,7 @@ function hud(){
  const touring=automatic&&!immersive.active;$('watchButton').hidden=$('tourBadge').hidden=$('touchTourBadge').hidden=!touring;if(touring)$('watchButton').textContent=watch?`Piloto: #${watch.entry.number} ${watch.entry.shortName} (N)`:'Piloto: você (N)';
  $('grade').textContent=`${(p.grade*100).toFixed(1).replace('.',',')}%`;$('bank').textContent=`${(p.bank*100).toFixed(1).replace('.',',')}%`;$('alt').textContent=circuit.altitude===null?'—':`${(p.z+circuit.altitude).toFixed(1)} m`;
  const totalLaps=immersive.active?immersive.storyLaps:immersive.freeTotalLaps;$('lap').textContent=Number.isFinite(totalLaps)?`${Math.min(car.laps+1,totalLaps)} / ${totalLaps}`:String(car.laps+1);$('racePosition').textContent=`${immersive.active?immersive.state.result?.position??immersive.state.position:immersive.freePosition}º / ${immersive.fieldSize}`;$('racePosition').parentElement.hidden=immersive.practice;$('timer').textContent=fmt(car.clock-car.lapStart);$('best').textContent=fmt(car.best);const rejected=car.lastLapValid===false&&car.clock-car.lapStart<10;$('valid').textContent=rejected?(car.lastInvalidReason==='pit'?'Volta não contou · excesso de velocidade nos boxes':'Volta não contou · trecho cortado ou incompleto'):car.lapValid?'Volta válida':car.invalidReason==='pit'?`Volta inválida · ${Math.round(car.pitPenalty?.kmh??0)} km/h nos boxes (máx. 60)`:'Volta inválida · trecho cortado';$('valid').hidden=car.lapValid&&!rejected;$('valid').style.color=car.lapValid&&!rejected?'#e2fb57':'#ffb789';
- $('surface').textContent=automatic?(watch?`RECONHECIMENTO · #${watch.entry.number} ${watch.entry.shortName.toUpperCase()}`:'RECONHECIMENTO AUTOMÁTICO'):p.pit&&data.pit?(car.limiter?'PIT LANE · MÁX. 60 km/h':'PIT LANE'):p.onRoad?'ASFALTO · SESSÃO LIVRE':'FORA DA PISTA · ADERÊNCIA REDUZIDA';$('location').textContent=p.pit&&data.pit?'Pit lane · boxes':location(p.s);drawMap();
+ $('surface').textContent=automatic?(watch?`RECONHECIMENTO · #${watch.entry.number} ${watch.entry.shortName.toUpperCase()}`:'RECONHECIMENTO AUTOMÁTICO'):p.pit&&data.pit?(car.limiter?'PIT LANE · MÁX. 60 km/h':'PIT LANE'):p.onRoad?'ASFALTO · SESSÃO LIVRE':'FORA DA PISTA · ADERÊNCIA REDUZIDA';$('location').textContent=p.pit&&data.pit?'Pit lane · boxes':p.branch!=null&&data.branches?.[p.branch]?data.branches[p.branch].label:location(p.s);drawMap();
  // Jumps and crashes take over the surface line while they last.
  const crash=car.fall?.hit?'KABUM! O RESGATE TRAZ O CARRO DE VOLTA':car.fall?'QUEDA NO ABISMO!':car.backAt!=null&&car.clock-car.backAt<4?'DE VOLTA À PISTA · ESTA VOLTA NÃO VALE RECORDE':car.upright<.45?(car.overturned>0?`CAPOTADO · FISCAIS DESVIRAM EM ${Math.max(1,Math.ceil(RIGHTING_DELAY-car.overturned))} s`:'CAPOTANDO!'):car.rightedAt!==null&&car.clock-car.rightedAt<3?'FISCAIS DESVIRARAM O CARRO':car.airTime>.25?'NO AR!':car.pitPenalty&&car.clock-car.pitPenalty.clock<3?'EXCESSO DE VELOCIDADE NOS BOXES · VOLTA INVÁLIDA':'';if(crash)$('surface').textContent=crash;
  else if(mobile.handbrake)$('surface').textContent=touchDevice?'FREIO DE MÃO PUXADO':'FREIO DE MÃO PUXADO · ESPAÇO SOLTA';
@@ -2134,6 +2139,10 @@ async function loadCircuit(){
   if(hasPampulhaOrla(data))circuitExtras.push(createPampulhaOrla(data,{mobile:scenery.mobile,ground:groundAt}));
   if(hasPampulhaBarragem(data))circuitExtras.push(createPampulhaBarragem(data,{mobile:scenery.mobile,ground:groundAt}));
   if(hasPampulhaParques(data))circuitExtras.push(createPampulhaParques(data,{mobile:scenery.mobile,ground:groundAt}));
+  // Round 3 of the Pampulha: the fork by the Igrejinha (data.branches): the avenue's asphalt and lines past the Parque
+  // Guanabara, the attenuators on the noses and the sign over the road before it (branch-scenery.js; its walls are the
+  // lap's, street-walls.js).
+  if(hasBranches(data))circuitExtras.push(createBranchScenery(data,roadSurface,{textures:terrainTextures,ground:groundAt,mobile:scenery.mobile}));
   // The lake's capybaras (a family at one bank per race) and now and then the fat caiman (pampulha-fauna.js); they
   // watch the cars passing and shy from the pilot on foot.
   if(hasPampulhaFauna(data))circuitExtras.push(createPampulhaFauna(data,{mobile:scenery.mobile,ground:groundAt,cars:()=>[carRoot,...(immersive?.visual?.rivals??[])],walker:()=>walker?.active?walker.hero:null}));
@@ -2176,7 +2185,7 @@ async function loadCircuit(){
  // The fans standing on a city's sidewalks are in the way of a car out in the city (meta.roam).
  if(data.meta.roam)landscape.stats.fanSolids=addRoamSolids(data,crowd.standing);await ensureCarModel();await fuscaWanted();
  if(circuit.arena){roadRails={root:new THREE.Group(),rails:null,setQuality(){}};roadCurbs=new THREE.Group();roadCurbs.userData.setQuality=()=>{};}
- else{roadRails=createGuardrails(data,{quality:graphics.values.materials});scene.add(roadRails.root);cameraObstacles.push(roadRails.rails);
+ else{roadRails=createGuardrails(data,{quality:graphics.values.materials});scene.add(roadRails.root);cameraObstacles.push(roadRails.rails);landscape.stats.barrier=roadRails.stats;
  roadCurbs=createCurbs(data,{quality:graphics.values.materials});scene.add(roadCurbs);}
  // Surveyed pit lane: entry after the Cafe, garages, exit around the S do Senna.
  let pitLayout=null;if(data.pit){const pitLaneScene=createInterlagosPit(data,roadSurface,terrainTextures,circuit.track?{label:`${circuit.track} · BOX 99`,title:circuit.boxTitle,name:`Box 99 de ${circuit.name}`,track:circuit.track}:undefined);scene.add(pitLaneScene.root);fixed.push(pitLaneScene.root);cameraObstacles.push(...pitLaneScene.obstacles);pitLayout=pitLaneScene.box;}

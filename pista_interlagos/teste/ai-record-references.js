@@ -1964,196 +1964,196 @@ export const AI_REFERENCE_TIMES=[
   "circuit": "pampulha",
   "mode": "normal",
   "number": "73",
-  "bestLap": 586.025,
-  "bestRace": 586.025
+  "bestLap": 556.442,
+  "bestRace": 556.442
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "00",
-  "bestLap": 585.408,
-  "bestRace": 585.408
+  "bestLap": 606.15,
+  "bestRace": 606.15
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "7",
-  "bestLap": 587.158,
-  "bestRace": 587.158
+  "bestLap": 604.067,
+  "bestRace": 604.067
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "64",
-  "bestLap": 616.692,
-  "bestRace": 616.7
+  "bestLap": 611.592,
+  "bestRace": 611.592
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "2",
-  "bestLap": 585.467,
-  "bestRace": 585.467
+  "bestLap": 602.683,
+  "bestRace": 602.683
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "19",
-  "bestLap": 587.733,
-  "bestRace": 587.733
+  "bestLap": 609.317,
+  "bestRace": 609.317
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "51",
-  "bestLap": 596.042,
-  "bestRace": 596.042
+  "bestLap": 610.058,
+  "bestRace": 610.058
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "93",
-  "bestLap": 586.617,
-  "bestRace": 586.617
+  "bestLap": 559.742,
+  "bestRace": 559.742
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "312",
-  "bestLap": 613.475,
-  "bestRace": 613.475
+  "bestLap": 605.575,
+  "bestRace": 605.575
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "70",
-  "bestLap": 589.783,
-  "bestRace": 589.783
+  "bestLap": 577.742,
+  "bestRace": 577.742
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "9",
-  "bestLap": 612.658,
-  "bestRace": 612.658
+  "bestLap": 603.4,
+  "bestRace": 603.4
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "74",
-  "bestLap": 615.508,
-  "bestRace": 615.508
+  "bestLap": 606.9,
+  "bestRace": 606.9
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "88",
-  "bestLap": 614.175,
-  "bestRace": 614.175
+  "bestLap": 610.992,
+  "bestRace": 610.992
  },
  {
   "circuit": "pampulha",
   "mode": "normal",
   "number": "42",
-  "bestLap": 614.675,
-  "bestRace": 614.683
+  "bestLap": 608.65,
+  "bestRace": 608.65
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "73",
-  "bestLap": 586.025,
-  "bestRace": 586.025
+  "bestLap": 556.442,
+  "bestRace": 556.442
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "00",
-  "bestLap": 585.408,
-  "bestRace": 585.408
+  "bestLap": 606.15,
+  "bestRace": 606.15
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "7",
-  "bestLap": 587.158,
-  "bestRace": 587.158
+  "bestLap": 604.067,
+  "bestRace": 604.067
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "64",
-  "bestLap": 616.692,
-  "bestRace": 616.7
+  "bestLap": 611.592,
+  "bestRace": 611.592
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "2",
-  "bestLap": 585.467,
-  "bestRace": 585.467
+  "bestLap": 602.683,
+  "bestRace": 602.683
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "19",
-  "bestLap": 587.733,
-  "bestRace": 587.733
+  "bestLap": 609.317,
+  "bestRace": 609.317
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "51",
-  "bestLap": 596.042,
-  "bestRace": 596.042
+  "bestLap": 610.058,
+  "bestRace": 610.058
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "93",
-  "bestLap": 586.617,
-  "bestRace": 586.617
+  "bestLap": 559.742,
+  "bestRace": 559.742
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "312",
-  "bestLap": 613.475,
-  "bestRace": 613.475
+  "bestLap": 605.575,
+  "bestRace": 605.575
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "70",
-  "bestLap": 589.783,
-  "bestRace": 589.783
+  "bestLap": 577.742,
+  "bestRace": 577.742
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "9",
-  "bestLap": 612.658,
-  "bestRace": 612.658
+  "bestLap": 603.4,
+  "bestRace": 603.4
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "74",
-  "bestLap": 615.508,
-  "bestRace": 615.508
+  "bestLap": 606.9,
+  "bestRace": 606.9
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "88",
-  "bestLap": 614.175,
-  "bestRace": 614.175
+  "bestLap": 610.992,
+  "bestRace": 610.992
  },
  {
   "circuit": "pampulha",
   "mode": "immersive",
   "number": "42",
-  "bestLap": 614.675,
-  "bestRace": 614.683
+  "bestLap": 608.65,
+  "bestRace": 608.65
  }
 ];

@@ -2,6 +2,8 @@ import {TestCar,clamp,wrap,steerLimit,WHEELBASE,OPALA_BODY,sameLevel} from './ph
 import {RIVAL_ROSTER,ACE_NUMBER,AI_LEVELS,gridSlot,playerGridSlot} from './race-roster.js';
 import {pitGeometry,wallContact,pitLane,curveloPitFrame,CURVELO_PIT} from './pit-lane.js';
 import {trackFall} from './cliff-fall.js';
+import {branchGeometries,locateBranch,branchPoint,branchSpan} from './branch-lane.js';
+import {branchLayouts} from './branch-layout.js';
 // Contacts between cars: each car's plan is its body's box (physics.js OPALA_BODY, FUSCA_BODY; a remote
 // car without one is an Opala). Mass and inertia are the Opala's for every body; engine and tyres are the body's
 // (physics.js OPALA_MECHANICS, FUSCA_MECHANICS): the drivers plan their corners and brakes on the car's grip.
@@ -117,14 +119,22 @@ export function racingLine(data){
   // A wheel may ride a surveyed kerb (13 right, 14 left), so the line gets a little more room there.
   lo[i]=-Math.min(half-LINE_MARGIN+(p[13]?KERB_ROOM:0),right);hi[i]=Math.min(half-LINE_MARGIN+(p[14]?KERB_ROOM:0),left);
  }
- const X=i=>a[i][1]+a[i][9]*off[i],Y=i=>a[i][2]+a[i][10]*off[i];
- // Each point slides along its normal to where its bend matches its neighbours'
- // (biharmonic relaxation), from 48 m stencils down to 6 m, clamped to the road.
- for(const [k,passes] of [[24,150],[12,150],[6,120],[3,100]])for(let pass=0;pass<passes;pass++)for(let i=0;i<n;i++){
-  const m1=(i-k+n)%n,p1=(i+k)%n,m2=(i-2*k+2*n)%n,p2=(i+2*k)%n;
+ relaxLine(a,off,lo,hi,0,n);
+ const line={off,lo,hi,laneLo,laneHi,...lineShape(a,off,data.meta.reconstructed_xy_m/n)};lines.set(data,line);return line;
+}
+// Each point (the stations from..to-1, round the lap) slides along its normal to where its bend matches its neighbours'
+// (biharmonic relaxation), from 48 m stencils down to 6 m, clamped to the road.
+function relaxLine(a,off,lo,hi,from,to){
+ const n=a.length,X=i=>a[i][1]+a[i][9]*off[i],Y=i=>a[i][2]+a[i][10]*off[i];
+ for(const [k,passes] of [[24,150],[12,150],[6,120],[3,100]])for(let pass=0;pass<passes;pass++)for(let t=from;t<to;t++){
+  const i=t%n,m1=(i-k+n)%n,p1=(i+k)%n,m2=(i-2*k+2*n)%n,p2=(i+2*k)%n;
   const ex=(4*(X(m1)+X(p1))-X(m2)-X(p2))/6-X(i),ey=(4*(Y(m1)+Y(p1))-Y(m2)-Y(p2))/6-Y(i);
   off[i]=clamp(off[i]+.6*(ex*a[i][9]+ey*a[i][10]),lo[i],hi[i]);
  }
+}
+// The bends of a line (offsets off from the stations a, ds metres apart) and of the centre line, and the corners along it.
+function lineShape(a,off,ds){
+ const n=a.length,X=i=>a[i][1]+a[i][9]*off[i],Y=i=>a[i][2]+a[i][10]*off[i];
  // Signed curvature (left positive) over 20 m chords, lightly averaged against survey noise.
  const curvature=(px,py)=>{
   const raw=new Float64Array(n),out=new Float64Array(n);
@@ -132,7 +142,7 @@ export function racingLine(data){
   for(let i=0;i<n;i++){let sum=0;for(let j=-3;j<=3;j++)sum+=raw[(i+j+n)%n];out[i]=sum/7;}
   return out;
  };
- const curve=curvature(X,Y),centre=curvature(i=>a[i][1],i=>a[i][2]),ds=data.meta.reconstructed_xy_m/n;
+ const curve=curvature(X,Y),centre=curvature(i=>a[i][1],i=>a[i][2]);
  // Corners are runs of real bend on the line; each sample knows the corner it is in,
  // or the next one, and how far away its turn-in is.
  const bend=i=>Math.abs(curve[(i+n)%n])>CORNER_CURVE,corners=[],owner=new Int32Array(n).fill(-1);
@@ -146,8 +156,88 @@ export function racingLine(data){
  }
  const cornerAt=new Int32Array(n).fill(-1),cornerDist=new Float64Array(n);
  for(let t=2*n-1,id=-1,run=0;t>=0;t--){const i=t%n;if(owner[i]>=0){id=owner[i];run=0;}else run++;if(t<n){cornerAt[i]=id;cornerDist[i]=run*ds;}}
- const line={off,lo,hi,laneLo,laneHi,curve,centre,corners,cornerAt,cornerDist,ds};lines.set(data,line);return line;
+ return {curve,centre,corners,cornerAt,cornerDist,ds};
 }
+// --- Branch roads (data.branches, branch-lane.js: Pampulha's avenue past the Igrejinha): a second way past a stretch of
+// the lap, both valid. Each rival takes one way past each fork for the whole race (RaceField reset). The way by a branch
+// is driven on a lap of its own (forkRoutes): the lap with the stretch from the branch's entry to its exit replaced by the
+// branch's stations (resampled about 2 m apart), on which the racing line is relaxed again round the fork (FORK_WINDOW
+// stations either side; the lap's line and its bounds kept beyond), so the speed plan sees the branch's corners before the
+// split and after the merge the car is on the lap's own line without a seam. A station's bounds there are the road a car
+// may use (forkBounds): the lap's asphalt where the two run together and the branch's own beyond the lap's edge on its
+// side where it is a road of its own (physics.js forkAt), the part of the branch past the lap's far wall left out.
+// A car's place on such a lap (RaceField forkFrame): by the branch's stations through the fork's stretch, by the lap's
+// elsewhere (shifted past it by what the branch saves).
+const FORK_WINDOW=200,FORK_ROOM=2.5,FORK_SHARE=.5,CREST_GRIP=.8,SAG_LOAD=1.5,TIP_ROOM=.6,forkCache=new WeakMap();
+export function forkRoutes(data){
+ if(!data.branches?.length)return null;
+ if(forkCache.has(data))return forkCache.get(data);
+ const main=racingLine(data),a=data.samples,n=a.length,L=data.meta.reconstructed_xy_m,layouts=branchLayouts(data);
+ const routes=branchGeometries(data).map(geo=>{
+  const kA=a.findIndex(p=>p[0]>=geo.entryMainS),kB=a.findIndex(p=>p[0]>=geo.exitMainS);
+  if(!(kA>0&&kB>kA))throw Error(`branch ${geo.id}: its stretch must not cross the line`);
+  const bStart=a[kA][0]-geo.entryMainS,total=geo.length+(a[kB][0]-geo.exitMainS)-bStart,m=Math.max(1,Math.round(total/main.ds)),h=total/m,shift=m-(kB-kA);
+  const [from,to]=branchSpan(geo),lap=layouts[geo.index].lap,rows=[],dlo=[],dhi=[];
+  for(let j=0;j<m;j++){
+   const b=bStart+j*h,p=branchPoint(geo,b),tl=Math.hypot(p.tx,p.ty)||1,nl=Math.hypot(p.lx,p.ly)||1,lx=p.lx/nl,ly=p.ly/nl;
+   rows.push([a[kA][0]+j*h,p.x,p.y,p.z,p.width,p.bank,p.grade,p.tx/tl,p.ty/tl,lx,ly,0,0,p.kerbRight,p.kerbLeft]);
+   const [lo,hi]=forkBounds(lap,p,lx,ly,geo.side,p.mainS>=from&&p.mainS<=to);dlo.push(lo);dhi.push(hi);
+  }
+  const va=[...a.slice(0,kA),...rows,...a.slice(kB)],nv=va.length,lapK=k=>k<kA?k:k-shift,inFork=k=>k>=kA&&k<kA+m;
+  const off=new Float64Array(nv),lo=new Float64Array(nv),hi=new Float64Array(nv),laneLo=new Float64Array(nv),laneHi=new Float64Array(nv),sv=new Float64Array(nv),delta=a[kB][0]-a[kA][0]-m*h;
+  for(let k=0;k<nv;k++){
+   if(inFork(k)){const j=k-kA;lo[k]=dlo[j]+LINE_MARGIN;hi[k]=dhi[j]-LINE_MARGIN;laneLo[k]=dlo[j]+LANE_MARGIN;laneHi[k]=dhi[j]-LANE_MARGIN;sv[k]=a[kA][0]+j*h;continue;}
+   const i=lapK(k);off[k]=main.off[i];lo[k]=main.lo[i];hi[k]=main.hi[i];laneLo[k]=main.laneLo[i];laneHi[k]=main.laneHi[i];sv[k]=k<kA?a[i][0]:a[i][0]-delta;
+  }
+  relaxLine(va,off,lo,hi,Math.max(0,kA-FORK_WINDOW),Math.min(nv,kA+m+FORK_WINDOW));
+  // Over a crest of the branch's profile (it climbs from the lap's height to the avenue's own) a car lighter than its
+  // weight takes off: the speed the road's fall over a 4 m chord leaves CREST_GRIP of g on the wheels; into a sharp sag
+  // (a kink up, the suspension slammed onto its stops and thrown off them at the crest after it) no more than SAG_LOAD
+  // of g pressing it down. Infinity elsewhere.
+  const crest=new Float64Array(nv).fill(Infinity);
+  for(let j=2;j+2<m;j++){const z=k=>rows[k][3],bend=(z(j+2)-2*z(j)+z(j-2))/(4*h*h);crest[kA+j]=Math.sqrt(G*(bend<0?CREST_GRIP:SAG_LOAD)/Math.max(Math.abs(bend),1e-9));}
+  const line=forkLanes({off,lo,hi,laneLo,laneHi,...lineShape(va,off,main.ds),crest},kA-FORK_LEAD,kA+m+10);
+  return {index:geo.index,geo,kA,kB,m,h,bStart,shift,delta,a:va,n:nv,sv,L:L-delta,line,lapK,inFork};
+ });
+ // The lap's own way (RaceField main view): its line kept TIP_ROOM further off the branch's side near the tips of the V
+ // where the branch's right wall meets the lap's (out of the lap's kink at the split the line rode the kerb into the
+ // tip), relaxed again round each fork, and its lanes narrowed as the forks'.
+ const off=Float64Array.from(main.off),lo=Float64Array.from(main.lo),hi=Float64Array.from(main.hi),laneLo=Float64Array.from(main.laneLo),laneHi=Float64Array.from(main.laneHi);
+ for(const R of routes){
+  const g=[...R.geo.mainGaps].sort((p,q)=>p[0]-q[0]),side=R.geo.side,near=s=>s>=g[0][1]-40&&s<=g[0][1]+5||s>=g.at(-1)[0]-30&&s<=g.at(-1)[0]+10;
+  for(let k=R.kA;k<R.kB;k++){if(!near(a[k][0]))continue;const half=a[k][4]/2;
+   if(side>0){hi[k]=Math.min(hi[k],half-LINE_MARGIN-TIP_ROOM);laneHi[k]=Math.min(laneHi[k],half-LANE_MARGIN-TIP_ROOM);}
+   else{lo[k]=Math.max(lo[k],-half+LINE_MARGIN+TIP_ROOM);laneLo[k]=Math.max(laneLo[k],-half+LANE_MARGIN+TIP_ROOM);}}
+  relaxLine(a,off,lo,hi,Math.max(0,R.kA-FORK_WINDOW),Math.min(n,R.kB+FORK_WINDOW));
+ }
+ routes.mainLine=routes.reduce((line,R)=>forkLanes(line,R.kA-FORK_LEAD,R.kB+10),{off,lo,hi,laneLo,laneHi,...lineShape(a,off,main.ds)});
+ forkCache.set(data,routes);return routes;
+}
+// Round a fork the lanes a car moves over to (laneLo, laneHi: passing, room, defence) are the narrowest of the next
+// FORK_AHEAD stations': where the two roads part one of them narrows within a few dozen metres, and a car out in a lane
+// as wide as the road had been ran on into the other road (a pass round the outside of the lap's kink at the Igrejinha
+// carried on down the avenue). From station from to to-1.
+const FORK_AHEAD=40,FORK_LEAD=120;
+function forkLanes(line,from,to){
+ const n=line.laneLo.length,lo=Float64Array.from(line.laneLo),hi=Float64Array.from(line.laneHi);
+ for(let t=from;t<to;t++){
+  const k=(t%n+n)%n;for(let j=1;j<=FORK_AHEAD;j++){const q=(k+j)%n;lo[k]=Math.max(lo[k],line.laneLo[q]);hi[k]=Math.min(hi[k],line.laneHi[q]);}
+  if(lo[k]>hi[k]-.5){const m=(lo[k]+hi[k])/2;lo[k]=m-.25;hi[k]=m+.25;}
+ }
+ return {...line,laneLo:lo,laneHi:hi};
+}
+// The road a car may use across a branch station p (unit left normal lx, ly), as offsets from the branch's centre line
+// [lo, hi]: the stretch round the centre line where the point is on the lap's asphalt (lap: branch-layout.js lapNear) or,
+// where the branch is a road of its own (own), on the branch's asphalt past the lap's edge on its side.
+function forkBounds(lap,p,lx,ly,side,own){
+ const ok=d=>{const e=lap(p.x+lx*d,p.y+ly*d);return Math.abs(e.d)<=e.width/2||own&&e.d*side>0&&Math.abs(d)<=p.width/2;};
+ let c=0;if(!ok(0))for(let d=.25;d<p.width;d+=.25){if(ok(d)){c=d;break;}if(ok(-d)){c=-d;break;}}
+ let lo=c,hi=c;while(lo>c-30&&ok(lo-.25))lo-=.25;while(hi<c+30&&ok(hi+.25))hi+=.25;
+ return [lo,hi];
+}
+// Each rival's way past a fork (true: by the branch), on dice of its own: the race's seed, its number and the fork, so
+// the host and its guests agree and the race's other dice stay as they were.
+function forkCoin(seed,number,index){let h=0x811C9DC5;for(const ch of String(number))h=Math.imul(h^ch.charCodeAt(0),0x01000193);return random((seed^h^Math.imul(index+1,0x9E3779B1))>>>0)();}
 // --- In-lap: after the flag a rival runs one more lap, takes the pit lane and parks on the
 // working lane. Cars line up in the order they arrive, the first furthest down the garage row,
 // so nobody pulls over beside a parked car; Box 99, the café bay and the way out stay clear.
@@ -229,7 +319,57 @@ export class RaceField {
  // level (AI_LEVELS), also taken at the next reset; retirements: one to four cars break down (the
  // race option "Abandonos", on in the game, off by default here so seeded checks race full fields).
  // body: the rivals' body (physics.js OPALA_BODY, FUSCA_BODY in a Fusca race), taken at the next reset.
- constructor(data,{onStep,onReset,seed,ace=false,level='facil',retirements=false,roster=RIVAL_ROSTER,body=OPALA_BODY,weatherGrip=1}={}){this.data=data;this.weatherGrip=weatherGrip;this.body=body;this.onStep=onStep;this.onReset=onReset;this.seed=seed;this.ace=ace;this.level=level;this.retirements=retirements;this.roster=roster;this.line=racingLine(data);this.route=pitRoute(data);this.time=0;this.collisions=0;this.cooldowns=new Map();this.reset();}
+ // forkChoice (checks, reference runs): (entry, fork index) => true to send that rival by the branch, instead of the dice.
+ constructor(data,{onStep,onReset,seed,ace=false,level='facil',retirements=false,roster=RIVAL_ROSTER,body=OPALA_BODY,weatherGrip=1,forkChoice=null}={}){this.data=data;this.weatherGrip=weatherGrip;this.body=body;this.onStep=onStep;this.onReset=onReset;this.seed=seed;this.ace=ace;this.level=level;this.retirements=retirements;this.roster=roster;this.line=racingLine(data);this.route=pitRoute(data);this.forkChoice=forkChoice;this.views();this.time=0;this.collisions=0;this.cooldowns=new Map();this.reset();}
+ // The ways a car is driven by (decide's view): plain, the lap as ever (a track without a branch road, and the last
+ // resort); main, the lap on a track with branch roads (a car on a branch's own road away from the lap is not on it:
+ // mainFrame null); one per branch, the lap with that branch in it (forkRoutes, forkFrame). a, line, L: the stations,
+ // the racing line and the length driven by; F: a car's place there (station i, distance s, offset d to the left, the
+ // unit tangent and left normal, onRoad, pit), or null where the car is not on that way's road.
+ views(){
+  const data=this.data,L=data.meta.reconstructed_xy_m;
+  this.plain={key:'plain',plain:true,a:data.samples,line:this.line,L,F:o=>o.surface,fork:null};
+  this.forks=forkRoutes(data);if(!this.forks)return;
+  this.frames=new WeakMap();
+  this.main={key:'main',a:data.samples,line:this.forks.mainLine,L,F:o=>this.mainFrame(o),fork:null};
+  this.forkViews=this.forks.map(R=>({key:'fork'+R.index,a:R.a,line:R.line,L:R.L,F:o=>this.forkFrame(o,R),fork:R}));
+ }
+ // A car's place on the lap (main view): its surface on the lap; on a branch road where it runs beside the lap, the
+ // lap's nearest segment (within FORK_ROOM of the lap's asphalt), else null.
+ mainFrame(o){
+  const S=o.surface;if(S.branch==null)return S;
+  const e=this.frameOf(S);if(e.main!==undefined)return e.main;
+  const a=this.data.samples,n=a.length,L=this.data.meta.reconstructed_xy_m,q=o.nearest(o.x,o.y,false,null),p=a[q.i],r=a[(q.i+1)%n],l=Math.hypot(p[7],p[8])||1,tx=p[7]/l,ty=p[8]/l,d=-q.ex*ty+q.ey*tx;
+  return e.main=Math.abs(d)>p[4]/2+FORK_ROOM?null:{i:q.i,s:(p[0]+q.u*Math.hypot(r[1]-p[1],r[2]-p[2]))%L,d,width:p[4],tx,ty,lx:-ty,ly:tx,onRoad:S.onRoad,pit:S.pit};
+ }
+ // A car's place on a fork's way (forkRoutes): off the fork's stretch the lap's own (past it, shifted); through it by the
+ // branch's stations, while the car is on that way's road (within FORK_ROOM of its bounds), else null.
+ forkFrame(o,R){
+  const S=o.surface,i=S.i;if(i<R.kA)return S;
+  const e=this.frameOf(S),key='f'+R.index;if(e[key]!==undefined)return e[key];
+  if(i>=R.kB)return e[key]={i:i+R.shift,s:S.s-R.delta,d:S.d,width:S.width,tx:S.tx,ty:S.ty,lx:S.lx,ly:S.ly,onRoad:S.onRoad,pit:S.pit};
+  const b=locateBranch(R.geo,o.x,o.y);if(!b)return e[key]=null;
+  const j=(b.s-R.bStart)/R.h,k=j<0?R.kA-1:R.kA+Math.min(R.m-1,Math.floor(j));
+  if(b.d<R.line.laneLo[k]-LANE_MARGIN-FORK_ROOM||b.d>R.line.laneHi[k]+LANE_MARGIN+FORK_ROOM)return e[key]=null;
+  return e[key]={i:k,s:R.sv[R.kA]+b.s-R.bStart,d:b.d,width:b.width,tx:b.tx,ty:b.ty,lx:b.lx,ly:b.ly,onRoad:S.onRoad,pit:S.pit};
+ }
+ frameOf(S){let e=this.frames.get(S);if(!e)this.frames.set(S,e={});return e;}
+ // The way a driver drives by this step: its own way past each fork while it is on that way's road; else the lap; else
+ // (pushed off it, or past a nose the wrong side) the way whose road it is on. Switching ways mid-move, it drops the
+ // move and holds its place across the road (the offsets were the other way's).
+ view(r){
+  if(!this.forks)return this.plain;
+  const c=r.car;let V=null;
+  for(const W of this.forkViews)if(r.routes?.[W.fork.index]&&W.F(c)){V=W;break;}
+  if(!V)V=this.mainFrame(c)?this.main:this.forkViews.find(W=>W.F(c))??this.plain;
+  if(r.viewKey!==undefined&&r.viewKey!==V.key)Object.assign(r,{mode:'line',rival:null,roomFor:null,blendTarget:0,lane:V.F(c).d});
+  r.viewKey=V.key;return V;
+ }
+ // The way a tow follows from where the car stands: the lap's, or a branch's on that branch's own road.
+ towView(c){
+  if(!this.forks||c.surface.branch==null&&this.mainFrame(c))return this.plain;
+  return this.forkViews.find(W=>W.F(c))??this.plain;
+ }
  // entrants: the roster numbers that race (null: all of them; [] a solo practice, [number] a 1x1). A
  // short field closes up to the front of the grid, the player in the next slot (playerGridSlot).
  // roster (taken here too): the drivers, RIVAL_ROSTER or, when the player races another team's car,
@@ -269,6 +409,9 @@ export class RaceField {
    if(style.ace)Object.assign(rival,{lineUse:1,apex:style.apex,wander:{...rival.wander,amp:0},rhythm:{...rival.rhythm,amp:0},reaction:grid?.13:0,day:1});
    return rival;
   });
+  // Branch roads (data.branches): each rival's way past each fork for the whole race, about half by the branch
+  // (forkCoin: dice of its own; forkChoice in checks and reference runs).
+  if(this.forks)for(const r of this.rivals)r.routes=this.forks.map(R=>this.forkChoice?!!this.forkChoice(r.entry,R.index):forkCoin(this.raceSeed,r.entry.number,R.index)<FORK_SHARE);
   // One to four cars break down somewhere between 6% and 96% of the race, on dice of their own so
   // the race's other dice stay as they were. The ace never breaks: he is indestructible.
   if(this.retirements){
@@ -323,11 +466,16 @@ export class RaceField {
  // One driver's steering and pedals for this step: speed plan, racecraft, mistakes and recovery.
  // A driver may bring its own seeded dice (r.random) so it leaves the field's race untouched.
  decide(r,bodies,driverOf,player,dt,totalLaps){
-  const L=this.data.meta.reconstructed_xy_m,a=this.data.samples,n=a.length,line=this.line,ds=line.ds,t=this.time,rand=r.random??this.random;
-   const c=r.car,st=r.style,here=c.surface,i=c.index,d=here.d,speed=Math.hypot(c.vx,c.vy),along=c.vx*here.tx+c.vy*here.ty,fx=Math.cos(c.heading),fy=Math.sin(c.heading);
-   const lap=Math.floor(Math.max(0,r.progress-this.gridLeadIn)/L);
-   // Past its breakdown point (reset, retirements) the car is out of the race: off to the grass.
-   if(r.breakdown&&!r.broken&&!r.finished&&totalLaps&&r.progress-this.gridLeadIn>=r.breakdown.at*totalLaps*L)r.broken={...r.breakdown,time:t,side:0,smokeLeft:r.breakdown.smoke};
+  // The way it drives by (view: the lap, or on a track with branch roads the lap with the branch it takes in it): the
+  // stations, the line and everyone's place on it (F; null for a car on another road of a fork: not in its way).
+  // (crest: on a branch's own stations, the speed it can take over the crests of its profile without taking off.)
+  const V=this.view(r),F=V.F,L=this.data.meta.reconstructed_xy_m,a=V.a,n=a.length,line=V.line,crest=line.crest,ds=line.ds,t=this.time,rand=r.random??this.random;
+   const c=r.car,st=r.style,here=F(c),i=V.plain?c.index:here.i,d=here.d,speed=Math.hypot(c.vx,c.vy),along=c.vx*here.tx+c.vy*here.ty,fx=Math.cos(c.heading),fy=Math.sin(c.heading);
+   const lap=Math.floor(Math.max(0,r.progress-this.gridLeadIn)/L),VL=V.L;
+   // Past its breakdown point (reset, retirements) the car is out of the race: off to the grass (once off a branch
+   // road: there it is walled in, and the grass is the lap's).
+   const walled=!V.plain&&(c.surface.branch!=null||!!V.fork?.inFork(i));
+   if(r.breakdown&&!r.broken&&!r.finished&&totalLaps&&r.progress-this.gridLeadIn>=r.breakdown.at*totalLaps*L&&!walled)r.broken={...r.breakdown,time:t,side:0,smokeLeft:r.breakdown.smoke};
    if(r.broken)return this.brokenInput(r,dt);
    // A clean driver's lap (the ace, levels above Fácil): the best he can do only now and then, most
    // laps a few tenths to two seconds off it (the pilots: "1:51, 1:52, 1:53, then 1:51 again"). The
@@ -344,13 +492,14 @@ export class RaceField {
    let ahead=null,behind=null,emergency=0;const beside=[];
    for(const o of bodies){
     if(o===c)continue;const dx=o.x-c.x,dy=o.y-c.y;if(Math.abs(dx)+Math.abs(dy)>150)continue;
-    const gap=trackGap(c,o,L),od=o.surface.d,ov=o.vx*o.surface.tx+o.vy*o.surface.ty;
+    const f=F(o);if(!f)continue;
+    const gap=lapTravel(here.s,f.s,VL),od=f.d,ov=o.vx*f.tx+o.vy*f.ty;
     if(Math.abs(gap)<5.4&&Math.abs(od-d)<4)beside.push({o,gap,od,v:ov});
     // The ace also reads where a car ahead is heading: one crossing toward his path by the time he
     // gets there (turning in for its apex) is already in it. The car he is passing is the move's own
     // business (the pass checks below).
-    let path=Math.abs(od-plan(o.surface.i));
-    if(st.clean&&gap>4.4&&path>=2.1&&!(r.mode==='pass'&&o===r.rival)&&along>ov+.5){const drift=(o.vx*o.surface.lx+o.vy*o.surface.ly)*Math.min(1.2,(gap-4.4)/(along-ov)),p=plan(o.surface.i),lo=Math.min(od,od+drift),hi=Math.max(od,od+drift);path=p<lo?lo-p:p>hi?p-hi:0;}
+    let path=Math.abs(od-plan(f.i));
+    if(st.clean&&gap>4.4&&path>=2.1&&!(r.mode==='pass'&&o===r.rival)&&along>ov+.5){const drift=(o.vx*f.lx+o.vy*f.ly)*Math.min(1.2,(gap-4.4)/(along-ov)),p=plan(f.i),lo=Math.min(od,od+drift),hi=Math.max(od,od+drift);path=p<lo?lo-p:p>hi?p-hi:0;}
     // Until he is out from behind a car (moving over to pass it, say), it is still in his way.
     if(st.clean&&gap<25)path=Math.min(path,Math.abs(od-d));
     if(gap>4.4&&gap<120&&path<2.1&&(!ahead||gap<ahead.gap))ahead={o,gap,od,v:ov};
@@ -399,7 +548,7 @@ export class RaceField {
      // the car is still on a lane nearer its own: that lane's bend counts if it is tighter.
      const k=(i+j)%n,want=plan(k),room=.3+.15*j*ds,on=clamp(d,line.laneLo[i],line.laneHi[i]),off=clamp(want,on-room,on+room);let kap=bendAt(k);
      if(Math.abs(off-want)>.4){const cl=line.centre[k],lane=cl/Math.max(.5,1-cl*off);if(Math.abs(lane)>Math.abs(kap))kap=lane;}
-     const lateral=Math.max(2,grip-G*Math.sign(kap)*a[k][5]),length=ds*Math.max(.5,1-line.centre[k]*want),vc=Math.sqrt(lateral/Math.max(Math.abs(kap),1e-4));
+     const lateral=Math.max(2,grip-G*Math.sign(kap)*a[k][5]),length=ds*Math.max(.5,1-line.centre[k]*want),vc=crest?Math.min(crest[k],Math.sqrt(lateral/Math.max(Math.abs(kap),1e-4))):Math.sqrt(lateral/Math.max(Math.abs(kap),1e-4));
      if(v<Infinity){const use=Math.min(1,v*v*Math.abs(kap)/lateral);v=Math.sqrt(Math.max(0,v*v+2*length*(braking*Math.sqrt(1-use*use)+G*a[k][6])));}
      v=Math.min(v,vc);if(vc<slowV){slowV=vc;slowJ=j;}
      if(j===lead+2)next=v;
@@ -410,7 +559,7 @@ export class RaceField {
    }
    else for(let j=0,reach=speed*speed/(2*braking)+30;j*ds<reach&&j<n;j+=2){
     const k=(i+j)%n,kap=bendAt(k),lateral=Math.max(2,grip-G*Math.sign(kap)*a[k][5]);
-    const vc=Math.sqrt(lateral/Math.max(Math.abs(kap),1e-4)),dist=Math.max(0,j*ds-speed*.12),limit=Math.sqrt(vc*vc+2*braking*dist);
+    const vc=crest?Math.min(crest[k],Math.sqrt(lateral/Math.max(Math.abs(kap),1e-4))):Math.sqrt(lateral/Math.max(Math.abs(kap),1e-4)),dist=Math.max(0,j*ds-speed*.12),limit=Math.sqrt(vc*vc+2*braking*dist);
     if(limit<target){target=limit;bindV=vc;bindDist=dist;}
    }
    const free=target;
@@ -423,13 +572,13 @@ export class RaceField {
    if(r.finished&&totalLaps){
     // Past the flag the driver eases off (about 2.5 m/s²) rather than braking in front of the pack.
     if(r.mode!=='line')Object.assign(r,{mode:'line',rival:null});target=Math.min(target,COOL_PACE+Math.max(0,32-2.5*(t-r.finishTime)));
-    const R=this.route,toEntry=R?((R.entryS-here.s)%L+L)%L:Infinity;
+    const R=this.route,toEntry=R?((R.entryS-c.surface.s)%L+L)%L:Infinity;
     // In-lap: over to the pit side before the entry, then down the lane (pitInput).
     if(toEntry<INLAP_MERGE){r.lane=R.entryD;r.blendTarget=1;if(toEntry<6+speed*.3)r.pit={k:0,u:-toEntry,slot:R.slots[Math.min(this.nextSlot++,R.slots.length-1)],parked:false};}
     else{
      // Blue flag: with a car still racing close behind, keep to the side of the road away
      // from the racing line ahead until it has gone by.
-     let chased=false;for(const o of bodies){if(o===c||driverOf.get(o)?.finished)continue;const gap=trackGap(c,o,L);if(gap<-3&&gap>-70&&Math.abs(o.surface.d-d)<12)chased=true;}
+     let chased=false;for(const o of bodies){if(o===c||driverOf.get(o)?.finished)continue;const f=F(o);if(!f)continue;const gap=lapTravel(here.s,f.s,VL);if(gap<-3&&gap>-70&&Math.abs(f.d-d)<12)chased=true;}
      if(chased&&!r.yieldSide){let sum=0;for(let j=0;j<40;j++)sum+=line.off[(i+j)%n];r.yieldSide=Math.abs(sum)>24?-Math.sign(sum):Math.sign(d)||1;}
      r.yieldTime=chased?2.5:Math.max(0,r.yieldTime-dt);if(!r.yieldTime)r.yieldSide=0;
      // A metre inside the lane limit on that side: on the main straight the pit wall and its
@@ -461,20 +610,25 @@ export class RaceField {
      const heavy=zone&&slow.dist<90,inside=st.clean?(obstacle?0:heavy?slow.dir:bend&&toCorner<80?bend.dir:0):near?bend.dir:0,pref=inside||(Math.abs(ahead.od)>.8?-Math.sign(ahead.od):st.passSide);
      for(const side of inside&&!(st.clean&&!heavy)?[pref]:[pref,-pref]){
       const lane=clamp(ahead.od+side*2.8,low,high);if(Math.abs(lane-ahead.od)<2.3||st.clean&&inside&&side!==inside&&Math.abs(lane-d)>3)continue;
-      if(bodies.some(o=>{if(o===c||o===ahead.o)return false;const gap=trackGap(c,o,L);return gap>(obstacle?0:-8)&&gap<ahead.gap+(st.clean?8:20)&&Math.abs(o.surface.d-lane)<2.2;}))continue;
+      if(bodies.some(o=>{if(o===c||o===ahead.o)return false;const f=F(o);if(!f)return false;const gap=lapTravel(here.s,f.s,VL);return gap>(obstacle?0:-8)&&gap<ahead.gap+(st.clean?8:20)&&Math.abs(f.d-lane)<2.2;}))continue;
       Object.assign(r,{mode:'pass',rival:ahead.o,passSide:side,lane,blendTarget:1,modeTime:0});break;
      }
      if(r.mode!=='pass')r.cooldown=.5;
     }
     if(r.mode==='pass'){
-     // Keep the chosen lane; only move further over if the rival drifts toward us.
-     const o=r.rival,gap=trackGap(c,o,L),ov=o.vx*o.surface.tx+o.vy*o.surface.ty,clearOf=o.surface.d+r.passSide*2.6;
-     r.lane+=clamp(fit(r.passSide>0?Math.max(r.lane,clearOf):Math.min(r.lane,clearOf),i)-r.lane,-st.laneRate*1.5*dt,st.laneRate*1.5*dt);
-     const done=gap<-5.5,shut=gap>4.2&&Math.abs(r.lane-o.surface.d)<2.1,fading=gap>10&&along<ov-1.5,lost=gap>st.passDistance+15||r.modeTime>12;
-     if(done||shut||fading||lost){if(done)r.passes++;Object.assign(r,{mode:'line',rival:null,blendTarget:0,cooldown:done?1:st.passCooldown,stuck:0});}
+     // Keep the chosen lane; only move further over if the rival drifts toward us. (A rival gone off onto another road
+     // of a fork is lost.)
+     const o=r.rival,f=F(o);
+     if(!f)Object.assign(r,{mode:'line',rival:null,blendTarget:0,cooldown:st.passCooldown,stuck:0});
+     else{
+      const gap=lapTravel(here.s,f.s,VL),ov=o.vx*f.tx+o.vy*f.ty,clearOf=f.d+r.passSide*2.6;
+      r.lane+=clamp(fit(r.passSide>0?Math.max(r.lane,clearOf):Math.min(r.lane,clearOf),i)-r.lane,-st.laneRate*1.5*dt,st.laneRate*1.5*dt);
+      const done=gap<-5.5,shut=gap>4.2&&Math.abs(r.lane-f.d)<2.1,fading=gap>10&&along<ov-1.5,lost=gap>st.passDistance+15||r.modeTime>12;
+      if(done||shut||fading||lost){if(done)r.passes++;Object.assign(r,{mode:'line',rival:null,blendTarget:0,cooldown:done?1:st.passCooldown,stuck:0});}
+     }
     }
     // Leaving room (the ace, below): keep a car's width outside the attacker until one of them is clear.
-    if(r.mode==='room'){const o=r.roomFor,gap=trackGap(c,o,L);r.lane=o.surface.d-r.passSide*(CAR_GAP+.4);if(Math.abs(gap)>6||r.modeTime>5)Object.assign(r,{mode:'line',roomFor:null,blendTarget:0});}
+    if(r.mode==='room'){const o=r.roomFor,f=F(o),gap=f?lapTravel(here.s,f.s,VL):Infinity;if(f)r.lane=f.d-r.passSide*(CAR_GAP+.4);if(Math.abs(gap)>6||r.modeTime>5)Object.assign(r,{mode:'line',roomFor:null,blendTarget:0});}
     // Defence: with a car close behind before a braking zone, cover the inside, once per corner.
     // The ace covers only a real braking zone, from a car close and quick enough to try, half-way.
     if(st.clean){
@@ -529,7 +683,7 @@ export class RaceField {
    // Off the asphalt the ace eases off until the tyres are back on it.
    if(st.clean&&!here.onRoad&&!here.pit)target=Math.min(target,Math.max(12,speed-1));
    // Yellow flag: a car without its driver still on the road ahead (stopInput).
-   target=Math.min(target,this.caution(c));
+   target=Math.min(target,this.caution(c,V));
    // Pedals: proportional to the speed error, plus the deceleration the braking curve asks for.
    const slide=along>3?Math.abs(Math.atan2(-c.vx*fy+c.vy*fx-1.117*c.yaw,c.vx*fx+c.vy*fy)):0,need=bindDist>1&&speed>bindV?(speed*speed-bindV*bindV)/(2*bindDist):0;
    let throttle=clamp((target-speed)*st.throttleResponse,0,1)*clamp(1-(slide-.06)*8,0,1);
@@ -608,20 +762,24 @@ export class RaceField {
  // past the edge. No grass in reach: it ends at the edge, on the asphalt (park false). at(u): the point
  // u metres down the way, with its heading; lane(u,d): the point d metres from the centre line u metres
  // down (the truck's own way in); flip: the car faces back the way it came (hooked by its tail).
- towPath(c,side=null){
-  const a=this.data.samples,n=a.length,ds=this.line.ds,L=this.data.meta.reconstructed_xy_m,k0=c.index,s0=c.surface.s,d0=c.surface.d,h0=c.heading;
+ // V: the way it follows (towView): on a branch road, along the branch and on past the merge (its grass is the lap's).
+ // along(car): how far down the way a car is, there (multiplayer.js draws the truck by it; the lap's s elsewhere).
+ towPath(c,side=null,V=this.towView(c)){
+  const f=V.plain?null:V.F(c),a=V.a,n=a.length,ds=V.line.ds,L=V.L,k0=f?f.i:c.index,s0=f?f.s:c.surface.s,d0=f?f.d:c.surface.d,h0=c.heading;
   const station=u=>{const f=(((s0+u)%L+L)%L)/ds,i=Math.floor(f),t=f-i,p=a[i%n],q=a[(i+1)%n],m=k=>p[k]+(q[k]-p[k])*t;return {k:i%n,x:m(1),y:m(2),nx:m(9),ny:m(10),half:m(4)/2};};
   // (both sides looked at together, two metres at a time: the first clear stretch ends the search; on
   // each side not before 2.2 times the way across, so the way never turns sharply)
   const sides=side?[side]:[Math.sign(d0)||1,-(Math.sign(d0)||1)],from=s=>Math.max(10,Math.abs(s*(station(0).half+PARK_OFF)-d0)*2.2);let found=Infinity;side=sides[0];
-  for(let u=10;u<=TOW_REACH&&found===Infinity;u+=2)for(const s of sides)if(u>=from(s)&&[0,6,12].every(j=>this.grassAt(c,k0,s,u+j))){side=s;found=u+6;break;}
+  for(let u=10;u<=TOW_REACH&&found===Infinity;u+=2)for(const s of sides)if(u>=from(s)&&[0,6,12].every(j=>this.grassAt(c,k0,s,u+j,V))){side=s;found=u+6;break;}
   const park=Number.isFinite(found),end=park?found:24;
   const lane=(u,d)=>{const st=station(u);return {x:st.x+st.nx*d,y:st.y+st.ny*d,k:st.k};};
   // Over to the edge within B metres; off it through the last T.
   const B=Math.min(end,clamp(Math.abs(side*(station(0).half+TOW_EDGE)-d0)*3,8,30)),T=Math.min(14,end);
   const dAt=u=>d0+(side*(station(u).half+(park?TOW_EDGE+(PARK_OFF-TOW_EDGE)*smooth((u-end+T)/T):TOW_EDGE))-d0)*smooth(u/B);
   const at=u=>{const p=lane(u,dAt(u)),q=lane(u+.5,dAt(u+.5));return {...p,heading:Math.atan2(q.y-p.y,q.x-p.x)};};
-  return {s0,side,end,park,h0,flip:Math.abs(wrap(h0-Math.atan2(a[k0][8],a[k0][7])))>Math.PI/2,at,lane,station,dAt};
+  const path={s0,side,end,park,h0,flip:Math.abs(wrap(h0-Math.atan2(a[k0][8],a[k0][7])))>Math.PI/2,at,lane,station,dAt};
+  if(f)path.along=o=>{const g=V.F(o);return g?((g.s-s0)%L+L*1.5)%L-L/2:0;};
+  return path;
  }
  // The side to park a car on (1 left, -1 right): the one with grass at more of these distances ahead
  // (grassAt), the nearer side on a tie (brokenInput).
@@ -652,18 +810,26 @@ export class RaceField {
  // The yellow flag's speed for a car at c: with a driverless car still on the road ahead (rolling,
  // stopped, or on the tow; not in the pit lane), slower the closer it is, never below that car's own
  // speed; Infinity with none. (Those cars are listed once a step, step: almost always none.)
- caution(c){
+ // V (decide's view): along the way the car drives by; a car on another road of a fork is not ahead on it.
+ caution(c,V=this.plain){
   const L=this.data.meta.reconstructed_xy_m;let v=Infinity;
-  for(const o of this.cautions??[]){if(o.car===c)continue;const gap=trackGap(c,o.car,L);if(gap>-15&&gap<CAUTION_REACH)v=Math.min(v,Math.max(Math.hypot(o.car.vx,o.car.vy),CAUTION_PACE+Math.max(0,gap-60)*.1));}
+  for(const o of this.cautions??[]){
+   if(o.car===c)continue;let gap;
+   if(V.plain)gap=trackGap(c,o.car,L);else{const h=V.F(c),f=V.F(o.car);if(!h||!f)continue;gap=lapTravel(h.s,f.s,V.L);}
+   if(gap>-15&&gap<CAUTION_REACH)v=Math.min(v,Math.max(Math.hypot(o.car.vx,o.car.vy),CAUTION_PACE+Math.max(0,gap-60)*.1));
+  }
   return v;
  }
  // A place to park j metres ahead on one side, a few metres past the edge: grass of this stretch (not
  // another road, as beside ECPA's twin straights, nor the pit lane) with no wall on the way. (Far
  // ahead, towPath, the nearest stretch is looked for along the whole track: the car's own few dozen
  // metres of it would not reach there.)
- grassAt(c,i,side,j){
-  const a=this.data.samples,n=a.length,geo=this.geo??=pitGeometry(this.data),k=(i+Math.round(j/this.line.ds))%n,p=a[k],heading=Math.atan2(p[8],p[7]),at=o=>[p[1]+p[9]*side*o,p[2]+p[10]*side*o];
-  const [x,y]=at(p[4]/2+PARK_OFF),q=j>60?c.sample(x,y,c.nearest(x,y,true).i):c.sample(x,y),apart=Math.abs(q.i-k),same=Math.min(apart,n-apart)<25;
+ // V (towPath): stations i and j of that way; along a branch road (walled) there is none.
+ grassAt(c,i,side,j,V=this.plain){
+  const a=V.a,n=a.length,geo=this.geo??=pitGeometry(this.data),k=(i+Math.round(j/V.line.ds))%n,p=a[k],heading=Math.atan2(p[8],p[7]),at=o=>[p[1]+p[9]*side*o,p[2]+p[10]*side*o];
+  if(V.fork?.inFork(k))return false;
+  const lapK=V.fork?V.fork.lapK(k):k,m=this.data.samples.length;
+  const [x,y]=at(p[4]/2+PARK_OFF),q=j>60?c.sample(x,y,c.nearest(x,y,true).i):c.sample(x,y),apart=Math.abs(q.i-lapK),same=Math.min(apart,m-apart)<25;
   // Never at a plateau's rim (cliff-edge.js): the spot keeps 6 m of ground before the lip.
   if(c.cliff&&c.cliff.query(x,y).d>-6)return false;
   return !q.onRoad&&!q.pit&&same&&![p[4]/2+.5,p[4]/2+PARK_OFF/2,p[4]/2+PARK_OFF].some(o=>wallContact(geo,...at(o),heading));
@@ -710,5 +876,5 @@ export class RaceField {
    return {...row,totalTime:ahead,estimated:true};
   });
  }
- info(){return {collisions:this.collisions,rivals:this.rivals.map(r=>({number:r.entry.number,name:r.entry.name,level:r.entry.level,style:r.style.name,x:r.car.x,y:r.car.y,heading:r.car.heading,speed:Math.hypot(r.car.vx,r.car.vy),progress:r.progress,finished:r.finished,pit:r.pit?(r.pit.parked?'parked':'lane'):null,retired:!!r.retired,breakdown:r.broken?.kind??null,mode:r.mode,blend:r.blend,draft:r.tow,mistakes:r.mistakes,passes:r.passes}))};}
+ info(){return {collisions:this.collisions,rivals:this.rivals.map(r=>({number:r.entry.number,name:r.entry.name,level:r.entry.level,style:r.style.name,x:r.car.x,y:r.car.y,heading:r.car.heading,speed:Math.hypot(r.car.vx,r.car.vy),progress:r.progress,finished:r.finished,pit:r.pit?(r.pit.parked?'parked':'lane'):null,retired:!!r.retired,breakdown:r.broken?.kind??null,mode:r.mode,blend:r.blend,draft:r.tow,mistakes:r.mistakes,passes:r.passes,...(r.routes?{routes:[...r.routes]}:{})}))};}
 }

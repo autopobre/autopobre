@@ -4,6 +4,8 @@
 import {GRID_START_BACK} from './race-roster.js';
 import {pitLane,pitGeometry,locatePit,pitLimit,wallContact} from './pit-lane.js';
 import {cliffEdge} from './cliff-edge.js';
+import {locateBranch,branchPoint,branchS,branchSpan,branchGapEnd,branchBarrier,barrierNear} from './branch-lane.js';
+import {branchLayouts,stationZ} from './branch-layout.js';
 export const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 export const wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
 export const MAX_STEER=.72;
@@ -161,8 +163,9 @@ export function guardrailClearance(data,s,side){
   const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L,section=guardrailSections(data,side).find(([from,to])=>t>=from&&t<=to),gap=wallGap(data,t,side),base=gap??GUARDRAIL_CLEARANCE;
   if(!section)return base;
   // Flare exposed ends away from the driving line; the timing-line seam stays joined. A city's side street opened to
-  // roam (meta.roam's gaps) keeps its walls straight to the curbs: the walls end square at the street's mouth.
-  const open=x=>!!data.meta.roam&&roamGapEnd(data,side,x);
+  // roam (meta.roam's gaps) keeps its walls straight to the curbs: the walls end square at the street's mouth; so do
+  // they where a branch road leaves or rejoins (data.branches' main_gaps: its asphalt runs on there).
+  const open=x=>!!data.meta.roam&&roamGapEnd(data,side,x)||!!data.branches&&branchGapEnd(data,x,side<0?-1:1)<1;
   const edge=Math.min(section[0]<=0||open(section[0])?Infinity:t-section[0],section[1]>=L-1e-6||open(section[1])?Infinity:section[1]-t),u=clamp(edge/24,0,1);
   return base+5*(1-u*u*(3-2*u));
  }
@@ -182,7 +185,7 @@ function bodyAxes(heading,pitch,roll,axes){
 }
 const renderAxes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};
 export class TestCar {
- constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.cliff=cliffEdge(data);this.decks=!!data.meta?.decks?.length;this.tunnels=!!data.meta?.tunnels?.length;this.roam=roamWorld(data);this.edgeHit={};this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.weatherGrip=1;this.reset();}
+ constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.cliff=cliffEdge(data);this.decks=!!data.meta?.decks?.length;this.tunnels=!!data.meta?.tunnels?.length;this.roam=roamWorld(data);this.forks=forkWorld(data);this.edgeHit={};this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.weatherGrip=1;this.reset();}
  // The body it meets the world with (OPALA_BODY, FUSCA_BODY), with its mechanics; the next reset or settle seats
  // it on its own shell.
  setBody(body){if(body!==this.body){this.body=body;this.shell=null;}return this;}
@@ -190,8 +193,9 @@ export class TestCar {
  // The grid spot: back metres before the line, lane metres across (race-roster.js playerGridSlot).
  resetGrid({back=GRID_START_BACK,lane=0}={}){const target=this.data.meta.reconstructed_xy_m-back;this.reset(Math.max(0,this.a.findIndex(p=>p[0]>=target)));if(lane){this.x+=this.surface.lx*lane;this.y+=this.surface.ly*lane;this.settle();}this.awaitingStart=true;}
  reset(index=0){this.awaitingStart=false;this.distance=0;this.clock=0;this.lapStart=0;this.laps=0;this.best=null;this.lastLap=null;this.checkpoints=new Set();this.nextCheckpoint=1;this.lapValid=true;this.lastLapValid=null;this.excursion=null;this.lineBack=false;this.spin=0;this.rearSpin=0;this.shifts=0;this.rightings=0;this.rightedAt=null;this.invalidReason=null;this.lastInvalidReason=null;this.pitPenalty=null;this.beforeCross=null;this.lapFell=false;this.lastLapFell=false;this.fall=null;this.falls=0;this.backAt=null;this.roamZone=null;this.recover(index);}
- // Put the car back at rest on the centre line, keeping its clock, laps and race progress.
- recover(index=this.index){const p=this.a[index%this.n];this.x=p[1];this.y=p[2];this.heading=Math.atan2(p[8],p[7]);this.vx=0;this.vy=0;this.yaw=0;this.steer=0;this.index=index;this.burnout=0;this.rearSlipSpeed=0;this.rearWheelSpeed=undefined;this.steerInput=0;this.steerVisual=0;this.gear=1;this.manualGear=false;this.rpm=IDLE_RPM;this.shiftTimer=0;this.longAccel=0;this.latAccel=0;this.crashImpactSpeed=0;this.roamZone=null;this.settle();}
+ // Put the car back at rest on the centre line, keeping its clock, laps and race progress. On a branch road
+ // (data.branches) on the branch's centre line, at its nearest station there.
+ recover(index=this.index){const F=this.forks&&index===this.index&&this.surface?.branch!=null?this.forks[this.surface.branch]:null,b=F?branchPoint(F.geo,this.surface.branchS):null,p=this.a[index%this.n];this.x=b?b.x:p[1];this.y=b?b.y:p[2];this.heading=b?b.heading:Math.atan2(p[8],p[7]);this.vx=0;this.vy=0;this.yaw=0;this.steer=0;this.index=index;this.burnout=0;this.rearSlipSpeed=0;this.rearWheelSpeed=undefined;this.steerInput=0;this.steerVisual=0;this.gear=1;this.manualGear=false;this.rpm=IDLE_RPM;this.shiftTimer=0;this.longAccel=0;this.latAccel=0;this.crashImpactSpeed=0;this.roamZone=null;this.settle();}
  // Seat the body on its wheels at the current position and heading: level with
  // the ground under the four tyres, and clear of any bank under the body.
  settle(){
@@ -261,16 +265,18 @@ export class TestCar {
   if(z===this.heights)return u>=v?z[k]*(1-u)+z[k+1]*(u-v)+z[k+t.nx+1]*v:z[k]*(1-v)+z[k+t.nx+1]*u+z[k+t.nx]*(v-u);
   return (z[k]*(1-u)+z[k+1]*u)*(1-v)+(z[k+t.nx]*(1-u)+z[k+t.nx+1]*u)*v;
  }
- sample(x,y,hint=null){
+ // lapOnly (a track with a branch road, data.branches): the lap's own road and frame under the point, as if the
+ // branch were not there (the lap's walls against a body on the lap, step).
+ sample(x,y,hint=null,lapOnly=false){
   // Fraction along the segment from the stations' normal lines (0 on a's, 1 on b's). The foot
   // of the perpendicular stalls on the inside of a bend and then jumps a whole station at the
   // next segment, so each station's rise came as a ledge under the wheels (0.37 m at ECPA's
   // tight Anel Externo corner). On a straight this is the same as the foot.
   const q=this.nearest(x,y,false,hint),a=this.a[q.i],b=this.a[(q.i+1)%this.n];
   const fa=(x-a[1])*a[7]+(y-a[2])*a[8],fb=(x-b[1])*b[7]+(y-b[2])*b[8],w=fa<=0?0:fb>=0?1:fa/(fa-fb),mix=k=>a[k]+(b[k]-a[k])*w;
-  const tx=mix(7),ty=mix(8),lx=-ty,ly=tx,d=q.ex*lx+q.ey*ly,width=mix(4),L=this.data.meta.reconstructed_xy_m;
+  let tx=mix(7),ty=mix(8),lx=-ty,ly=tx,d=q.ex*lx+q.ey*ly,width=mix(4),si=q.i,su=w;const L=this.data.meta.reconstructed_xy_m;
   let bank=mix(5),grade=mix(6),gx=tx*grade+lx*bank,gy=ty*grade+ly*bank,roadz=mix(3)+bank*d,outside=Math.abs(d)-width/2;
-  let s=(a[0]+w*Math.hypot(b[1]-a[1],b[2]-a[2]))%L,pit=false,pitS=null,pitD=null;
+  let s=(a[0]+w*Math.hypot(b[1]-a[1],b[2]-a[2]))%L,pit=false,pitS=null,pitD=null,branch=null,branchS=null;
   // Past a plateau circuit's rim (cliff-edge.js) the ground is the foot of the wall: no road blends into it.
   const edge=this.cliff?.query(x,y,this.edgeHit),abyss=!!edge&&(edge.d>0||!!this.fall&&edge.d>-12),ground=edge?(abyss?this.cliff.abyssZ:this.cliff.plateauZ):undefined;
   // The surveyed pit lane has its own profile; off both roads the nearer one blends into the terrain.
@@ -284,6 +290,23 @@ export class TestCar {
     gx=lane.tx*grade+lane.lx*bank;gy=lane.ty*grade+lane.ly*bank;pitS=lane.s;pitD=lane.d;
     // Lap distance keeps counting along the track while the car runs through the pits.
     if(pit)s=lane.mainS;
+   }
+  }
+  // A branch road (data.branches, forkAt): off the lap's asphalt, on the side the branch leaves on, within the branch's
+  // walls and nearer its asphalt than the lap's, the branch's drawn surface (branch-layout.js stationZ: its plane, welded
+  // to the lap's along the seam between them, so crossing from one to the other has no step), its frame (d, width and
+  // the direction across its own centre line) and the lap distance its station stands for (s: the lap and checkpoints
+  // count on; i: the lap's station there, round which the lap's window looks next). Not the pit's: surface.pit stays false.
+  if(this.forks&&!lapOnly&&!abyss&&outside>0){
+   const f=this.forkAt(x,y,d);
+   if(f&&Math.abs(f.b.d)-f.b.width/2<outside){
+    // (Between two stations by the fraction from their normal lines, as on the lap: on the inside of a bend the foot of
+    // the perpendicular stalls and jumps, a ledge of 2 cm where the avenue climbs at 10%.)
+    const {b,F}=f,st=F.stations,p=st[b.i],r=st[Math.min(st.length-1,b.i+1)],fp=(x-p.x)*p.tx+(y-p.y)*p.ty,fr=(x-r.x)*r.tx+(y-r.y)*r.ty,bw=r===p||fp<=0?0:fr>=0?1:fp/(fp-fr);
+    const at=e=>stationZ(p,e)*(1-bw)+stationZ(r,e)*bw,cross=(at(b.d+.05)-at(b.d-.05))/.1;
+    outside=Math.abs(b.d)-b.width/2;bank=b.bank;grade=b.grade;roadz=at(b.d);tx=b.tx;ty=b.ty;lx=b.lx;ly=b.ly;d=b.d;width=b.width;
+    gx=tx*grade+lx*cross;gy=ty*grade+ly*cross;s=b.mainS;branch=F.geo.index;branchS=b.s;
+    const k=this.lapStation(s),p0=this.a[k],p1=this.a[(k+1)%this.n],span=(k===this.n-1?L:p1[0])-p0[0];si=k;su=span>0?clamp((s-p0[0])/span,0,1):0;
    }
   }
   // On a bridge deck the road plane runs out to the parapet: the sea is 30 m below. In a tunnel or its trench it
@@ -302,7 +325,23 @@ export class TestCar {
   const z=service&&pit?3.055:roadz*(1-blend)+this.terrain(x,y,ground)*blend+.055;
   // In a zone of the city open to roam, its streets, sidewalks and squares are paved (its lawns are not).
   const paved=!!this.roam&&blend>0&&!pit&&this.roam.paved(x,y);
-  return {i:q.i,u:w,s:s>L-.01?0:s,d,z,width,bank,grade,gx,gy,tx,ty,lx,ly,pit,pitS,pitD,abyss,onRoad:!abyss&&(pit||Math.abs(d)<width/2||paved)};
+  const out={i:si,u:su,s:s>L-.01?0:s,d,z,width,bank,grade,gx,gy,tx,ty,lx,ly,pit,pitS,pitD,abyss,onRoad:!abyss&&(pit||Math.abs(d)<width/2||paved)};
+  // (On a track with a branch road: which one the point is on, null on the lap, its distance along it and offset.)
+  if(this.forks){out.branch=branch;out.branchS=branchS;out.branchD=branch===null?null:d;}
+  return out;
+ }
+ // The lap's station at or before lap distance s.
+ lapStation(s){let lo=0,hi=this.n-1;while(lo<hi){const m=(lo+hi+1)>>1;if(this.a[m][0]<=s)lo=m;else hi=m-1;}return lo;}
+ // The branch road under (x, y) where it is a road of its own (forkWorld: the stretch of the lap between the first and
+ // the last gap it opens in the lap's wall), on the lap's side it leaves on (d: the lap's offset there; the branch is
+ // wider than the lap where they still run together, but its far side is the lap's wall) and within its walls
+ // (BRANCH_BAND past their faces: a body pressed into them is still the branch's). {b: locateBranch's station, F} or null.
+ forkAt(x,y,d){
+  for(const F of this.forks){
+   if(d*F.geo.side<=0)continue;const b=locateBranch(F.geo,x,y);
+   if(b&&b.mainS>=F.from&&b.mainS<=F.to&&Math.abs(b.d)-b.width/2<=(b.d>0?b.wallLeft:b.wallRight)+BRANCH_BAND)return {b,F};
+  }
+  return null;
  }
  // Ground height and slope under one contact point near the car.
  ground(x,y){return this.sample(x,y,this.index);}
@@ -465,8 +504,14 @@ export class TestCar {
   // (The car out in a zone is the one the city's walkers keep out of the way of: city-life.js.)
   if(zone)this.roam.player=this;
   if(zone||behind){const hit=this.roam.collide(this,zone,reach,true);if(hit)this.wallImpactSpeed=Math.max(this.wallImpactSpeed,hit);}
+  // A track with a branch road (data.branches): a point of the body on the branch's own road has only the branch's walls
+  // (barrierHit below), not the lap's left wall it may be behind there; a body on the lap meets the lap's walls by
+  // the lap's own frame (sample lapOnly) wherever the point is off the branch's asphalt (pressed into the lap's wall
+  // at the tip of the V, say).
+  // A body on the branch between the tips of the V (F.inner, branch s) is behind the lap's wall on that side: a point of
+  // it reaching into the V's narrow end (the square, the lap's) never meets that wall from behind.
   for(let pass=0;!zone&&!behind&&!this.underDeck&&pass<2;pass++){
-   const r=this.surface,side=Math.sign(r.d)||1;
+   const r=this.surface,side=Math.sign(r.d)||1,onLap=!!this.forks&&r.branch===null,F=this.forks&&!onLap?this.forks[r.branch]:null,shut=F&&r.branchS>=F.inner[0]&&r.branchS<=F.inner[1]?F.geo.side:0;
    // Far from both barriers no point of the body reaches one.
    if(r.width/2+Math.min(guardrailClearance(this.data,r.s,-1),guardrailClearance(this.data,r.s,1))+reach-Math.abs(r.d)-far>1.5)break;
    // A car out past a wall's end is not pulled back through it: a point more than 5 m into a barrier counts only
@@ -475,8 +520,10 @@ export class TestCar {
    const crossed=Math.abs(p.d)<=p.width/2+guardrailClearance(this.data,p.s,side)+reach-extent;
    const ch=Math.cos(this.heading),sh=Math.sin(this.heading);let hit=null;
    for(const [u,w] of BODY_POINTS){
-    const fx=b.wallAhead+u*b.halfLength,fy=w*b.halfWidth,q=this.sample(this.x+ch*fx-sh*fy,this.y+sh*fx+ch*fy,this.index),qs=Math.sign(q.d)||1;
-    if(!guardrailPresent(this.data,q.s,qs))continue;
+    const fx=b.wallAhead+u*b.halfLength,fy=w*b.halfWidth,px=this.x+ch*fx-sh*fy,py=this.y+sh*fx+ch*fy;let q=this.sample(px,py,this.index);
+    if(q.branch!=null){if(!onLap||Math.abs(q.d)<q.width/2)continue;q=this.sample(px,py,this.index,true);}
+    const qs=Math.sign(q.d)||1;
+    if(qs===shut||!guardrailPresent(this.data,q.s,qs))continue;
     // (sample's normal is two stations' mixed, short of unit length in a bend: its d, 6 cm short at 9 m off a
     // tight one, is made a distance again, as the drawn line's.)
     const n=Math.hypot(q.lx,q.ly)||1,depth=Math.abs(q.d)/n-(q.width/2+guardrailClearance(this.data,q.s,qs)+reach);
@@ -503,14 +550,12 @@ export class TestCar {
   // Pit wall, garage fronts and the walls along the pit exit.
   for(let pass=0;this.pitGeo&&pass<2;pass++){
    const hit=wallContact(this.pitGeo,this.x,this.y,this.heading,this.body);if(!hit)break;
-   this.x+=hit.nx*hit.depth;this.y+=hit.ny*hit.depth;
-   const into=-(this.vx*hit.nx+this.vy*hit.ny);
-   if(into>0){
-    this.wallImpactSpeed=Math.max(this.wallImpactSpeed,into);
-    const keep=1-Math.min(.18,into*.006),tx=(this.vx+into*hit.nx)*keep,ty=(this.vy+into*hit.ny)*keep;
-    this.vx=tx+hit.nx*into*.22;this.vy=ty+hit.ny*into*.22;this.yaw*=.65;
-   }
-   this.surface=this.sample(this.x,this.y);
+   this.wallPush(hit);
+  }
+  // A branch road's walls and the noses between the two ways (data.branches, forkWorld, barrierHit).
+  if(this.forks)for(const F of this.forks)for(let pass=0;pass<2;pass++){
+   const hit=barrierHit(this,F.barrier);if(!hit)break;
+   this.wallPush(hit);
   }
   // Tree trunks (tree-contact.js; main.js gives them to the player's car).
   if(this.posts){const hit=this.posts.collide(this);if(hit)this.wallImpactSpeed=Math.max(this.wallImpactSpeed,hit);}
@@ -523,6 +568,18 @@ export class TestCar {
   if(this.overturned>RIGHTING_DELAY){this.vx=this.vy=this.yaw=0;this.settle();this.rightings++;this.rightedAt=this.clock;}
   this.stepX=this.x;this.stepY=this.y;
   this.trackLap(p,this.surface,Math.hypot(this.x-oldX,this.y-oldY),speed);
+ }
+ // Out of a wall met as a line (wallContact, pit-lane.js: the pit's and a branch road's), with the same rebound and
+ // scrape as off the guardrails.
+ wallPush(hit){
+  this.x+=hit.nx*hit.depth;this.y+=hit.ny*hit.depth;
+  const into=-(this.vx*hit.nx+this.vy*hit.ny);
+  if(into>0){
+   this.wallImpactSpeed=Math.max(this.wallImpactSpeed,into);
+   const keep=1-Math.min(.18,into*.006),tx=(this.vx+into*hit.nx)*keep,ty=(this.vy+into*hit.ny)*keep;
+   this.vx=tx+hit.nx*into*.22;this.vy=ty+hit.ny*into*.22;this.yaw*=.65;
+  }
+  this.surface=this.sample(this.x,this.y);
  }
  integrate(h,f){
   const {f:F,l:L,u:U}=this.updateAxes(),ch=Math.cos(this.heading),sh=Math.sin(this.heading);
@@ -721,6 +778,58 @@ export function recognitionInput(car,{maxSpeed=33,cornerGrip=3.3,braking=3.5,thr
  return {left:Math.max(0,command),right:Math.max(0,-command),throttle:clamp((desiredSpeed-speed)*throttleResponse,0,1)*clamp(1-(slide-.06)*8,0,1),brake:clamp((speed-desiredSpeed)*brakeResponse,0,1),reverse:0,handbrake:0};
 }
 
+// --- Branch roads (data.branches: Pampulha's avenue past the Igrejinha, gerar_pampulha.py ramal_da_avenida): a second
+// road that leaves the lap on one side and rejoins it, both ways the lap. For each, the stretch of the lap where it is
+// a road of its own (branch-lane.js branchSpan), its stations as drawn (branch-layout.js: the surface welded to the
+// lap's edge) and its walls as the cars meet them (branchBarrier: the faces' feet, WALL_REACH, run on to the ends of
+// the lap's wall on their side as street-walls.js draws them; the noses). Null on a track without one.
+const BRANCH_BAND=1.5,forkWorlds=new WeakMap();
+function forkWorld(data){
+ if(!data.branches?.length)return null;
+ let list=forkWorlds.get(data);if(list)return list;
+ const a=data.samples,n=a.length,L=data.meta.reconstructed_xy_m,ends=[];
+ const at=s=>{let lo=0,hi=n-1;while(lo<hi){const m=(lo+hi+1)>>1;if(a[m][0]<=s)lo=m;else hi=m-1;}const p=a[lo],q=a[(lo+1)%n],u=clamp((s-p[0])/((lo===n-1?L:q[0])-p[0]),0,1);return p.map((v,k)=>v+(q[k]-v)*u);};
+ // The ends of the lap's walls at the gaps the branches open (square there: guardrailClearance), the feet of their faces.
+ for(const side of [1,-1])for(const [from,to] of guardrailSections(data,side))for(const s of [from,to]){
+  if(!(s>0&&s<L-1e-6)||!(branchGapEnd(data,s,side)<1))continue;
+  const p=at(s),l=Math.hypot(p[9],p[10])||1,o=side*(p[4]/2+guardrailClearance(data,s,side));ends.push({side,x:p[1]+p[9]/l*o,y:p[2]+p[10]/l*o});
+ }
+ // inner: between the tips of the V where its far wall meets the lap's (the inner ends of the gaps), 10 m either way, in branch s.
+ list=branchLayouts(data).map(B=>{const [from,to]=branchSpan(B.geo),g=[...B.geo.mainGaps].sort((p,q)=>p[0]-q[0]);
+  return {geo:B.geo,stations:B.stations,from,to,inner:[branchS(B.geo,g[0][1])-10,branchS(B.geo,g.at(-1)[0])+10],barrier:branchBarrier(B.geo,WALL_REACH,ends)};});
+ forkWorlds.set(data,list);return list;
+}
+// A branch road's walls against a car's body (branchBarrier: lines, half their thickness either side; WALL_REACH already
+// in their place): the body's outline (BODY_POINTS, as against the lap's walls) into a wall from the side its centre of
+// mass is on, each point against the segment across from it, and a wall's free end into the body's box. A side wall only
+// from its road's side: in the narrow of a V between the two roads the lap's wall holds a car on the lap, the back of
+// the branch's wall a few decimetres behind it must not. The deepest: {depth, nx, ny} (out of the wall, toward the car),
+// or null. (Not pit-lane.js wallContact: its box against a segment's nearest point took a car running beside the wall,
+// near the joint of two segments, for one driving into it.)
+function barrierHit(car,barrier){
+ const b=car.body,ch=Math.cos(car.heading),sh=Math.sin(car.heading),cx=car.x+ch*b.wallAhead,cy=car.y+sh*b.wallAhead;let best=null;
+ for(const w of barrierNear(barrier,cx,cy)){
+  const dx=w.x2-w.x1,dy=w.y2-w.y1,len=Math.hypot(dx,dy);if(len<1e-6||(cx-w.x1)*w.ox+(cy-w.y1)*w.oy>0)continue;
+  const ux=dx/len,uy=dy/len,side=Math.sign((cx-w.x1)*-uy+(cy-w.y1)*ux)||1,nx=-uy*side,ny=ux*side;
+  // (A body more than reach from the line on its own side touches nothing of it.)
+  if(Math.abs((cx-w.x1)*nx+(cy-w.y1)*ny)>b.halfLength+Math.abs(b.wallAhead)+w.half+.5)continue;
+  for(const [u,v] of BODY_POINTS){
+   const fx=u*b.halfLength,fy=v*b.halfWidth,px=cx+ch*fx-sh*fy-w.x1,py=cy+sh*fx+ch*fy-w.y1,along=px*ux+py*uy;
+   // (Into a side wall up to 1.5 m, its block; a nose, a bar standing free inside the V, only by its skin on the car's
+   // side: a corner swung past it is not pulled back through.)
+   if(along<0||along>len)continue;const t=px*nx+py*ny;
+   if(t<w.half&&t>(w.ox||w.oy?-1.5:0)&&!(best?.depth>=w.half-t))best={depth:w.half-t,nx,ny};
+  }
+  // A free end (where the wall stops short of nothing) into the box: out along the box's nearer side.
+  for(const [free,ex,ey] of [[w.free1,w.x1,w.y1],[w.free2,w.x2,w.y2]]){
+   if(!free)continue;const lx=(ex-cx)*ch+(ey-cy)*sh,ly=-(ex-cx)*sh+(ey-cy)*ch,pl=b.halfLength+w.half-Math.abs(lx),pw=b.halfWidth+w.half-Math.abs(ly);
+   if(pl<=0||pw<=0)continue;const depth=Math.min(pl,pw),k=pl<pw?-Math.sign(lx)||1:-Math.sign(ly)||1;
+   if(!(best?.depth>=depth))best=pl<pw?{depth,nx:k*ch,ny:k*sh}:{depth,nx:-k*sh,ny:k*ch};
+  }
+ }
+ return best;
+}
+
 // --- Roaming the city (meta.roam: Floripa, gerar_cidade_floripa.py PASSEIO). Where a real side street meets the walls
 // they open (zone.gaps: side, s0, s1; meta.rails stops there, its ends square: guardrailClearance) onto a zone of the
 // city: zone.ring, loops of [x0, y0, x1, y1, ...], the first its outline counter-clockwise, the others the blocks in it
@@ -815,8 +924,9 @@ class RoamWorld{
   for(const z of this.zones)if(this.inside(z,car.x,car.y))return z;
   const was=car.roamZone;return was&&(car.underDeck||this.edge(car.x,car.y,2.5,was,this.query(car.x,car.y,2.5)))?was:null;
  }
- // The car's centre of mass behind the walls (past their face), not by the pit lane (its own walls have it).
- behind(car,reach){const r=car.surface;if(r.pit||r.pitS!==null)return false;const n=Math.hypot(r.lx,r.ly)||1;return Math.abs(r.d)/n>r.width/2+guardrailClearance(this.data,r.s,Math.sign(r.d)||1)+reach;}
+ // The car's centre of mass behind the walls (past their face), not by the pit lane nor on a branch road (their own
+ // walls have it).
+ behind(car,reach){const r=car.surface;if(r.pit||r.pitS!==null||r.branch!=null)return false;const n=Math.hypot(r.lx,r.ly)||1;return Math.abs(r.d)/n>r.width/2+guardrailClearance(this.data,r.s,Math.sign(r.d)||1)+reach;}
  // The body's plan (its box as the walls see it) against the zone (null: only its solids, for a car half through a gap
  // or behind the walls away from the zones); walls: the walls from behind. Returns the hardest impact (m/s).
  collide(car,zone,reach,walls=!!zone){

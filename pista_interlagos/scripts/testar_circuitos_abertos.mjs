@@ -159,11 +159,14 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  // the other some 20 m away: a car anywhere on either is found on its own stretch (physics.js nearest).
  if(id==='pampulha'){
   assert.equal(data.meta.barrier,'street');
-  // Walls all round but where the pit lane on the north shore opens the left one and the gap into the Mineirão (meta.roam)
-  // the right one.
-  const hole=runs=>runs.length===2&&runs[0][0]===0&&Math.abs(runs[1][1]-L)<1e-6?[runs[0][1],runs[1][0]]:null,pitHole=hole(data.meta.rails['1']),gapHole=hole(data.meta.rails['-1']),g=data.meta.roam.zones[0].gaps[0];
-  assert(pitHole&&pitHole[0]<=data.pit.entry_main_s&&pitHole[1]>=data.pit.exit_main_s&&pitHole[1]-pitHole[0]<data.pit.length_m+80,'Pampulha: the left wall opens only for the pit lane');
-  assert(gapHole&&Math.abs(gapHole[0]-g.s0)<3&&Math.abs(gapHole[1]-g.s1)<3,'Pampulha: the right wall opens only into the Mineirão');
+  // Walls all round but where the pit lane on the north shore and the branch road by the Igrejinha (data.branches: its two
+  // mouths, main_gaps) open the left one and the gap into the Mineirão (meta.roam) the right one.
+  const holes=runs=>{const out=[];for(let k=0;k+1<runs.length;k++)out.push([runs[k][1],runs[k+1][0]]);if(runs[0][0]>0||runs.at(-1)[1]<L-1e-6)out.push([runs.at(-1)[1],runs[0][0]]);return out;};
+  const mouths=data.branches.flatMap(B=>B.main_gaps),left=holes(data.meta.rails['1']),right=holes(data.meta.rails['-1']),g=data.meta.roam.zones[0].gaps[0];
+  for(const [m0,m1] of mouths)assert(left.some(([h0,h1])=>Math.abs(h0-m0)<1&&Math.abs(h1-m1)<1),`Pampulha: the left wall open at the branch's mouth ${m0}-${m1}`);
+  const pitHoles=left.filter(([h0,h1])=>!mouths.some(([m0,m1])=>Math.abs(h0-m0)<1&&Math.abs(h1-m1)<1)),pitHole=pitHoles[0];
+  assert(pitHoles.length===1&&pitHole[0]<=data.pit.entry_main_s&&pitHole[1]>=data.pit.exit_main_s&&pitHole[1]-pitHole[0]<data.pit.length_m+80,'Pampulha: the left wall opens only for the pit lane and the branch');
+  assert(right.length===1&&Math.abs(right[0][0]-g.s0)<3&&Math.abs(right[0][1]-g.s1)<3,'Pampulha: the right wall opens only into the Mineirão');
   for(let i=0;i<n;i+=5)for(const side of [-1,1]){const g=guardrailClearance(data,a[i][0],side);assert(g>.3&&g<8.5,`Pampulha: wall gap ${g} at s=${a[i][0]}`);}
   assert(circuit.laps===1&&data.meta.laps===circuit.laps&&fixedLaps(id)===1,'Pampulha: one lap, in circuits.js and the track file');
   assert(raceLaps(id,5)===1&&raceLaps('interlagos',5)===5&&standardLaps(id)===1&&standardLaps('interlagos')===3,'Pampulha: its own race length and records');

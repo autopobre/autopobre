@@ -371,8 +371,9 @@ export class Multiplayer {
    const gone=t.left===undefined?0:now-t.left;
    if(!c||gone>TRUCK_GONE){this.dropTruck(number);continue;}
    // Where the car is on the way (the host's own field lays it out again once the car is at rest:
-   // that one), and the truck's own way in: TRUCK_SIDE past the edge until past the car's nose.
-   const P=r.stop?.path??t.path,driving=now-t.since,car=Math.max(0,Math.min(P.end,((c.surface.s-P.s0)%L+L*1.5)%L-L/2));
+   // that one; on a branch road by the way's own distance, RaceField towPath along), and the truck's
+   // own way in: TRUCK_SIDE past the edge until past the car's nose.
+   const P=r.stop?.path??t.path,driving=now-t.since,car=Math.max(0,Math.min(P.end,P.along?P.along(c):((c.surface.s-P.s0)%L+L*1.5)%L-L/2));
    const lane=u=>{const w=Math.max(0,Math.min(1,(u-TRUCK_CUT)/(TRUCK_AHEAD-TRUCK_CUT))),edge=P.side*(P.station(u).half+TRUCK_SIDE);return P.lane(u,edge+(P.dAt(u)-edge)*w*w*(3-2*w));};
    if(t.left===undefined)t.u=driving<TRUCK_DRIVE?-TRUCK_BACK+(TRUCK_BACK+TRUCK_AHEAD)*(1-(1-driving/TRUCK_DRIVE)**2):car+TRUCK_AHEAD;
    const u=t.u+2*gone*gone,p=lane(u),q=lane(u+.5),h=Math.atan2(q.y-p.y,q.x-p.x),fx=Math.cos(h),fy=Math.sin(h);

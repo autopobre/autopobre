@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {TestCar,guardrailClearance,guardrailSections,onDeck,inTunnel} from './physics.js';
 import {canvasTexture} from './pit-textures.js';
 import {splitByCells} from './perf-probe.js';
+import {branchWallLines} from './branch-layout.js';
 
 // The walls of a street circuit (Floripa, meta.barrier 'street'): a line of concrete New Jersey blocks on each side,
 // set a few decimetres off the asphalt (wall_right_m / wall_left_m, physics.js guardrailClearance), with a catch fence
@@ -85,6 +86,25 @@ export function barrierAt(stations,s){
  const p=stations[lo],q=stations[hi],u=(s-p.s)/(q.s-p.s),mix=k=>p[k]+(q[k]-p[k])*u;
  return {s,x:mix('x'),y:mix('y'),z:mix('z'),ox:mix('ox'),oy:mix('oy')};
 }
+// A branch wall whose end lies within JOIN_REACH of the end of the lap's wall on that side (the gap a branch opens in
+// it, branch-lane.js main_gaps) runs on to it, station by metre: the two meet instead of leaving a hole (drawn only; the
+// cars cannot pass between them there, the walls overlapping across the road).
+const JOIN_REACH=6;
+function joinBranchWalls(branchLines,lapLines){
+ const ends=[];for(const l of lapLines){const a=l.stations[0],b=l.stations.at(-1);ends.push({side:l.side,p:a},{side:l.side,p:b});}
+ return branchLines.map(line=>{
+  const st=[...line.stations];
+  for(const first of [true,false]){
+   const e=first?st[0]:st.at(-1);let best=null,bd=JOIN_REACH;
+   for(const end of ends){if(end.side!==line.side)continue;const d=Math.hypot(end.p.x-e.x,end.p.y-e.y);if(d>.15&&d<bd){bd=d;best=end.p;}}
+   if(!best)continue;
+   const n=Math.max(1,Math.ceil(bd)),add=[];
+   for(let k=1;k<=n;k++){const u=k/n,m=key=>e[key]+(best[key]-e[key])*u,ox=m('ox'),oy=m('oy'),l=Math.hypot(ox,oy)||1;add.push({s:e.s+(first?-1:1)*bd*u,x:m('x'),y:m('y'),z:m('z'),ox:ox/l,oy:oy/l});}
+   if(first)st.unshift(...add.reverse());else st.push(...add);
+  }
+  return {...line,from:st[0].s,to:st.at(-1).s,stations:st};
+ });
+}
 function random(seed){let t=seed>>>0;return ()=>{t=t+0x6D2B79F5>>>0;let r=Math.imul(t^t>>>15,1|t);r=r+Math.imul(r^r>>>7,61|r)^r;return ((r^r>>>14)>>>0)/4294967296;};}
 export function createStreetWalls(data,{quality='alto'}={}){
  const root=new THREE.Group();root.name='Muros_circuito_de_rua';
@@ -119,9 +139,14 @@ diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.07),scuff*.55);`);
  const fenceMaterial=new THREE.MeshStandardMaterial({name:'Alambrado',map:link,transparent:true,depthWrite:false,side:THREE.DoubleSide,metalness:.45,roughness:.5,color:0xc4c9c6});
  const steel=new THREE.MeshStandardMaterial({name:'Poste_alambrado',color:0x7d8589,metalness:.6,roughness:.42});
  const positions=[],colors=[],wallUv=[],indices=[],fence=[],fenceUv=[],fenceIdx=[],posts=[],caps=[];
- let coverage=0,sections=0,blocks=0;
- for(const side of [-1,1])for(const {from,to,stations} of barrierLines(data)[side]){
-  coverage+=to-from;sections++;
+ let coverage=0,sections=0,blocks=0,branchMetres=0;
+ // The lap's walls, then a branch road's (data.branches, branch-layout.js branchWallLines): the same blocks and fence in
+ // the same meshes, closed at both ends, painted by the branch's own bends. Where a branch wall ends a few metres short
+ // of the lap's (Pampulha's avenue rejoining the lap) it is drawn on to it.
+ const lines=[];for(const side of [-1,1])for(const line of barrierLines(data)[side])lines.push({...line,lap:true});
+ for(const line of joinBranchWalls(branchWallLines(data),lines))lines.push(line);
+ for(const {side,from,to,stations,lap,turn:bend} of lines){
+  if(lap)coverage+=to-from;else branchMetres+=stations.length-1;sections++;
   // Stations every metre (barrierLines; a block is three); the paint changes by block.
   const base=positions.length/3,fbase=fence.length/3,last=stations.length-1;
   let paint=null,blockColor=[.62,.61,.58],shift=0,rise=0,ring=-1;
@@ -137,7 +162,7 @@ diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.07),scuff*.55);`);
     if(bare&&paint!==null&&i>0){const p=stations[i-1],sb=block*BLOCK,u=Math.min(1,Math.max(0,(sb-p.s)/((s-p.s)||1))),m=k=>p[k]+(stations[i][k]-p[k])*u;
      joint=[m('x'),m('y'),m('z')-WALL_SINK,m('ox'),m('oy'),sb];pushRing(...joint);join();}
     paint=block;blocks++;
-    const corner=turn(s)>.006,shade=.92+rand()*.12;
+    const corner=(bend??turn)(s)>.006,shade=.92+rand()*.12;
     if(bare){
      // Bare concrete: weathered greys, some newer and paler, some stained darker, a few with a yellowish cast.
      const r=rand();blockColor=r<.1?[.47*shade,.46*shade,.43*shade]:r<.2?[.7*shade,.69*shade,.65*shade]:r<.27?[.62*shade,.58*shade,.48*shade]:[.58*shade,.57*shade,.54*shade];
@@ -151,11 +176,11 @@ diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.07),scuff*.55);`);
    // wound the other way round the road saw the inside of the back slope, half a metre behind the face, through it.
    pushRing(x,y,ground,ox,oy,s);join();
    // An end of the stretch (a pit entry or exit, a gap in the walls) shows the block's section, not its hollow.
-   if(i===0?from>0:i===last&&to<L-1e-6)caps.push({x,y,ox,oy,ground,s,color:blockColor,back:(i===0)===(side>0)});
+   if(i===0?from>0||!lap:i===last&&(to<L-1e-6||!lap))caps.push({x,y,ox,oy,ground,s,color:blockColor,back:(i===0)===(side>0)});
    // Fence over the block's top, leaning a little toward the track at the top. Not on the bridges: there the
    // trusses and parapets close the road, and the view of the bay stays open. Nor in a tunnel or its trench
    // (meta.tunnels): its own walls rise from the road to the ground above.
-   const fx=x+ox*.38,fy=y+oy*.38,deck=onDeck(data,s)||inTunnel(data,s),top=deck?.81:FENCE_TOP;
+   const fx=x+ox*.38,fy=y+oy*.38,deck=!!lap&&(onDeck(data,s)||inTunnel(data,s)),top=deck?.81:FENCE_TOP;
    fence.push(fx,ground+.81,-fy,fx-ox*.35*(deck?0:1),ground+top,-(fy-oy*.35*(deck?0:1)));fenceUv.push(s/.6,0,s/.6,(top-.81)/.6);
    if(i>0&&!deck){const k=fbase+(i-1)*2;fenceIdx.push(k,k+2,k+1,k+1,k+2,k+3);}
    if(i%4===0&&!deck)posts.push({x:fx,y:ground+.81,z:-fy,lean:Math.atan2(oy,ox)});
@@ -191,7 +216,7 @@ diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.07),scuff*.55);`);
   inst.name='Postes_alambrado';inst.castShadow=true;inst.computeBoundingSphere();postMesh.add(inst);
  }
  root.add(postMesh);
- const stats={sides:2,closed:false,segments:blocks,sections,coverageMetres:coverage,coverageRatio:coverage/(L*2),clearance:'por estação',reflectors:0,style:'street',fencePosts:posts.length};
+ const stats={sides:2,closed:false,segments:blocks,sections,coverageMetres:coverage,coverageRatio:coverage/(L*2),clearance:'por estação',reflectors:0,style:'street',fencePosts:posts.length,...(branchMetres?{branchMetres}:{})};
  // The fence is the expensive part far off: on the light levels it goes beyond the nearest few hundred metres
  // (the mesh is one draw; quality only switches it off on Básico).
  function setQuality(value){stats.quality=value;fenceMesh.visible=postMesh.visible=value!=='basico';}

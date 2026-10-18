@@ -278,7 +278,7 @@ def desenhar_trechos(P0, vias, G, origem, para):
     return P0, vias, desenhos
 
 
-def eixo(c, pasta, epsg):
+def eixo(c, pasta, epsg, pernas=None):
     para = Transformer.from_crs(4326, epsg, always_xy=True)
     ox, oy = para.transform(c['centro'][1], c['centro'][0])
     origem = np.array([round(ox, -1), round(oy, -1)])
@@ -286,7 +286,7 @@ def eixo(c, pasta, epsg):
     for e_ in osm['elements']:
         if e_['type'] == 'way' and e_['id'] in RUAS_LIBERADAS:
             e_.setdefault('tags', {})['highway'] = 'unclassified'
-    ll, vias, niveis, nomes, marcas, nos, G = rota_osm.volta(osm, PERNAS)
+    ll, vias, niveis, nomes, marcas, nos, G = rota_osm.volta(osm, pernas or PERNAS)
     loc = gm.local(epsg, origem)
     P0 = loc(ll)
     vias = np.array(vias)
@@ -383,16 +383,7 @@ def main():
     T, E = gp.quadro(P)
     kappa = gp.curvatura(P)
     raio = 1 / np.maximum(np.abs(kappa), 1e-6)
-    larg_osm = np.array([faixas(G.vias[w].get('tags', {})) * FAIXA_M + 2 * SARJETA_M if w in G.vias else 10.0 for w in via])
-    medida = np.where(np.isfinite(leito), leito, larg_osm)
-    medida = np.array([np.median(np.take(medida, np.arange(i - 10, i + 11), mode='wrap')) for i in range(n)])
-    largura = gaussian_filter1d(np.clip(medida, LARG_MIN, LARG_MAX), 10 / DS, mode='wrap')
-    passo_max = LARGURA_RAMPA * DS
-    for _ in range(2):
-        for i in range(n):
-            largura[i] = min(largura[i], largura[i - 1] + passo_max)
-        for i in range(n - 1, -1, -1):
-            largura[i] = min(largura[i], largura[(i + 1) % n] + passo_max)
+    largura = largura_da_volta(via, leito, G)
     print(f'largura {largura.min():.1f} a {largura.max():.1f} m (mediana {np.median(largura):.1f})')
     # --- A linha de chegada: LINHA da reta principal (a pista oeste da Oscar Paschoal), a partir da Carlos Luz.
     reta = gf.corrida(np.isin(via, RETA_OESTE))
@@ -420,20 +411,7 @@ def main():
         return
 
     # --- Curvas, caimento e zebras (como Floripa).
-    cv = gp.curvas(kappa, s, L)
-    intens = np.clip((300 - raio) / 250, 0, 1)
-    bank = gaussian_filter1d(-np.sign(kappa) * (.01 + .015 * intens), 10 / DS, mode='wrap')
-    zebra_d, zebra_e = np.zeros(n), np.zeros(n)
-    for cc in cv:
-        if cc['raio_min'] > 120:
-            continue
-        idx = np.arange(cc['ini'], cc['fim'] + 1) if cc['fim'] >= cc['ini'] else np.r_[cc['ini']:n, 0:cc['fim'] + 1]
-        pico = abs(kappa[cc['apice']])
-        dentro = [i for i in idx if abs(kappa[i]) > .7 * pico]
-        a = int(np.where(idx == cc['apice'])[0][0])
-        saida = list(idx[a:]) + [(idx[-1] + q) % n for q in range(1, 6)]
-        (zebra_e if cc['lado'] > 0 else zebra_d)[dentro] = 1
-        (zebra_d if cc['lado'] > 0 else zebra_e)[[i for i in saida if abs(kappa[i]) < .8 * pico]] = 1
+    cv, bank, zebra_d, zebra_e = curvas_e_zebras(kappa, raio, s, L)
     print(f'{len(cv)} curvas ({sum(1 for cc in cv if cc["raio_min"] < 30)} de menos de 30 m de raio)')
     kd = cKDTree(P)
 
@@ -452,11 +430,7 @@ def main():
     pit = pit_esquerda(dict(PIT), pit_reta, P, z, E, T, bank, largura, s, L, superficie)
 
     # --- Muros de concreto com alambrado dos dois lados; a direita abrem para o pit.
-    folga = {}
-    for lado in (-1, 1):
-        fora_da_curva = (np.sign(kappa) == -lado)
-        extra = 2.4 * np.clip((45 - raio) / 30, 0, 1) * fora_da_curva
-        folga[lado] = gaussian_filter1d(gf.maximum_filter1d_wrap(.6 + extra, 9), 6 / DS, mode='wrap')
+    folga = folgas(kappa, raio)
     a_pit, b_pit = (pit['entry_main_s'] - 25) % L, (pit['exit_main_s'] + 25) % L
     tem_e = ~((s >= a_pit) & (s <= b_pit)) if a_pit < b_pit else ~((s >= a_pit) | (s <= b_pit))
     rails = {'-1': [[0.0, L]], '1': gf.trechos_de(tem_e, s, L)}
@@ -465,6 +439,18 @@ def main():
     roam, vao, miolo = passeio_mineirao(P, s, L, E, largura, via, ORIGEM)
     tem_d = ~((s >= vao[0]) & (s <= vao[1])) if vao[0] < vao[1] else ~((s >= vao[0]) | (s <= vao[1]))
     rails['-1'] = gf.trechos_de(tem_d, s, L)
+    # --- O ramal da avenida (rodada 3): a volta se divide na ponta da peninsula, os dois caminhos valem.
+    ramal = ramal_da_avenida(c, pasta, epsg, rel, P, s, L, z, largura, bank, folga)
+    for a_, b_ in ramal['main_gaps']:
+        tem_e &= ~((s >= a_) & (s <= b_))
+    rails['1'] = gf.trechos_de(tem_e, s, L)
+    # As pontas do muro nas aberturas do ramal ficam onde a abertura acaba (nos bicos), nao na estacao seguinte.
+    for sec in rails['1']:
+        for a_, b_ in ramal['main_gaps']:
+            if 0 < sec[0] - b_ <= DS + 1e-6:
+                sec[0] = b_
+            if 0 <= sec[1] - a_ <= DS + 1e-6:
+                sec[1] = a_
 
     # --- Terreno: o LiDAR (2 m) na grade de 5 m, colado ao plano da pista junto dela; a lagoa com um fundo desenhado.
     todos = np.vstack([P, np.array(pit['xy'])])
@@ -493,6 +479,7 @@ def main():
     peso = np.clip((24 - fora) / 16, 0, 1) * ~sob_tabuleiro * ~agua * ~canal
     zt = zt * (1 - peso) + (road - .06) * peso
     zt = np.where(sob_tabuleiro & (fora < 12), np.minimum(zt, road - 2.5), zt)
+    zt = cola_no_ramal(ramal, q, zt, fora, peso, agua)
     pit_xy = np.array(pit['xy'])
     dp, ip = cKDTree(pit_xy).query(q)
     pl = np.array(pit['lx_ly'])
@@ -523,7 +510,7 @@ def main():
     marcos_na_volta(marcos_, P, s, E, largura)
     scenery['landmarks'] = marcos_
     scenery['buildings'], scenery['skyline'] = edificios(pasta, ORIGEM, P, largura, folga, pit, gx, gy, agua.reshape(ny, nx), rel,
-                                                         s, E, scenery['landmarks'])
+                                                         s, E, scenery['landmarks'], [ramal])
     solo_orto(pasta, ORIGEM, gx, gy)
     if '--sem-aneis' not in sys.argv:
         scenery['far'] = aneis_pampulha(pasta, epsg, ORIGEM, '--longe' in sys.argv)
@@ -574,7 +561,7 @@ def main():
     }
     pit = {k_: v for k_, v in pit.items() if k_ not in ('xy', 'z_lane', 'lx_ly', 'lo_arr', 'hi_arr')}
     saida = {'meta': meta, 'columns': colunas, 'samples': np.round(samples, 5).tolist(), 'pit': pit,
-             'terrain': terrain, 'scenery': scenery}
+             'branches': [ramal], 'terrain': terrain, 'scenery': scenery}
     # Gravado ao lado e trocado no fim (o jogo pode estar lendo o arquivo durante os ~8 min da geracao).
     final = gp.DADOS / f'pista_{NOME}.json'
     destino = final.with_name(final.name + '.tmp')
@@ -639,10 +626,260 @@ ESTADIO = {'centro': (877.5, -1612.5), 'semi': (138.0, 108.5), 'rumo': math.radi
 # no muro direito da reta, onde o eixo do tunel encontra a pista. O gramado oficial (105 x 68 m) e grama (menos aderencia).
 TUNEL = {'fachada_semi': (130.0, 100.0), 'campo_semi': (83.0, 53.5), 'rumo_graus': 169.0, 'largura': 10.0, 'altura': 5.2,
          'vao_m': 16.0, 'gramado': (105.0, 68.0)}
+# O ramal da avenida (rodada 3, ideia da equipe): na ponta da peninsula a volta se divide. Ela segue pela rua da
+# Igrejinha (o laco em volta da praca); o ramal vai reto pela Av. Otacilio Negrao de Lima, em frente ao Parque
+# Guanabara. Os dois caminhos valem. O ramal e a volta pelas mesmas pernas sem `sem_perna`, recortada onde as duas se
+# afastam mais de RAMAL_SEPARA_M, mais RAMAL_SOBRA_M de cada lado, e colada na volta nos RAMAL_COLA_M das pontas.
+RAMAL = {'id': 'avenida', 'nome': 'Av. Otacílio Negrão de Lima · Parque Guanabara', 'rotulo': 'Pela avenida · Parque Guanabara',
+         'sem_perna': 'igrejinha'}
+RAMAL_SEPARA_M = 1.0
+RAMAL_SOBRA_M = 80.0
+RAMAL_COLA_M = 60.0
+# Ate os bicos o ramal tem a altura e o caimento da volta; entre eles o perfil da avenida, alisado ate o raio vertical
+# RAMAL_RAIO_V_M, e o caimento dela, que chega em RAMAL_ALTURA_M. A frente do atenuador de cada bico fica RAMAL_BICO_M
+# para dentro do V.
+RAMAL_ALTURA_M = 40.0
+RAMAL_RAIO_V_M = 400.0
+RAMAL_BICO_M = 1.5
 # Clareira em volta do Mineirinho (a mata do parque o escondia da volta).
 CLAREIRA_MINEIRINHO_M = 45.0
 # Sem edificacao generica a menos disto das pegadas dos marcos (as casas do cadastro apertavam a Casa Kubitschek).
 MARCO_FOLGA_M = 8.0
+
+
+def largura_da_volta(via, leito, G):
+    """Largura de corrida: o leito medido (meios-fios) ou as faixas do OSM, mediana de 42 m, suavizada, entre LARG_MIN
+    e LARG_MAX, variando no maximo LARGURA_RAMPA m por metro."""
+    n = len(via)
+    larg_osm = np.array([faixas(G.vias[w].get('tags', {})) * FAIXA_M + 2 * SARJETA_M if w in G.vias else 10.0 for w in via])
+    medida = np.where(np.isfinite(leito), leito, larg_osm)
+    medida = np.array([np.median(np.take(medida, np.arange(i - 10, i + 11), mode='wrap')) for i in range(n)])
+    largura = gaussian_filter1d(np.clip(medida, LARG_MIN, LARG_MAX), 10 / DS, mode='wrap')
+    passo_max = LARGURA_RAMPA * DS
+    for _ in range(2):
+        for i in range(n):
+            largura[i] = min(largura[i], largura[i - 1] + passo_max)
+        for i in range(n - 1, -1, -1):
+            largura[i] = min(largura[i], largura[(i + 1) % n] + passo_max)
+    return largura
+
+
+def curvas_e_zebras(kappa, raio, s, L):
+    """As curvas, o caimento (para dentro, mais nas fechadas) e as zebras (dentro na tangencia, fora na saida)."""
+    n = len(kappa)
+    cv = gp.curvas(kappa, s, L)
+    intens = np.clip((300 - raio) / 250, 0, 1)
+    bank = gaussian_filter1d(-np.sign(kappa) * (.01 + .015 * intens), 10 / DS, mode='wrap')
+    zebra_d, zebra_e = np.zeros(n), np.zeros(n)
+    for cc in cv:
+        if cc['raio_min'] > 120:
+            continue
+        idx = np.arange(cc['ini'], cc['fim'] + 1) if cc['fim'] >= cc['ini'] else np.r_[cc['ini']:n, 0:cc['fim'] + 1]
+        pico = abs(kappa[cc['apice']])
+        dentro = [i for i in idx if abs(kappa[i]) > .7 * pico]
+        a = int(np.where(idx == cc['apice'])[0][0])
+        saida = list(idx[a:]) + [(idx[-1] + q) % n for q in range(1, 6)]
+        (zebra_e if cc['lado'] > 0 else zebra_d)[dentro] = 1
+        (zebra_d if cc['lado'] > 0 else zebra_e)[[i for i in saida if abs(kappa[i]) < .8 * pico]] = 1
+    return cv, bank, zebra_d, zebra_e
+
+
+def folgas(kappa, raio):
+    """Do asfalto ao muro, por lado (1 esquerda, -1 direita): 0,6 m, ate 3 m por fora das curvas fechadas."""
+    folga = {}
+    for lado in (-1, 1):
+        fora_da_curva = (np.sign(kappa) == -lado)
+        extra = 2.4 * np.clip((45 - raio) / 30, 0, 1) * fora_da_curva
+        folga[lado] = gaussian_filter1d(gf.maximum_filter1d_wrap(.6 + extra, 9), 6 / DS, mode='wrap')
+    return folga
+
+
+def ramal_da_avenida(c, pasta, epsg, rel, P, s, L, z, largura, bank, folga):
+    """O ramal (RAMAL): a volta inteira pelas pernas sem RAMAL['sem_perna'] (mesmas regras de eixo, largura, perfil,
+    caimento, zebras e folgas), recortada onde se afasta mais de RAMAL_SEPARA_M da volta, com RAMAL_SOBRA_M de cada
+    lado; nos RAMAL_COLA_M das pontas desliza ate a volta (posicao, altura, largura, caimento e folgas dela), de modo que
+    as pontas sao a propria volta. Devolve o bloco de `branches` do arquivo:
+    - samples (a cada DS m): s, x, y, z, width, bank (caimento para a esquerda, como crossfall_left), grade, tx, ty, lx,
+      ly (normal para a esquerda), main_s (o s da volta: a projecao nela onde coincidem, linear no meio), kerb_right,
+      kerb_left, wall_right_m, wall_left_m (folga do asfalto ao muro);
+    - side: de que lado da volta o ramal sai (1 esquerda); entry_main_s/exit_main_s: as pontas na volta; split_main_s:
+      onde os dois caminhos se separam e se juntam;
+    - main_gaps: onde o muro desse lado da volta abre (o asfalto do ramal passa por la; pontas retas, sem o leque das
+      pontas de muro);
+    - rails: os muros do ramal em s do ramal ('1' esquerdo, '-1' direito); walls: as faces deles (x, y, z no asfalto junto
+      do muro, espessura), e a frente do atenuador de cada bico (uma barra curta de um muro ao outro dentro do V);
+      noses: a ponta de cada V (onde o muro esquerdo da volta cruza o direito do ramal) e o vao da barra."""
+    pernas = [p_ for p_ in PERNAS if p_['rotulo'] != RAMAL['sem_perna']]
+    Pv, _, Lv, viav, leitov, origem, _, Gv = eixo(c, pasta, epsg, pernas)
+    nv = len(Pv)
+    larg_v = largura_da_volta(viav, leitov, Gv)
+    k0 = int(cKDTree(Pv).query(P[0])[1])
+    Pv, larg_v = np.roll(Pv, -k0, 0), np.roll(larg_v, -k0)
+    sv = np.arange(nv) * (Lv / nv)
+    _, Ev = gp.quadro(Pv)
+    kv = gp.curvatura(Pv)
+    rv = 1 / np.maximum(np.abs(kv), 1e-6)
+    _, tab_v = pontes_da_volta(pasta, origem, Pv, larg_v, sv, Lv)
+    zv, _ = perfil(Pv, Ev, sv, Lv, tab_v, rel)
+    _, bank_v, zd_v, ze_v = curvas_e_zebras(kv, rv, sv, Lv)
+    folga_v = folgas(kv, rv)
+    kd = cKDTree(P)
+    dv = kd.query(Pv)[0]
+    longe = np.flatnonzero(dv > RAMAL_SEPARA_M)
+    assert len(longe) and longe[-1] - longe[0] < 1000 / DS, 'o ramal tem de ser um so trecho, longe da linha de chegada'
+    sobra = int(round(RAMAL_SOBRA_M / (Lv / nv)))
+    j = np.arange(longe[0] - sobra, longe[-1] + sobra + 1)
+    Q, zq, wq, bq = Pv[j].copy(), zv[j].copy(), larg_v[j].copy(), bank_v[j].copy()
+    zd_q, ze_q, fl_q, fr_q = zd_v[j], ze_v[j], folga_v[1][j].copy(), folga_v[-1][j].copy()
+    # Nas pontas, a volta: a projecao em s da volta e as grandezas dela ali.
+    T, Em = gp.quadro(P)
+
+    def na_volta(Pt):
+        k = kd.query(Pt)[1]
+        return s[k] + np.sum((Pt - P[k]) * T[k], axis=1)
+    sp = na_volta(Q)
+    em_s = lambda a_: np.interp(sp, s, a_)
+    Pm = np.column_stack([em_s(P[:, 0]), em_s(P[:, 1])])
+    u = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+    w = 1 - np.clip(np.minimum(u, u[-1] - u) / RAMAL_COLA_M, 0, 1)
+    w = w * w * (3 - 2 * w)
+    Q = Q * (1 - w[:, None]) + Pm * w[:, None]
+    zq = zq * (1 - w) + em_s(z) * w
+    wq = wq * (1 - w) + em_s(largura) * w
+    bq = bq * (1 - w) + em_s(bank) * w
+    fl_q = fl_q * (1 - w) + em_s(folga[1]) * w
+    fr_q = fr_q * (1 - w) + em_s(folga[-1]) * w
+    # Reamostrado a cada DS m (aberto).
+    u = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))]
+    ub = np.r_[np.arange(0, u[-1] - DS / 2, DS), u[-1]]
+    em_u = lambda a_: np.interp(ub, u, a_)
+    Qb = np.column_stack([em_u(Q[:, 0]), em_u(Q[:, 1])])
+    zb, wb, bb = em_u(zq), em_u(wq), em_u(bq)
+    flb, frb = em_u(fl_q), em_u(fr_q)
+    kerb_d, kerb_e = (em_u(zd_q) > .5).astype(float), (em_u(ze_q) > .5).astype(float)
+    Tb, Eb = gp.quadro(Qb, fechado=False)
+    # main_s: a projecao onde o ramal e a volta coincidem; linear no comprimento do ramal onde se separam.
+    db = kd.query(Qb)[0]
+    spb = na_volta(Qb)
+    separado = np.flatnonzero(db >= RAMAL_SEPARA_M)
+    ia, ib = int(separado[0]), int(separado[-1])
+    main_s = spb.copy()
+    # Muros. O esquerdo da volta abre onde a face dele cai no asfalto do ramal, ate a ponta do V entre os dois caminhos:
+    # o bico, onde ele cruza o muro direito do ramal (dali os dois seguem, cada um do seu lado da praca). O esquerdo do
+    # ramal (o de fora) corre de onde o da volta abre ate onde ele volta, 2 m alem de cada ponta.
+    from shapely.geometry import LineString
+    WL = Qb + Eb * (wb / 2 + flb)[:, None]
+    WR = Qb - Eb * (wb / 2 + frb)[:, None]
+    WM = P + Em * (largura / 2 + folga[1])[:, None]
+    kdb = cKDTree(Qb)
+    dWM, kWM = kdb.query(WM)
+    latb = np.sum((WM - Qb[kWM]) * Eb[kWM], axis=1)
+    aberto = (dWM < 40) & (kWM > 0) & (kWM < len(ub) - 1) & (np.abs(latb) < wb[kWM] / 2 + .3)
+    gaps = gf.trechos_de(aberto, s, L)
+    assert len(gaps) == 2, f'o muro esquerdo da volta abre em dois trechos (na saida e na volta do ramal): {gaps}'
+    trecho = np.flatnonzero((s >= main_s[0] - 40) & (s <= main_s[-1] + 40))
+    lm, lr = LineString(WM[trecho]), LineString(WR)
+    X = lm.intersection(lr)
+    cruz = [g_ for g_ in getattr(X, 'geoms', [X]) if g_.geom_type == 'Point']
+    cw = np.r_[0, np.cumsum(np.linalg.norm(np.diff(WR, axis=0), axis=1))]
+    cm = np.r_[0, np.cumsum(np.linalg.norm(np.diff(WM[trecho], axis=0), axis=1))]
+    u_x = np.interp([lr.project(g_) for g_ in cruz], cw, ub)
+    s_x = np.interp([lm.project(g_) for g_ in cruz], cm, s[trecho])
+    antes = [k_ for k_ in range(len(cruz)) if u_x[k_] < ub[-1] / 2]
+    depois = [k_ for k_ in range(len(cruz)) if u_x[k_] > ub[-1] / 2]
+    assert antes and depois, f'o muro da volta tem de cruzar o direito do ramal na saida e na volta ({len(cruz)} cruzamentos)'
+    ka, kb = max(antes, key=lambda k_: u_x[k_]), min(depois, key=lambda k_: u_x[k_])
+    u1, u2, s1, s2 = float(u_x[ka]), float(u_x[kb]), float(s_x[ka]), float(s_x[kb])
+    gaps = [[gaps[0][0], s1], [s2, gaps[1][1]]]
+    meio_ = (ub > u1) & (ub < u2)
+    main_s[meio_] = np.interp(ub[meio_], [u1, u2], [np.interp(u1, ub, spb), np.interp(u2, ub, spb)])
+    assert np.all(np.diff(main_s) > 0), 'main_s do ramal tem de crescer'
+    esq = (main_s >= gaps[0][0] - 2) & (main_s <= gaps[1][1] + 2)
+    dire = (ub > u1) & (ub < u2)
+    # A emenda e o perfil: ate os bicos o ramal e o plano da volta (a altura e o caimento dela estendidos ate o eixo do
+    # ramal), sem degrau onde a borda da volta cruza o asfalto do ramal; entre os bicos, o perfil da avenida alisado
+    # ate um raio vertical de RAMAL_RAIO_V_M (a avenida fica ~3 m acima do laco da beira da lagoa: sem lombada que tire
+    # o carro do chao). O caimento vai ao da avenida em RAMAL_ALTURA_M.
+    k_ = kd.query(Qb)[1]
+    latm = np.sum((Qb - P[k_]) * Em[k_], axis=1)
+    bank_m = np.interp(spb, s, bank)
+    preso = (ub <= u1) | (ub >= u2)
+    zb = perfil_alisado(np.where(preso, np.interp(spb, s, z) + bank_m * latm, zb), preso, DS, RAMAL_RAIO_V_M)
+    dentro = np.clip(np.minimum(ub - u1, u2 - ub) / RAMAL_ALTURA_M, 0, 1)
+    wz = 1 - dentro * dentro * (3 - 2 * dentro)
+    bb = bb * (1 - wz) + bank_m * wz
+    gb = np.gradient(zb, ub)
+    zm = lambda s_: float(np.interp(s_, s, z) + np.interp(s_, s, bank) * (np.interp(s_, s, largura) / 2 + np.interp(s_, s, folga[1])))
+    pm = lambda s_: np.array([np.interp(s_, s, WM[:, 0]), np.interp(s_, s, WM[:, 1])])
+    pr = lambda u_: np.array([np.interp(u_, ub, WR[:, 0]), np.interp(u_, ub, WR[:, 1])])
+    zr = lambda u_: float(np.interp(u_, ub, zb - bb * (wb / 2 + frb)))
+    ponto = lambda xy_, z_: [round(float(xy_[0]), 3), round(float(xy_[1]), 3), round(float(z_), 3), .6]
+    X1, X2 = np.array(cruz[ka].coords[0]), np.array(cruz[kb].coords[0])
+    walls = [{'name': 'ramal_esquerdo', 'side': 1, 'points': [ponto(a_, c_ + b_ * (w_ / 2 + f_)) for a_, c_, b_, w_, f_ in
+                                                              zip(WL[esq], zb[esq], bb[esq], wb[esq], flb[esq])]},
+             {'name': 'ramal_direito', 'side': -1, 'points': [ponto(X1, zr(u1))] + [ponto(a_, c_ - b_ * (w_ / 2 + f_)) for a_, c_, b_, w_, f_ in
+                                                               zip(WR[dire], zb[dire], bb[dire], wb[dire], frb[dire])] + [ponto(X2, zr(u2))]}]
+    # Os bicos: a frente do atenuador, uma barra curta de um muro ao outro RAMAL_BICO_M para dentro do V.
+    noses = []
+    for nome_, X_, (a_, za, b_, zb_) in (('bico_saida', X1, (pm(s1 + RAMAL_BICO_M), zm(s1 + RAMAL_BICO_M), pr(u1 + RAMAL_BICO_M), zr(u1 + RAMAL_BICO_M))),
+                                         ('bico_volta', X2, (pr(u2 - RAMAL_BICO_M), zr(u2 - RAMAL_BICO_M), pm(s2 - RAMAL_BICO_M), zm(s2 - RAMAL_BICO_M)))):
+        walls.append({'name': nome_, 'side': 0, 'points': [ponto(a_, za), ponto(b_, zb_)]})
+        noses.append({'x': round(float(X_[0]), 2), 'y': round(float(X_[1]), 2), 'z': round((za + zb_) / 2, 2),
+                      'span': round(float(np.linalg.norm(b_ - a_)), 2)})
+    ie, ir = np.flatnonzero(esq), np.flatnonzero(dire)
+    rails = {'1': [[round(float(ub[ie[0]]), 1), round(float(ub[ie[-1]]), 1)]], '-1': [[round(u1, 1), round(u2, 1)]]}
+    colunas = ['s', 'x', 'y', 'z', 'width', 'bank', 'grade', 'tx', 'ty', 'lx', 'ly', 'main_s', 'kerb_right', 'kerb_left',
+               'wall_right_m', 'wall_left_m']
+    amostras = np.column_stack([ub, Qb, zb, wb, bb, gb, Tb, Eb, main_s, kerb_d, kerb_e, frb, flb])
+    print(f'ramal {RAMAL["id"]}: {ub[-1]:.0f} m (a volta no mesmo trecho: {main_s[-1] - main_s[0]:.0f} m), de s={main_s[0]:.0f} '
+          f'a s={main_s[-1]:.0f}; separa em s={spb[ia]:.0f}..{spb[ib]:.0f}; muro esquerdo da volta aberto em {gaps}; '
+          f'bicos {[n_["span"] for n_ in noses]} m; largura {wb.min():.1f}-{wb.max():.1f} m')
+    return {'id': RAMAL['id'], 'name': RAMAL['nome'], 'label': RAMAL['rotulo'], 'side': 1,
+            'columns': colunas, 'samples': np.round(amostras, 4).tolist(), 'length_m': round(float(ub[-1]), 2),
+            'entry_main_s': round(float(main_s[0]), 2), 'exit_main_s': round(float(main_s[-1]), 2),
+            'split_main_s': [round(float(spb[ia]), 1), round(float(spb[ib]), 1)],
+            'main_gaps': [[round(a_, 1), round(b_, 1)] for a_, b_ in gaps], 'rails': rails, 'walls': walls, 'noses': noses}
+
+
+def perfil_alisado(alvo, preso, ds, raio_min):
+    """O perfil mais perto do alvo com raio vertical de pelo menos raio_min fora dos trechos presos (mantidos): minimos
+    quadrados com a segunda diferenca penalizada, o peso dela dobrando ate o raio caber."""
+    n = len(alvo)
+    D = np.zeros((n - 2, n))
+    for i in range(n - 2):
+        D[i, i:i + 3] = (1.0, -2.0, 1.0)
+    W = np.where(preso, 1e8, 1.0)
+    livre = ~(preso[:-2] & preso[1:-1] & preso[2:])
+    lam = 1.0
+    for _ in range(60):
+        z = np.linalg.solve(np.diag(W) + lam * D.T @ D, W * alvo)
+        curv = np.abs(D @ z)[livre] / ds ** 2
+        if curv.max() <= 1 / raio_min:
+            break
+        lam *= 2
+    print(f'perfil do ramal: raio vertical minimo {1 / max(curv.max(), 1e-9):.0f} m (peso {lam:g}), ate {np.abs(z - alvo).max():.2f} m do alvo')
+    return z
+
+
+def cola_no_ramal(ramal, q, zt, fora, peso, agua):
+    """O terreno colado no ramal como na volta (ate 24 m da borda, sem passar das pontas), onde o ramal esta mais perto
+    que a volta ou cola mais."""
+    cl = ramal['columns']
+    A_ = np.array(ramal['samples'])
+    Qb = A_[:, [cl.index('x'), cl.index('y')]]
+    Tb = A_[:, [cl.index('tx'), cl.index('ty')]]
+    Eb = A_[:, [cl.index('lx'), cl.index('ly')]]
+    db, k = cKDTree(Qb).query(q)
+    dd = q - Qb[k]
+    lat = np.sum(dd * Eb[k], axis=1)
+    along = np.sum(dd * Tb[k], axis=1)
+    road = A_[k, cl.index('z')] + A_[k, cl.index('grade')] * along + A_[k, cl.index('bank')] * lat
+    bfora = np.abs(lat) - A_[k, cl.index('width')] / 2
+    ponta = ((k == 0) & (along < -1)) | ((k == len(Qb) - 1) & (along > 1))
+    bpeso = np.clip((24 - bfora) / 16, 0, 1) * (db < 60) * ~ponta * ~agua
+    usa = (bpeso > 0) & ((bfora < fora) | (bpeso > peso))
+    print(f'terreno colado no ramal: {int(usa.sum())} nos')
+    return np.where(usa, zt * (1 - bpeso) + (road - .06) * bpeso, zt)
 
 
 def elipse(c, semi, rumo, n=180):
@@ -1113,7 +1350,7 @@ def marcos_na_volta(marcos_, P, s, E, largura):
                      'edge_d': round(float(abs(lat) - largura[k] / 2), 1)}
 
 
-def edificios(pasta, origem, P, largura, folga, pit, gx, gy, agua, rel, s, E, marcos_):
+def edificios(pasta, origem, P, largura, folga, pit, gx, gy, agua, rel, s, E, marcos_, ramais=()):
     """Edificacoes do cadastro do BHGeo (2015) com a altura do laser (o telhado tipico, ALT_EST_MODAMDE_MINMDT). Na grade
     e a ate PERTO_M da pista: as do jogo (landscape.js), fora da faixa da pista e dos boxes, das arquibancadas, dos marcos
     e da lagoa; alem: o horizonte (skyline) so as de pelo menos SKYLINE_MIN_M de altura."""
@@ -1129,6 +1366,10 @@ def edificios(pasta, origem, P, largura, folga, pit, gx, gy, agua, rel, s, E, ma
         de, ate = 5.5, a['recuo'] + 17.6
         meio_ = a['lado'] * (largura[idx] / 2 + (de + ate) / 2)
         faixa.append(LineString(P[idx] + E[idx] * meio_[:, None]).buffer((ate - de) / 2 + 12.5))
+    for r_ in ramais:
+        cl = r_['columns']
+        A_ = np.array(r_['samples'])
+        faixa.append(LineString(A_[:, [cl.index('x'), cl.index('y')]]).buffer(float(A_[:, cl.index('width')].max() / 2 + 2.2)))
     arv = STRtree(faixa)
     # Os marcos: as pegadas com MARCO_FOLGA_M em volta (nada colado neles), as areas (parques, zoologico) pelo centro.
     predios_t = STRtree([Polygon(m['outline']).buffer(MARCO_FOLGA_M) for m in marcos_ if m.get('outline') and not m.get('area')])

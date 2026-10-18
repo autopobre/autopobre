@@ -1,5 +1,7 @@
 import {SUSPENSION_WHEELS} from './physics.js';
 import {pitLane} from './pit-lane.js';
+import {inBranchGap} from './branch-lane.js';
+import {branchKerbAt} from './branch-layout.js';
 
 // Kerbs (track-surface.js createCurbs) run from the road edge to KERB_WIDTH past it, ridged every
 // RIDGE_SPACING metres. The physics counts a wheel there as off the road (grass grip: the AI lap
@@ -14,13 +16,17 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export function kerbSegment(data,i,side){
  const a=data.samples,n=a.length,p=a[((i%n)+n)%n],q=a[(((i+1)%n)+n)%n],flag=side<0?13:14;
  if(side>0){const lane=pitLane(data,p[0]);if(lane&&(lane.entry||lane.exit))return false;}
+ // Not across a branch road's mouth (createCurbs leaves it out: the branch's asphalt runs on there).
+ if(inBranchGap(data,p[0],side))return false;
  return p.length>flag?!!(p[flag]&&q[flag]):true;
 }
 // What one contact point runs on, from a TestCar.sample: 'road' (asphalt, pit lane), 'kerb' or 'dirt'.
 export function surfaceKind(data,p){
  if(p.onRoad||p.pit)return 'road';
  const outside=Math.abs(p.d)-p.width/2;
- return data&&outside>=0&&outside<=KERB_WIDTH&&kerbSegment(data,p.i,p.d<0?-1:1)?'kerb':'dirt';
+ // On a branch road (physics.js sample: branch, branchS; d and width its own) its own kerbs (track-surface.js Zebra_ramal).
+ const side=p.d<0?-1:1;
+ return data&&outside>=0&&outside<=KERB_WIDTH&&(p.branch!=null?branchKerbAt(data,p.branch,p.branchS,side):kerbSegment(data,p.i,side))?'kerb':'dirt';
 }
 // Once per frame for one car (main.js updateCar), from its four contact points:
 //  kerbRide 0..1  how hard it rides the ridges (two wheels at 70 km/h or more = 1), for the camera's

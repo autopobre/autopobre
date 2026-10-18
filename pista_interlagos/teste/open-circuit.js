@@ -8,6 +8,7 @@ import {gantryPosts,groundHeight} from './track-clearance.js';
 import {cliffShownHeights,createCliff} from './cliff-scenery.js';
 import {splitByCells} from './perf-probe.js';
 import {lakeCells,lakeCutNodes} from './sea-water.js';
+import {lapLineCuts} from './branch-layout.js';
 
 // Circuits rebuilt from open data (Cascavel, ECPA): data/pista_<id>.json carries the
 // centre line and widths measured on 2025 aerial imagery over the OSM trace, the ANADEM
@@ -67,12 +68,12 @@ export async function createOpenCircuit(data,roadSurface,{heights,textures,field
  const cliff=data.scenery.cliff?createCliff(data,{groundMaterial,probe,mobile}):null;if(cliff)root.add(cliff.root);
  // Road height at (x, y): the plane the car drives on, drawn 3.5 cm above it like the GLB asphalt.
  const road=(x,y,i)=>{probe.index=i;return probe.sample(x,y,i).z-.02;};
- function strip(from,to,material,name,lift=0,{s0=-Infinity,s1=Infinity}={}){
+ function strip(from,to,material,name,lift=0,{s0=-Infinity,s1=Infinity,cut=null}={}){
   const positions=[],uv=[],indices=[];
   for(let k=0;k<=n;k++){
    const i=k%n,p=a[i];
    for(const f of [from,to]){const d=f(p),x=p[1]+p[9]*d,y=p[2]+p[10]*d;positions.push(x,road(x,y,i)+lift,-y);uv.push(d/2,(k===n?L:p[0])/2);}
-   if(k&&a[k-1][0]>=s0&&a[k-1][0]<=s1){const b=(k-1)*2;indices.push(b,b+2,b+1,b+1,b+2,b+3);}
+   if(k&&a[k-1][0]>=s0&&a[k-1][0]<=s1&&!cut?.(k-1)){const b=(k-1)*2;indices.push(b,b+2,b+1,b+1,b+2,b+3);}
   }
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();
   const mesh=new THREE.Mesh(material===roadSurface.material?roadSurface.geometry(g):g,material);mesh.name=name;mesh.receiveShadow=true;root.add(mesh);return mesh;
@@ -80,7 +81,10 @@ export async function createOpenCircuit(data,roadSurface,{heights,textures,field
  strip(p=>-p[4]/2,p=>p[4]/2,roadSurface.material,'Asfalto');
  // Worn like the GLB's lines (landscape.js structureMaterial 'paint').
  const paint=structureMaterial(new THREE.MeshStandardMaterial({name:'Pintura_borda',color:0xe8e4d6,roughness:.7,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}),textures);
- for(const side of [-1,1])strip(p=>side*(p[4]/2-.32),p=>side*(p[4]/2-.18),paint,side<0?'Linha_borda_direita':'Linha_borda_esquerda',.006);
+ // Where a branch road leaves or rejoins (data.branches) the edge line on its side is left out across the mouth: the
+ // branch's own lines and the dashed one there are branch-scenery.js's.
+ const cuts=lapLineCuts(data);
+ for(const side of [-1,1])strip(p=>side*(p[4]/2-.32),p=>side*(p[4]/2-.18),paint,side<0?'Linha_borda_direita':'Linha_borda_esquerda',.006,{cut:cuts.some(c=>c.side===side)?i=>cuts.some(c=>c.side===side&&i>=c.i0&&i<c.i1):null});
  // Timing line: two rows of checks across the asphalt at s = 0.
  const check=canvasTexture((ctx,w,h)=>{const cells=16;for(let r=0;r<2;r++)for(let c=0;c<cells;c++){ctx.fillStyle=(r+c)%2?'#141414':'#f1eee4';ctx.fillRect(c*w/cells,r*h/2,w/cells,h/2);}},512,64);
  const p0=a[0],w0=p0[4],line=new THREE.Mesh(new THREE.PlaneGeometry(w0-.4,1.3),new THREE.MeshStandardMaterial({name:'Linha_chegada',map:check,roughness:.7,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3}));

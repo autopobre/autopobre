@@ -1,6 +1,7 @@
 import {TestCar,onDeck,inTunnel,guardrailClearance} from './physics.js';
 import {pitGeometry,locatePit,wallsNear} from './pit-lane.js';
 import {cliffEdge} from './cliff-edge.js';
+import {branchLayouts,branchBands,branchRoadZ,stationZ,branchKerbSegment} from './branch-layout.js';
 
 // What has to stay clear on the surveyed circuit: the ground below everything
 // paved or built, and the scenery off the roads, garages and grandstands.
@@ -77,6 +78,8 @@ export function sceneryBands(data){
   bands.push({name:'pit_lane',margin:0,points:pit.samples.map(p=>[p[c.x],p[c.y],p[c.lx],p[c.ly],p[c.lo],p[c.hi]])});
   bands.push({name:'boxes',margin:0,points:pit.samples.filter(p=>p[c.s]>=g0-3&&p[c.s]<=g1+3).map(p=>[p[c.x],p[c.y],p[c.lx],p[c.ly],p[c.hi],p[c.hi]+GARAGE_CANOPY])});
  }
+ // A branch road (data.branches, branch-layout.js): its asphalt, as the lap's.
+ bands.push(...branchBands(data));
  for(const b of standLayout(data))
   bands.push({name:'arquibancada',margin:12,points:[-b.length/2,b.length/2].map(a=>[...standPoint(b,a,0),-b.rx,-b.ry,-b.roof.to,-b.apron])});
  // Bridge decks (meta.decks, Floripa): nothing stands beside them, over the water or on the shore far below: no trees,
@@ -226,6 +229,19 @@ export function groundLimits(data){
    edge([x1,y1,z1+top],[x2,y2,z2+top]);if(i+2===wall.points.length)add(x2,y2,z2+top);
   }
  }
+ // A branch road's asphalt where it is its own (outside the lap's: branch-layout.js, welded to the lap's edge at the
+ // seam) and its kerbs.
+ for(const B of branchLayouts(data)){
+  const st=B.stations,at=(r,d,lift=0)=>[r.x+r.lx*d,r.y+r.ly*d,stationZ(r,d)+lift-C];
+  for(let i=0;i+1<st.length;i++){
+   const p=st[i],q=st[i+1];if(!p.strip||!q.strip)continue;
+   quad(at(p,p.strip[0]),at(q,q.strip[0]),at(q,q.strip[1]),at(p,p.strip[1]));
+   for(const k of [-1,1]){
+    if(!branchKerbSegment(B,i,k))continue;
+    const e=r=>k*r.w/2,f=r=>k*(r.w/2+1.05);quad(at(p,e(p)),at(q,e(q)),at(q,f(q)),at(p,f(p)));
+   }
+  }
+ }
  // Grandstands: the apron in front, the parapet, every row and the back wall.
  for(const b of standLayout(data)){
   const a0=-b.length/2-.3,a1=b.length/2+.3,strip=(l0,l1,z)=>quad([...standPoint(b,a0,l0),z],[...standPoint(b,a1,l0),z],[...standPoint(b,a1,l1),z],[...standPoint(b,a0,l1),z]);
@@ -269,7 +285,7 @@ export function fitGround(data,limits=groundLimits(data)){
  // A tunnel's stations, and the gap from the asphalt to its walls on each side.
  const tunnel=data.meta.tunnels?.length?A.map(p=>inTunnel(data,p[0])):null,wr=data.columns?.indexOf('wall_right_m')??-1,wl=data.columns?.indexOf('wall_left_m')??-1;
  const lock=tunnel?new Uint8Array(nx*ny):null;
- const geo=pitGeometry(data);let driven=0,locked=0;
+ const geo=pitGeometry(data),branched=branchLayouts(data).length>0;let driven=0,locked=0;
  for(let j=0;j<ny;j++)for(let k=0;k<nx;k++){
   const g=j*nx+k,x=x0+k*step,y=y0+j*step;let i=hint[g],d2=best[g];
   // Under a viaduct where the lap crosses itself the nearest station in plan is often the deck's: the ground there is
@@ -290,6 +306,12 @@ export function fitGround(data,limits=groundLimits(data)){
   }
   // Beside and under a bridge deck the ground stays where the survey has it (the sea, the shore far below).
   const nearMain=i>=0&&Math.sqrt(d2)-A[i][4]/2<reach&&!high[i];
+  // Nearer a branch road's own asphalt than the lap's (and off the lap's): its drawn surface, carried on and blended into
+  // the survey over 3 m past its edge as the lap's is (physics.js sample).
+  if(branched){
+   const lapOut=nearMain?Math.sqrt(d2)-A[i][4]/2:Infinity,b=lapOut>0?branchRoadZ(data,x,y,reach):null;
+   if(b&&b.out<lapOut){const blend=Math.max(0,Math.min(1,b.out/3));h[g]=b.z*(1-blend)+t.z[g]*blend;driven++;continue;}
+  }
   const lane=!nearMain&&geo?locatePit(geo,x,y):null;
   if(!nearMain&&!(lane&&Math.max(lane.lo-lane.d,lane.d-lane.hi)<reach))continue;
   h[g]=probe.sample(x,y,nearMain?i:probe.nearest(x,y,true).i).z-.055;driven++;

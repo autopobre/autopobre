@@ -4,6 +4,7 @@
 // drive a plausible path. Keep the motion margin generous for collisions and delayed packets.
 import {TestCar} from './physics.js';
 import {packCar,readCar} from './net-cars.js';
+import {branchPoint} from './branch-lane.js';
 
 const SPEED=120,JITTER=45,MAX_GAP=5,STEP=8;
 export class GuestRaceState {
@@ -29,9 +30,11 @@ export class GuestRaceState {
   const distance=Math.hypot(s.x-p.x,s.y-p.y),height=Math.abs(s.z-p.z),travel=Math.hypot(distance,height);
   const budget=Math.min(JITTER+SPEED*MAX_GAP,this.credit+SPEED*Math.min(dt,MAX_GAP));
   const stepLimit=JITTER+SPEED*Math.min(dt,MAX_GAP);
-  // R puts a car at rest on the centre of its current track station, even far out on the grass.
-  // Recognize only that particular recovery target; it gives no new checkpoints or crossed line.
-  const station=p.a[p.index],recovered=running&&distance>12&&Math.hypot(s.vx,s.vy,s.vz)<1
+  // R puts a car at rest on the centre of its current track station, even far out on the grass (on a
+  // branch road, data.branches: of the branch's nearest station, physics.js recover). Recognize only
+  // that particular recovery target; it gives no new checkpoints or crossed line.
+  const fork=p.forks&&p.surface.branch!=null?branchPoint(p.forks[p.surface.branch].geo,p.surface.branchS):null;
+  const station=fork?[0,fork.x,fork.y,fork.z]:p.a[p.index],recovered=running&&distance>12&&Math.hypot(s.vx,s.vy,s.vz)<1
    &&Math.hypot(s.x-station[1],s.y-station[2])<2&&Math.abs(s.z-station[3])<4;
   if(Math.hypot(s.vx,s.vy)>SPEED||Math.abs(s.vz)>SPEED||(!running&&distance>2)
    ||!recovered&&(travel>budget||travel>stepLimit))return null;

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import {TestCar,clamp,wrap,GUARDRAIL_CLEARANCE,guardrailClearance,guardrailSections,guardrailPresent} from './physics.js';
 import {pitLane} from './pit-lane.js';
+import {inBranchGap} from './branch-lane.js';
+import {branchLayouts,stationZ,branchRoadOffset,branchKerbSegment} from './branch-layout.js';
 import {sceneryBands,bandClearance} from './track-clearance.js';
 import {carShadowPatch} from './car-shadow.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
@@ -329,6 +331,8 @@ export function createCurbs(data,{quality='alto'}={}){
   for(let i=0;i<n;i++){
    const j=(i+1)%n,p=data.samples[i],q=data.samples[j];
    const lane=pitLane(data,p[0]);if(side===1&&lane&&(lane.entry||lane.exit))continue;
+   // Nor across a branch road's mouth (data.branches): its asphalt runs on past the lap's edge there.
+   if(inBranchGap(data,p[0],side))continue;
    // Surveyed circuits flag the kerbs seen on the orthophoto, per side (13 right, 14 left).
    const flag=side<0?13:14;if(p.length>flag&&!(p[flag]&&q[flag]))continue;
    const a=profile.map(v=>vertex(p,i,side,v)),b=profile.map(v=>vertex(q,j,side,v)),va=p[0]/2.4,vb=(j?q[0]:L)/2.4,u=[0,.46,1],ba=bendAt(i),bb=bendAt(j),k0=side<0?0:1;
@@ -341,7 +345,35 @@ export function createCurbs(data,{quality='alto'}={}){
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));g.setAttribute('kerbData',new THREE.Float32BufferAttribute(wear,2));g.computeVertexNormals();
   const m=new THREE.Mesh(g,material);m.receiveShadow=true;m.name=side<0?'Zebra_direita':'Zebra_esquerda';root.add(m);
  }
+ // A branch road's kerbs (data.branches: kerb_right / kerb_left per station), one more strip in the same paint, where its
+ // edge is clear of the lap's asphalt (the lap's own kerbs where the two run together).
+ const branchKerbs=createBranchKerbs(data,profile);
+ if(branchKerbs){const m=new THREE.Mesh(branchKerbs,material);m.receiveShadow=true;m.name='Zebra_ramal';root.add(m);}
  return root;
+}
+function createBranchKerbs(data,profile){
+ const positions=[],uvs=[],wear=[];
+ for(const B of branchLayouts(data)){
+  const st=B.stations,n=st.length,offset=branchRoadOffset(data);
+  const bendAt=i=>{const a=st[Math.max(0,i-18)],b=st[Math.min(n-1,i+18)];return clamp(Math.abs(wrap(Math.atan2(b.ty,b.tx)-Math.atan2(a.ty,a.tx)))*1.2,0,1);};
+  for(const k of [-1,1]){
+   // k: the kerb's side of the branch (1 left).
+   const vertex=(r,[width,height])=>{const d=k*(r.w/2+width);return [r.x+r.lx*d,stationZ(r,d)+.055+height,-(r.y+r.ly*d)];};
+   for(let i=0;i+1<n;i++){
+    const p=st[i],q=st[i+1];if(!branchKerbSegment(B,i,k))continue;
+    const a=profile.map(v=>vertex(p,v)),b=profile.map(v=>vertex(q,v)),va=(offset+p.s)/2.4,vb=(offset+q.s)/2.4,u=[0,.46,1],ba=bendAt(i),bb=bendAt(i+1),k0=k<0?0:1;
+    for(let j=0;j<2;j++){
+     // Wound as the lap's, mirrored on the left.
+     if(k>0)positions.push(...a[j],...b[j],...a[j+1],...b[j],...b[j+1],...a[j+1]);else positions.push(...a[j],...a[j+1],...b[j],...b[j],...a[j+1],...b[j+1]);
+     if(k>0)uvs.push(u[j],va,u[j],vb,u[j+1],va,u[j],vb,u[j+1],vb,u[j+1],va);else uvs.push(u[j],va,u[j+1],va,u[j],vb,u[j],vb,u[j+1],va,u[j+1],vb);
+     if(k>0)wear.push(ba,k0,bb,k0,ba,k0,bb,k0,bb,k0,ba,k0);else wear.push(ba,k0,ba,k0,bb,k0,bb,k0,ba,k0,bb,k0);
+    }
+   }
+  }
+ }
+ if(!positions.length)return null;
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));g.setAttribute('kerbData',new THREE.Float32BufferAttribute(wear,2));g.computeVertexNormals();
+ return g;
 }
 
 // Each rendered strip is independent: no faces or posts bridge the run-off gaps.

@@ -77,10 +77,13 @@ export function createInterlagosPit(data,roadSurface,textures,labels=undefined){
  const mat=(name,color,extra={})=>new THREE.MeshStandardMaterial({name,color,roughness:.9,...extra});
  // --- Asphalt: lane, painted gore at the entry and the kerbed merge at the exit.
  {
+  // The lane's own s in the road shader, past the lap's (6000 on: a lap longer than that, Pampulha's 20 km, had its
+  // braking zones painted on the pit lane).
+  const L=data.meta.reconstructed_xy_m,laneS=L+40<6000?6000:Math.ceil(L/1000)*1000+6000;
   const positions=[],uvs=[],road=[],indices=[];
   for(let i=0;i<n;i++){
    const p=a[i],mid=(p[c.lane_lo]+p[c.lane_hi])/2,width=p[c.lane_hi]-p[c.lane_lo];
-   for(const d of [p[c.lo],p[c.hi]]){const v=at(p,d,.035);positions.push(v.x,v.y,v.z);uvs.push(v.x/2.1,v.z/2.1);road.push(d-mid,6000+p[c.s],width,0);}
+   for(const d of [p[c.lo],p[c.hi]]){const v=at(p,d,.035);positions.push(v.x,v.y,v.z);uvs.push(v.x/2.1,v.z/2.1);road.push(d-mid,laneS+p[c.s],width,0);}
    if(i){const k=(i-1)*2;indices.push(k,k+2,k+1,k+1,k+2,k+3);}
   }
   const g=geometryFrom(positions,uvs,indices,[['roadData',road,4]]);
