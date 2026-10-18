@@ -1,4 +1,4 @@
-import {CIRCUITS} from './circuits.js';
+import {CIRCUITS,fixedLaps} from './circuits.js';
 import {CHAMPIONSHIP_CALENDARS,CHAMPIONSHIP_POINTS,calendarsFor,pointsText} from './championship.js';
 import {MODEL_NAMES} from './race-roster.js';
 
@@ -10,6 +10,8 @@ const code=id=>id.slice(0,3).toUpperCase();
 const roundName=r=>r.place??CIRCUITS[r.circuit]?.name??r.circuit;
 const el=(tag,props={},...children)=>{const node=document.createElement(tag);Object.assign(node,props);node.append(...children);return node;};
 const ordinal=n=>`${n}º`;
+// The next round's race length: the championship's laps, or the one its circuit fixes (Pampulha: one lap).
+const roundLaps=championship=>{const n=championship.roundLaps();return `${n} volta${n>1?'s':''}`;};
 const MODE_NAME={corrida:'MODO CORRIDA',historia:'MODO HISTÓRIA'};
 // A round's place: retirements and disqualifications score nothing.
 const placeText=r=>r.dsq?'DSQ':r.dnf?'AB':ordinal(r.position);
@@ -48,8 +50,8 @@ export function renderChampionshipPanel(root,championship){
  }else{
   status.textContent=championship.finished
    ?`Campeonato encerrado. Campeão: #${standings[0].number} ${standings[0].shortName}. Você terminou em ${ordinal(player.position)} com ${pointsText(player.points)}.`
-   :round===0?`Etapa 1 de ${championship.total}: ${CIRCUITS[championship.nextCircuit].name}, ${state.laps} volta${state.laps>1?'s':''}.`
-   :`Você é ${ordinal(player.position)} com ${pointsText(player.points)}. Próxima: etapa ${round+1}, ${CIRCUITS[championship.nextCircuit].name}.`;
+   :round===0?`Etapa 1 de ${championship.total}: ${CIRCUITS[championship.nextCircuit].name}, ${roundLaps(championship)}.`
+   :`Você é ${ordinal(player.position)} com ${pointsText(player.points)}. Próxima: etapa ${round+1}, ${CIRCUITS[championship.nextCircuit].name}${fixedLaps(championship.nextCircuit)?`, ${roundLaps(championship)}`:''}.`;
   start.textContent=championship.finished?'Novo campeonato →':round===0?'Largar na etapa 1 →':`Correr a etapa ${round+1} →`;
   if(round>0)for(const d of standings.slice(0,5).concat(player.position>5?[player]:[]))
    mini.append(el('li',{className:d.player?'player':''},el('b',{textContent:ordinal(d.position)}),el('span',{textContent:`#${d.number} ${d.shortName}`}),el('em',{textContent:`${d.points}`})));

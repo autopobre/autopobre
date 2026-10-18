@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {splitByCells} from './perf-probe.js';
 
 // The land far below and around a plateau circuit (Chapada dos Sonhos, data.scenery.far, gerar_chapada.py):
 // the Cuiabá lowland, the escarpment running off east and west, the town on the plateau, out to 22 km. Two
@@ -51,8 +52,12 @@ async function ring(spec,url,inside,order,stride=1,sea=null,under=null){
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nattribute vec2 steep;\nvarying vec2 vSteep;\nvarying vec3 vWorldP;').replace('#include <begin_vertex>','#include <begin_vertex>\nvSteep=steep;\nvWorldP=(modelMatrix*vec4(position,1.)).xyz;');
   shader.fragmentShader=shader.fragmentShader.replace('#include <common>','#include <common>\nuniform vec3 sandstone;\nvarying vec2 vSteep;\nvarying vec3 vWorldP;\nfloat farHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}\nfloat farNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(farHash(i),farHash(i+vec2(1,0)),f.x),mix(farHash(i+vec2(0,1)),farHash(i+vec2(1,1)),f.x),f.y);}').replace('#include <map_fragment>','diffuseColor*=mix(texture2D(map,vMapUv),texture2D(map,vMapUv,3.5),vSteep.y);\nfloat farLum=dot(diffuseColor.rgb,vec3(.299,.587,.114)),farWoods=smoothstep(.004,.02,diffuseColor.g-diffuseColor.r)*(1.-smoothstep(.06,.15,farLum));\nfloat farNear=1.-smoothstep(1200.,4500.,length(vWorldP-cameraPosition));\ndiffuseColor.rgb*=1.+farNear*(farWoods*.6*(farNoise(vWorldP.xz/6.5)-.5)+.2*(farNoise(vWorldP.xz/21.)-.5));\ndiffuseColor.rgb=mix(diffuseColor.rgb,sandstone*(.7+.6*dot(diffuseColor.rgb,vec3(.333))),vSteep.x*.55);');
  };
- const mesh=new THREE.Mesh(g,material);mesh.name='Vale_'+order;mesh.frustumCulled=false;mesh.receiveShadow=false;
- // After the near ground (.25) and before the sea (.3): only what the nearer world leaves open is shaded.
+ // After the near ground (.25) and before the sea (.3): only what the nearer world leaves open is shaded. In sectors of
+ // a quarter of the ring's span (perf-probe.js splitByCells): drawn whole, the rings sent all their triangles, those
+ // behind the camera too, through every pass (some 700 thousand round Pampulha); out of a view a sector is skipped.
+ const pieces=splitByCells(g,(spec.nx-1)*spec.step/4),mesh=pieces.length>1?new THREE.Group():new THREE.Mesh(g,material);mesh.name='Vale_'+order;
+ if(pieces.length>1){for(const piece of pieces){const part=new THREE.Mesh(piece,material);part.name='Vale_'+order;part.receiveShadow=false;part.renderOrder=.27;mesh.add(part);}g.dispose();}
+ else{mesh.frustumCulled=false;mesh.receiveShadow=false;}
  mesh.renderOrder=.27;
  return {mesh,rect:{x0,y0,x1:x0+(nx-1)*step,y1}};
 }
@@ -65,7 +70,9 @@ export async function createFarTerrain(data,url,{stride=1,heights=null}={}){
  const ground=(x,y)=>{const fx=Math.min(t.nx-1.000001,Math.max(0,(x-t.x0)/t.step)),fy=Math.min(t.ny-1.000001,Math.max(0,(y-t.y0)/t.step)),i=Math.floor(fx),j=Math.floor(fy),u=fx-i,v=fy-j,a=j*t.nx+i;
   return u>=v?z[a]*(1-u)+z[a+1]*(u-v)+z[a+t.nx+1]*v:z[a]*(1-v)+z[a+t.nx+1]*u+z[a+t.nx]*(v-u);};
  const root=new THREE.Group();root.name='Vale';
- const sea=data.meta.sea_level_m??null,medio=await ring(far.medio,url,grid,0,stride,sea,ground);root.add(medio.mesh);
+ // (A lake, meta.lake, lies wholly inside the grid: the rings are dry land at any height, the valley below Pampulha's dam
+ // 10 to 40 m under the lake's level too.)
+ const sea=data.meta.lake?null:data.meta.sea_level_m??null,medio=await ring(far.medio,url,grid,0,stride,sea,ground);root.add(medio.mesh);
  let vertices=far.medio.nx*far.medio.ny;
  if(far.longe){const longe=await ring(far.longe,url,medio.rect,1,stride,sea);root.add(longe.mesh);vertices+=far.longe.nx*far.longe.ny;}
  return {root,stats:{vertices}};

@@ -2,11 +2,15 @@
 // imaginary Chapada dos Sonhos on the real relief (gerar_chapada.py): geometry, relief, pit lane, scenery
 // clearances and a full AI race on each; on the Chapada also the rim with no guardrail and a fall off it; on the
 // Floripa street circuit (gerar_floripa.py) the walls by the asphalt and the bridge decks over the sea; on the
-// Minhocão street circuit (gerar_minhocao.py) the elevated deck, the tunnel and the lap passing under itself.
-//   node scripts/testar_circuitos_abertos.mjs [cascavel|piracicaba|chapeco|brasilia|goiania|chapada|floripa|minhocao]
+// Minhocão street circuit (gerar_minhocao.py) the elevated deck, the tunnel and the lap passing under itself; on the
+// Pampulha street circuit (gerar_pampulha.py) the 20 km lap raced in one lap, the lake and the shared first block.
+//   node scripts/testar_circuitos_abertos.mjs [cascavel|piracicaba|chapeco|brasilia|goiania|chapada|floripa|minhocao|pampulha]
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {CIRCUITS} from '../teste/circuits.js';
+import {CIRCUITS,fixedLaps,raceLaps} from '../teste/circuits.js';
+import {Championship,OLD_STOCK_2026} from '../teste/championship.js';
+import {standardLaps} from '../teste/ai-records.js';
+import {lakeCells} from '../teste/sea-water.js';
 import {TestCar,recognitionInput,guardrailSections,guardrailClearance,onDeck,inTunnel} from '../teste/physics.js';
 import {RaceField,pitRoute} from '../teste/race-field.js';
 import {pitGeometry,locatePit,serviceSpot,garageBays,wallsNear} from '../teste/pit-lane.js';
@@ -27,7 +31,7 @@ function selfCrossings(a){
    out.push({s:[a[i][0]+u*Math.hypot(x2-x1,y2-y1),a[j][0]+v*Math.hypot(x4-x3,y4-y3)],z:[a[i][3]+u*(a[i2][3]-a[i][3]),a[j][3]+v*(a[j2][3]-a[j][3])]});}}
  return out;
 }
-for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa','minhocao']){
+for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa','minhocao','pampulha']){
  if(only&&only!==id)continue;
  const circuit=CIRCUITS[id],data=JSON.parse(readFileSync(new URL(`../dados/pista_${id}.json`,import.meta.url)));
  data.meta.id=id;data.meta.name=circuit.name;
@@ -39,7 +43,8 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
   const span=Math.hypot(q[1]-p[1],q[2]-p[2]);assert(span>1.8&&span<2.2,`${id}: station spacing ${span}`);length+=span;
   turn+=Math.atan2(p[7]*q[8]-p[8]*q[7],p[7]*q[7]+p[8]*q[8]);
   assert(Math.abs(p[7]*p[9]+p[8]*p[10])<1e-3,'left vector is normal to the tangent');
-  assert(p[4]>=8.9&&p[4]<=16.2,`${id}: width ${p[4]}`);
+  // (A street circuit takes its avenues whole: Pampulha's Carlos Luz and Antônio Carlos race 20 m wide.)
+  assert(p[4]>=8.9&&p[4]<=(data.meta.street?20.1:16.2),`${id}: width ${p[4]}`);
  }
  assert(Math.abs(length-L)<1,`${id}: lap length`);
  // A lap that passes over itself (a viaduct over one of its own streets) crosses its own centre line: with one crossing
@@ -53,7 +58,7 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  if(crossings.length)out.crossings=crossings.map(c=>({s:c.s.map(Math.round),dz:+Math.abs(c.z[0]-c.z[1]).toFixed(1)}));
  if(id==='piracicaba')assert(Math.abs(L-circuit.length)<15,'ECPA shows its measured length');
  else assert(Math.abs(data.meta.reconstructed_3d_m-circuit.length)<.5,`${id} matches the published length`);
- assert.equal(circuit.length,{cascavel:3058,piracicaba:1930,chapeco:4004,brasilia:5384,goiania:3835,chapada:5153,floripa:4445,minhocao:4035}[id]);
+ assert.equal(circuit.length,{cascavel:3058,piracicaba:1930,chapeco:4004,brasilia:5384,goiania:3835,chapada:5153,floripa:4445,minhocao:4035,pampulha:20533}[id]);
  // Chapecó (opened 08/2026): the earthworks profile is calibrated to the published 18.5 m, and the
  // sections carry the official numbering (12 curves, curve 7 the long constant-radius sweep).
  if(id==='chapeco'){
@@ -146,6 +151,39 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
   assert(deepest>7,`Minhocão: the tunnel runs well under the plaza (${deepest.toFixed(1)} m)`);
   out.street={decks:+decks.toFixed(0),tunnels:+tunnels.toFixed(0),crossingDz:+dz.toFixed(2),deepestUnderGround:+deepest.toFixed(1)};
  }
+ // Circuito da Pampulha (imaginary street circuit round Belo Horizonte's lake): walls on both sides (open only for the
+ // pit lane); one lap of 20 km (circuits.js laps, mirrored in meta.laps) in every race and championship round, never on
+ // the story's calendar; the lake is water only over its own cells (sea-water.js lakeCells), the valley below the dam 10
+ // to 40 m under its level dry land; and the first block of the Oscar Paschoal raced twice, up one carriageway and down
+ // the other some 20 m away: a car anywhere on either is found on its own stretch (physics.js nearest).
+ if(id==='pampulha'){
+  assert.equal(data.meta.barrier,'street');
+  // Walls all round but where the pit lane on the north shore opens the left one and the gap into the Mineirão (meta.roam)
+  // the right one.
+  const hole=runs=>runs.length===2&&runs[0][0]===0&&Math.abs(runs[1][1]-L)<1e-6?[runs[0][1],runs[1][0]]:null,pitHole=hole(data.meta.rails['1']),gapHole=hole(data.meta.rails['-1']),g=data.meta.roam.zones[0].gaps[0];
+  assert(pitHole&&pitHole[0]<=data.pit.entry_main_s&&pitHole[1]>=data.pit.exit_main_s&&pitHole[1]-pitHole[0]<data.pit.length_m+80,'Pampulha: the left wall opens only for the pit lane');
+  assert(gapHole&&Math.abs(gapHole[0]-g.s0)<3&&Math.abs(gapHole[1]-g.s1)<3,'Pampulha: the right wall opens only into the Mineirão');
+  for(let i=0;i<n;i+=5)for(const side of [-1,1]){const g=guardrailClearance(data,a[i][0],side);assert(g>.3&&g<8.5,`Pampulha: wall gap ${g} at s=${a[i][0]}`);}
+  assert(circuit.laps===1&&data.meta.laps===circuit.laps&&fixedLaps(id)===1,'Pampulha: one lap, in circuits.js and the track file');
+  assert(raceLaps(id,5)===1&&raceLaps('interlagos',5)===5&&standardLaps(id)===1&&standardLaps('interlagos')===3,'Pampulha: its own race length and records');
+  assert(!OLD_STOCK_2026.some(r=>fixedLaps(r.circuit)),'the story (Old Stock 2026) never races a circuit with a fixed race length');
+  const season=new Championship(null,'corrida','todas');season.start('Piloto',4);
+  assert(season.rounds.includes(id)&&season.roundLaps(id)===1&&season.roundLaps('interlagos')===4,'Pampulha: one lap in Todas as pistas');
+  const wet=lakeCells(data),level=data.meta.sea_level_m;let lake=0,dry=0;
+  for(let k=0;k<wet.length;k++){if(wet[k]){lake++;assert(data.scenery.cover.classes[k]==='6'&&data.terrain.z[k]<level,'Pampulha: lake nodes are water cells under the level');}else if(data.terrain.z[k]<level)dry++;}
+  assert(data.meta.lake&&lake>100000&&dry>30000,`Pampulha: ${lake} lake nodes, ${dry} nodes under its level left dry (the valley below the dam)`);
+  // The block raced both ways: the stations with another stretch of the lap within 25 m (over 400 m away along it).
+  const twin=[];for(let i=0;i<n;i++){const p=a[i];if(a.some(q=>{const d=Math.abs(q[0]-p[0]);return Math.min(d,L-d)>400&&Math.hypot(q[1]-p[1],q[2]-p[2])<25;}))twin.push(p[0]);}
+  const shared=[];for(const s0 of twin){const last=shared.at(-1);if(last&&s0-last[1]<10)last[1]=s0;else shared.push([s0,s0]);}
+  assert.equal(shared.length,2,`Pampulha: one block raced both ways (${JSON.stringify(shared)})`);
+  const probe=new TestCar(data);let checked=0;
+  for(const [s0,s1] of shared)for(let i=Math.round(s0/(L/n));a[i][0]<=s1;i++){const p=a[i];
+   for(const d of [-p[4]/2+.4,0,p[4]/2-.4]){const x=p[1]+p[9]*d,y=p[2]+p[10]*d,far=probe.nearest(x,y,true);probe.index=i;const near=probe.nearest(x,y);
+    for(const q of [far,near])assert(Math.abs(q.i-i)<=2,`Pampulha: a car at s=${p[0].toFixed(0)} d=${d.toFixed(1)} is found at s=${a[q.i][0].toFixed(0)}`);checked++;}}
+  const gap=Math.min(...a.filter(p=>p[0]>=shared[0][0]&&p[0]<=shared[0][1]).map(p=>Math.min(...a.filter(q=>q[0]>=shared[1][0]&&q[0]<=shared[1][1]).map(q=>Math.hypot(q[1]-p[1],q[2]-p[2])))));
+  assert(gap>12,`Pampulha: the two carriageways of the first block ${gap.toFixed(1)} m apart`);
+  out.street={laps:circuit.laps,lakeNodes:lake,dryUnderLevel:dry,sharedBlock:{gap:+gap.toFixed(1),probes:checked}};
+ }
  // --- Relief: real circuits, not a flat plate; grades a car can climb.
  const grades=a.map(p=>p[6]);out.grade=[Math.min(...grades),Math.max(...grades)].map(g=>+(g*100).toFixed(1));
  // The Chapada's profile is game earthworks on a plateau with valleys (up to 8%), not the relief under the line: no DEM check.
@@ -230,24 +268,26 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  out.gantry=posts.map(p=>+p.d.toFixed(1));
  // --- Ground fitting under asphalt, kerbs, pit and stands converges.
  const fit=fitGround(data);assert(fit.stats.residual<.01,`${id}: ground fit residual ${fit.stats.residual}`);out.groundFit=fit.stats;
- // --- The recognition driver and the 14 rivals race three laps on the real geometry.
+ // --- The recognition driver and the 14 rivals race three laps on the real geometry (a circuit that fixes its race
+ // length, circuits.js laps, its own: Pampulha's one lap of 20 km, with the time it takes).
+ const laps=circuit.laps??3,budget=circuit.laps?laps*L/15:600;
  const field=new RaceField(data,{seed:1}),parked=new TestCar(data);parked.resetGrid();field.reset(parked.surface.s,{grid:true});
  const far=data.terrain;parked.x=far.x0+5;parked.y=far.y0+5;parked.surface=parked.sample(parked.x,parked.y);
  let steps=0,offroad=0,crashes=0;
  let roamed=0;
- while(field.rivals.some(r=>!r.finished)&&steps<120*600){field.step(parked,1/120,3);for(const r of field.rivals){if(!r.car.surface.onRoad)offroad++;if(r.car.roamZone)roamed++;}steps++;}
+ while(field.rivals.some(r=>!r.finished)&&steps<120*budget){field.step(parked,1/120,laps);for(const r of field.rivals){if(!r.car.surface.onRoad)offroad++;if(r.car.roamZone)roamed++;}steps++;}
  // A street circuit's gaps into the city (meta.roam) are off the rivals' line: none of them ever goes through.
  assert.equal(roamed,0,`${id}: rivals never leave the lap through a gap into the city (${roamed} steps out)`);
  const finished=field.rivals.filter(r=>r.finished);
- assert(finished.length>=13,`${id}: rivals finish three laps (${finished.length}/14)`);
+ assert(finished.length>=13,`${id}: rivals finish ${laps} laps (${finished.length}/14)`);
  assert(offroad/(steps*14)<.03,`${id}: rivals stay on the asphalt (${(offroad/(steps*14)*100).toFixed(2)}% off)`);
  const best=Math.min(...field.rivals.map(r=>r.car.best??Infinity));
  out.rivals={finished:finished.length,bestLap:+best.toFixed(2),avgSpeedKmh:+(L/best*3.6).toFixed(1),offroadPct:+(offroad/(steps*14)*100).toFixed(2),falls:field.rivals.reduce((sum,r)=>sum+(r.car.falls??0),0)};
  const solo=new TestCar(data);solo.resetGrid();solo.awaitingStart=false;let t=0,soloOff=0;const startLaps=solo.laps;
- // Two laps at the tour's pace (it averages ~75 km/h): 400 s, more for Brasília's 5.4 km.
- const budget=120*Math.max(400,L/15*2.4);
- while(solo.laps<startLaps+2&&t<budget){solo.step(recognitionInput(solo),1/120);if(!solo.surface.onRoad)soloOff++;t++;}
- assert(solo.laps>=startLaps+2,`${id}: recognition driver laps (${solo.laps-startLaps} in ${(t/120).toFixed(0)} s, at s=${solo.surface.s.toFixed(0)})`);out.recognition={best:+solo.best.toFixed(2),offroadPct:+(soloOff/t*100).toFixed(2)};
+ // Two laps at the tour's pace (it averages ~75 km/h): 400 s, more for Brasília's 5.4 km (one of Pampulha's 20 km).
+ const tour=Math.min(2,laps),tourBudget=120*Math.max(400,L/15*1.2*tour);
+ while(solo.laps<startLaps+tour&&t<tourBudget){solo.step(recognitionInput(solo),1/120);if(!solo.surface.onRoad)soloOff++;t++;}
+ assert(solo.laps>=startLaps+tour,`${id}: recognition driver laps (${solo.laps-startLaps} in ${(t/120).toFixed(0)} s, at s=${solo.surface.s.toFixed(0)})`);out.recognition={best:+solo.best.toFixed(2),offroadPct:+(soloOff/t*100).toFixed(2)};
  report[id]=out;
 }
 console.log(JSON.stringify({passed:true,report},null,1));

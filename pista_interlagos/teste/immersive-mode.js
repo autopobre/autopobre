@@ -13,6 +13,10 @@ import {entryFor,CHALLENGES,MORALE,MORALE_NAMES,MORALE_LABELS,OUTCOME_TITLES,GAM
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const idle={throttle:0,brake:1,left:0,right:0,handbrake:0,reverse:0},still={throttle:0,brake:0,left:0,right:0};
 const touchScreen=()=>document.body.classList.contains('touch-device');
+// The free race's 12 L last the race: the burn scales with the laps (3/laps: three laps burn what one lap's pace would).
+// A circuit that fixes its race length (circuits.js laps: Pampulha's single 20 km lap, ten minutes at racing pace) burns
+// for its distance, as three laps of Interlagos would: some 8 L, as the usual race (three times one lap ran it dry by 7 km).
+export const freeBurn=(data,laps)=>{const fixed=CIRCUITS[circuitId(data.meta.id)].laps;return fixed?3*CIRCUITS.interlagos.length/(laps*data.meta.reconstructed_xy_m):3/laps;};
 const capital=text=>text[0].toUpperCase()+text.slice(1);
 // What the action key does by the Opala in the paddock (car-openings.js carSpot); open: already open.
 const CAR_ACTIONS=Object.freeze({capo:open=>open?'Fechar o capô':'Abrir o capô · ver o motor',porta_malas:open=>open?'Fechar o porta-malas':'Abrir o porta-malas',porta:()=>'Entrar no Opala 99'});
@@ -39,7 +43,7 @@ export class ImmersiveMode {
  // onGo: the start is given (free countdown or story grid), the car must be ready to go.
  constructor({scene,carRoot,car,data,driver,rivalTemplate,skidMarks,resetVehicle,releaseMouse,onNormal,onGo=null,layout=null,obstacles=[],setView=null,getView=null,playerView=null}){
   Object.assign(this,{carRoot,car,data,resetVehicle,releaseMouse,onNormal,onGo,setView,getView,playerView});let profile={};try{profile=JSON.parse(localStorage.getItem(STORY_PROFILE_KEY))||{};}catch{}
-  this.freeCountdown=0;this.goTime=0;this.freeFuel=12;this.laps=3;this.lineup=null;this.freeLineup=null;this.freeTotalLaps=3;this.storyLaps=3;this.freeFinished=false;this.freePosition=GRID_SIZE;this.freePlayerProgress=0;this.rivalTrails=RIVAL_ROSTER.map(()=>skidMarks?.createTrail());this.field=new RaceField(data,{onStep:(r,i,input,dt)=>{r.input=input;this.rivalTrails[i]?.update(r.car,input,dt);},onReset:()=>this.rivalTrails.forEach(t=>t?.breakTrails())});this.parts=new CrashParts(scene);this.state=new ImmersiveState(profile);this.visual=new ImmersiveVisuals(scene,carRoot,data,driver,car,rivalTemplate);this.lastPhase='off';this.lastUI='';this.near=-1;this.rivals=this.field.rivals;this.projectile=null;this.towOrigin=0;this.prepLitres=this.fuelChoice=6;this.prepFilm=false;
+  this.freeCountdown=0;this.goTime=0;this.freeFuel=12;this.freeBurn=1;this.laps=3;this.lineup=null;this.freeLineup=null;this.freeTotalLaps=3;this.storyLaps=3;this.freeFinished=false;this.freePosition=GRID_SIZE;this.freePlayerProgress=0;this.rivalTrails=RIVAL_ROSTER.map(()=>skidMarks?.createTrail());this.field=new RaceField(data,{onStep:(r,i,input,dt)=>{r.input=input;this.rivalTrails[i]?.update(r.car,input,dt);},onReset:()=>this.rivalTrails.forEach(t=>t?.breakTrails())});this.parts=new CrashParts(scene);this.state=new ImmersiveState(profile);this.visual=new ImmersiveVisuals(scene,carRoot,data,driver,car,rivalTemplate);this.lastPhase='off';this.lastUI='';this.near=-1;this.rivals=this.field.rivals;this.projectile=null;this.towOrigin=0;this.prepLitres=this.fuelChoice=6;this.prepFilm=false;
   this.brand=document.querySelector('.wordmark');this.baseBrand=this.brand.innerHTML;this.baseTitle=document.title;
   this.controls=document.querySelector('footer>div');this.baseControls=this.controls.innerHTML;
   this.panel=document.createElement('section');this.panel.id='immersivePanel';this.panel.className='hidden';this.panel.setAttribute('aria-label','Auto-Pobre Racing');document.body.append(this.panel);
@@ -504,7 +508,7 @@ export class ImmersiveMode {
  }
  // lineup: the rivals of the next free race, taken here like laps (null: the whole field; [] a solo
  // practice, which has no flag and burns no fuel; [number] a 1x1). freeLineup: the race under way's.
- resetField(){this.freeCountdown=0;this.goTime=0;this.recordAssisted=false;this.finishElapsed=null;this.finishTime=null;this.finishBest=null;this.freeOrder=null;this.freeLineup=this.lineup;this.freeTotalLaps=this.practice?Infinity:this.laps;this.freeFuel=12;this.freeFinished=false;this.freePlayerProgress=0;this.freeLastS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:!!this.car.awaitingStart,entrants:this.freeLineup});this.rivals=this.field.rivals;this.freePosition=this.fieldSize;this.parts.reset();}
+ resetField(){this.freeCountdown=0;this.goTime=0;this.recordAssisted=false;this.finishElapsed=null;this.finishTime=null;this.finishBest=null;this.freeOrder=null;this.freeLineup=this.lineup;this.freeTotalLaps=this.practice?Infinity:this.laps;this.freeFuel=12;this.freeBurn=freeBurn(this.data,this.freeTotalLaps);this.freeFinished=false;this.freePlayerProgress=0;this.freeLastS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:!!this.car.awaitingStart,entrants:this.freeLineup});this.rivals=this.field.rivals;this.freePosition=this.fieldSize;this.parts.reset();}
  get practice(){return !this.active&&this.freeLineup?.length===0;}
  // Cars racing: the whole grid in the story; the free race's may be short (practice, 1x1).
  get fieldSize(){return this.rivals.length+1;}
@@ -515,7 +519,7 @@ export class ImmersiveMode {
  // controller's rumble, in the story's race as in Modo Corrida.
  takeKnock(){const knock=this.knock??0;this.knock=0;return knock;}
  contacts(hits){for(const hit of hits){if(hit.player){this.damageAt(hit.speed,hit.point);this.knock=Math.max(this.knock??0,hit.speed);}this.parts.burst(hit,this.car);if(hit.player&&this.active)this.state.hitCar(Math.min(1.5,hit.speed/10));else{const dx=hit.point[0]-this.car.x,dy=hit.point[1]-this.car.y,d=Math.hypot(dx,dy);if(d<65)this.state.emitSound('collision',{strength:Math.min(1.5,hit.speed/10)*(1-d/65),pan:clamp((-dx*Math.sin(this.car.heading)+dy*Math.cos(this.car.heading))/Math.max(1,d),-1,1)});}}}
- stepFree(dt,input={}){if(this.freeFinished)return;const previous=this.freeFuel;this.freeFuel=Math.max(0,this.freeFuel-dt*((.002+Math.hypot(this.car.vx,this.car.vy)*.00045+(input.throttle||0)*.005+(this.car.rearSlipSpeed||0)*.0023)*3/this.freeTotalLaps+(this.car.condition?.factors.leak??0)));if(previous>=1&&this.freeFuel<1)this.state.emitSound('reserve');if(previous>0&&this.freeFuel===0)this.state.emitSound('fuelEmpty');this.contacts(this.field.step(this.car,dt,this.freeTotalLaps));
+ stepFree(dt,input={}){if(this.freeFinished)return;const previous=this.freeFuel;this.freeFuel=Math.max(0,this.freeFuel-dt*((.002+Math.hypot(this.car.vx,this.car.vy)*.00045+(input.throttle||0)*.005+(this.car.rearSlipSpeed||0)*.0023)*this.freeBurn+(this.car.condition?.factors.leak??0)));if(previous>=1&&this.freeFuel<1)this.state.emitSound('reserve');if(previous>0&&this.freeFuel===0)this.state.emitSound('fuelEmpty');this.contacts(this.field.step(this.car,dt,this.freeTotalLaps));
   const L=this.data.meta.reconstructed_xy_m;this.freePlayerProgress+=lapTravel(this.freeLastS??0,this.car.surface.s,L);this.freeLastS=this.car.surface.s;
   const progress=Math.min(this.freePlayerProgress,this.car.laps*L+this.car.surface.s+this.field.gridLeadIn);
   this.freePosition=1+this.rivals.filter(r=>r.progress>progress).length;

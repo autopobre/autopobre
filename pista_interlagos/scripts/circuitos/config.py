@@ -224,6 +224,31 @@ CIRCUITOS = {
         'relevo_local': 'geosampa_lidar_2020',
         'caixa_mds': (-23.5487, -46.6500, -23.5376, -46.6458),
     },
+    'pampulha': {
+        # Circuito de rua imaginario (pedido #8 da Central, 17/10/2026, desenhado sobre o mapa): a orla da Lagoa da
+        # Pampulha (Av. Otacilio Negrao de Lima) no sentido horario e a volta do Mineirao, em Belo Horizonte
+        # (gerar_pampulha.py). Largada na Av. Coronel Oscar Paschoal rumo a lagoa, com o Mineirao a direita; os boxes ficam
+        # na reta da orla norte. Corridas de uma volta so (meta.laps).
+        'nome': 'Circuito da Pampulha',
+        'cidade': 'Belo Horizonte, MG',
+        # Meio da lagoa, entre a Igrejinha e o Iate.
+        'centro': (-19.8515, -43.9795),
+        'raio_m': 3400,
+        'epsg': 31983,                 # SIRGAS 2000 / UTM 23S
+        'anadem': '23K',
+        'copernicus': 'Copernicus_DSM_COG_10_S20_00_W044_00_DEM',
+        'worldcover': 'S21W045',
+        'extensao_m': 20000,           # desenho; gerar_pampulha.py grava o medido
+        'centro_cidade': (-19.9191, -43.9386),   # Praca Sete de Setembro, centro de Belo Horizonte
+        'largura_m': 12,
+        'sentido': 'horario',
+        'imaginario': True,
+        'rua': True,
+        # Relevo do LiDAR 2015 (MDT em grade de 2 m), edificacoes com altura, meios-fios, quadras, canteiros, a lagoa e a
+        # ortofoto de 2015 do BHGeo (Prefeitura de Belo Horizonte / PRODABEL, CC-BY), nesta caixa UTM (a volta e 500 m).
+        'relevo_local': 'bhgeo_lidar_2015',
+        'caixa_utm': (603500, 7802100, 608750, 7806650),
+    },
 }
 
 

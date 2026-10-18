@@ -56,6 +56,7 @@ desktop.ini
 !/pista_interlagos/dados/pista_chapada.json
 !/pista_interlagos/dados/pista_floripa.json
 !/pista_interlagos/dados/pista_minhocao.json
+!/pista_interlagos/dados/pista_pampulha.json
 /pista_interlagos/fontes/
 /pista_interlagos/*.blend
 /pista_interlagos/exports/*

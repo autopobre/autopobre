@@ -75,7 +75,7 @@ export class CinematicIntro{
    {duration:1.5,ramp:true,fov:[48,56],from:lane(40),to:lane(7),look:[car.clone().add(new THREE.Vector3(0,.7,0)),car.clone().add(new THREE.Vector3(0,.6,0))],
     // A solo practice (no flag) or a 1x1 (c.duel: the rival's roster entry) says so on the grid;
     // c.number is the car the player races (Modo Corrida's car screen), c.model its model (Opala or Fusca).
-    dof:.3,caption:c.practice?['TREINO SOLO','Só você na pista','Voltas livres, sem bandeirada.']:c.duel?['CORRIDA 1x1',`#${c.number} × #${c.duel.number} ${c.duel.shortName}`,`${c.laps} volta${c.laps>1?'s':''}, mano a mano.`]:['OLD STOCK · LARGADA',`${c.grid} carros · ${c.laps} voltas`,'Motores ligados no grid.']},
+    dof:.3,caption:c.practice?['TREINO SOLO','Só você na pista','Voltas livres, sem bandeirada.']:c.duel?['CORRIDA 1x1',`#${c.number} × #${c.duel.number} ${c.duel.shortName}`,`${c.laps} volta${c.laps>1?'s':''}, mano a mano.`]:['OLD STOCK · LARGADA',`${c.grid} carros · ${c.laps} volta${c.laps>1?'s':''}`,'Motores ligados no grid.']},
    {duration:1.6,ramp:true,fov:[36,26],from:car.clone().addScaledVector(f,8.5).addScaledVector(inward,3.6).add(new THREE.Vector3(0,.85,0)),to:car.clone().addScaledVector(f,3.9).addScaledVector(inward,1.7).add(new THREE.Vector3(0,.6,0)),
     look:[car.clone().addScaledVector(f,.4).add(new THREE.Vector3(0,.6,0)),car.clone().addScaledVector(f,.2).add(new THREE.Vector3(0,.55,0))],
     dof:.45,caption:[`${c.model==='fusca'?'FUSCA':'OPALA'} #${c.number}`,c.pilot,c.practice?'Pista livre':`Larga em ${c.position}º`]}

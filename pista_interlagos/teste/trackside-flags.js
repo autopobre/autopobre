@@ -22,6 +22,12 @@ export const FLAG_LEVELS=Object.freeze({
  media:{tier:2,cap:72,fine:false,reach:140,detail:0,shadow:false},
  completa:{tier:3,cap:340,fine:true,reach:320,detail:1,shadow:true}
 });
+// The caps of off and leve (the marshals' flags, the gantry's) are a lap's of up to CAP_LAP metres (Brasília's 5.4 km the
+// longest when they were set): a longer lap keeps every marshal post's flag (Pampulha's 20 km: 57 posts). Médio and
+// Completa keep their budgets, spread round the lap (every instance runs the cloth's vertex work in every pass, even
+// those it then culls: four times Completa's 340 on Pampulha put 580 thousand triangles in each frame).
+const CAP_LAP=5500;
+export const flagCap=(level,length)=>{const q=FLAG_LEVELS[level];return q.tier<=1?Math.round(q.cap*Math.max(1,length/CAP_LAP)):q.cap;};
 // Tiers: 0 the marshals' flags, 1 the start gantry, 2 the main straight's poles, half the roof flags
 // and the corner-exit rods, 3 everything else.
 const TIER_NAMES=['off','leve','media','completa'];
@@ -286,7 +292,7 @@ function buildPlan(data){
  const ordered=[];
  for(let tier=0;tier<=3;tier++)ordered.push(...swept.filter(t=>t.tier===tier).sort((u,v)=>u.s-v.s).map((t,k)=>[spread(k),t]).sort((u,v)=>u[0]-v[0]).map(([,t])=>t));
  const counts={};
- for(const level of TIER_NAMES){const q=FLAG_LEVELS[level];counts[level]=Math.min(q.cap,ordered.filter(t=>t.tier<=q.tier).length);}
+ for(const level of TIER_NAMES){const q=FLAG_LEVELS[level];counts[level]=Math.min(flagCap(level,L),ordered.filter(t=>t.tier<=q.tier).length);}
  ordered.forEach((t,index)=>{t.index=index;targets.push({s:t.s,d:t.d,kind:t.kind,index,up:t.up});});
  for(const b of boards)targets.push({s:b.s,d:b.d,kind:'board',index:-1,up:0});
  return {length:L,items:ordered,counts,boards,targets:targets.sort((u,v)=>u.s-v.s),runs,boxes,rejected};

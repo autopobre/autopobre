@@ -320,7 +320,7 @@ export function createBox99({pit,c,lerp,at,root,obstacles,textures,people,crowd,
   // lap, race: trackRecords rows (lap-records.js); mode: the story's ('immersive') or the race's.
   // recordsShown keeps what the TVs show.
   showRecords:({title,mode,lap,race,laps,other})=>{layout.recordsShown={title,mode,lap,race,other};const kind=m=>m==='immersive'?'MODO HISTÓRIA':'MODO CORRIDA';
-   boards[0].show({title,subtitle:`MELHOR VOLTA · ${kind(mode)}`,rows:lap});boards[1].show({title,subtitle:`CORRIDA DE ${laps} VOLTAS · ${kind(mode)}`,rows:race});boards[2].show({title,subtitle:`MELHOR VOLTA · ${kind(other.mode)}`,rows:other.lap});},
+   boards[0].show({title,subtitle:`MELHOR VOLTA · ${kind(mode)}`,rows:lap});boards[1].show({title,subtitle:`CORRIDA DE ${laps} VOLTA${laps>1?'S':''} · ${kind(mode)}`,rows:race});boards[2].show({title,subtitle:`MELHOR VOLTA · ${kind(other.mode)}`,rows:other.lap});},
   inBox:surface=>inServiceSpot(spot,surface),
   crew,cafeSeat:route.at(-1).clone(),cafeSign:world(-13.2,F+9.6,2.95),route,heroHeading:h0+Math.PI/2,pitView:[5.6,-6.4,2.9],
   makeHero:()=>people.person(OUTFITS.driver),

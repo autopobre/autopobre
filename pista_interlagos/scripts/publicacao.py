@@ -12,7 +12,7 @@ MODULES = (
     'circuits.js', 'curvelo-data.js', 'curvelo-scene.js', 'open-circuit.js', 'track-clearance.js', 'interlagos-stands.js',
     'cliff-edge.js', 'cliff-fall.js', 'cliff-scenery.js', 'far-terrain.js', 'explosion.js',
     'drift-arena.js', 'drift-arena-world.js', 'drift-score.js', 'drift-physics.js', 'drift-arena-ai.js', 'drift-arena-props.js', 'drift-arena-mode.js', 'drift-arena-scene.js', 'drift-arena-stadium.js', 'arena.css',
-    'sea-water.js', 'street-walls.js', 'floripa-bridges.js', 'floripa-landmarks.js', 'minhocao-structures.js', 'minhocao-landmarks.js',
+    'sea-water.js', 'street-walls.js', 'floripa-bridges.js', 'floripa-landmarks.js', 'minhocao-structures.js', 'minhocao-landmarks.js', 'pampulha-estadios.js', 'pampulha-igrejinha.js', 'pampulha-fauna.js',
     'city-map.js', 'city-crowd.js', 'city-buildings.js', 'city-streets.js', 'street-closures.js', 'city-cars.js', 'city-furniture.js', 'beira-mar.js', 'city-life.js', 'city-traffic.js', 'city-race.js',
     'race-results.js', 'race-results.css', 'lap-records.js', 'ghost-lap.js', 'ghost-car.js', 'championship.js', 'championship-board.js', 'pistas.css',
     'race-roster.js', 'car-select.js', 'car-garage.js', 'car-livery.js', 'fusca.js', 'fusca-cockpit.js', 'carros.css',
@@ -44,6 +44,8 @@ ASSETS = (
     'circuitos/floripa_solo.jpg', 'circuitos/floripa_medio.jpg', 'circuitos/floripa_longe.jpg',
     'circuitos/floripa_medio_relevo.bin', 'circuitos/floripa_longe_relevo.bin',
     'circuitos/minhocao_solo.jpg',
+    'circuitos/pampulha_solo.jpg', 'circuitos/pampulha_medio.jpg', 'circuitos/pampulha_longe.jpg',
+    'circuitos/pampulha_medio_relevo.bin', 'circuitos/pampulha_longe_relevo.bin',
     'circuitos/floripa_cidade.png',
     'opala99_assinaturas_omp.glb', 'opala99_seiva_danilo.glb', 'fusca_v2.glb',
     'abertura/desclassificado_v1.jpg', 'abertura/abertura_stevan_opala99.jpg', 'abertura/logo_auto_pobre_racing.webp',
@@ -84,6 +86,7 @@ PUBLIC_FILES.update({
     'dados/pista_chapada.json': 'pista_interlagos/dados/pista_chapada.json',
     'dados/pista_floripa.json': 'pista_interlagos/dados/pista_floripa.json',
     'dados/pista_minhocao.json': 'pista_interlagos/dados/pista_minhocao.json',
+    'dados/pista_pampulha.json': 'pista_interlagos/dados/pista_pampulha.json',
     'exports/interlagos_pista.glb': 'pista_interlagos/exports/interlagos_pista.glb',
 })
 AUDIO_NAMES = ('intro.mp3', 'race.mp3', 'patrocinio.mp3', 'turbo.mp3', 'hojenaodeu.mp3', 'energia.mp3')

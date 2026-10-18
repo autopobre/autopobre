@@ -176,11 +176,21 @@ diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.07),scuff*.55);`);
  for(const piece of splitByCells(g,300)){const mesh=new THREE.Mesh(piece,concrete);mesh.name='Muro_concreto';mesh.castShadow=mesh.receiveShadow=true;pieces.add(mesh);}
  root.add(pieces);
  const fg=new THREE.BufferGeometry();fg.setAttribute('position',new THREE.Float32BufferAttribute(fence,3));fg.setAttribute('uv',new THREE.Float32BufferAttribute(fenceUv,2));fg.setIndex(fenceIdx);fg.computeVertexNormals();fg.computeBoundingSphere();
- const fenceMesh=new THREE.Mesh(fg,fenceMaterial);fenceMesh.name='Alambrado';fenceMesh.castShadow=true;root.add(fenceMesh);
- const postMesh=new THREE.InstancedMesh(new THREE.CylinderGeometry(.045,.05,FENCE_TOP-.81+.05,6).translate(0,(FENCE_TOP-.81)/2,0),steel,posts.length);
+ // The fence and its posts in pieces of 600 m: each ran both sides of the whole lap in one draw, drawn whole in the picture
+ // and the sun's map (Pampulha's 20 km: some 320 thousand triangles of mesh and 10 thousand posts). Twice the blocks'
+ // 300 m: light parts, fewer draws.
+ const fenceMesh=new THREE.Group();fenceMesh.name='Alambrado_trechos';
+ for(const piece of splitByCells(fg,600)){const mesh=new THREE.Mesh(piece,fenceMaterial);mesh.name='Alambrado';mesh.castShadow=true;fenceMesh.add(mesh);}
+ root.add(fenceMesh);
+ const postGeometry=new THREE.CylinderGeometry(.045,.05,FENCE_TOP-.81+.05,6).translate(0,(FENCE_TOP-.81)/2,0),postMesh=new THREE.Group(),cells=new Map();postMesh.name='Postes_alambrado_trechos';
+ for(const p of posts){const key=Math.floor(p.x/600)+':'+Math.floor(p.z/600);if(!cells.has(key))cells.set(key,[]);cells.get(key).push(p);}
  const m=new THREE.Matrix4(),q=new THREE.Quaternion(),one=new THREE.Vector3(1,1,1);
- posts.forEach((p,i)=>{q.setFromAxisAngle(new THREE.Vector3(Math.sin(p.lean),0,Math.cos(p.lean)),.09);m.compose(new THREE.Vector3(p.x,p.y,p.z),q,one);postMesh.setMatrixAt(i,m);});
- postMesh.name='Postes_alambrado';postMesh.castShadow=true;postMesh.computeBoundingSphere();root.add(postMesh);
+ for(const list of cells.values()){
+  const inst=new THREE.InstancedMesh(postGeometry,steel,list.length);
+  list.forEach((p,i)=>{q.setFromAxisAngle(new THREE.Vector3(Math.sin(p.lean),0,Math.cos(p.lean)),.09);m.compose(new THREE.Vector3(p.x,p.y,p.z),q,one);inst.setMatrixAt(i,m);});
+  inst.name='Postes_alambrado';inst.castShadow=true;inst.computeBoundingSphere();postMesh.add(inst);
+ }
+ root.add(postMesh);
  const stats={sides:2,closed:false,segments:blocks,sections,coverageMetres:coverage,coverageRatio:coverage/(L*2),clearance:'por estação',reflectors:0,style:'street',fencePosts:posts.length};
  // The fence is the expensive part far off: on the light levels it goes beyond the nearest few hundred metres
  // (the mesh is one draw; quality only switches it off on Básico).

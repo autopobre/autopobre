@@ -1959,5 +1959,201 @@ export const AI_REFERENCE_TIMES=[
   "number": "42",
   "bestLap": 135.817,
   "bestRace": 427.975
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "73",
+  "bestLap": 586.025,
+  "bestRace": 586.025
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "00",
+  "bestLap": 585.408,
+  "bestRace": 585.408
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "7",
+  "bestLap": 587.158,
+  "bestRace": 587.158
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "64",
+  "bestLap": 616.692,
+  "bestRace": 616.7
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "2",
+  "bestLap": 585.467,
+  "bestRace": 585.467
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "19",
+  "bestLap": 587.733,
+  "bestRace": 587.733
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "51",
+  "bestLap": 596.042,
+  "bestRace": 596.042
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "93",
+  "bestLap": 586.617,
+  "bestRace": 586.617
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "312",
+  "bestLap": 613.475,
+  "bestRace": 613.475
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "70",
+  "bestLap": 589.783,
+  "bestRace": 589.783
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "9",
+  "bestLap": 612.658,
+  "bestRace": 612.658
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "74",
+  "bestLap": 615.508,
+  "bestRace": 615.508
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "88",
+  "bestLap": 614.175,
+  "bestRace": 614.175
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "normal",
+  "number": "42",
+  "bestLap": 614.675,
+  "bestRace": 614.683
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "73",
+  "bestLap": 586.025,
+  "bestRace": 586.025
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "00",
+  "bestLap": 585.408,
+  "bestRace": 585.408
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "7",
+  "bestLap": 587.158,
+  "bestRace": 587.158
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "64",
+  "bestLap": 616.692,
+  "bestRace": 616.7
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "2",
+  "bestLap": 585.467,
+  "bestRace": 585.467
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "19",
+  "bestLap": 587.733,
+  "bestRace": 587.733
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "51",
+  "bestLap": 596.042,
+  "bestRace": 596.042
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "93",
+  "bestLap": 586.617,
+  "bestRace": 586.617
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "312",
+  "bestLap": 613.475,
+  "bestRace": 613.475
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "70",
+  "bestLap": 589.783,
+  "bestRace": 589.783
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "9",
+  "bestLap": 612.658,
+  "bestRace": 612.658
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "74",
+  "bestLap": 615.508,
+  "bestRace": 615.508
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "88",
+  "bestLap": 614.175,
+  "bestRace": 614.175
+ },
+ {
+  "circuit": "pampulha",
+  "mode": "immersive",
+  "number": "42",
+  "bestLap": 614.675,
+  "bestRace": 614.683
  }
 ];

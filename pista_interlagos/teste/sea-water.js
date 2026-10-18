@@ -9,19 +9,75 @@ import {skyMirror} from './sky.js';
 // octaves of moving ripples breaks it up, the sun leaves a glitter path, and a thin band of churned water marks the
 // shore. The shallows come from the terrain grid: a depth map over the grid, deep everywhere beyond it.
 const SIZE=90000;
-function depthTexture(data,level){
+// wet: the lake's own nodes (lakeCells) where the water is a lake, else every node under the level.
+function depthTexture(data,level,wet=null){
  const t=data.terrain,{nx,ny}=t,out=new Uint8Array(nx*ny*4);
- for(let i=0;i<nx*ny;i++){const d=Math.max(0,Math.min(1,(level-t.z[i])/14));out[i*4]=Math.round(d*255);out[i*4+1]=t.z[i]<level?255:0;out[i*4+2]=0;out[i*4+3]=255;}
+ for(let i=0;i<nx*ny;i++){const d=Math.max(0,Math.min(1,(level-t.z[i])/14));out[i*4]=Math.round(d*255);out[i*4+1]=(wet?wet[i]:t.z[i]<level)?255:0;out[i*4+2]=0;out[i*4+3]=255;}
  const tex=new THREE.DataTexture(out,nx,ny,THREE.RGBAFormat);tex.magFilter=THREE.LinearFilter;tex.minFilter=THREE.LinearFilter;tex.wrapS=tex.wrapT=THREE.ClampToEdgeWrapping;tex.needsUpdate=true;
  return tex;
 }
+// A lake (meta.lake: Belo Horizonte's Pampulha, its level meta.sea_level_m) is water only over its own nodes: the land
+// round it may lie lower (the valley below the dam, 10 to 40 m under it) and nothing beyond the grid is water. Its nodes
+// are the land cover's water (class '6' of data.scenery.cover, the terrain grid's own), in the pieces whose rim is the
+// lake's shore (within a metre of the level): a pond the track file dug to 0 m in a park 20 m higher stays dry ground.
+// Uint8Array over the grid (1 lake), or null on a coast; kept per track file.
+const LAKE_RIM=1,lakes=new WeakMap();
+export function lakeCells(data){
+ if(!data.meta.lake||!data.scenery?.cover)return null;
+ if(lakes.has(data))return lakes.get(data);
+ const c=data.scenery.cover,t=data.terrain,{nx,ny}=c,level=data.meta.sea_level_m??0,water=new Uint8Array(nx*ny),wet=new Uint8Array(nx*ny),seen=new Uint8Array(nx*ny);
+ for(let k=0;k<nx*ny;k++)water[k]=c.classes[k]==='6'?1:0;
+ for(let k=0;k<nx*ny;k++){
+  if(!water[k]||seen[k])continue;
+  const piece=[k],stack=[k];let rim=Infinity;seen[k]=1;
+  while(stack.length){const q=stack.pop(),i=q%nx,j=(q-i)/nx;
+   for(const [a,b] of [[i+1,j],[i-1,j],[i,j+1],[i,j-1]]){if(a<0||b<0||a>=nx||b>=ny)continue;const p=b*nx+a;if(!water[p]){rim=Math.min(rim,t.z[p]);continue;}if(!seen[p]){seen[p]=1;piece.push(p);stack.push(p);}}}
+  if(rim<level+LAKE_RIM)for(const q of piece)wet[q]=1;
+ }
+ lakes.set(data,wet);return wet;
+}
+// The lake's depth at (x, y) for one on foot (free-walk.js: no wading in past the knees), from the nearest node of the
+// track file's ground; null off the lake, and no function at all where the water is a coast's.
+export function lakeWater(data){
+ const wet=lakeCells(data),t=data.terrain,level=data.meta.sea_level_m??0;if(!wet)return null;
+ return (x,y)=>{const i=Math.round((x-t.x0)/t.step),j=Math.round((y-t.y0)/t.step),g=j*t.nx+i;return i<0||j<0||i>=t.nx||j>=t.ny||!wet[g]?null:{depth:level-t.z[g]};};
+}
+// The lake's surface: a square round each of its nodes and their neighbours (one node out, where the ground already
+// stands over the level all round Pampulha), merged into runs along the rows. The waterline is where the ground rises
+// through it, on the ground's own triangles, not the cells' steps.
+function lakeGeometry(data,wet){
+ const t=data.terrain,{nx,ny,step,x0,y0}=t,grown=new Uint8Array(nx*ny),positions=[],index=[];
+ for(let j=0;j<ny;j++)for(let i=0;i<nx;i++)if(wet[j*nx+i])for(let b=Math.max(0,j-1);b<=Math.min(ny-1,j+1);b++)for(let a=Math.max(0,i-1);a<=Math.min(nx-1,i+1);a++)grown[b*nx+a]=1;
+ for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
+  if(!grown[j*nx+i]||i&&grown[j*nx+i-1])continue;
+  let e=i;while(e+1<nx&&grown[j*nx+e+1])e++;
+  const xa=x0+(i-.5)*step,xb=x0+(e+.5)*step,ya=y0+(j-.5)*step,yb=y0+(j+.5)*step,v=positions.length/3;
+  positions.push(xa,0,-ya,xb,0,-ya,xb,0,-yb,xa,0,-yb);index.push(v,v+1,v+2,v,v+2,v+3);
+ }
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(positions.map((_,k)=>k%3===1?1:0),3));g.setIndex(index);
+ return g;
+}
+// A lake's water (lakeCells) is a murky city lake's, not the bay's: no swell over a few kilometres of fetch, only the
+// wind's small ripples (three octaves of 2.4 m down to 45 cm, a calmer slope); green-brown and opaque a hand under the
+// surface (Pampulha's water, rich in algae), greener blooms drifting in wide patches, and silty brown, never surf,
+// along the banks where the bed comes up.
+const LAKE_RIPPLES=` h+=seaNoise(mat2(.96,.28,-.28,.96)*p/2.4+vec2(-.1,.32)*t*1.2)*.5;
+ h+=seaNoise(p/1.+vec2(.26,.1)*t*2.)*.32;
+ h+=seaNoise(mat2(.8,-.6,.6,.8)*p/.45+vec2(.2,-.12)*t*3.)*.18;
+`;
+const LAKE_COLOUR=`vec2 lakeP=vec2(vSeaWorld.x,-vSeaWorld.z);
+float bloom=smoothstep(.35,.8,seaNoise(lakeP/90.)*.7+seaNoise(lakeP/23.+3.1)*.3);
+diffuseColor.rgb=mix(vec3(.078,.08,.047),vec3(.052,.078,.036),bloom);
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.045,.056,.04),smoothstep(.05,.6,depth)*.5);
+float shore=inGrid*(1.-smoothstep(.0,.035,depth))*sd.g;
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.15,.125,.08),shore*.55);`;
 export function createSea(data,{mobile=false}={}){
- const level=data.meta.sea_level_m??0,t=data.terrain,root=new THREE.Group();root.name='Mar';
- const geometry=new THREE.PlaneGeometry(SIZE,SIZE,1,1).rotateX(-Math.PI/2);
- const uniforms={seaTime:{value:0},seaDepth:{value:depthTexture(data,level)},
+ const level=data.meta.sea_level_m??0,t=data.terrain,root=new THREE.Group(),wet=lakeCells(data),lake=!!wet;root.name=lake?'Lagoa':'Mar';
+ const geometry=lake?lakeGeometry(data,wet):new THREE.PlaneGeometry(SIZE,SIZE,1,1).rotateX(-Math.PI/2);
+ const uniforms={seaTime:{value:0},seaDepth:{value:depthTexture(data,level,wet)},
   seaGrid:{value:new THREE.Vector4(t.x0,t.y0,(t.nx-1)*t.step,(t.ny-1)*t.step)}};
  // (the sky in it at its full colour: sky.js SKY_REFLECTION, the world's lighting map greys it for the shade)
- const material=skyMirror(new THREE.MeshStandardMaterial({name:'Agua_baia',color:0x2f5552,roughness:.07,metalness:0}));
+ const material=skyMirror(new THREE.MeshStandardMaterial({name:lake?'Agua_lagoa':'Agua_baia',color:0x2f5552,roughness:.07,metalness:0}));
  material.onBeforeCompile=shader=>{
   Object.assign(shader.uniforms,uniforms);
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vSeaWorld;').replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nvSeaWorld=(modelMatrix*vec4(transformed,1.0)).xyz;');
@@ -33,10 +89,10 @@ float seaNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix
 // speed of water waves of its size, turned a little apart so they never line up.
 float seaChop(vec2 p){
  float t=seaTime,h=0.;
- h+=seaNoise(mat2(.8,-.6,.6,.8)*p/7.5+vec2(.21,.33)*t)*.5;
+${lake?LAKE_RIPPLES:` h+=seaNoise(mat2(.8,-.6,.6,.8)*p/7.5+vec2(.21,.33)*t)*.5;
  h+=seaNoise(mat2(.96,.28,-.28,.96)*p/2.9+vec2(-.12,.4)*t*1.4)*.3;
  h+=seaNoise(p/1.1+vec2(.3,.1)*t*2.2)*.2;
- return h;
+`} return h;
 }
 // Grid uv of the depth map (clamped outside: deep sea).
 vec2 seaUv(vec3 w){return vec2((w.x-seaGrid.x)/seaGrid.z,(-w.z-seaGrid.y)/seaGrid.w);}`);
@@ -44,19 +100,19 @@ vec2 seaUv(vec3 w){return vec2((w.x-seaGrid.x)/seaGrid.z,(-w.z-seaGrid.y)/seaGri
 vec2 su=seaUv(vSeaWorld);float inGrid=step(0.,su.x)*step(su.x,1.)*step(0.,su.y)*step(su.y,1.);
 vec4 sd=texture2D(seaDepth,clamp(su,0.,1.));
 float depth=mix(1.,sd.r,inGrid);
-// Water takes little light in: dark green-black over the channels (the aerial photos), brownish green over the shallows;
+${lake?LAKE_COLOUR:`// Water takes little light in: dark green-black over the channels (the aerial photos), brownish green over the shallows;
 // the sky it reflects gives most of its colour.
 vec3 shallow=vec3(.075,.095,.065),deep=vec3(.022,.05,.052);
 diffuseColor.rgb=mix(shallow,deep,smoothstep(.05,.7,depth));
 // The shore: a strip of churned, lighter water where the bed comes up to the surface.
 float shore=inGrid*(1.-smoothstep(.0,.035,depth))*sd.g;
 float foam=shore*smoothstep(.45,.75,seaNoise(vec2(vSeaWorld.x,-vSeaWorld.z)/1.8+seaTime*.25));
-diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.55,.57,.53),foam*.7+shore*.06);`);
+diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.55,.57,.53),foam*.7+shore*.06);`}`);
   // The chop bends the normal; the slope of the height field, by finite differences, fades with distance so far
   // water lies calm and glossy (the sky in it) instead of shimmering.
   shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
 {vec2 p=vec2(vSeaWorld.x,-vSeaWorld.z);float e=.35;float dist=length(vSeaWorld-cameraPosition);
-float k=(1.-smoothstep(60.,900.,dist))*.75+.08;
+float k=${lake?'(1.-smoothstep(40.,500.,dist))*.4+.04':'(1.-smoothstep(60.,900.,dist))*.75+.08'};
 float h0=seaChop(p),hx=seaChop(p+vec2(e,0.)),hy=seaChop(p+vec2(0.,e));
 vec3 wn=normalize(vec3(-(hx-h0)/e*k,1.,(hy-h0)/e*k));
 normal=normalize((viewMatrix*vec4(wn,0.)).xyz);}`);
@@ -64,17 +120,18 @@ normal=normalize((viewMatrix*vec4(wn,0.)).xyz);}`);
   shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
 roughnessFactor=mix(.16,.05,smoothstep(80.,1500.,length(vSeaWorld-cameraPosition)));`);
  };
- material.customProgramCacheKey=()=>'sea-water-v1';
+ material.customProgramCacheKey=()=>lake?'lake-water-v1':'sea-water-v1';
  // Drawn after the opaque world and the ground (renderOrder: the ground .25, the far rings .27, the sky .5): its costly
  // chop runs only on the water that shows, not under the city, the bridges and the land that cover the plane.
- const mesh=new THREE.Mesh(geometry,material);mesh.name='Mar_superficie';mesh.position.y=level;mesh.receiveShadow=!mobile;mesh.frustumCulled=false;mesh.renderOrder=.3;
+ // (A lake's surface is only its own: culled with the view like the rest.)
+ const mesh=new THREE.Mesh(geometry,material);mesh.name=lake?'Lagoa_superficie':'Mar_superficie';mesh.position.y=level;mesh.receiveShadow=!mobile;mesh.frustumCulled=lake;mesh.renderOrder=.3;
  root.add(mesh);
- const boats=createBoats(data,level,{mobile});root.add(boats.root);
+ // No boats on a lake: the bay's yachts and fishing boats do not belong there (nor their lamps after dark).
+ const boats=lake?{root:new THREE.Group(),count:0,lights:[],attach(){},light(){},update(){}}:createBoats(data,level,{mobile});root.add(boats.root);
  // After dark: the boats' lamps and their streaks on the water, and the seafront's lamps (beira-mar.js) in the bay.
- const night=lightUniforms(),stats={level,size:SIZE,boats:boats.count,night:{level:0,anchorLights:boats.lights.length,glints:0,shoreGlints:0}};
- const boatLights=nightLights(boats.lights,night,{name:'Barcos_luzes',minPx:1.7,floor:.3});root.add(boatLights.mesh);
- const boatGlints=waterGlints(boats.lights,night,{name:'Barcos_reflexos',level,slope:.05});root.add(boatGlints.mesh);stats.night.glints=boats.lights.length;
- boats.attach([boatLights,boatGlints]);
+ const night=lightUniforms(),stats={level,size:lake?null:SIZE,boats:boats.count,night:{level:0,anchorLights:boats.lights.length,glints:0,shoreGlints:0},...(lake?{lake:{quads:geometry.index.count/6}}:{})};
+ const boatLights=boats.lights.length?nightLights(boats.lights,night,{name:'Barcos_luzes',minPx:1.7,floor:.3}):null;if(boatLights)root.add(boatLights.mesh);
+ const boatGlints=boats.lights.length?waterGlints(boats.lights,night,{name:'Barcos_reflexos',level,slope:.05}):null;if(boatGlints){root.add(boatGlints.mesh);stats.night.glints=boats.lights.length;boats.attach([boatLights,boatGlints]);}
  // The seafront lamps stand in beira-mar.js (created beside this module): found in the scene by their light pools the
  // first night (each pool's radius tells the lamp: beira-mar.js LAMPS), their streaks laid on the water once.
  const LAMP_OF_POOL=[[7.5,5.8,[1,.86,.66]],[9,7.6,[1,.9,.76]],[11,9.5,[1,.92,.8]]];
@@ -95,7 +152,7 @@ roughnessFactor=mix(.16,.05,smoothstep(80.,1500.,length(vSeaWorld-cameraPosition
  return {root,mesh,material,stats,
   update(dt,camera){uniforms.seaTime.value+=dt;boats.update(dt);if(lit>0){night.uTime.value+=dt;night.uScreen.value=screenHalf(mobile);if(shore===null)findShore();}},
   // The boats' lamps come on at dusk (a skipper's habit, not a photocell: each its own moment), the seafront's with it.
-  setNight(value){lit=value;boats.light(lit>0);night.uNight.value=lit;stats.night.level=lit;boatLights.mesh.visible=boatGlints.mesh.visible=lit>0;if(shore)shore.mesh.visible=lit>0;}};
+  setNight(value){lit=value;boats.light(lit>0);night.uNight.value=lit;stats.night.level=lit;if(boatGlints)boatLights.mesh.visible=boatGlints.mesh.visible=lit>0;if(shore)shore.mesh.visible=lit>0;}};
 }
 // The terrain grid's ground (sea bed under the water) at (x, y), nearest node; null outside the grid.
 function bedAt(data,x,y){const t=data.terrain,i=Math.round((x-t.x0)/t.step),j=Math.round((y-t.y0)/t.step);return i<0||j<0||i>=t.nx||j>=t.ny?null:t.z[j*t.nx+i];}

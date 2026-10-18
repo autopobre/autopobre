@@ -697,6 +697,142 @@ def orto_goiania(c, pasta, px=.25, bloco=3000):
     return meta
 
 
+BHGEO_WFS = 'https://geoservicos.pbh.gov.br/geoserver/ide_bhgeo/wfs'
+BHGEO_WMS = 'https://geoservicos.pbh.gov.br/geoserver/ide_bhgeo/wms'
+# O firewall da Prefeitura recusa clientes sem "Mozilla" no agente; este se identifica.
+AGENTE_BH = {'User-Agent': 'Mozilla/5.0 (compatible; autopobre-circuitos/1.0; +https://autopobre.com.br)'}
+# Nuvens de pontos do LiDAR de 2015 (acervo cartografico do BHGeo, uma pasta publica do Google Drive por produto); folhas
+# 1:2000 de 1,2 x 1,0 km: E = 547200 + 1200 XX, N = 7746000 + 1000 YY (codigo XXYY).
+BHGEO_LIDAR_MDT = '1lCNzaPZjPoSdYhwUyZ5ABKvs381ExpHn'
+BHGEO_CAMADAS = {
+    'EDIFICACAO': 'bhgeo_edificacoes.geojson', 'MEIO_FIO_QUADRA': 'bhgeo_meiofio.geojson',
+    'QUADRA_VIARIA': 'bhgeo_quadras.geojson', 'CANTEIRO_CENTRAL': 'bhgeo_canteiros.geojson', 'TREVO': 'bhgeo_trevos.geojson',
+    'LAGOA_PAMPULHA': 'bhgeo_lagoa.geojson', 'BREJO': 'bhgeo_brejos.geojson', 'PARQUE_LAGOA_PAMPULHA': 'bhgeo_parque_lagoa.geojson',
+    'ATRATIVO_TURISTICO': 'bhgeo_atrativos.geojson', 'BEM_CULTURAL_IMOVEL': 'bhgeo_bens_culturais.geojson',
+    'PARQUES_MUNICIPAIS': 'bhgeo_parques.geojson', 'PRACA': 'bhgeo_pracas.geojson', 'TRECHO_LOGRADOURO': 'bhgeo_logradouros.geojson',
+    'LOGRADOURO_OBRA_DE_ARTE': 'bhgeo_obras_de_arte.geojson', 'CAMPO_FUTEBOL': 'bhgeo_campos.geojson',
+}
+
+
+def bhgeo_wfs(camada, caixa_utm, destino):
+    x0, y0, x1, y1 = caixa_utm
+    for tentativa in range(4):
+        try:
+            r = requests.get(BHGEO_WFS, headers=AGENTE_BH, timeout=300, params={
+                'service': 'WFS', 'version': '2.0.0', 'request': 'GetFeature', 'typeNames': f'ide_bhgeo:{camada}',
+                'outputFormat': 'application/json', 'srsName': 'EPSG:31983', 'bbox': f'{x0},{y0},{x1},{y1},EPSG:31983'})
+            if r.ok and r.text.lstrip().startswith('{'):
+                destino.write_text(r.text, encoding='utf-8')
+                n = len(r.json()['features'])
+                print(f'BHGeo {camada}: {n} feicoes -> {destino.name}')
+                return n
+            print(f'BHGeo {camada}: resposta {r.status_code}')
+        except requests.RequestException as err:
+            print(f'BHGeo {camada}: {err}')
+        time.sleep(3 + 5 * tentativa)
+    raise SystemExit(f'BHGeo {camada}: falhou')
+
+
+def fontes_bhgeo(c, pasta):
+    """Dados abertos da Prefeitura de Belo Horizonte (BHGeo / IDE-BHGeo, PRODABEL; CC-BY, sem login), SIRGAS 2000 /
+    UTM 23S, na caixa `caixa_utm` de config.py:
+    - MDT do LiDAR de 2015: os pontos de chao das folhas 1:2000 que cobrem a caixa numa grade de 2 m (media por celula; o
+      levantamento tem ~0,27 ponto de chao por m2); o vazio (sob predios, na agua) preenchido por convolucao normalizada
+      em escalas crescentes, como o do GeoSampa;
+    - edificacoes de 2015 com a altura estimada pelo laser, meios-fios, quadras viarias, canteiros centrais, trevos, a
+      lagoa, brejos, o parque, atrativos turisticos, bens culturais, parques, pracas, logradouros (com a largura), obras de
+      arte e campos de futebol (WFS);
+    - a ortofoto de 2015 (0,2 m, WMS) a 1 m por pixel na caixa: a cor do chao."""
+    import re
+    from compat_scipy import gaussian_filter
+    x0, y0, x1, y1 = c['caixa_utm']
+    info = {'servico': BHGEO_WFS, 'baixado_em': date.today().isoformat(), 'caixa_utm': [x0, y0, x1, y1],
+            'credito': 'PBH/Prodabel – BHGeo (IDE-BHGeo), CC-BY'}
+    cache = pasta / 'bhgeo'
+    cache.mkdir(exist_ok=True)
+    if '--so-vetores' not in sys.argv and '--so-orto' not in sys.argv:
+        r = requests.get('https://drive.google.com/embeddedfolderview', params={'id': BHGEO_LIDAR_MDT}, headers=AGENTE, timeout=120)
+        r.raise_for_status()
+        arquivos = dict((nm, i) for i, nm in re.findall(r'href="https://drive.google.com/file/d/([^/]+)/view[^"]*".*?flip-entry-title">([^<]+)<', r.text, re.S))
+        folhas = [f'{xx:02d}{yy:02d}' for xx in range((x0 - 547200) // 1200, (x1 - 547200) // 1200 + 1)
+                  for yy in range((y0 - 7746000) // 1000, (y1 - 7746000) // 1000 + 1)]
+        passo = 2.0
+        nx, ny = int((x1 - x0) / passo), int((y1 - y0) / passo)
+        soma, cont = np.zeros((ny, nx)), np.zeros((ny, nx))
+        usadas = []
+        for f in folhas:
+            nome = f'MDT_{f}.xyz'
+            if nome not in arquivos:
+                print(f'LiDAR 2015: folha {f} sem MDT na pasta')
+                continue
+            local = cache / nome
+            if not local.exists():
+                for tentativa in range(4):
+                    try:
+                        d = requests.get('https://drive.usercontent.google.com/download', headers=AGENTE, timeout=600,
+                                         params={'id': arquivos[nome], 'export': 'download', 'confirm': 't'})
+                        if d.ok and d.content.lstrip()[:1].isdigit():
+                            local.write_bytes(d.content)
+                            break
+                    except requests.RequestException as err:
+                        print(f'LiDAR 2015 {f}: {err}')
+                    time.sleep(3 + 5 * tentativa)
+                else:
+                    raise SystemExit(f'LiDAR 2015: folha {f} falhou')
+            xyz = np.loadtxt(local, usecols=(0, 1, 2))
+            i = np.floor((y1 - xyz[:, 1]) / passo).astype(int)
+            j = np.floor((xyz[:, 0] - x0) / passo).astype(int)
+            ok = (i >= 0) & (i < ny) & (j >= 0) & (j < nx)
+            np.add.at(soma, (i[ok], j[ok]), xyz[ok, 2])
+            np.add.at(cont, (i[ok], j[ok]), 1)
+            usadas.append(f)
+            print(f'LiDAR 2015 MDT {f}: {len(xyz)} pontos ({ok.mean():.0%} na caixa)')
+        tem = cont > 0
+        z = np.where(tem, soma / np.maximum(cont, 1), 0.0)
+        cheio = z.copy()
+        falta = ~tem
+        for sigma in (1, 2, 4, 8, 16, 32, 64):
+            if not falta.any():
+                break
+            num = gaussian_filter(np.where(tem, z, 0.0), sigma)
+            den = gaussian_filter(tem.astype(float), sigma)
+            preenche = falta & (den > 1e-3)
+            cheio[preenche] = num[preenche] / den[preenche]
+            falta &= ~preenche
+        np.savez_compressed(pasta / 'mdt_bhgeo_2m.npz', z=cheio.astype(np.float32), medido=tem, x0=x0, y1=y1, passo=passo, epsg=31983)
+        print(f'MDT 2 m {nx}x{ny}: {tem.mean():.0%} das celulas com chao medido -> mdt_bhgeo_2m.npz')
+        info['mdt_2015'] = {'folhas': usadas, 'pasta_drive': BHGEO_LIDAR_MDT, 'arquivo': 'mdt_bhgeo_2m.npz', 'medido': round(float(tem.mean()), 3)}
+    if '--so-orto' not in sys.argv:
+        info['camadas'] = {camada: bhgeo_wfs(camada, (x0, y0, x1, y1), pasta / destino) for camada, destino in BHGEO_CAMADAS.items()}
+    # --- Ortofoto de 2015 a 1 m por pixel, em blocos de 2000 px.
+    px, bloco = 1.0, 2000
+    nx, ny = int((x1 - x0) / px), int((y1 - y0) / px)
+    img = Image.new('RGB', (nx, ny))
+    for j in range(0, ny, bloco):
+        for i in range(0, nx, bloco):
+            w_, h_ = min(bloco, nx - i), min(bloco, ny - j)
+            cb = (x0 + i * px, y1 - (j + h_) * px, x0 + (i + w_) * px, y1 - j * px)
+            for tentativa in range(4):
+                try:
+                    r = requests.get(BHGEO_WMS, headers=AGENTE_BH, timeout=300, params={
+                        'service': 'WMS', 'version': '1.1.1', 'request': 'GetMap', 'layers': 'ide_bhgeo:ORTOFOTO_2015',
+                        'styles': '', 'srs': 'EPSG:31983', 'bbox': ','.join(f'{v:.1f}' for v in cb), 'width': w_, 'height': h_,
+                        'format': 'image/jpeg'})
+                    if r.ok and r.content[:2] == bytes([255, 216]):
+                        break
+                except requests.RequestException as err:
+                    print(f'ortofoto 2015: {err}')
+                time.sleep(3 + 5 * tentativa)
+            else:
+                raise SystemExit(f'ortofoto 2015: bloco {i},{j} falhou')
+            img.paste(Image.open(BytesIO(r.content)).convert('RGB'), (i, j))
+    img.save(pasta / 'bhgeo_orto_2015_1m.jpg', quality=92)
+    info['ortofoto_2015'] = {'arquivo': 'bhgeo_orto_2015_1m.jpg', 'x0': x0, 'y1': y1, 'px': px, 'camada': 'ide_bhgeo:ORTOFOTO_2015'}
+    print(f'Ortofoto 2015: {nx}x{ny} px a {px} m -> bhgeo_orto_2015_1m.jpg')
+    (pasta / 'bhgeo.json').write_text(json.dumps(info, indent=1, ensure_ascii=False), encoding='utf-8')
+    return info
+
+
 def esri_referencia(c, pasta, z=18):
     """Mosaico aereo so para conferencia visual local (nao publicado)."""
     w, s, e, n = caixa(c, -c['raio_m'] * .45)
@@ -751,6 +887,12 @@ def main():
         # So os dados da Prefeitura de Sao Paulo, gravados tambem na proveniencia ja baixada.
         prov = json.loads((pasta / 'proveniencia.json').read_text(encoding='utf-8'))
         prov['geosampa'] = fontes_geosampa(c, pasta)
+        (pasta / 'proveniencia.json').write_text(json.dumps(prov, indent=1, ensure_ascii=False), encoding='utf-8')
+        return
+    if '--bhgeo' in sys.argv:
+        # So os dados da Prefeitura de Belo Horizonte, gravados tambem na proveniencia ja baixada.
+        prov = json.loads((pasta / 'proveniencia.json').read_text(encoding='utf-8'))
+        prov['bhgeo'] = fontes_bhgeo(c, pasta)
         (pasta / 'proveniencia.json').write_text(json.dumps(prov, indent=1, ensure_ascii=False), encoding='utf-8')
         return
     if '--geofloripa' in sys.argv:

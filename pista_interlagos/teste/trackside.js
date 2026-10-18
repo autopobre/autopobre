@@ -7,6 +7,7 @@ import {createPeople} from './pit-crew.js';
 import {circuitSponsors,circuitSeed,seeded,paintBanner,paintBannerAlt} from './sponsors.js';
 import {billboardSpots} from './track-surface.js';
 import {barrierLines,barrierAt,jerseyFace,WALL_SINK} from './street-walls.js';
+import {splitByCells} from './perf-probe.js';
 
 // What makes a circuit look run by people on race day: sponsor banners tied to the
 // guardrails, marshal posts with their flags, and TV camera towers on the outside of
@@ -206,8 +207,11 @@ export function createTrackside(data){
  const bannerGeometry=new THREE.BufferGeometry();bannerGeometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));bannerGeometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
  bannerGeometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));bannerGeometry.setAttribute('aTile',new THREE.Float32BufferAttribute(tiles,3));bannerGeometry.setAttribute('aWear',new THREE.Float32BufferAttribute(wears,4));
  bannerGeometry.setIndex(indices);bannerGeometry.computeVertexNormals();
- const banners=new THREE.Mesh(bannerGeometry,bannerMaterial(bannerAtlas(sponsors)));
- banners.name='Faixas_nos_guardrails';banners.receiveShadow=true;root.add(banners);
+ // In pieces of 600 m (perf-probe.js splitByCells): one mesh round a whole lap was drawn whole in every view (Pampulha's
+ // 20 km: some 3 thousand banners).
+ const bannerMat=bannerMaterial(bannerAtlas(sponsors)),pieces=splitByCells(bannerGeometry,600);
+ for(const piece of pieces){const banners=new THREE.Mesh(piece,bannerMat);banners.name='Faixas_nos_guardrails';banners.receiveShadow=true;root.add(banners);}
+ if(pieces.length>1)bannerGeometry.dispose();
 
  // Marshal posts, no two alike: a roofed cabin, an open deck under a beach umbrella or a little
  // concrete hut, roofs in the post's own colour, an extinguisher, a stool or a radio mast, and one or
@@ -273,8 +277,10 @@ export function createTrackside(data){
   return {s:t.s,side:t.side,x:t.x,y:t.y,z:z+deck+1.45,position:new THREE.Vector3(cx+Math.cos(look)*.95,z+deck+1.5,cz-Math.sin(look)*.95)};
  });
 
- const structure=new THREE.Mesh(mergeGeometries(parts,false),new THREE.MeshStandardMaterial({name:'Postos_e_torres',vertexColors:true,roughness:.6,metalness:.25,side:THREE.DoubleSide}));
- parts.forEach(g=>g.dispose());structure.name='Postos_fiscais_e_torres_TV';structure.castShadow=structure.receiveShadow=true;root.add(structure);
+ // (In pieces of 1.5 km: the posts and towers round a long lap were one mesh; small, they need few draws.)
+ const merged=mergeGeometries(parts,false),postMaterial=new THREE.MeshStandardMaterial({name:'Postos_e_torres',vertexColors:true,roughness:.6,metalness:.25,side:THREE.DoubleSide}),postPieces=splitByCells(merged,1500);
+ parts.forEach(g=>g.dispose());if(postPieces.length>1)merged.dispose();
+ for(const piece of postPieces){const structure=new THREE.Mesh(piece,postMaterial);structure.name='Postos_fiscais_e_torres_TV';structure.castShadow=structure.receiveShadow=true;root.add(structure);}
  const crew=createPeople().crowd(people,{name:'Fiscais_e_cinegrafistas',cell:60,seed:3});if(crew)root.add(crew);
  return {root,towers,stats:{bannerRuns:plan.runs,bannerMetres:Math.round(plan.metres),banners:plan.banners.length,bannerSponsors:new Set(plan.banners.map(b=>b.row)).size,looseBanners:plan.banners.filter(b=>b.hangs).length,tornBanners:plan.banners.filter(b=>b.rip).length,marshals:marshals.length,towers:towers.length},
   clearings:[...marshals.map(m=>({x:m.x,y:m.y,r:4})),...towers.map(t=>({x:t.x,y:t.y,r:6}))]};

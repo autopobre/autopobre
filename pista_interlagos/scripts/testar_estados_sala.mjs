@@ -106,13 +106,14 @@ function setup(laps=2){
 // The same checkpoint/clock logic must work with every circuit's elevation, banking and sample
 // spacing. Run the real car over one lap of the other six tracks, delivering poses at 30 Hz.
 {
- const circuits=[['curvelo',createCurveloData()],...['cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa','minhocao'].map(name=>[name,JSON.parse(fs.readFileSync(new URL(`../dados/pista_${name}.json`,import.meta.url)))])];
+ const circuits=[['curvelo',createCurveloData()],...['cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa','minhocao','pampulha'].map(name=>[name,JSON.parse(fs.readFileSync(new URL(`../dados/pista_${name}.json`,import.meta.url)))])];
  const results=[];
  for(const [name,track] of circuits){
   const car=new TestCar(track);car.resetGrid();
   const guard=new GuestRaceState({car,finished:false,finishTime:null},{laps:1,lead:track.meta.reconstructed_xy_m-car.surface.s});
   let accepted=0,state=null;
-  for(let step=0;step<120*300;step++){
+  // (Pampulha's 20 km lap takes over ten minutes at this pace.)
+  for(let step=0;step<120*Math.max(300,(track.meta.reconstructed_xy_m??0)/20);step++){
    car.step(recognitionInput(car,{maxSpeed:42,cornerGrip:7,braking:7}),1/120);
    if(step%4===0){const checked=guard.receive(readCar(packCar(car)),car.clock);assert(checked,`${name}: honest motion rejected`);state=checked.state;accepted++;}
    if(car.laps>=1&&state?.finished)break;

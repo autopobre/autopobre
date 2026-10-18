@@ -200,8 +200,10 @@ for(const [name,glue] of [['narrow',CORRIDOR],['recommended',GLUE]]){
 {
  const ctx=new Proxy({},{get:()=>()=>{}});globalThis.document={createElement:()=>({getContext:()=>ctx})};
  const walls=createStreetWalls(data),open=createStreetWalls({...data,meta:{...data.meta,tunnels:undefined}});delete globalThis.document;
- const probe=new TestCar(data),posts=walls.root.getObjectByName('Postes_alambrado'),m=posts.instanceMatrix.array;let inside=0;
- for(let i=0;i<posts.count;i++){const [x,y]=[m[i*16+12],-m[i*16+14]],q=probe.nearest(x,y,true,null,m[i*16+13]);const s=samples[q.i][0]+q.u*ds;if(inTunnel(data,s)||onDeck(data,s))inside++;}
+ // (The posts stand in 300 m pieces, one instanced mesh each.)
+ const probe=new TestCar(data),pieces=[];walls.root.traverse(o=>{if(o.name==='Postes_alambrado')pieces.push(o);});let inside=0;
+ for(const posts of pieces){const m=posts.instanceMatrix.array;for(let i=0;i<posts.count;i++){const [x,y]=[m[i*16+12],-m[i*16+14]],q=probe.nearest(x,y,true,null,m[i*16+13]);const s=samples[q.i][0]+q.u*ds;if(inTunnel(data,s)||onDeck(data,s))inside++;}}
+ assert.equal(pieces.reduce((n,p)=>n+p.count,0),walls.stats.fencePosts,'every fence post drawn once');
  assert.equal(inside,0,'no fence post in the tunnel or on the deck');
  const lost=open.stats.fencePosts-walls.stats.fencePosts;assert(lost>200,`the tunnel's 2 x 500 m lose their fence (${lost} posts)`);
  report.fence={posts:walls.stats.fencePosts,withoutTunnelRanges:open.stats.fencePosts};

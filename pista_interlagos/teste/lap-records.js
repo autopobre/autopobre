@@ -1,22 +1,22 @@
 import {CIRCUITS,circuitId} from './circuits.js';
-import {readAIRecords} from './ai-records.js';
+import {readAIRecords,standardLaps} from './ai-records.js';
 import {formatTime} from './race-results.js';
-import {LAPS} from './player-preferences.js';
 import {RIVAL_ROSTER,PLAYER_ENTRY} from './race-roster.js';
 const KEY='autopobre-records-v1';
 const validTime=t=>Number.isFinite(t)&&t>0&&t<86400;
-// Race times compare only over the standard distance (3 laps, both modes); the best lap counts in
-// races of any length. Story race times saved before the lap setting were one-lap races: dropped.
+// Race times compare only over the standard distance (3 laps, both modes; a circuit that fixes its race length,
+// circuits.js fixedLaps, its own); the best lap counts in races of any length. Story race times saved before the lap
+// setting were one-lap races: dropped.
 export const cleanName=name=>String(name??'').normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,32);
 export function readRecords(storage){
- try{const data=JSON.parse(storage.getItem(KEY)||'[]');return Array.isArray(data)?data.filter(r=>r&&typeof r.name==='string'&&['normal','immersive'].includes(r.mode)&&cleanName(r.name)&&validTime(r.bestLap)&&(r.bestRace===null||validTime(r.bestRace)&&r.bestLap<=r.bestRace)).slice(0,200).map(r=>({circuit:circuitId(r.circuit),name:cleanName(r.name),mode:r.mode,bestLap:r.bestLap,bestRace:r.mode==='immersive'&&r.raceLaps!==LAPS.standard?null:r.bestRace,raceLaps:LAPS.standard,date:typeof r.date==='string'?r.date:''})):[];}catch{return [];}
+ try{const data=JSON.parse(storage.getItem(KEY)||'[]');return Array.isArray(data)?data.filter(r=>r&&typeof r.name==='string'&&['normal','immersive'].includes(r.mode)&&cleanName(r.name)&&validTime(r.bestLap)&&(r.bestRace===null||validTime(r.bestRace)&&r.bestLap<=r.bestRace)).slice(0,200).map(r=>({circuit:circuitId(r.circuit),name:cleanName(r.name),mode:r.mode,bestLap:r.bestLap,bestRace:r.mode==='immersive'&&r.raceLaps!==standardLaps(r.circuit)?null:r.bestRace,raceLaps:standardLaps(r.circuit),date:typeof r.date==='string'?r.date:''})):[];}catch{return [];}
 }
 export function saveRecord(storage,{name,mode,bestLap,bestRace=null,circuit='interlagos'}){
  if(typeof circuit!=='string'||!Object.hasOwn(CIRCUITS,circuit))throw new Error('Circuito inválido.');
  name=cleanName(name);if(!name||!['normal','immersive'].includes(mode)||!validTime(bestLap)||(bestRace!==null&&(!validTime(bestRace)||bestLap>bestRace)))throw new Error('Informe o piloto e complete uma volta válida.');
  const rows=readRecords(storage),existing=rows.find(r=>r.circuit===circuit&&r.mode===mode&&r.name.toLocaleLowerCase('pt-BR')===name.toLocaleLowerCase('pt-BR'));
  if(existing){const lap=Math.min(existing.bestLap,bestLap),race=bestRace===null?existing.bestRace:existing.bestRace===null?bestRace:Math.min(existing.bestRace,bestRace);if(lap===existing.bestLap&&race===existing.bestRace)return rows;existing.bestLap=lap;existing.bestRace=race;existing.date=new Date().toISOString();}
- else rows.push({circuit,name,mode,bestLap,bestRace,raceLaps:LAPS.standard,date:new Date().toISOString()});
+ else rows.push({circuit,name,mode,bestLap,bestRace,raceLaps:standardLaps(circuit),date:new Date().toISOString()});
  const sorted=Object.keys(CIRCUITS).flatMap(id=>['normal','immersive'].flatMap(category=>rows.filter(r=>r.circuit===id&&r.mode===category).sort((a,b)=>a.bestLap-b.bestLap).slice(0,50)));
  if(!sorted.some(r=>r.circuit===circuit&&r.mode===mode&&r.name.toLocaleLowerCase('pt-BR')===name.toLocaleLowerCase('pt-BR')))throw new Error('A lista guarda os 50 melhores recordes. Esse tempo ficou fora da lista.');
  try{storage.setItem(KEY,JSON.stringify(sorted));}catch{throw new Error('Não foi possível salvar neste navegador. Verifique se o armazenamento está disponível.');}
@@ -32,7 +32,7 @@ export class AutomaticRecords {
   const model=mode.car?.mechanics?.name;if(model&&model!=='opala')return;
   const bestLap=mode.car.best;if(!validTime(bestLap)||mode.car.laps<1)return;
   // Race times only from the whole grid (fullGrid): a solo practice or a 1x1 starts at the front.
-  const laps=mode.active?mode.storyLaps:mode.freeTotalLaps,completed=mode.fullGrid!==false&&laps===LAPS.standard&&mode.car.laps>=laps&&validTime(mode.finishTime);
+  const laps=mode.active?mode.storyLaps:mode.freeTotalLaps,completed=mode.fullGrid!==false&&laps===standardLaps(mode.data?.meta.id)&&mode.car.laps>=laps&&validTime(mode.finishTime);
   const bestRace=completed?mode.finishTime:null,circuit=circuitId(mode.data?.meta.id),category=mode.active?'immersive':'normal';
   const signature=JSON.stringify([this.name,circuit,category,bestLap,bestRace]);
   if(signature===this.signature||now<this.retryAt)return;
@@ -136,6 +136,8 @@ export class LapRecords {
   const mode=this.selectedMode;
   for(const button of this.dialog.querySelectorAll('[data-records-mode]'))button.setAttribute('aria-pressed',String(button.dataset.recordsMode===mode));
   const circuit=CIRCUITS[this.selectedCircuit],button=this.pickButton;button.dataset.circuit=circuit.id;
+  // The race times' distance: the circuit's own where it fixes one (Pampulha's single lap).
+  {const n=standardLaps(circuit.id);for(const span of this.dialog.querySelectorAll('[data-records-mode] span'))span.textContent=`corrida em ${n} volta${n>1?'s':''}`;}
   button.querySelector('path').setAttribute('d',circuitOutline(circuit.id));button.querySelector('b').textContent=circuit.name;button.querySelector('small').textContent=circuitLength(circuit);
   for(const li of this.pickList.children){
    const id=li.dataset.recordsCircuit,laps=rows.filter(r=>r.mode===mode&&r.circuit===id).map(r=>r.bestLap),best=li.querySelector('em');

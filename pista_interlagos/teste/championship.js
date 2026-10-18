@@ -1,4 +1,4 @@
-import {CIRCUITS} from './circuits.js';
+import {CIRCUITS,raceLaps} from './circuits.js';
 import {rosterOf,PLAYER_ENTRY,carEntry,CAR_MODELS} from './race-roster.js';
 
 // Campeonato Old Stock do jogo: todas as pistas, uma corrida em cada, pontos pela posição de
@@ -109,6 +109,8 @@ export class Championship {
  get available(){return this.rounds.every(id=>Object.hasOwn(CIRCUITS,id));}
  get nextCircuit(){return this.active?this.state.rounds[this.round]:null;}
  get laps(){return this.state?.laps??null;}
+ // The laps a round runs: the championship's, or the one its circuit fixes (circuits.js fixedLaps: Pampulha's single lap).
+ roundLaps(circuit=this.nextCircuit){return this.state?raceLaps(circuit,this.state.laps):null;}
  // model: the car screen's when it starts (Modo História: the Opala); a calendar with its own keeps that one.
  start(pilot,laps,model='opala'){if(!this.available)return null;this.state={version:1,mode:this.mode,calendar:this.calendar,model:this.info.model??(CAR_MODELS.includes(model)?model:'opala'),pilot,laps,rounds:[...this.rounds],results:[],started:new Date().toISOString()};this.save();return this.state;}
  reset(){this.state=null;this.save();}
@@ -118,7 +120,7 @@ export class Championship {
   if(!this.active||round!==this.round||circuit!==this.nextCircuit||!rows?.length)return null;
   if(pilot)this.state.pilot=pilot;
   const scored=rows.map((r,i)=>({number:String(r.number),name:r.player?(pilot||r.name):r.name,position:i+1,points:r.dnf?0:pointsFor(i+1),bestLap:finite(r.bestLap),totalTime:r.finished?finite(r.totalTime):null,finished:!!r.finished,player:!!r.player,...(r.dnf?{dnf:true}:{})}));
-  this.state.results.push({circuit,laps:this.state.laps,rows:scored,date:new Date().toISOString()});this.save();
+  this.state.results.push({circuit,laps:this.roundLaps(circuit),rows:scored,date:new Date().toISOString()});this.save();
   return this.summary(round);
  }
  // Modo História: taking the car to the box before the judge's inspection disqualifies the

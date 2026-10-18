@@ -45,9 +45,20 @@ export const CIRCUITS=Object.freeze({
  // scripts/circuitos/gerar_minhocao.py). The lap runs over the Minhocão (meta.decks), dives into the tunnel (meta.tunnels)
  // and later passes under the same deck on Rua Major Sertório, where it starts: a grade-separated crossing.
  minhocao:{id:'minhocao',podium:[334,-118],name:'Circuito do Minhocão',label:'CIRCUITO DO MINHOCÃO · SÃO PAULO, SP',length:4035,description:'4.035 m · 15 curvas · por cima e por baixo · circuito de rua imaginário · São Paulo, SP',intro:'Largada na Major Sertório, logo depois de passar por baixo do Minhocão. Contorna a Praça da República, desce o Largo do Arouche, sobe pela rampa da Ana Cintra e corre 790 m em cima do elevado até mergulhar no túnel sob a Praça Roosevelt. Sai na Augusta e volta para passar por baixo de onde já passou por cima.',source:'Ruas e prédios do OpenStreetMap · LiDAR, ortofoto 2020, meios-fios e árvores do GeoSampa (Prefeitura de São Paulo).',fuel:'Uma volta no Minhocão costuma gastar 3–4 L.',altitude:0,
-  data:'pista_minhocao.json',ground:'./assets/circuitos/minhocao_solo.jpg',track:'MINHOCÃO',boxTitle:'Cuida do Opala, meu!',weather:'São Paulo · 16h40 · 23 °C · pista seca',venue:'Circuito do Minhocão'}
+  data:'pista_minhocao.json',ground:'./assets/circuitos/minhocao_solo.jpg',track:'MINHOCÃO',boxTitle:'Cuida do Opala, meu!',weather:'São Paulo · 16h40 · 23 °C · pista seca',venue:'Circuito do Minhocão'},
+ // Imaginary street circuit (pedido #8 of the Central de Projetos, 10-17): the whole shore road of the Lagoa da Pampulha
+ // in Belo Horizonte, clockwise, and a loop round the Mineirão (scripts/circuitos/gerar_pampulha.py: OSM streets, the
+ // city's 2015 LiDAR, buildings, kerbs and lake from BHGeo). The start is on Av. Coronel Oscar Paschoal towards the lake,
+ // the boxes on its other carriageway, beside the Mineirão. Over 20 km: always a one-lap race (laps).
+ pampulha:{id:'pampulha',name:'Circuito da Pampulha',label:'CIRCUITO DA PAMPULHA · BELO HORIZONTE, MG',length:20533,laps:1,description:'20.533 m · 67 curvas · horário · uma volta só · circuito de rua imaginário · Belo Horizonte, MG',intro:'Largada na Av. Coronel Oscar Paschoal rumo à lagoa. A volta inteira da orla da Pampulha no sentido horário: Igrejinha, Parque Ecológico, zoológico, os braços da lagoa e a barragem; depois sobe a Oscar Paschoal e contorna o Mineirão. Corrida de uma volta só.',source:'Ruas do OpenStreetMap · LiDAR 2015, edificações, meios-fios, lagoa e ortofoto do BHGeo (Prefeitura de Belo Horizonte / PRODABEL).',fuel:'A volta na Pampulha costuma gastar 15–18 L.',altitude:800,
+  data:'pista_pampulha.json',ground:'./assets/circuitos/pampulha_solo.jpg',track:'PAMPULHA',boxTitle:'Cuida do Opala, sô!',weather:'Belo Horizonte · 16h40 · 26 °C · pista seca',venue:'Circuito da Pampulha'}
 });
 export const circuitId=value=>typeof value==='string'&&Object.hasOwn(CIRCUITS,value)?value:'interlagos';
+// A circuit may fix its race length (laps, mirrored in its track file as meta.laps: Pampulha's single 20 km lap). Every
+// race there runs that many laps whatever the player's setting, which stays saved for the other circuits; its records'
+// race times are over that distance (lap-records.js, ai-records.js). null: the race runs the laps chosen.
+export const fixedLaps=id=>typeof id==='string'&&Object.hasOwn(CIRCUITS,id)?CIRCUITS[id].laps??null:null;
+export const raceLaps=(id,chosen)=>fixedLaps(id)??chosen;
 export function selectedCircuit(saved,search=''){
  const value=new URLSearchParams(search).get('circuito');
  return CIRCUITS[value!==null?circuitId(value):circuitId(saved)];

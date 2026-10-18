@@ -130,15 +130,27 @@ const outAt=(data,car,walk)=>walk.side(walk.hero.position.x,-walk.hero.position.
  walk.request();brakeOut(car,walk,2,true);assert.ok(walk.stopping&&!walk.active,'waits for the pit stop to open');walk.cancel();
 }
 
-// 8. A street circuit's walls are never climbed, not even in a jump.
-{
- const {data,car,walk}=setup('minhocao'),a=data.samples;let i=Math.floor(a.length/3);
+// 8. A street circuit's walls are never climbed, not even in a jump (the Minhocão's, Pampulha's).
+for(const id of ['minhocao','pampulha']){
+ const {data,car,walk}=setup(id),a=data.samples;let i=Math.floor(a.length/3);
  while(!guardrailPresent(data,a[i][0],1)||!guardrailPresent(data,a[i][0]+20,1)||!guardrailPresent(data,a[i][0]-20,1))i=(i+1)%a.length;
  car.recover(i);walk.request();brakeOut(car,walk,1);assert.ok(walk.active);
  const s=walk.foot;s.yaw=car.heading+Math.PI/2;walkFor(walk,6,{throttle:1,brake:0,left:0,right:0});
  let at=outAt(data,car,walk);assert.ok(at.out<=0,'the street wall stops him');
  for(let k=0;k<3;k++){walk.handleKey('Space');walkFor(walk,1.2,{throttle:1,brake:0,left:0,right:0});}
- at=outAt(data,car,walk);assert.ok(at.out<=0,`jumping does not take him over it (${at.out.toFixed(2)})`);
+ at=outAt(data,car,walk);assert.ok(at.out<=0,`${id}: jumping does not take him over it (${at.out.toFixed(2)})`);
+}
+
+// 8a. Pampulha's lake (sea-water.js lakeWater, main.js hands it to the walk): too deep to wade in out on the water, none
+// on the lap nor in the valley below the dam (lower than the lake, dry land).
+{
+ const {lakeWater}=await import('../teste/sea-water.js'),data=load('pampulha'),water=lakeWater(data),t=data.terrain,a=data.samples;
+ const {walk}=setup('pampulha');walk.water=water;
+ assert.ok(water(-513,39)?.depth>.45&&walk.solid({x:-513,y:1,z:-39}),'Pampulha: the lake is too deep to walk into');
+ assert.ok(a.every((p,i)=>i%25||!water(p[1],p[2])),'Pampulha: no lake on the lap');
+ let low=0;for(let j=0;j<t.ny;j+=3)for(let k=0;k<t.nx;k+=3){const g=j*t.nx+k;if(t.z[g]<data.meta.sea_level_m-5&&data.scenery.cover.classes[g]!=='6'){low++;assert.equal(water(t.x0+k*t.step,t.y0+j*t.step),null,'Pampulha: the valley below the dam is dry');}}
+ assert.ok(low>500,`Pampulha: valley nodes checked (${low})`);
+ assert.equal(lakeWater(load('floripa')),null,'a coast has no lake to keep out of');
 }
 
 // 8b. A city open to roam (Floripa): in its pit lane, behind the lap's walls but in no zone, he walks every way (the

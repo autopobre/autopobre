@@ -16,7 +16,7 @@ const load=id=>{
  const data=JSON.parse(readFileSync(new URL(`../dados/${id==='interlagos'?'pista':'pista_'+id}.json`,import.meta.url)));data.meta.id=id;return data;
 };
 const report={};
-for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa','minhocao']){
+for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa','minhocao','pampulha']){
  const data=load(id),a=data.samples,n=a.length,car=new TestCar(data),out={};
  // The detector and the drawn strips agree segment for segment (createCurbs: 6 vertices x 2 faces x 3 per segment).
  const curbs=createCurbs(data);
@@ -29,10 +29,15 @@ for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasi
  }
  mesh_dispose(curbs);
  // Mid-segment probes across the edge, every few stations, both sides.
- let probes=0,kerbs=0;
+ // (Where the centre line turns tighter than half the road's width the inside edge folds back over itself, and a point
+ // just inside it can belong to a stretch behind: no probe there on that side. Pampulha's s≈576-586, a data fault.)
+ let probes=0,kerbs=0,folds=0;
+ // The sharpest turn from station to station round i (radians a metre, signed: + to the left).
+ const heading=k=>Math.atan2(a[(k+n)%n][8],a[(k+n)%n][7]),turn=k=>{let t=heading(k+1)-heading(k);t-=Math.round(t/(2*Math.PI))*2*Math.PI;return t/(data.meta.reconstructed_xy_m/n);};
  for(let i=0;i<n;i+=3){
-  const p=a[i],q=a[(i+1)%n];
+  const p=a[i],q=a[(i+1)%n],bendT=[turn(i-1),turn(i),turn(i+1)].reduce((u,v)=>Math.abs(v)>Math.abs(u)?v:u);
   for(const side of [-1,1]){
+   if(side===Math.sign(bendT)&&1/Math.abs(bendT)<p[4]/2+1){folds++;continue;}
    // The segment the point falls on decides (on the inside of a bend it can be the next one).
    const kind=off=>{const w=(p[4]+q[4])/4,mx=(p[1]+q[1])/2,my=(p[2]+q[2])/2,lx=(p[9]+q[9])/2,ly=(p[10]+q[10])/2,d=side*(w+off),s=car.sample(mx+lx*d,my+ly*d,i);return [surfaceKind(data,s),s.i];};
    const [inside]=kind(-.35),[crown,at]=kind(.5),[beyond]=kind(KERB_WIDTH+.6),flag=kerbSegment(data,at,side);
@@ -47,7 +52,7 @@ for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasi
   // No kerb columns: kerbs all round, but not across the pit lane's mouth on the left.
   assert.equal(a[0].length,11);assert.equal(out.right,n);assert(out.left<n&&out.left>n*.8,'Curvelo leaves its pit entry and exit open');
  }
- out.probes=probes;out.kerbProbes=kerbs;report[id]=out;
+ out.probes=probes;out.kerbProbes=kerbs;if(folds)out.folds=folds;report[id]=out;
 }
 function mesh_dispose(root){root.traverse(o=>{o.geometry?.dispose();});}
 

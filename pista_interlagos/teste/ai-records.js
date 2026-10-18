@@ -1,14 +1,18 @@
 import {AI_REFERENCE_TIMES} from './ai-record-references.js';
 import {RIVAL_ROSTER} from './race-roster.js';
 import {LAPS} from './player-preferences.js';
+import {raceLaps} from './circuits.js';
 const KEY='autopobre-ai-records-v1',valid=t=>Number.isFinite(t)&&t>0&&t<86400;
 const key=r=>`${r.circuit}:${r.mode}:${r.number}`;
 const best=(a,b)=>a===null?b:b===null?a:Math.min(a,b);
-// As for the players (lap-records.js): race times only over the standard 3 laps; story race
+// The race length whose race times count on a circuit (people's and the AI's): the standard 3 laps, or the one a
+// circuit fixes (circuits.js fixedLaps: Pampulha's single lap).
+export const standardLaps=circuit=>raceLaps(circuit,LAPS.standard);
+// As for the players (lap-records.js): race times only over the standard 3 laps (standardLaps); story race
 // times saved before the lap setting (one-lap races, no raceLaps) are left out.
 export function readAIRecords(storage){
  const records=new Map(AI_REFERENCE_TIMES.map(r=>[key(r),{...r,source:'ai'}]));
- try{const saved=JSON.parse(storage?.getItem(KEY)||'[]');if(Array.isArray(saved))for(const r of saved){const row=records.get(key(r||{}));if(row&&valid(r.bestLap)&&(r.bestRace===null||valid(r.bestRace)&&r.bestRace>=r.bestLap)){row.bestLap=Math.min(row.bestLap,r.bestLap);row.bestRace=best(row.bestRace,r.mode==='immersive'&&r.raceLaps!==LAPS.standard?null:r.bestRace);}}}catch{}
+ try{const saved=JSON.parse(storage?.getItem(KEY)||'[]');if(Array.isArray(saved))for(const r of saved){const row=records.get(key(r||{}));if(row&&valid(r.bestLap)&&(r.bestRace===null||valid(r.bestRace)&&r.bestRace>=r.bestLap)){row.bestLap=Math.min(row.bestLap,r.bestLap);row.bestRace=best(row.bestRace,r.mode==='immersive'&&r.raceLaps!==standardLaps(r.circuit)?null:r.bestRace);}}}catch{}
  return [...records.values()].map(r=>({...r,name:RIVAL_ROSTER.find(entry=>entry.number===r.number).name}));
 }
 export class AutomaticAIRecords {
@@ -18,7 +22,7 @@ export class AutomaticAIRecords {
   // The boards are the Opala's: a field of Fuscas (physics.js FUSCA_MECHANICS) keeps none.
   const model=mode.rivals[0].car?.mechanics?.name;if(model&&model!=='opala')return;
   // A 1x1 rival starts on pole with nobody ahead: its laps count, its race time does not (fullGrid).
-  const circuit=mode.data.meta.id,category=mode.active?'immersive':'normal',standard=mode.fullGrid!==false&&(mode.active?mode.storyLaps:mode.freeTotalLaps)===LAPS.standard;
+  const circuit=mode.data.meta.id,category=mode.active?'immersive':'normal',standard=mode.fullGrid!==false&&(mode.active?mode.storyLaps:mode.freeTotalLaps)===standardLaps(circuit);
   const signature=JSON.stringify([circuit,category,...mode.rivals.map(r=>[r.car.best,r.finished?r.finishTime:null])]);
   if(signature===this.signature)return;
   let changed=false;const rows=this.rows.map(r=>({...r}));
@@ -32,7 +36,7 @@ export class AutomaticAIRecords {
    const bestLap=Math.min(row.bestLap,lap),bestRace=best(row.bestRace,race);
    if(bestLap!==row.bestLap||bestRace!==row.bestRace){row.bestLap=bestLap;row.bestRace=bestRace;changed=true;}
   }
-  if(changed){try{this.storage.setItem(KEY,JSON.stringify(rows.map(({circuit,mode,number,bestLap,bestRace})=>({circuit,mode,number,bestLap,bestRace,raceLaps:LAPS.standard}))));this.rows=rows;this.retryAt=0;}catch{this.retryAt=now+5000;return;}}
+  if(changed){try{this.storage.setItem(KEY,JSON.stringify(rows.map(({circuit,mode,number,bestLap,bestRace})=>({circuit,mode,number,bestLap,bestRace,raceLaps:standardLaps(circuit)}))));this.rows=rows;this.retryAt=0;}catch{this.retryAt=now+5000;return;}}
   this.signature=signature;
  }
 }

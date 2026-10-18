@@ -171,6 +171,22 @@ for(const z of w.zones){
  report.underDeck={runs:under,maxUp:+underUp.toFixed(2)};
  report.bridges={beside:checked,far,runs,maxUp:+maxUp.toFixed(2)};}
 
+// --- The Circuito da Pampulha (gerar_pampulha.py passeio_mineirao): one zone, the infield the lap encloses round the
+// Mineirão, entered through one gap in the main straight's right wall (its rail stops there); the stadium a solid C round
+// the pitch, opened by a tunnel along its minor axis toward the straight: the tunnel and the pitch are open ground, the
+// stands beside the tunnel are not, the esplanade round the stadium is.
+{const d=load('pampulha'),w=roamWorld(d),z=d.meta.roam.zones[0],g=z.gaps[0],L=d.meta.reconstructed_xy_m;
+ const st=d.scenery.landmarks.find(m=>m.kind==='mineirao').stadium,[cx,cy]=st.centre,t=st.tunnel.heading,zone=w?.zones[0];
+ assert(w&&d.meta.roam.zones.length===1&&z.gaps.length===1&&g.side===-1&&g.s1-g.s0>10,'pampulha: one zone, one gap in the right wall');
+ assert(!guardrailSections(d,-1).some(([a,b])=>a<g.s1-2.5&&b>g.s0+2.5),'pampulha: no rail across the gap (its ends within a station)');
+ const at=(r,side=0)=>[cx+Math.cos(t)*r-Math.sin(t)*side,cy+Math.sin(t)*r+Math.cos(t)*side],[fa,fb]=st.facade_semi,[ia,ib]=st.floor_semi,mid=(fb+ib)/2;
+ const open=(x,y)=>w.inside(zone,x,y);
+ assert(open(cx,cy)&&open(...at(ib-5)),'pampulha: the pitch is open ground');
+ assert(open(...at(mid))&&open(...at(fb-2))&&open(...at(ib+2)),'pampulha: the tunnel runs through the stands');
+ for(const side of [-1,1])assert(!open(...at(mid,side*(st.tunnel.width/2+6))),'pampulha: the stands beside the tunnel are solid');
+ assert(open(...at(fb+15)),'pampulha: the esplanade in front of the portal is open ground');
+ report.pampulha={gap:[g.s0,g.s1],zoneEdges:zone.rows.size,tunnel:{heading:+t.toFixed(3),width:st.tunnel.width}};}
+
 // --- Every other circuit: no zones, the physics as always.
-for(const id of Object.keys(CIRCUITS)){if(id==='floripa')continue;const d=load(id);assert(!d.meta.roam&&roamWorld(d)===null&&new TestCar(d).roam===null,`${id}: no zones of a city to roam`);}
+for(const id of Object.keys(CIRCUITS)){if(id==='floripa'||id==='pampulha')continue;const d=load(id);assert(!d.meta.roam&&roamWorld(d)===null&&new TestCar(d).roam===null,`${id}: no zones of a city to roam`);}
 console.log(JSON.stringify({passed:true,report},null,1));

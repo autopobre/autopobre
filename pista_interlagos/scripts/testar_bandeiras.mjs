@@ -15,7 +15,7 @@ import {marshalSpots,towerSpots,bend} from '../teste/trackside.js';
 import {TvCamera} from '../teste/tv-camera.js';
 import {pitGeometry,pitLane,wallsNear} from '../teste/pit-lane.js';
 import {GRAPHICS_OPTIONS,GRAPHICS_PRESETS} from '../teste/graphics-settings.js';
-import {FLAG_LEVELS,flagPlan,flagSpots,lowCameraSpots,FlagGusts,flagGust,clothPoint,flagSweep,sweepHits} from '../teste/trackside-flags.js';
+import {FLAG_LEVELS,flagCap,flagPlan,flagSpots,lowCameraSpots,FlagGusts,flagGust,clothPoint,flagSweep,sweepHits} from '../teste/trackside-flags.js';
 
 const LEVELS=['off','leve','media','completa'];
 assert.deepEqual(Object.keys(FLAG_LEVELS),GRAPHICS_OPTIONS.speedEffects.choices.map(([v])=>v),'one flag profile per Sensação de velocidade choice');
@@ -41,7 +41,7 @@ assert(!FLAG_LEVELS.media.shadow&&!FLAG_LEVELS.media.fine&&FLAG_LEVELS.media.rea
 }
 
 const only=process.argv[2],report={};
-for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa','minhocao']){
+for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa','minhocao','pampulha']){
  if(only&&only!==id)continue;
  const data=id==='curvelo'?createCurveloData():JSON.parse(readFileSync(new URL(`../dados/${id==='interlagos'?'pista':'pista_'+id}.json`,import.meta.url)));
  data.meta.id=id;data.meta.name=CIRCUITS[id].name;
@@ -54,6 +54,8 @@ for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasi
  assert.equal(counts.leve,marshals.length+4,`${id}: leve adds the start gantry's four`);
  assert(counts.media>=15&&counts.media<=FLAG_LEVELS.media.cap,`${id}: Médio ${counts.media}`);
  assert(counts.completa>=60&&counts.completa<=FLAG_LEVELS.completa.cap,`${id}: Completa ${counts.completa}`);
+ // (off and leve fly every marshal post's flag however long the lap: Pampulha's 20 km, 57 posts.)
+ assert(flagCap('off',L)>=marshals.length&&(L>5500||flagCap('off',L)===FLAG_LEVELS.off.cap),`${id}: off's cap`);
  for(let i=1;i<items.length;i++)assert(items[i].tier>=items[i-1].tier,`${id}: instances ordered by tier, so a level is a prefix`);
  for(const level of LEVELS){
   const spots=flagSpots(data,{level});assert.equal(spots.length,counts[level]);

@@ -3,7 +3,7 @@ import {FreeWalk,pilotOutfit} from './free-walk.js';
 import {pitLane} from './pit-lane.js';
 import {createInterlagosPit} from './interlagos-pit.js';
 import {createCurveloPit} from './pit-building.js';
-import {CIRCUITS,selectedCircuit,mapProjection} from './circuits.js';
+import {CIRCUITS,selectedCircuit,mapProjection,fixedLaps,raceLaps} from './circuits.js';
 import {createCurveloData} from './curvelo-data.js';
 import {createCurveloScene} from './curvelo-scene.js';
 import {createOpenCircuit} from './open-circuit.js';
@@ -67,11 +67,14 @@ import {TreeField} from './tree-contact.js';
 import {TvCamera} from './tv-camera.js';
 import {trackFall,FallView,fallInSight} from './cliff-fall.js';
 import {createFarTerrain} from './far-terrain.js';
-import {createSea} from './sea-water.js';
+import {createSea,lakeWater} from './sea-water.js';
 import {createFloripaBridges} from './floripa-bridges.js';
 import {createFloripaLandmarks} from './floripa-landmarks.js';
 import {createMinhocaoStructures} from './minhocao-structures.js';
 import {createMinhocaoLandmarks,hasMinhocaoLandmarks} from './minhocao-landmarks.js';
+import {createPampulhaEstadios,hasPampulhaEstadios} from './pampulha-estadios.js';
+import {createPampulhaIgrejinha,hasPampulhaIgrejinha} from './pampulha-igrejinha.js';
+import {createPampulhaFauna,hasPampulhaFauna} from './pampulha-fauna.js';
 import {createCityStreets} from './city-streets.js';
 import {createStreetClosures} from './street-closures.js';
 import {createCityFurniture} from './city-furniture.js';
@@ -170,9 +173,19 @@ $('aiLevel').onchange=()=>{preferences.update({aiLevel:$('aiLevel').value});if(i
 $('retirements').checked=preferences.values.retirements;
 $('retirements').onchange=()=>{preferences.update({retirements:$('retirements').checked});if(immersive)immersive.field.retirements=preferences.values.retirements;};
 // Race length (both modes, every circuit), picked in the race settings or on the track screen: one
-// preference, taken at the next start, so a race under way keeps its own.
-for(const laps of [$('raceLaps'),$('tracksLaps')]){for(let n=LAPS.min;n<=LAPS.max;n++)laps.add(new Option(`${n} volta${n>1?'s':''}${n===LAPS.standard?' (padrão)':''}`,String(n)));laps.value=String(preferences.values.laps);
- laps.onchange=()=>{preferences.update({laps:Number(laps.value)});$('raceLaps').value=$('tracksLaps').value=String(preferences.values.laps);if(immersive)immersive.laps=preferences.values.laps;updateMenuLabels();};}
+// preference, taken at the next start, so a race under way keeps its own. A circuit that fixes its race length
+// (circuits.js fixedLaps: Pampulha's one lap) shows it there, locked (showLaps); the choice saved comes back elsewhere.
+for(const laps of [$('raceLaps'),$('tracksLaps')]){for(let n=LAPS.min;n<=LAPS.max;n++)laps.add(new Option(`${n} volta${n>1?'s':''}${n===LAPS.standard?' (padrão)':''}`,String(n)));
+ laps.onchange=()=>{if(fixedLaps(circuit.id))return;preferences.update({laps:Number(laps.value)});showLaps();if(immersive)immersive.laps=raceLaps(circuit.id,preferences.values.laps);updateMenuLabels();};}
+function showLaps(){
+ const fixed=fixedLaps(circuit.id);
+ for(const select of [$('raceLaps'),$('tracksLaps')]){
+  let locked=select.querySelector('option[data-fixed]');if(fixed&&!locked){locked=new Option('','fixo');locked.dataset.fixed='';select.add(locked);}
+  if(fixed)locked.textContent=`${fixed} volta${fixed>1?'s':''} (fixo nesta pista)`;else locked?.remove();
+  select.disabled=!!fixed;select.value=fixed?'fixo':String(preferences.values.laps);
+ }
+}
+showLaps();
 // The weather (weather.js): the time of day and the rain, in the race settings and on the track screen, like the
 // laps. One preference each; a race under way takes it at once (applyWeather). Aleatório picked draws that part
 // afresh: the race under way races it, or else the next race does (the menu showed it).
@@ -390,7 +403,7 @@ function updateRecordTvs(now){
  if(!recordTvs||now<recordTvsAt)return;recordTvsAt=now+1500;
  const kind=immersive?.active?'immersive':'normal',otherKind=kind==='immersive'?'normal':'immersive',read=m=>trackRecords(pilotStorage(),circuit.id,m,immersive?.pilotName);
  const lists=read(kind),other={mode:otherKind,lap:read(otherKind).lap},key=JSON.stringify([circuit.id,kind,lists,other]);
- if(key!==recordTvsKey){recordTvsKey=key;recordTvs.showRecords({title:`RECORDES · ${circuit.name.toUpperCase()}`,mode:kind,laps:LAPS.standard,...lists,other});}
+ if(key!==recordTvsKey){recordTvsKey=key;recordTvs.showRecords({title:`RECORDES · ${circuit.name.toUpperCase()}`,mode:kind,laps:raceLaps(circuit.id,LAPS.standard),...lists,other});}
 }
 // Ghost lap (G): the pilot's best lap on this circuit, in the mode being played (as the records),
 // recorded while he drives (ghost-lap.js) and replayed as a see-through Opala over the race
@@ -1573,7 +1586,7 @@ function updateMenuLabels(){
  $('resume').hidden=!resume;$('leaveRace').hidden=!sessionStarted;$('leaveRace').textContent=circuit.arena?'Sair da arena':'Trocar de pista';
  $('restartRace').hidden=!(resume||finished&&!scored&&!multiplayer?.guest());$('restartRace').textContent=finished?'Correr novamente →':immersive?.practice?'Recomeçar treino':'Recomeçar corrida';
  // The track screen races in the mode chosen at the opening.
- const story=menuMode==='historia',laps=preferences.values.laps;
+ const story=menuMode==='historia',laps=raceLaps(circuit.id,preferences.values.laps);
  $('tracks').dataset.mode=menuMode;$('tracksTitle').textContent=story?'Sua temporada na Old Stock.':'Onde vamos acelerar hoje?';document.querySelector('.tracks-side-head .tracks-kicker').textContent=story?'SUA TEMPORADA':'NA PISTA ESCOLHIDA';if(!$('championshipReset').dataset.armed)$('championshipReset').textContent=story?'Recomeçar história':'Recomeçar campeonato';$('tracksMode').textContent=story?'MODO HISTÓRIA · AUTO-POBRE RACING':menuModel()==='fusca'?'MODO CORRIDA · COPA FUSCA':'MODO CORRIDA · OLD STOCK RACE';
  $('singleRace').querySelector('.mode-label').textContent=loading&&pendingMode==='single'?'Carregando circuito…':'Corrida única →';
  $('singleRaceDetail').textContent=`Só esta pista · ${laps} volta${laps>1?'s':''}${story?' · vaquinha, boxes e o sonho da Blazer':' contra 14 adversários'}`;
@@ -1585,11 +1598,11 @@ function updateMenuLabels(){
  $('duelSwatch').style.setProperty('--body',cssColor(rival.color));$('duelSwatch').style.setProperty('--stripe',cssColor(rival.stripe));
  const pick=$('duelRival'),field=fieldRoster(myCar,myModel);if(pick.options.length!==field.length||field.some((e,i)=>pick.options[i].value!==e.number))pick.replaceChildren(...field.map(e=>new Option('',e.number)));
  for(const option of pick.options){const entry=carEntry(option.value,myModel);option.textContent=`#${entry.number} ${entry.shortName}${entry.number===ACE_NUMBER&&preferences.values.aceKoyzinho?' · Indestrutível':''}`;}
- $('duelRival').value=rival.number;$('tracksLaps').value=String(laps);$('tracksBack').textContent=carScreen()?'← Carro':'← Início';
+ $('duelRival').value=rival.number;showLaps();$('tracksBack').textContent=carScreen()?'← Carro':'← Início';
  if(loading&&pendingMode==='championship')$('championshipStart').textContent=`Etapa ${championshipFor().round+1}: carregando ${circuit.name}…`;
  $('settingsResume').hidden=!sessionStarted||(!immersive?.active&&immersive?.freeResultReady);$('settingsRestart').hidden=$('settingsResume').hidden;
  $('settingsBack').textContent=sessionStarted?'Sair para a escolha de pista →':screen==='tracks'?'Voltar à escolha de pista →':'Voltar ao início →';
- $('raceResult').hidden=immersive?.active||!immersive?.freeResultReady;if(!immersive?.active&&immersive?.freeResultReady)$('raceResult').textContent=`Bandeirada! ${immersive.freePosition}º de ${immersive.fieldSize} · ${immersive.freeTotalLaps} voltas · ${fmt(immersive.finishTime??car.clock)}`;
+ $('raceResult').hidden=immersive?.active||!immersive?.freeResultReady;if(!immersive?.active&&immersive?.freeResultReady)$('raceResult').textContent=`Bandeirada! ${immersive.freePosition}º de ${immersive.fieldSize} · ${immersive.freeTotalLaps} volta${immersive.freeTotalLaps>1?'s':''} · ${fmt(immersive.finishTime??car.clock)}`;
  if(!loading&&screen==='tracks'&&!sessionStarted)renderTracks();
 }
 // The free race under way as the pause menu names it: a single race, the solo practice (its laps and
@@ -1883,9 +1896,10 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  const same=sessionStarted&&preferences.values.immersive===immersive.active&&!(!immersive.active&&immersive.freeResultReady);
  if(same&&!restart&&!tour){menu(false);return;}
  automaticRecords.start(pilot);immersive.pilotName=pilot;immersive.recordSaveError='';ghostKey='';
- // A championship round races the championship's laps; everything else the chosen ones.
+ // A championship round races the championship's laps; everything else the chosen ones; a circuit that fixes its race
+ // length (circuits.js fixedLaps: Pampulha) always its own. A room's race (multiplayer.js plan) takes the host's.
  if(tour)championshipRace=null;storyRound=null;raceResults.championship=null;
- immersive.laps=championshipRace?championshipRace.championship.laps:preferences.values.laps;
+ immersive.laps=raceLaps(circuit.id,championshipRace?championshipRace.championship.laps:preferences.values.laps);
  // In a Fusca (the car screen's tab, or the Copa Fusca's rounds) when it loaded; the story and the recon lap race the Opala 99.
  raceModel=!preferences.values.immersive&&!tour&&!roomWanted&&wantedModel()==='fusca'&&fuscaTemplate?'fusca':'opala';ghostCar.use(raceModel);
  // The car: Modo Corrida's choice for that model, or the room's (multiplayer.js); the story and the recon lap race the 99.
@@ -1898,6 +1912,8 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  // The story's paddock names the round ahead under its map (immersive.css .story-paddock): season, round, place and dates.
  {const r=championshipRace,row=r?.championship.schedule[r.round];$('mapRound').hidden=!r;if(r)$('mapRound').innerHTML=`<b>${r.championship.info.label} · ETAPA ${r.round+1} DE ${r.championship.total}</b>${[row?.place??circuit.name,row?.date].filter(Boolean).join(' · ')}`;}
  pitstop?.reset();walker?.reset();automatic=false;watched=0;
+ // Each new race (a restart, a championship round) lets the circuit's extras draw anew (pampulha-fauna.js: another bank).
+ for(const extra of circuitExtras)extra.newRace?.();
  if(preferences.values.immersive){immersive.start();}
  else{if(immersive.active)immersive.disable();reset();setCameraMode(preferences.values.camera);updateCar(1);updateCamera(1);}
  paintCar();
@@ -2103,6 +2119,12 @@ async function loadCircuit(){
   // Its landmarks (minhocao-landmarks.js: Copan, Itália, the ex-Hilton, Caetano de Campos, the Consolação church...),
   // before the landscape: the generic buildings that cut into them are trimmed back first.
   if(hasMinhocaoLandmarks(data))circuitExtras.push(createMinhocaoLandmarks(data,{mobile:scenery.mobile,ground:groundAt}));
+  // Belo Horizonte's Pampulha (pedido #8): the Mineirão and the Mineirinho by the start, the Igrejinha on the lake shore.
+  if(hasPampulhaEstadios(data))circuitExtras.push(createPampulhaEstadios(data,{mobile:scenery.mobile,ground:groundAt}));
+  if(hasPampulhaIgrejinha(data))circuitExtras.push(createPampulhaIgrejinha(data,{mobile:scenery.mobile,ground:groundAt}));
+  // The lake's capybaras (a family at one bank per race) and now and then the fat caiman (pampulha-fauna.js); they
+  // watch the cars passing and shy from the pilot on foot.
+  if(hasPampulhaFauna(data))circuitExtras.push(createPampulhaFauna(data,{mobile:scenery.mobile,ground:groundAt,cars:()=>[carRoot,...(immersive?.visual?.rivals??[])],walker:()=>walker?.active?walker.hero:null}));
   // A real city closed for the race (data.scenery.city, Floripa): the paint on its streets and on the lap, the side
   // streets blocked where they meet the walls (with the traffic held behind and the parked cars), the poles, wires,
   // traffic lights, bus stops and street signs, and the seafront promenades. The streets themselves are the ground's
@@ -2183,7 +2205,7 @@ async function loadCircuit(){
  // rest, as the rivals were just cloned), with the distant rivals' profile beyond 45 m.
  if(!ghostCar.has('opala'))ghostCar.build(model,immersive.visual.farProxy(0xffffff).geometry,'opala');
  // In a Modo História championship the story's own restarts lead to the next round (after this frame).
- {const storyStart=immersive.start.bind(immersive);immersive.start=()=>{if(storyRound){queueMicrotask(()=>{if(storyRound)nextStoryRound();});return;}storyStart();};}immersive.laps=preferences.values.laps;immersive.field.ace=preferences.values.aceKoyzinho;immersive.field.level=preferences.values.aiLevel;immersive.field.retirements=preferences.values.retirements;immersive.visual.viewCamera=camera;immersive.visual.setCarDetail(CAR_DETAIL[graphics.values.carDetail]);
+ {const storyStart=immersive.start.bind(immersive);immersive.start=()=>{if(storyRound){queueMicrotask(()=>{if(storyRound)nextStoryRound();});return;}storyStart();};}immersive.laps=raceLaps(circuit.id,preferences.values.laps);immersive.field.ace=preferences.values.aceKoyzinho;immersive.field.level=preferences.values.aiLevel;immersive.field.retirements=preferences.values.retirements;immersive.visual.viewCamera=camera;immersive.visual.setCarDetail(CAR_DETAIL[graphics.values.carDetail]);
  // The weather on the new track, the new car and the new field, before their programs compile below.
  applyWeather();
  // Sessions started from the menu open with the cinematic intro (the 3-2-1 waits for it).
@@ -2194,9 +2216,10 @@ async function loadCircuit(){
  multiplayer?.attach(immersive);
  // Box 99: Curvelo's service lane, or the surveyed garage at Interlagos.
  if(circuit.id==='curvelo'||pitLayout)pitstop=new PitStop({scene,car,carRoot,driver,mode:immersive,data,roadSurface,layout:pitLayout,obstacles:cameraObstacles,openings,onOpen:()=>{automatic=false;keys.clear();mobile?.clear();mobile?.setHandbrake(false);setCameraMode('chase');if(document.pointerLockElement)document.exitPointerLock();},onClose:()=>{keys.clear();mobile?.clear();followInitialized=false;},onSettings:openSettings});
- // Out of the car anywhere (free-walk.js), among the Box 99's rooms and people where the circuit has them; he wears
+ // Out of the car anywhere (free-walk.js), among the Box 99's rooms and people where the circuit has them (and never out
+ // into Interlagos' lakes or Pampulha's, sea-water.js lakeWater); he wears
  // the clothes of the car he races (or of his story stage).
- walker=new FreeWalk({scene,car,driver,openings,layout:pitstop?.layout??null,obstacles:cameraObstacles,water:landscape.stats.water?(x,y)=>landscape.water.at(x,y):null,
+ walker=new FreeWalk({scene,car,driver,openings,layout:pitstop?.layout??null,obstacles:cameraObstacles,water:landscape.stats.water?(x,y)=>landscape.water.at(x,y):lakeWater(data),
   outfit:()=>pilotOutfit({career:immersive.active?immersive.state.profile.career:null,entry:raceCar==='99'&&raceModel!=='fusca'?null:carEntry(raceCar,raceModel)}),
   title:()=>circuit.arena?'A PÉ · NA ARENA':reconLap||immersive.lineup?.length===0?'A PÉ · NA PISTA':'A PÉ · A CORRIDA CONTINUA',
   emit:(name,options)=>carAudio.effect(name,options),
