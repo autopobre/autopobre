@@ -2,15 +2,17 @@
 outside, painted in a team's colour, plus a mosaic of them all.
 
 Usage, from the project root:
- blender --background --factory-startup --python modelo_3d/scripts/renderizar_fusca_jogo.py -- [glb] [out_dir] [--cor RRGGBB] [--cor2 RRGGBB] [--so vista,vista] [--amostras N] [--esconder parte,parte]
+ blender --background --factory-startup --python modelo_3d/scripts/renderizar_fusca_jogo.py -- [glb] [out_dir] [--cor RRGGBB] [--cor2 RRGGBB] [--so vista,vista] [--amostras N] [--esconder parte,parte] [--abrir F]
 Defaults: pista_interlagos/teste/assets/fusca_v2.glb, modelo_3d/fusca_v2/previas/jogo/blender (gitignored), the #73's orange
 with white fenders (--cor2: the fenders' colour, the team's second one).
+--abrir F opens every hinged part (doors, front lid, engine lid: fusca_aberturas.py) by the fraction F of its opening, as
+the game's car-openings.js turns them; --abrir porta=1,capo=.5 opens only those (by the hinges' peca).
 The cockpit views put the camera where the game's does (main.js: cockpit.js eye plus fusca.js FUSCA_EYE, vertical
 field of view 74 degrees, 16:10), without the driver; EEVEE, a sun from the game's late afternoon and a plain sky.
 """
 import bpy,sys,math
 from pathlib import Path
-from mathutils import Vector,Euler
+from mathutils import Vector,Euler,Quaternion
 R=Path(__file__).resolve().parents[2]
 args=sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else []
 flags={a:args[i+1] for i,a in enumerate(args) if a.startswith('--') and i+1<len(args)}
@@ -18,7 +20,7 @@ plain=[a for i,a in enumerate(args) if not a.startswith('--') and not (i and arg
 # Relative paths from where blender was started (Blender would take them from the drive's root).
 GLB=Path(plain[0]).resolve() if plain else R/'pista_interlagos/teste/assets/fusca_v2.glb'
 OUT=Path(plain[1]).resolve() if len(plain)>1 else R/'modelo_3d/fusca_v2/previas/jogo/blender'
-HIDE=[h for h in flags.get('--esconder','').split(',') if h];COLOR=flags.get('--cor','f07a2a');COLOR2=flags.get('--cor2','f2f0ea');ONLY=set(flags['--so'].split(',')) if '--so' in flags else None;SAMPLES=int(flags.get('--amostras','32'))
+HIDE=[h for h in flags.get('--esconder','').split(',') if h];OPEN=flags.get('--abrir','');COLOR=flags.get('--cor','f07a2a');COLOR2=flags.get('--cor2','f2f0ea');ONLY=set(flags['--so'].split(',')) if '--so' in flags else None;SAMPLES=int(flags.get('--amostras','32'))
 # Game frame (x forward, y up, z the passenger's side) -> Blender after the glTF import (x, -z, y).
 G=lambda x,y,z:Vector((x,-z,y))
 EYE=(.057,1.01,.015)
@@ -34,7 +36,13 @@ VIEWS={
  'carona':((.0,1.05,.45),-.75,-.28,70),
 }
 OUTSIDE={'frente34':((4.6,1.25,-3.4),(.2,.65,0),30),'tras34':((-4.4,1.5,3.6),(-.2,.7,0),30),'lado':((.2,.9,-6.5),(.2,.7,0),26),
- 'banco':((.42,1.12,.5),(-.15,.72,-.28),62),'nariz':((3.3,.85,-1.55),(1.9,.6,-.1),28),'nariz_lado':((2.2,.7,-2.6),(1.85,.62,-.2),26),'nariz_frente':((4.6,.75,0),(1.9,.6,0),24),'nariz_cima':((2.9,2.0,-.9),(1.8,.62,0),30),'nariz_perto':((2.75,.78,-.95),(1.9,.62,-.25),34),'cima':((1.2,4.6,-2.2),(.1,.6,0),32),'retrovisor':((1.15,1.25,-1.35),(.7,1.06,-.72),30),'traseira':((-5.2,1.1,0),(-.2,.7,0),26)}
+ 'banco':((.42,1.12,.5),(-.15,.72,-.28),62),'nariz':((3.3,.85,-1.55),(1.9,.6,-.1),28),'nariz_lado':((2.2,.7,-2.6),(1.85,.62,-.2),26),'nariz_frente':((4.6,.75,0),(1.9,.6,0),24),'nariz_cima':((2.9,2.0,-.9),(1.8,.62,0),30),'nariz_perto':((2.75,.78,-.95),(1.9,.62,-.25),34),'cima':((1.2,4.6,-2.2),(.1,.6,0),32),'retrovisor':((1.15,1.25,-1.35),(.7,1.06,-.72),30),'traseira':((-5.2,1.1,0),(-.2,.7,0),26),
+ # The parts that open (with --abrir): the car opened from the front quarter, the driver's door, its front edge and the
+ # opening behind it, the trunk under the front lid, the engine lid lifted and the engine under it.
+ 'aberto_34':((3.9,1.9,-3.6),(.2,.6,0),34),'porta_aberta':((-1.4,1.35,-2.9),(.45,.7,-.75),42),'porta_frente':((1.9,1.0,-2.0),(.7,.62,-.75),36),
+ 'vao_porta':((.05,1.1,-2.3),(.3,.62,-.3),46),'porta_malas':((2.75,2.05,-.25),(1.2,.42,0),40),'capo_aberto':((3.6,1.25,-1.6),(1.3,.75,0),38),
+ 'tampa_aberta':((-3.7,1.9,1.4),(-1.3,.75,0),36),'motor':((-2.75,1.75,.35),(-1.45,.45,0),40),
+ 'quina_capo':((1.55,1.05,-1.75),(.86,.68,-.58),20),'pe_tampa':((-2.6,1.0,-.9),(-1.75,.45,-.1),26)}
 
 def setup():
  bpy.ops.wm.read_factory_settings(use_empty=True);bpy.ops.import_scene.gltf(filepath=str(GLB))
@@ -72,6 +80,14 @@ def setup():
  for o in bpy.data.objects:
   if o.name.startswith('Volante_Fusca') or any(h in o.name for h in HIDE):o.hide_render=True
  cam=bpy.data.objects.new('Camera',bpy.data.cameras.new('Camera'));scene.collection.objects.link(cam);scene.camera=cam;cam.data.sensor_fit='VERTICAL';cam.data.clip_start=.02
+ # The hinged parts opened as car-openings.js turns them: about eixo_gltf by angulo_gltf_graus times the fraction (the
+ # same smoothstep as the game's), from rest (the GLB's empties are unrotated).
+ if OPEN:
+  share={k:float(v) for k,v in (kv.split('=') for kv in OPEN.split(',') if '=' in kv)};whole=None if share else float(OPEN)
+  for o in bpy.data.objects:
+   if o.type!='EMPTY' or 'eixo_gltf' not in o:continue
+   t=whole if whole is not None else share.get(o.get('peca'),0.);t=t*t*(3-2*t);a=list(o['eixo_gltf'])
+   o.rotation_mode='QUATERNION';o.rotation_quaternion=Quaternion(Vector((a[0],-a[2],a[1])),math.radians(o['angulo_gltf_graus']*t))
  return scene,cam
 
 def shoot(scene,cam,name,eye,target=None,yaw=0,pitch=0,fov=74):

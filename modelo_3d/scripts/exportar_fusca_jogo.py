@@ -19,11 +19,16 @@ Fusca's 2.40 m wheelbase is centred on the Opala's (physics axles at +1.55 and -
    mirrors (arms, chrome heads, glass) are nodes of their own, named ..._Retrovisores (they stand out of the body).
  - Espelho_interno_fusca: the rear-view mirror's glass; Mostrador_velocimetro, Mostrador_contagiros: the dials,
    with UVs for the faces the game paints. Nodes with the extra "interno" are the player's only (the rivals drop them).
+ - Porta_Motorista_DOBRADICA, Porta_Passageiro_DOBRADICA, Capo_DOBRADICA (the front lid, over the trunk and the tank),
+   Tampa_motor_DOBRADICA: unrotated empties on the hinges' axes with the V06 Opala's extras (peca, eixo_gltf,
+   angulo_gltf_graus, descricao); each part and what rides on it hang from its empty (fusca_aberturas.py, which cuts
+   them out of the body with a panel gap and places each hinge where its part swings clear; car-openings.js turns them).
 Changed from the studio model, a Fusca prepared to race: no bumpers, the body 5 cm lower on its wheels
 (fusca_cabine.LOWER), the fenders in their own material with a welt along each seam, the door windows reaching
 further forward round a slimmer A-pillar (fusca_acabamento.py), its cabin (fusca_cabine.py: dash, door cards, headliner,
 cage on the pillars, bucket seat, mirror...), the door mirrors, the windscreen and rear window cut open whole, a yellow plate; the headlamps and indicators glow less (in the studio the 30 W bulbs light
-the scene, on track they are off in daylight). Left out: its driver (the game seats its own), scenery, cameras, lights.
+the scene, on track they are off in daylight); the doors, the front lid with the trunk under it and the engine lid open
+on hinges (fusca_aberturas.py). Left out: its driver (the game seats its own), scenery, cameras, lights.
 """
 import bpy,sys,math,re
 from pathlib import Path
@@ -58,7 +63,7 @@ STUDIO_CABIN=re.compile(r'^(Piso|Banco_-?1|Encosto_-?1|Banco_tras|Encosto_tras|P
 lathe,dense=V2.revolucao,V2.densificar
 V2.revolucao=lambda nome,perfil,cx,cy,cz,seg,mat,sinal=1,suave=True:lathe(nome,perfil,cx,cy,cz,min(seg,LATHE),mat,sinal,suave)
 V2.densificar=lambda pts,passo=.02,fechar=True:dense(pts,max(passo,TRIM_STEP),fechar)
-import fusca_cabine as CABIN,fusca_acabamento as FINISH
+import fusca_cabine as CABIN,fusca_acabamento as FINISH,fusca_aberturas as OPEN
 # The body with a rounded nose (fusca_acabamento.py RoundNose) in place of the studio's flat front.
 V2.Carroceria,V2.Y_NARIZ=FINISH.RoundNose,FINISH.NOSE_Y
 # The headlamps leaning back into the fenders, near flush with them (fusca_acabamento.py construir_farois).
@@ -72,6 +77,8 @@ def build():
  mats=V2.criar_materiais()
  V2.usar_colecao('Fusca_v2')
  car,body=V2.construir_carroceria(mats,SECTIONS,RING)
+ # The closed skin as built, before it is cut and hollowed: the trunk is the space inside it (fusca_aberturas.trunk).
+ cavity=body.data.copy()
  # The fenders' seams cut into the skin before it is hollowed (fusca_acabamento.py fenders; race_prep paints them).
  seams=FINISH.fenders(car,body)
  sup=V2.construir_tudo(car,body,mats)['sup']
@@ -94,8 +101,9 @@ def build():
   ring=V2.densificar(poly,.02,True)
   for x0,x1 in ((.45,1.1),(-1.1,-.45)):V2.prisma_yz(ring,x0,x1,V,F)
  V2.subtrair(body,V,F)
- # The engine lid cut out as its own part (fusca_acabamento.py cut_lid; race_prep opens it).
- lid=FINISH.cut_lid(sup,body,mats)
+ # The parts that open cut out as their own objects, a gap round each (fusca_aberturas.py): both doors, the front
+ # lid, the engine lid (race_prep props it open).
+ parts=OPEN.cut_all(sup,body,mats);lid=parts['tampa']
  # The body's 4th slot (the floor's inner faces, the dark interior in criar_fusca_v2.py) comes out of its booleans
  # empty, and an empty slot exports without a material (three.js draws it white): the dark interior again.
  for i,m in enumerate(body.data.materials):
@@ -104,7 +112,7 @@ def build():
  def shut(outline,side):
   import numpy as np
   from mathutils.bvhtree import BVHTree
-  me=body.data;bvh=BVHTree.FromPolygons([v.co for v in me.vertices],[p.vertices for p in me.polygons]);P=np.array(outline);lo,hi=P.min(0),P.max(0)
+  V,F=OPEN.world_mesh([body]+[parts[k] for k in (1,-1,'capo','tampa')]);bvh=BVHTree.FromPolygons(V,F);P=np.array(outline);lo,hi=P.min(0),P.max(0)
   pts=[(a,b) for a in np.linspace(lo[0],hi[0],25) for b in np.linspace(lo[1],hi[1],25)];pts=[p for p,k in zip(pts,V2.dentro_poligono(np.array(pts),V2.escalar_poligono(outline,.85))) if k];closed=0
   for a,b in pts:
    s,_=sup.lado(a,b,1.0) if side else sup.topo(a,b);h,*_=bvh.ray_cast(Vector((3,a,b)),Vector((-1,0,0)),6) if side else bvh.ray_cast(Vector((a,b,3.5)),Vector((0,0,-1)),7)
@@ -120,6 +128,8 @@ def build():
  FINISH.race_prep(car,body,seams,mats,sup,lid)
  # A dull yellow plate, as Brazil's were (the .blend's light grey glares in the game's sun).
  mats['placa'].node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value=(.3,.26,.07,1)
+ # The parts' insides, the trunk under the front lid, each part on a hinge where it swings clear (fusca_aberturas.py).
+ OPEN.build(sup,body,mats,parts,cavity)
  bpy.context.view_layer.update()
  return body,sup,mats
 
@@ -156,10 +166,19 @@ def export(output):
   for axle,front in (('-1.2',True),('+1.2',False)):
    s=1 if side=='E' else -1;at=TO_GAME@Vector((s*V2.BITOLA,float(axle),FINISH.WHEEL_R))
    p=bpy.data.objects.new(f'Roda_{"Dianteira" if front else "Traseira"}_{name}_PIVO',None);temporary.objects.link(p);p.parent=root;p.location=at;pivots[(side,axle)]=p
+ # The parts that open (fusca_aberturas.py): an unrotated empty on each hinge's axis carrying the opening as glTF extras
+ # (the V06 Opala's API: car-openings.js turns it); what rides on a part hangs from its empty.
+ hinges={}
+ for name,h in OPEN.HINGES.items():
+  e=bpy.data.objects.new(name,None);temporary.objects.link(e);e.parent=root;e.location=Matrix.Translation((0,0,-CABIN.LOWER))@TO_GAME@h['at']
+  a=TO_GAME.to_3x3()@h['axis']
+  e['peca']=h['peca'];e['eixo_gltf']=[round(a.x,6),round(a.z,6),round(-a.y,6)];e['angulo_gltf_graus']=h['angulo'];e['descricao']=h['descricao'];hinges[name]=e
  steering=[]
  for o in parts:
   w=WHEEL.match(o.name)
   if w:place('roda_'+w.group(1),evaluated(o),pivots[(w.group(2),w.group(3))],pivots[(w.group(2),w.group(3))].location);continue
+  hinge=hinges.get(o.get('dobradica',''))
+  if hinge:place(o.name,evaluated(o),hinge,hinge.location,source=o);continue
   if o.name.startswith('Volante'):steering.append(place('volante_'+o.name,evaluated(o),root));continue
   place(o.name,evaluated(o),root,source=o)
  assert all(len(p.children)==5 for p in pivots.values()),{p.name:len(p.children) for p in pivots.values()}
@@ -192,6 +211,13 @@ def export(output):
  found=[o for o in imported.children_recursive if o.type=='EMPTY' and o.name.startswith('Roda_') and '_PIVO' in o.name]
  assert len(found)==4 and sum('Dianteira' in o.name for o in found)==2,[o.name for o in found]
  assert all(o.rotation_quaternion.angle<1e-6 for o in found),'pivos girados'
+ # Each hinge with its opening and the parts on it, shut (unrotated) as the game's copies expect (car-openings.js).
+ opened={o.name:o for o in imported.children_recursive if o.type=='EMPTY' and o.get('peca')}
+ assert sorted(opened)==sorted(OPEN.HINGES),sorted(opened)
+ for name,o in opened.items():
+  assert o.rotation_quaternion.angle<1e-6 and len(o['eixo_gltf'])==3 and o['angulo_gltf_graus'],name
+  assert any(c.type=='MESH' and any(m and m.name=='Pintura_fusca' for m in c.data.materials) for c in o.children_recursive),('dobradica sem lataria',name)
+ print('FUSCA_DOBRADICAS',', '.join(f'{n} {tuple(round(v,3) for v in o.matrix_world.translation)} eixo {tuple(o["eixo_gltf"])} {o["angulo_gltf_graus"]:.0f} graus' for n,o in sorted(opened.items())),flush=True)
  meshes=[o for o in imported.children_recursive if o.type=='MESH']
  assert all(m for o in meshes for m in o.data.materials),'malha sem material'
  materials={m.name for o in meshes for m in o.data.materials if m}

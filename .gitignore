@@ -104,6 +104,7 @@ desktop.ini
 !/modelo_3d/scripts/exportar_fusca_jogo.py
 !/modelo_3d/scripts/fusca_cabine.py
 !/modelo_3d/scripts/fusca_acabamento.py
+!/modelo_3d/scripts/fusca_aberturas.py
 !/modelo_3d/scripts/renderizar_fusca_jogo.py
 # The Fusca V2 (modelo_3d/fusca_v2), modelled from the Type 1's measurements: README, build and check scripts,
 # measurement tables and JPEG renders are versioned; its two .blend files (rebuilt by criar_fusca_v2.py) and the

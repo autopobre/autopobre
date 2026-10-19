@@ -446,8 +446,9 @@ def doors(cab,M):
   knob=hub+n*.022+Vector((0,.065,-.03))
   out.append(pipe('Manivela_braco_'+side,[hub+n*.018,knob],.0055,M['chrome'],8,interno=True))
   out.append(cylinder('Manivela_pegador_'+side,knob,n,.011,.009,.035,M['wheel'],12,interno=True))
-  # Inner handle (a chrome lever near the front edge) and the lock knob on the sill under the window.
-  h,n=w(-.50,.875,.016)
+  # Inner handle (a chrome lever toward the front, just behind the dash's end: the door swings open past it,
+  # fusca_aberturas.py) and the lock knob on the sill under the window.
+  h,n=w(-.37,.875,.016)
   out.append(box('Macaneta_interna_'+side,h+n*.008,(.085,.012,.018),M['chrome'],.004,z_axis=n,up=Vector((0,0,1)),interno=True))
   out.append(box('Macaneta_interna_base_'+side,h,(.05,.004,.03),M['chrome'],.002,z_axis=n,up=Vector((0,0,1)),interno=True))
   k,_=w(.28,1.0,.03)

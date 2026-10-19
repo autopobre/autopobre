@@ -1,16 +1,16 @@
-// Hinged parts of the V06 Opala (teste/car-openings.js), with the hinges read from the game's
+// Hinged parts of the V06 Opala and of the Fusca (teste/car-openings.js), with the hinges read from the game's
 // own GLBs: each part must open the right way, shut again, and follow the pit crew.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
-import {CarOpenings,OPENINGS,shutOpenings,carSpot} from '../teste/car-openings.js';
+import {CarOpenings,OPENINGS,shutOpenings,carSpot,partName} from '../teste/car-openings.js';
 import {PitStop} from '../teste/pitstop.js';
 const ASSETS=new URL('../teste/assets/',import.meta.url);
 // The GLB's JSON chunk: node names, translations and extras (no textures needed here).
 function glbNodes(file){const b=readFileSync(new URL(file,ASSETS)),length=b.readUInt32LE(12);return JSON.parse(b.subarray(20,20+length).toString()).nodes;}
 // The car's hinge empties as three.js builds them (extras -> userData), each with a marker
 // where its part reaches farthest from the hinge, so the test sees which way it moves.
-const REACH={[OPENINGS.hood]:[1.2,0,0],[OPENINGS.trunk]:[-.55,0,0],[OPENINGS.driverDoor]:[-1.1,.4,0],[OPENINGS.passengerDoor]:[-1.1,.4,0],
+const REACH={[OPENINGS.hood]:[1.2,0,0],[OPENINGS.trunk]:[-.55,0,0],[OPENINGS.engineLid]:[-.5,-.55,0],[OPENINGS.driverDoor]:[-1.1,.4,0],[OPENINGS.passengerDoor]:[-1.1,.4,0],
  [OPENINGS.fuelCaps[0]]:[-.06,0,0],[OPENINGS.fuelCaps[1]]:[-.06,0,0]};
 function carFrom(nodes){
  const root=new THREE.Group();root.name='OPALA_99_ROOT';
@@ -83,5 +83,34 @@ for(const livery of ['seiva_danilo','assinaturas_omp']){
  // E there shuts or opens the door (user, 2026-10-15); F gets in.
  pit.coffee.held=[];assert.equal(pit.handleKey('KeyE'),true);assert(o.held(OPENINGS.driverDoor,'manual'),'E by the door opens it');
  pit.handleKey('KeyE');assert(!o.held(OPENINGS.driverDoor,'manual'),'E again shuts it');assert.equal(pit.coffee.held.length,0);
- assert.equal(pit.openingLabel('capo'),'Fechar o capô');pit.service.jobs=[{id:'motor'}];assert.match(pit.openingLabel('capo'),/equipe/);}
+ assert.equal(pit.openingLabel('capo'),'Fechar o capô');pit.service.jobs=[{id:'motor'}];assert.match(pit.openingLabel('capo'),/equipe/);
+ pit.service.jobs=[];assert.equal(pit.openingLabel('porta_malas'),'Abrir o porta-malas');
+ // The Opala's parts by role: the engine under the hood, the fuel cell in the trunk, the caps for refuelling.
+ assert.deepEqual([o.part('front'),o.part('rear'),o.part('engine'),o.part('tank'),o.part('fuel')],[OPENINGS.hood,OPENINGS.trunk,OPENINGS.hood,OPENINGS.trunk,OPENINGS.fuelCaps]);}
+
+// The Fusca (modelo_3d/scripts/fusca_aberturas.py): both doors, the front lid over the trunk and the tank, the engine
+// lid at the tail (propped open for the race: it opens further); no trunk lid, no filler caps (the filler is in the
+// trunk). The crew lifts the engine lid for the engine and the front lid for the tank and to refuel; E at the tail lifts
+// the engine lid.
+{const nodes=glbNodes('fusca_v2.glb'),car=carFrom(nodes),o=new CarOpenings().attach(car);
+ assert.deepEqual([...o.parts.keys()].sort(),[OPENINGS.hood,OPENINGS.engineLid,OPENINGS.driverDoor,OPENINGS.passengerDoor].sort(),'Fusca: portas, capô e tampa do motor');
+ for(const name of o.parts.keys())assert(!nodes.find(n=>n.name===name).rotation,`Fusca: ${name} fechado no GLB`);
+ assert.deepEqual([o.part('front'),o.part('rear'),o.part('engine'),o.part('tank'),o.part('fuel')],[OPENINGS.hood,OPENINGS.engineLid,OPENINGS.engineLid,OPENINGS.hood,OPENINGS.hood]);
+ assert.deepEqual([o.jobAt('capo'),o.jobAt('porta_malas')],['tanque','motor']);
+ const closed=Object.fromEntries([...o.parts.keys()].map(n=>[n,tip(car,n)]));
+ for(const name of o.parts.keys())o.hold(name,'teste');run(o,4);
+ const moved=name=>tip(car,name).sub(closed[name]);
+ assert(moved(OPENINGS.hood).y>.8,`Fusca: capô levanta a frente (${moved(OPENINGS.hood).y.toFixed(2)})`);
+ assert(moved(OPENINGS.engineLid).y>.3&&moved(OPENINGS.engineLid).x<0,`Fusca: tampa do motor levanta e recua (${moved(OPENINGS.engineLid).toArray().map(v=>v.toFixed(2))})`);
+ assert(moved(OPENINGS.driverDoor).z<-.8&&moved(OPENINGS.passengerDoor).z>.8,'Fusca: portas abrem para fora');
+ assert(o.info()[OPENINGS.hood].open===1&&o.info()[OPENINGS.engineLid].kind==='tampa_motor');
+ o.release('teste');run(o,4);for(const name of o.parts.keys())assert(tip(car,name).distanceTo(closed[name])<1e-6,`Fusca: ${name} fecha de novo`);
+ const pit=Object.create(PitStop.prototype);Object.assign(pit,{opened:true,openings:o,service:{jobs:[{id:'motor'}]},render(){}});
+ pit.syncOpenings();assert(o.held(OPENINGS.engineLid,'equipe')&&!o.held(OPENINGS.hood,'equipe'),'motor: a tampa do motor');
+ pit.service.jobs=[{id:'tanque'},{id:'fuel'}];pit.syncOpenings();assert(o.held(OPENINGS.hood,'equipe')&&!o.held(OPENINGS.engineLid,'equipe'),'tanque e combustível: o capô');
+ pit.service.jobs=[{id:'fuel'}];pit.syncOpenings();assert(o.held(OPENINGS.hood,'equipe'),'refuelling alone keeps the front lid up (tank and fuel share it)');
+ pit.service.jobs=[];pit.syncOpenings();assert(!o.held(OPENINGS.hood,'equipe'));
+ assert.equal(pit.openingLabel('porta_malas'),'Abrir a tampa do motor · ver o motor');assert.equal(pit.openingLabel('capo'),'Abrir o capô · ver o tanque');
+ assert.equal(pit.toggleOpening('rear'),true);assert(o.held(OPENINGS.engineLid,'manual'));assert.equal(pit.openingLabel('porta_malas'),'Fechar '+partName(OPENINGS.engineLid));
+ pit.service.jobs=[{id:'motor'}];assert.equal(pit.openingLabel('porta_malas'),'Ver o motor · equipe trabalhando');}
 console.log('aberturas ok');

@@ -3,7 +3,7 @@ import {CarCondition,CAR_PARTS,PitService,PLACE_NAMES} from './car-condition.js'
 import {pitLane,inPitBox} from './pit-lane.js';
 import {trackPoint} from './immersive-visuals.js';
 import {footState,stepOnFoot,footGround,clearView,placeFootCamera,turnFootView,zoomFootView,footJump} from './on-foot.js';
-import {OPENINGS,carSpot,SPOT_OPENING} from './car-openings.js';
+import {OPENINGS,carSpot,SPOT_ROLE,partName} from './car-openings.js';
 import {dressPerson,STEVAN_OUTFITS} from './pit-crew.js';
 import {outfitOf} from './story-career.js';
 import {keyName,keyText} from './key-bindings.js';
@@ -136,13 +136,17 @@ export class PitStop {
  reset(){this.service.cancel();this.close();this.condition.reset();this.bank=450;this.departing=false;this.stationary=0;this.message='';}
  close(){if(this.cameraRef){this.cameraRef.clearViewOffset();this.viewShifted=false;if(this.savedFov!==undefined){this.cameraRef.fov=this.savedFov;this.cameraRef.updateProjectionMatrix();this.savedFov=undefined;}}this.opened=false;this.coffee=null;this.hero.visible=false;this.driver.root.visible=true;this.panel.hidden=true;this.walkHud.hidden=true;this.markers.visible=false;this.cafePrompt.visible=false;document.body.classList.remove('pit-open','pit-walking','pit-cafe-menu','pit-repairs');this.openings?.hold(OPENINGS.driverDoor,'manual',false);this.syncOpenings();this.onClose?.();}
  leave(){if(this.coffee){this.returnCar();return;}const refund=this.service.cancel();this.message=refund?`Serviços interrompidos. ${money(refund)} devolvidos.`:'';this.close();this.departing=true;this.stationary=0;}
- // Hinged parts (car-openings.js): the crew opens what it works on (the hood for the engine,
- // the trunk lid for the fuel cell, the filler caps while refuelling); on foot, the action key at
- // the nose or the tail lifts the hood or the lid for a look (left open, they stay open as the car
- // goes); the driver's door stays open while he is out (E at it shuts or opens it) and shuts
- // behind him as he gets back in (user, 2026-10-15).
- syncOpenings(){const o=this.openings;if(!o)return;const at=id=>this.opened&&this.service.jobs.some(job=>job.id===id);o.hold(OPENINGS.hood,'equipe',at('motor'));o.hold(OPENINGS.trunk,'equipe',at('tanque'));o.hold(OPENINGS.fuelCaps,'equipe',at('fuel'));}
- toggleOpening(which){const o=this.openings,name=OPENINGS[which];if(!this.opened||!o?.has(name))return false;o.toggle(name);this.render();return true;}
+ // Hinged parts (car-openings.js): the crew opens what it works on (the Opala's hood for the engine,
+ // its trunk lid for the fuel cell, the filler caps while refuelling; the Fusca's engine lid, and its front
+ // lid for the tank and its filler); on foot, the action key at the nose or the tail lifts the lid there
+ // for a look (left open, they stay open as the car goes); the driver's door stays open while he is out
+ // (E at it shuts or opens it) and shuts behind him as he gets back in (user, 2026-10-15).
+ syncOpenings(){const o=this.openings;if(!o)return;const at=id=>this.opened&&this.service.jobs.some(job=>job.id===id),open=new Set();
+  const jobs=[['engine','motor'],['tank','tanque'],['fuel','fuel']];
+  for(const [role,job] of jobs)if(at(job))for(const name of [o.part(role)].flat())open.add(name);
+  for(const [role] of jobs)for(const name of [o.part(role)].flat())o.hold(name,'equipe',open.has(name));}
+ // which: a name of OPENINGS ('hood', 'trunk', 'driverDoor') or a place's part ('front', 'rear': car-openings.js part).
+ toggleOpening(which){const o=this.openings,name=OPENINGS[which]??o?.part(which);if(!this.opened||!o?.has(name))return false;o.toggle(name);this.render();return true;}
  get touch(){return document.body.classList.contains('touch-device');}
  // Out of the car: the camera starts behind the driver, looking where he faces.
  visitCafe(){if(!this.opened||this.coffee)return;
@@ -171,11 +175,12 @@ export class PitStop {
  heroStart(){const c=this.car;return new THREE.Vector3(c.x-Math.sin(c.heading)*1.6,c.surface.z,-c.y-Math.cos(c.heading)*1.6);}
  // What the action key (E, or the context button) does where the pilot stands: at the Opala's nose
  // it lifts the hood, at its tail the trunk lid, by the driver's door it gets in; at the café, the menu.
- interaction(){if(!this.coffee)return null;const spot=this.standingSpot();if(SPOT_OPENING[spot])return spot;if(this.hero.position.distanceTo(this.heroStart())<2)return 'car';if(this.hero.position.distanceTo(this.cafeSeat)<2.6)return 'cafe';return null;}
+ interaction(){if(!this.coffee)return null;const spot=this.standingSpot();if(SPOT_ROLE[spot])return spot;if(this.hero.position.distanceTo(this.heroStart())<2)return 'car';if(this.hero.position.distanceTo(this.cafeSeat)<2.6)return 'cafe';return null;}
  standingSpot(){if(!this.openings?.has(OPENINGS.hood))return null;const c=this.car,h=c.heading,dx=this.hero.position.x-c.x,dz=this.hero.position.z+c.y;return carSpot({x:dx*Math.cos(h)-dz*Math.sin(h),z:dx*Math.sin(h)+dz*Math.cos(h)});}
- openingLabel(spot){const crew=this.service.jobs.some(j=>j.id===(spot==='capo'?'motor':'tanque')),open=this.openings.held(SPOT_OPENING[spot],'manual');
-  return spot==='capo'?(crew?'Ver o motor · equipe trabalhando':open?'Fechar o capô':'Abrir o capô · ver o motor'):(crew?'Ver o tanque · equipe trabalhando':open?'Fechar o porta-malas':'Abrir o porta-malas');}
- interact(){if(!this.coffee||this.coffee.menu)return;const action=this.interaction();if(action==='car')this.returnCar();else if(SPOT_OPENING[action])this.toggleOpening(action==='capo'?'hood':'trunk');else if(action==='cafe'){this.coffee.menu=true;this.releaseMouse();this.onClose?.();this.mode.state.emitSound('paper');this.render();}}
+ // The lid at a place by the car (the job under it: the Opala's engine at the nose, the Fusca's at the tail).
+ openingLabel(spot){const o=this.openings,job=o.jobAt(spot),name=o.part(SPOT_ROLE[spot]),crew=this.service.jobs.some(j=>j.id===job),open=o.held(name,'manual'),what=job==='motor'?'o motor':'o tanque';
+  return crew?`Ver ${what} · equipe trabalhando`:open?'Fechar '+partName(name):'Abrir '+partName(name)+(job==='motor'||spot==='capo'?' · ver '+what:'');}
+ interact(){if(!this.coffee||this.coffee.menu)return;const action=this.interaction();if(action==='car')this.returnCar();else if(SPOT_ROLE[action])this.toggleOpening(SPOT_ROLE[action]);else if(action==='cafe'){this.coffee.menu=true;this.releaseMouse();this.onClose?.();this.mode.state.emitSound('paper');this.render();}}
  returnCar(){if(!this.coffee||this.interaction()!=='car')return false;this.openings?.hold(OPENINGS.driverDoor,'manual',false);this.openings?.pulse(OPENINGS.driverDoor,1.2);this.coffee=null;this.mode.state.emitSound('engineCatch');this.leave();return true;}
  // What is bought goes into a free hand (one item per hand) until it is eaten or drunk.
  buySnack(id){
@@ -239,7 +244,7 @@ export class PitStop {
    const action=this.interaction(),touch=this.touch,s=this.coffee,first=s.held[0],firstItem=first&&CAFE_MENU.find(m=>m.id===first.id),hud=id=>this.walkHud.querySelector('#'+id);
    hud('pitWalkJob').textContent=busy?'Equipe: '+jobs.map(j=>`${jobName(j)} ${Math.ceil(j.seconds-j.elapsed)} s`).join(' · ')+(this.service.queue.length?` · +${this.service.queue.length} na fila`:''):'Opala pronto. Volte quando quiser.';
    hud('pitWalkHold').hidden=!first;hud('pitWalkHold').textContent='Na mão: '+snackLabel(s);
-   const lid=SPOT_OPENING[action]?this.openingLabel(action):'',eText=firstItem?`${firstItem.verb} ${firstItem.name.toLowerCase()}`:action==='cafe'?'cardápio':action==='car'?(!this.openings?.has(OPENINGS.driverDoor)?'entrar no Opala':this.openings.held(OPENINGS.driverDoor,'manual')?'fechar a porta':'abrir a porta'):lid?lid[0].toLowerCase()+lid.slice(1):'interagir';
+   const lid=SPOT_ROLE[action]?this.openingLabel(action):'',eText=firstItem?`${firstItem.verb} ${firstItem.name.toLowerCase()}`:action==='cafe'?'cardápio':action==='car'?(!this.openings?.has(OPENINGS.driverDoor)?'entrar no Opala':this.openings.held(OPENINGS.driverDoor,'manual')?'fechar a porta':'abrir a porta'):lid?lid[0].toLowerCase()+lid.slice(1):'interagir';
    hud('pitWalkHint').textContent=`Saldo: ${money(this.wallet)} · `+(touch?'Caminhe até a Tia ou o carro.':keyText(`Mouse: câmera · {KeyW}/{KeyA}/{KeyS}/{KeyD}: andar · {ShiftLeft}: correr · {Space}: pular · {KeyC}: agachar · {KeyE}: ${eText} · {KeyF}: ${action==='car'?'entrar no Opala':'sair/entrar no carro'} · Tab: mouse no menu`));
    hud('pitRepairs').textContent=s.repairs?'Esconder consertos':'Consertos do Opala';
    const use=hud('pitUse');use.hidden=!firstItem;if(firstItem)use.textContent=`${firstItem.verb[0].toUpperCase()+firstItem.verb.slice(1)} ${firstItem.name.toLowerCase()}`+(touch?'':' · E');use.disabled=!!s.using;

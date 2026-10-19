@@ -4,6 +4,8 @@ import {BRAKE_ON,TAIL_LIGHTS} from './brake-lights.js';
 import {FuscaCockpit} from './fusca-cockpit.js';
 import {finishCar,finishMaterial} from './car-finish.js';
 import {prepareWheels} from './car-wheels.js';
+import {OPENINGS} from './car-openings.js';
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 // The Fusca (Modo Corrida's car screen, its Fusca tab): modelo_3d/fusca_v2, modelled from the Type 1's
 // measurements and exported by modelo_3d/scripts/exportar_fusca_jogo.py in the Opala's frame (+X forward, -Z the
 // driver's side, tyres on y=0, its 2.40 m wheelbase centred on the Opala's). In a Fusca race the whole field races
@@ -12,7 +14,9 @@ import {prepareWheels} from './car-wheels.js';
 // the street car's (the sills 7 cm off the ground, the arches just over the tyres), the engine lid propped open. Each is
 // a Copa Fusca car (race-roster.js FUSCA_CHOICES) in its colours, as the cup's liveries go: the body paint and the
 // dash in the first, the four fenders in the second (the Opala's stripe), the number on both doors and on the roof.
-export const FUSCA_URL='./assets/fusca_v2.glb?v=fusca-v2-corrida-5';
+// Its doors, front lid (over the trunk and the tank) and engine lid open on their hinges as the Opala's do
+// (car-openings.js; modelo_3d/scripts/fusca_aberturas.py): the stickers on a door ride it.
+export const FUSCA_URL='./assets/fusca_v2.glb?v=fusca-v2-aberturas-1';
 // The driver (driver.js and rival-driver.js, with the race wheel he turns) moves this much from the Opala's
 // seat: onto the Fusca's steering wheel, 26 cm further forward, 8 cm lower and 6 cm inboard (the Fusca is
 // narrower: from the Opala's seat his left elbow came out through the door). The exporter builds the cabin round
@@ -103,23 +107,61 @@ export function fuscaCar(template,entry){
   if(o.isMesh)o.material=Array.isArray(o.material)?o.material.map(recolor):recolor(o.material);
   else if(o.name.startsWith('Roda_')&&o.name.includes('PIVO'))wheels.push(o);
  });
- // The numbers are bent onto the paint (immersive-visuals.js), 6 mm off it.
+ // The numbers are bent onto the paint (immersive-visuals.js), 6 mm off it; those on the doors hang from their hinges.
  root.updateMatrixWorld(true);const paint=[];root.traverse(o=>{if(o.isMesh&&[o.material].flat().some(m=>m.name==='Pintura_fusca'))paint.push(o);});
  const body=bodyTriangles(root,paint),V=(x,y,z)=>new THREE.Vector3(x,y,z),stuck=[];
  const sticker=numberSticker(entry.number);own.push(sticker);
- for(const side of [-1,1])stuck.push([bendOnBody(body,V(DOOR.x,DOOR.y,side*SIDE),V(side,0,0),V(0,1,0),DOOR.w,DOOR.h,16,8),'Numero_porta_'+entry.number]);
- stuck.push([bendOnBody(body,V(ROOF.x,ROOF.y,0),V(-1,0,0),V(0,0,1),ROOF.w,ROOF.h),'Numero_teto_'+entry.number]);
- for(const [geometry,name] of stuck){const decal=new THREE.Mesh(geometry,sticker);decal.name=name;decal.renderOrder=2;decal.receiveShadow=true;root.add(decal);own.push(geometry);}
+ const stick=(geometry,material,name,order,side=0)=>{const decal=new THREE.Mesh(geometry,material);decal.name=name;decal.renderOrder=order;decal.receiveShadow=true;root.add(decal);
+  const door=side&&root.getObjectByName(side<0?OPENINGS.driverDoor:OPENINGS.passengerDoor);if(door){decal.updateMatrixWorld();door.attach(decal);}};
+ for(const side of [-1,1])stuck.push([bendOnBody(body,V(DOOR.x,DOOR.y,side*SIDE),V(side,0,0),V(0,1,0),DOOR.w,DOOR.h,16,8),'Numero_porta_'+entry.number,side]);
+ stuck.push([bendOnBody(body,V(ROOF.x,ROOF.y,0),V(-1,0,0),V(0,0,1),ROOF.w,ROOF.h),'Numero_teto_'+entry.number,0]);
+ for(const [geometry,name,side] of stuck){stick(geometry,sticker,name,2,side);own.push(geometry);}
  // A livery's drawing (race-roster.js graphic) along both sides, under the door numbers: Benício's lightning bolt,
- // between the wheel arches, pointing to the nose on either side.
+ // between the wheel arches, pointing to the nose on either side; cut at the door's seams, its middle on the door.
  if(entry.graphic==='raio')for(const side of [-1,1]){
-  const art=boltSticker(side<0),geometry=bendOnBody(body,V(BOLT.x,BOLT.y,side*SIDE),V(side,0,0),V(0,1,0),BOLT.w,BOLT.h,40,10);
-  const decal=new THREE.Mesh(geometry,art);decal.name='Raio_'+(side<0?'esquerdo':'direito');decal.renderOrder=1;decal.receiveShadow=true;root.add(decal);own.push(art,geometry);
+  const art=boltSticker(side<0);own.push(art);
+  for(const [u0,u1,onDoor] of boltPieces(root,side)){
+   const geometry=bendOnBody(body,V(BOLT.x+side*((u0+u1)/2-.5)*BOLT.w,BOLT.y,side*SIDE),V(side,0,0),V(0,1,0),(u1-u0)*BOLT.w,BOLT.h,Math.max(2,Math.round(40*(u1-u0))),10);
+   const uv=geometry.attributes.uv;for(let i=0;i<uv.count;i++)uv.setX(i,u0+uv.getX(i)*(u1-u0));
+   stick(geometry,art,'Raio_'+(side<0?'esquerdo':'direito'),1,onDoor?side:0);own.push(geometry);
+  }
  }
  root.userData.own=own;root.userData.wheels=wheels;root.userData.entry=entry;root.userData.lamp=lamp;
  // Dim while the tail lights are on (dusk, night, rain: brake-lights.js TAIL_LIGHTS, or lit for the player's own switch).
  root.userData.brake=(v,lit=TAIL_LIGHTS.on)=>{if(lamp)lamp.emissiveIntensity=v>BRAKE_ON?7:lit?1.5:0;};
  return root;
+}
+// The bolt's stretches (u across it, 0-1) either side of the door's seams and on the door: the door's paint's extent
+// along the car (a car without opening doors, or a rival's copy, rivalTemplate: one stretch).
+function boltPieces(root,side){
+ const door=root.getObjectByName(side<0?OPENINGS.driverDoor:OPENINGS.passengerDoor),box=new THREE.Box3();
+ door?.traverse(o=>{if(o.isMesh&&[o.material].flat().some(m=>m.name==='Pintura_fusca'))box.expandByObject(o);});
+ if(box.isEmpty())return [[0,1,false]];
+ const u=x=>Math.min(1,Math.max(0,(x-BOLT.x)*side/BOLT.w+.5)),[a,b]=[u(box.min.x),u(box.max.x)].sort((p,q)=>p-q);
+ return [[0,a,false],[a,b,true],[b,1,false]].filter(([p,q])=>q-p>.01);
+}
+// Rivals never open their doors or lids: they are cloned from a copy of the template with each hinge's parts merged
+// into the body's meshes of the same material, or into one another's where only they wear it (the two door mirrors'
+// glass): no more draw calls than before the parts were cut. Made once per template.
+const rivalTemplates=new WeakMap();
+const inside=o=>{for(let q=o;q;q=q.parent)if(q.userData?.interno)return true;return false;};
+const hingeOf=o=>{for(let q=o.parent;q;q=q.parent)if(Array.isArray(q.userData?.eixo_gltf))return q;return null;};
+const layout=g=>Object.keys(g.attributes).sort().join()+(g.index?'|i':'');
+export function rivalTemplate(template){
+ let copy=rivalTemplates.get(template);if(copy)return copy;
+ copy=template.clone(true);copy.updateMatrixWorld(true);const fixed=new Map(),into=new Map();
+ copy.traverse(o=>{if(o.isMesh&&!Array.isArray(o.material)&&!hingeOf(o)&&!inside(o)&&!fixed.has(o.material))fixed.set(o.material,o);});
+ copy.traverse(o=>{
+  if(!o.isMesh||Array.isArray(o.material)||!hingeOf(o)||inside(o))return;
+  if(!fixed.has(o.material)){fixed.set(o.material,o);return;}
+  const target=fixed.get(o.material);if(layout(target.geometry)===layout(o.geometry))(into.get(target)??into.set(target,[]).get(target)).push(o);
+ });
+ for(const [target,parts] of into){
+  const toTarget=target.matrixWorld.clone().invert(),moved=parts.map(o=>o.geometry.clone().applyMatrix4(toTarget.clone().multiply(o.matrixWorld)));
+  const merged=mergeGeometries([target.geometry,...moved],false);moved.forEach(g=>g.dispose());if(!merged)continue;
+  target.geometry=merged;for(const o of parts)o.removeFromParent();
+ }
+ rivalTemplates.set(template,copy);return copy;
 }
 // A rival's Fusca keeps the cabin seen through its windows (dash, seat, cage, door cards, lining) without what only
 // the player sees (the exporter's "interno" parts: dials, switches, cranks, harness, mirror glass...), and its
@@ -163,7 +205,7 @@ export class FuscaBody {
  // The dials (fusca-cockpit.js): speed in km/h, rpm, the fuel left (0-1).
  update(speed,rpm,fuel){this.cockpit?.update(speed,rpm,fuel);}
  clear(){if(!this.car)return;this.cockpit?.dispose();this.cockpit=null;this.car.removeFromParent();fuscaDispose(this.car);this.car=null;this.wheels=[];}
- info(){let fenders=null;this.car?.traverse(o=>{if(o.isMesh)for(const m of [o.material].flat())if(m.name===FENDERS)fenders=m.color.getHex();});
-  return this.car?{number:this.car.userData.entry.number,wheels:this.wheels.length,decals:this.car.children.filter(o=>o.name.startsWith('Numero_')).length,fenders,stripe:new THREE.Color(this.car.userData.entry.stripe).getHex(),braking:!!this.car.userData.lamp?.emissiveIntensity,ownWheelShown:!!this.car.getObjectByName('Volante_Fusca')?.visible,
+ info(){let fenders=null,decals=0;this.car?.traverse(o=>{if(o.name.startsWith('Numero_'))decals++;if(o.isMesh)for(const m of [o.material].flat())if(m.name===FENDERS)fenders=m.color.getHex();});
+  return this.car?{number:this.car.userData.entry.number,wheels:this.wheels.length,decals,fenders,stripe:new THREE.Color(this.car.userData.entry.stripe).getHex(),braking:!!this.car.userData.lamp?.emissiveIntensity,ownWheelShown:!!this.car.getObjectByName('Volante_Fusca')?.visible,
   cabin:this.cockpit?.info()??null}:null;}
 }

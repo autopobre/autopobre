@@ -77,7 +77,7 @@ blender --background --factory-startup --python-exit-code 2 --python modelo_3d/s
 ```
 
 - Resolução de jogo: 170 × 112 seções na carroceria (o estúdio usa 300 × 192), peças torneadas com até 36 segmentos,
-  frisos mais simples. Cerca de 180 mil triângulos e 3,6 MB, sem texturas (as faces que o jogo pinta têm UV).
+  frisos mais simples. Cerca de 200 mil triângulos e 4,4 MB, sem texturas (as faces que o jogo pinta têm UV).
 - Referencial do Opala: frente +X, esquerda −Z, pneus em y = 0; o entre-eixos de 2,40 m centrado no do Opala
   (eixos em x +1,417 e −0,983). Quatro pivôs `Roda_*_PIVO`, pintura `Pintura_fusca`, painel `Fusca_painel`, metal
   pintado por dentro `Pintura_interna_fusca` (os três na cor da equipe), lanterna `Lanterna_fusca` (luz de freio), vidros
@@ -133,8 +133,27 @@ blender --background --factory-startup --python-exit-code 2 --python modelo_3d/s
   `FUSCA_MECHANICS`, teste `testar_mecanica_fusca.mjs`): 1600 a ar de ~93 cv, 820 kg, 167 km/h sozinho e limitador a
   172 km/h no vácuo, pneus 5% mais aderentes (a IA freia e contorna com eles), traseira mansa na aceleração; cerca de
   2:10 em Interlagos (o Opala, com o mesmo piloto da IA, 1:54).
+- **Portas, capô e tampa do motor que abrem** (`modelo_3d/scripts/fusca_aberturas.py`, 19/10/2026, "igual o Opala"): as
+  duas portas, o capô dianteiro e a tampa do motor são recortados da carroceria com uma fresta de 4 mm e penduram, com o
+  que vai neles (vidro, borrachas, maçaneta, retrovisor, forro da porta com bolso, puxador, manivela e pino; tira cromada
+  e puxador do capô; venezianas, maçaneta, placa e hastes da tampa), em vazios nas dobradiças com os mesmos extras dos
+  pivôs do Opala V06 (`peca`, `eixo_gltf`, `angulo_gltf_graus`): o jogo os gira com `car-openings.js`. Portas abrem 65°
+  em dobradiças verticais logo à frente da emenda; o capô levanta 62° pela frente (dobradiça junto ao para-brisa; as
+  quinas de trás são mais arredondadas que as medidas, que ficavam baixas no ombro do torpedo e viravam um bico); a
+  tampa do motor, já apoiada 12° para a corrida, sobe mais 46°. O lugar de cada dobradiça foi escolhido girando a peça
+  pela abertura inteira contra o resto do carro, sem nenhum contato novo. Em cada fresta, uma borracha preta sob a
+  chapa (é a linha escura entre os painéis; as juntas desenhadas do estúdio saíram). Sob o capô, o porta-malas: caixa na
+  cor do carro com o poço entre as caixas de roda e prateleiras curvas sobre elas, o tanque atrás com bocal e boia, o
+  reservatório de fluido de freio (sem estepe: carro de corrida, e o bico baixo não tem lugar para ele); sob o capô,
+  uma armação estampada. O puxador interno da porta passou para trás da ponta do painel (estava enterrado nela) e as
+  pontas do painel ficam 6 mm longe das portas. No jogo: tecla E na frente abre o capô, atrás a tampa do motor; a
+  equipe do box abre a tampa do motor para o motor e o capô para o tanque e o reabastecimento; números e o raio do #4
+  vão com as portas; os rivais usam uma cópia com essas peças fundidas na carroceria (`fusca.js` `rivalTemplate`, sem
+  chamadas de desenho a mais). Testes: `testar_aberturas.mjs` e `verificar_aberturas_fusca.py`.
 - Prévias: `blender --background --factory-startup --python modelo_3d/scripts/renderizar_fusca_jogo.py -- [glb] [pasta]`
-  renderiza as vistas da câmera interna e de fora (padrão em `previas/jogo/blender`, fora do git; `--cor2` pinta os para-lamas).
+  renderiza as vistas da câmera interna e de fora (padrão em `previas/jogo/blender`, fora do git; `--cor2` pinta os para-lamas;
+  `--abrir 1` abre todas as peças, `--abrir porta=1,capo=.5` só essas; vistas `aberto_34`, `porta_aberta`, `porta_malas`,
+  `capo_aberto`, `tampa_aberta`, `motor`...).
 - No Modo Corrida, a aba Fusca da tela de carros põe o grid inteiro de Fusca, cada um nas cores e com o número do seu carro
   (`pista_interlagos/teste/fusca.js`, `immersive-visuals.js` `fuscaRival`), com a mecânica do Opala. Validação no
   navegador: `pista_interlagos/scripts/verificar_fusca.py`.

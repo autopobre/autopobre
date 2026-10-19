@@ -16,7 +16,7 @@
 import * as THREE from 'three';
 import {keyName,keyText} from './key-bindings.js';
 import {footState,stepOnFoot,footGround,placeFootCamera,turnFootView,zoomFootView,footJump} from './on-foot.js';
-import {OPENINGS,carSpot,SPOT_OPENING} from './car-openings.js';
+import {OPENINGS,carSpot,SPOT_ROLE,partName} from './car-openings.js';
 import {createPeople,dressPerson,knockOver,applyPose,clonePose,POSES,OUTFITS,STEVAN_OUTFITS} from './pit-crew.js';
 import {outfitOf} from './story-career.js';
 import {guardrailPresent,guardrailClearance} from './physics.js';
@@ -121,9 +121,10 @@ export class FreeWalk {
  leave(){this.stopping=false;if(!this.foot)return;this.selfie.close(true);this.phoneView=false;this.openings?.hold(OPENINGS.driverDoor,'manual',false);this.foot=this.tumble=this.goingIn=this.follow=this.kicking=this.charge=this.pending=null;this.hero.visible=false;this.driver.root.visible=true;this.showHud(false);this.onIn();}
  reset(){this.leave();}
  say(text,seconds=3.5){this.message=text;this.messageTime=seconds;}
- // E on foot: the driver's door at the door (a car without hinges: in), the hood at the nose, the trunk lid at the tail;
- // away from them, a shot at the ball at his feet (held: harder).
- opening(spot){return spot==='porta'?OPENINGS.driverDoor:SPOT_OPENING[spot]??null;}
+ // E on foot: the driver's door at the door (a car without hinges: in), the front lid at the nose, the rear one at the
+ // tail (the Opala's trunk lid, the Fusca's engine lid: car-openings.js part); away from them, a shot at the ball at
+ // his feet (held: harder).
+ opening(spot){return spot==='porta'?OPENINGS.driverDoor:SPOT_ROLE[spot]&&this.openings?this.openings.part(SPOT_ROLE[spot]):null;}
  action(){
   const spot=this.spot(),part=this.opening(spot);
   if(!part||!this.openings?.has(part))return this.press('chute')||spot==='porta'&&this.getIn();
@@ -132,7 +133,7 @@ export class FreeWalk {
  actionLabel(){
   const spot=this.spot(),part=this.opening(spot),ball=this.canKick()?'chutar a bola':'';if(!part)return ball;
   if(!this.openings?.has(part))return ball||(spot==='porta'?'entrar no carro':'');const open=this.openings.held(part,'manual');
-  return {porta:open?'fechar a porta':'abrir a porta',capo:open?'fechar o capô':'abrir o capô',porta_malas:open?'fechar o porta-malas':'abrir o porta-malas'}[spot];
+  return (open?'fechar ':'abrir ')+partName(part);
  }
  // ---- The game on foot (play)
  // His feet and his walk for the ball: track coordinates (x, y on the ground, z his feet's height), the velocity of his

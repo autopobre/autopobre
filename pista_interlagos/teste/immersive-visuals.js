@@ -8,12 +8,12 @@ import {CIRCUITS,circuitId} from './circuits.js';
 import {outfitOf} from './story-career.js';
 import {curveloPitFrame,serviceSpot,garageBays,pitPoint} from './pit-lane.js';
 import {footState,stepOnFoot,placeFootCamera,turnFootView,zoomFootView,footJump} from './on-foot.js';
-import {shutOpenings,CarOpenings,carSpot,SPOT_OPENING} from './car-openings.js';
+import {shutOpenings,CarOpenings,carSpot,SPOT_ROLE} from './car-openings.js';
 import {createRivalDriver,CABIN_DROP,sharedDriverMaterials} from './rival-driver.js';
 import {createBrakeLights,sharedBrakeLights} from './brake-lights.js';
 import {createHeadlights,sharedHeadlights,lampSetFor} from './headlights.js';
 import {podiumBanner,podiumPlate,podiumRibbon,signBoard} from './pit-textures.js';
-import {fuscaCar,rivalCabin,FUSCA_PROFILE,FUSCA_SEAT} from './fusca.js';
+import {fuscaCar,rivalCabin,rivalTemplate,FUSCA_PROFILE,FUSCA_SEAT} from './fusca.js';
 import {finishMaterial,setCarDirt,setCarTone} from './car-finish.js';
 import {carContact} from './contact-shadows.js';
 import {midLevel,sharedMidShapes} from './car-lod.js';
@@ -453,7 +453,7 @@ export class ImmersiveVisuals {
  // player's details (rivalCabin), its driver moved onto the Fusca's seat (the Fusca's own steering wheel hides behind his), and a distant model and brake
  // lights on both levels of detail as rivalCar gives an Opala.
  fuscaRival(template,entry,name=''){
-  const car=rivalCabin(fuscaCar(template,entry)),root=new THREE.Group(),detail=new THREE.Group();root.name=car.name+'_rival';detail.name='Rival_detalhe';detail.add(car);root.add(detail);
+  const car=rivalCabin(fuscaCar(rivalTemplate(template),entry)),root=new THREE.Group(),detail=new THREE.Group();root.name=car.name+'_rival';detail.name='Rival_detalhe';detail.add(car);root.add(detail);
   const own=car.getObjectByName('Volante_Fusca');if(own)own.visible=false;
   const driver=createRivalDriver({color:entry.color,number:entry.number});driver.root.position.add(new THREE.Vector3(...FUSCA_SEAT));detail.add(driver.root);
   const far=this.farProxy(entry.color,FUSCA_PROFILE,entry.stripe),lamps=createBrakeLights({far:FUSCA_PROFILE.lamps});far.add(lamps);root.add(far);
@@ -596,8 +596,8 @@ export class ImmersiveVisuals {
  // What the action key does by the Opala in Box 99, from where the pilot stands (car-openings.js):
  // 'capo' ahead of the nose, 'porta_malas' behind the tail (engine, fuel cell), 'porta' to get in.
  carAction(){if(!this.own||this.inCar)return null;this.own.updateMatrixWorld();return carSpot(this.own.worldToLocal(this.hero.getWorldPosition(new THREE.Vector3())));}
- toggleOwnOpening(spot){return !!this.ownOpenings&&!!SPOT_OPENING[spot]&&this.carAction()===spot&&this.ownOpenings.toggle(SPOT_OPENING[spot]);}
- ownOpen(spot){return !!this.ownOpenings?.held(SPOT_OPENING[spot],'manual');}
+ toggleOwnOpening(spot){return !!this.ownOpenings&&!!SPOT_ROLE[spot]&&this.carAction()===spot&&this.ownOpenings.toggle(this.ownOpenings.part(SPOT_ROLE[spot]));}
+ ownOpen(spot){return !!SPOT_ROLE[spot]&&!!this.ownOpenings?.held(this.ownOpenings.part(SPOT_ROLE[spot]),'manual');}
  ownPose(){if(!this.own)return null;const p=this.own.getWorldPosition(new THREE.Vector3());return {x:p.x,y:-p.z,heading:this.own.rotation.y};}
  // Out of the car by the driver's door (the other side if a wall is in the way).
  leaveCar(ground){

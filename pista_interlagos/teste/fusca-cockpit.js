@@ -57,7 +57,8 @@ export class FuscaCockpit {
   const found={};car.traverse(o=>{if(o.isMesh&&!Array.isArray(o.material))(found[o.material.name]??=[]).push(o);});
   const make=(r)=>{this.own.push(r);return r;};
   // The rear-view mirror: the exporter's UVs already mirror the picture.
-  for(const glass of found.Espelho_interno_fusca??[])glass.material=make(new THREE.MeshBasicMaterial({name:'Espelho_interno_fusca_vivo',map:mirrorTexture,toneMapped:false}));
+  this.mirrors=[];
+  for(const glass of found.Espelho_interno_fusca??[])this.mirrors.push(glass.material=make(new THREE.MeshBasicMaterial({name:'Espelho_interno_fusca_vivo',map:mirrorTexture,toneMapped:false})));
   this.mirror=(found.Espelho_interno_fusca??[]).length;
   const red=make(new THREE.MeshBasicMaterial({color:0xf2421c})),white=make(new THREE.MeshBasicMaterial({color:0xf2f0e6}));
   const dial=(name,texture,parts)=>{
@@ -87,6 +88,8 @@ export class FuscaCockpit {
   if(n.tach)n.tach.rotation.z=needleAngle('tach',rpm/1000);
   if(this.lamp){this.lamp.emissive.setRGB(1,.45,0);this.lamp.emissiveIntensity=rpm>6700?5:0;}
  }
+ // The rear-view mirror's picture: the rear camera's, or main.js's own with the open engine lid in the back window.
+ mirrorMap(texture){for(const m of this.mirrors)m.map=texture;}
  dispose(){for(const r of this.own){if(r.isObject3D)r.removeFromParent();else{if(r.map?.isCanvasTexture)r.map.dispose();r.dispose?.();}}this.own=[];this.needles={};}
  info(){return {mirror:this.mirror,needles:Object.fromEntries(Object.entries(this.needles).map(([k,p])=>[k,p.rotation.z])),shiftLight:!!this.lamp?.emissiveIntensity};}
 }

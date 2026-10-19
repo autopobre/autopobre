@@ -372,7 +372,8 @@ const loader=new GLTFLoader(),carRoot=new THREE.Group();scene.add(carRoot);
 const carBody=new THREE.Group();carBody.name='Carroceria_suspensao';carRoot.add(carBody);
 // Contact shadows and wheel blur of every car (contact-shadows.js): kept with carRoot, placed in world space.
 carRoot.add(carContact.root);
-// Doors, hood, trunk lid and filler caps of the V06 Opala, on their hinges (car-openings.js).
+// Doors, hood, trunk lid and filler caps of the V06 Opala, on their hinges (car-openings.js); the doors, front lid and
+// engine lid of the Fusca while the player races one (attachOpenings).
 const openings=new CarOpenings();
 // Which interior shows (cockpit.js setView). The game's controls sit in the V06 body, as in its
 // Blender scene: its structure is the cabin's floor and walls, and from outside the seat and
@@ -812,7 +813,7 @@ async function setLivery(value){
  prepareWipers(model);
  // The tail lamps' lens rings (brake-lights.js); the trunk's inside shown only with the lid open (car-livery.js).
  lampUVs(model);trunkInterior=trunkInside(model);
- openings.attach(model);
+ attachOpenings();
  // These solid Blender panels close the cabin seen from outside. The detailed
  // cockpit has its own floor, walls and rear cabin, so they hide with the body
  // (their belt-high sheet over the rear seat would cover the interior).
@@ -849,7 +850,7 @@ async function fuscaWanted(){
 // cockpit and brake lamps hide, and the driver and the cockpit camera move to the Fusca's seat.
 function showFusca(entry){
  const on=!!entry&&fuscaBody.apply(fuscaTemplate,entry);if(!on)fuscaBody.clear();
- opalaShell.visible=!on;seatShift.fromArray(on?FUSCA_SEAT:[0,0,0]);eyeShift.fromArray(on?FUSCA_EYE:[0,0,0]);cabinVisibility();
+ opalaShell.visible=!on;seatShift.fromArray(on?FUSCA_SEAT:[0,0,0]);eyeShift.fromArray(on?FUSCA_EYE:[0,0,0]);cabinVisibility();attachOpenings();
  // Its door mirrors' own glass, seen from the cockpit camera there.
  fuscaMirrors?.attach(on?fuscaBody.car:null,carBody,cockpit.eye.clone().add(eyeShift),{glass:'Espelho_fusca'});return on;
 }
@@ -868,6 +869,8 @@ async function cycleLivery(){
 // At the box the crew and the pilot on foot (action key) open the hinged parts; what he opened by
 // hand stays open as the car moves off, until he shuts it again (user, 2026-10-15: "não fecha automático").
 function updateOpenings(dt){openings.update(dt);showTrunkInside(trunkInterior,openings);}
+// The hinged parts the crew and the pilot on foot work: the car the player drives, the Opala or the Fusca shown in its place.
+function attachOpenings(){openings.attach(fuscaBody.active?fuscaBody.car:model);}
 // nearest (R key): only the player's car goes back on track; rivals, laps and fuel carry on.
 function reset(nearest=false){walker?.reset();car.fall=null;if(fallMode){setCameraMode(fallMode);fallMode=null;}fallView.stop(camera);if(!nearest)explosions?.reset();action.reset();mobile?.setHandbrake(false);openings.closeAll(true);if(nearest&&arenaMode)arenaMode.spawn(car);else if(nearest)car.recover();else{ghostRecorder.reset();car.resetGrid(playerGridSlot(immersive?.lineup?.length));arenaMode?.spawn(car);if(immersive&&!immersive.active)immersive.resetField();cockpit.resetPhone();}driver?.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();automatic=false;followInitialized=false;cameraReturn.reset(performance.now());headLook.yaw=headLook.pitch=0;lookBack.reset();updateCar(1);updateCamera(1);}
 const names=[[0,'Reta dos boxes'],[280,'S do Senna · T1–T2'],[490,'Curva do Sol · T3'],[700,'Reta Oposta'],[1500,'Descida do Lago · T4–T5'],[1810,'Subida para a Ferradura'],[1990,'Ferradura · T6–T7'],[2230,'Laranjinha · T8'],[2430,'Pinheirinho · T9'],[2660,'Bico de Pato · T10'],[2840,'Mergulho · T11'],[3120,'Junção · T12'],[3250,'Subida dos boxes · T13'],[3570,'Café · T14'],[3960,'T15 · Reta dos boxes']];
@@ -1573,20 +1576,21 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
   renderer.setRenderTarget(mirrorTarget);renderer.render(scene,rear);
   // The door mirrors look up this picture in the main pass below.
   mirrors.show(true);mirrors.update(camera.position,carBody,rear);
-  // The Opala's trunk lid left open stands in the back window: the rear-view mirror gets a picture of its own with it
-  // (car-openings.js showOnly), narrowing as the lid rises until the lid fills nearly all of it; the door mirrors look
-  // past the flanks and keep the picture without it (user, 2026-10-15).
-  const lid=model&&!fuscaBody.active?openings.amount(OPENINGS.trunk):0,lidOnly=lid>.02?showOnly(model,OPENINGS.trunk):null;
+  // The Opala's trunk lid (the Fusca's engine lid) left open stands in the back window: the rear-view mirror gets a
+  // picture of its own with it (car-openings.js showOnly), narrowing as the Opala's lid rises until it fills nearly all
+  // of it (the Fusca's, lower, rises across the bottom of the picture as it is); the door mirrors look past the flanks
+  // and keep the picture without it (user, 2026-10-15).
+  const owner=fuscaBody.active?fuscaBody.car:model,rearLid=openings.part('rear'),lid=owner?openings.amount(rearLid):0,lidOnly=lid>.02?showOnly(owner,rearLid):null;
   if(lidOnly){
    lidMirror??=mirrorTarget.clone();if(lidMirror.width!==mirrorTarget.width||lidMirror.height!==mirrorTarget.height)lidMirror.setSize(mirrorTarget.width,mirrorTarget.height);
-   model.visible=true;const fov=rear.fov;rear.fov+=(LID_MIRROR_FOV-fov)*lid;rear.updateProjectionMatrix();
+   owner.visible=true;const fov=rear.fov;if(!fuscaBody.active)rear.fov+=(LID_MIRROR_FOV-fov)*lid;rear.updateProjectionMatrix();
    renderer.setRenderTarget(lidMirror);renderer.render(scene,rear);rear.fov=fov;rear.updateProjectionMatrix();lidOnly();
   }
-  cockpit.mirrorMaterial.map=lidOnly?lidMirror.texture:mirrorTarget.texture;
+  cockpit.mirrorMaterial.map=lidOnly?lidMirror.texture:mirrorTarget.texture;fuscaBody.cockpit?.mirrorMap(cockpit.mirrorMaterial.map);
   renderer.setRenderTarget(null);tyreSmoke.material.uniforms.viewport.value=renderer.domElement.height;
   mirrorFrame=renderedFrame;
   renderer.shadowMap.autoUpdate=oldShadowUpdate;cockpit.root.visible=cockpitShown;driver.root.visible=true;if(model)model.visible=bodyShown;if(fuscaBody.car)fuscaBody.car.visible=true;
- }else{mirrors.show(false);if(cockpit)cockpit.mirrorMaterial.map=cockpit.mirrorTarget.texture;}
+ }else{mirrors.show(false);if(cockpit){cockpit.mirrorMaterial.map=cockpit.mirrorTarget.texture;fuscaBody.cockpit?.mirrorMap(cockpit.mirrorTarget.texture);}}
  // The cars take the race's reflections back (the car screen's studio lends them its own) and the probe
  // redraws its next faces round the player's car; in the story's paddock the grid's picture would lie.
  carReflections.update(scene,probeAt.copy(carRoot.position).setY(carRoot.position.y+1),{onTrack:!(immersive?.active&&immersive.state.phase==='crowd'),hide:reflectionHide(),rivals:immersive?.visual?.rivals,data});

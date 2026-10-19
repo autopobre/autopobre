@@ -330,10 +330,10 @@ def open_lid(sup,lid,m):
  bpy.context.view_layer.update()
  for o in riders:o.matrix_world=turn@o.matrix_world
  out=[lid]
- # The stays: from the apron under the lid up to the inside of its foot.
+ # The stays: from the inside of its foot down onto the apron under the lid (they open with it: fusca_aberturas.py).
  for s in (1,-1):
   low,n=V2._tras(sup,s*.28,LID_FOOT-.05);top,t=V2._tras(sup,s*.28,LID_FOOT+.03)
-  out.append(C.pipe(f'Tampa_haste_{s}',[low-n*.03,turn@(top-t*.015)],.006,m['baixo'],8))
+  out.append(C.pipe(f'Tampa_haste_{s}',[low+n*.004,turn@(top-t*.015)],.006,m['baixo'],8))
  return out+engine(sup,m)
 
 def engine(sup,m):
@@ -360,9 +360,10 @@ def build(sup,body,m):
   if o:bpy.data.objects.remove(o)
  glass=C.material('Espelho_fusca',(.62,.65,.68),metal=1,rough=.03)
  out=seals(sup,m)
- # What stands between the cockpit camera and a door mirror: the body, the windows' rubber, the cage.
+ # What stands between the cockpit camera and a door mirror: the body and its doors (fusca_aberturas.py), the windows'
+ # rubber, the cage.
  V,F=[],[];dg=bpy.context.evaluated_depsgraph_get()
- for o in [body]+out+[o for o in bpy.data.objects if o.name.startswith('Gaiola_coluna_A')]:
+ for o in [body]+out+[o for o in bpy.data.objects if o.name.startswith('Gaiola_coluna_A') or o.name in ('Porta_E','Porta_D')]:
   me=o.evaluated_get(dg).to_mesh();W=o.matrix_world;base=len(V);V+=[W@v.co for v in me.vertices];F+=[[base+i for i in p.vertices] for p in me.polygons];o.evaluated_get(dg).to_mesh_clear()
  bvh=BVHTree.FromPolygons(V,F)
  for s in (1,-1):out+=door_mirror(sup,bvh,s,m,glass)
