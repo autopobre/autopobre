@@ -1,9 +1,12 @@
 // Engines from loops, as most racing games do (banks by scripts/gerar_loops_motor.py): loops_*.mp3/.json hold
 // seamless stretches of a real engine, each at one rpm with the throttle open ('on') or shut ('off'); an idle
-// loop (lenta_*.mp3/.json) is a stretch of a real idle. Every loop of a voice runs all the time: the wanted revs
-// pick the two nearest loops of each layer, speed them to those revs and cross-fade them (equal power); the
-// throttle cross-fades the layers; at idle the idle loop takes over. Nothing is cut: each loop sounds as
-// recorded. Voice 0 is the car heard, the others the nearest rivals (lighter: every other loop).
+// loop (lenta_*.mp3/.json) is a stretch of a real idle. The wanted revs pick the two nearest loops of each layer,
+// speed them to those revs and cross-fade them (equal power); the throttle cross-fades the layers; at idle the
+// idle loop takes over. Nothing is cut: each loop sounds as recorded. Only the loops heard play: a loop starts (at
+// a random point of it, fading in from silence) when it is wanted and stops once it has been silent for SLEEP s.
+// With every loop of the three voices running all the time (some 60 sources, silent ones too) a phone's audio
+// fell behind and the music stuttered on the car screen (players' report). Voice 0 is the car heard, the others
+// the nearest rivals (lighter: every other loop).
 // (Cutting recordings into firing cycles and re-assembling them sounded like a glitch to the team; the
 // whole-loop way replaced it.)
 
@@ -23,6 +26,8 @@ export const gearRevs=(rpm,low,share)=>{const from=Math.min(share*COUNTER,SHIFT_
 // The throttle-shut layer with no loop within this ratio of the wanted revs borrows the throttle-open loops (never
 // the other way: borrowed shut loops made the engine sound as if lifting while pulling away in first).
 const BORROW=Math.log(1.3);
+// A silent loop stops after this long (its fade, a .03 s time constant, is long inaudible by then).
+const SLEEP=.4;
 
 // Where a decoded recording's content sits against the file it was made from: the MP3 encoder adds a delay
 // the decoder may or may not remove, so each of these files starts with a click in silence (at `click`
@@ -70,17 +75,14 @@ export class LoopEngine{
   return this.loading=Promise.all([loadSound(this.ctx,choice.bank),choice.idle?loadSound(this.ctx,choice.idle):null]).then(([bank,idle])=>{
    if(this.choice!==choice)return;
    const t=this.ctx.currentTime;
-   for(const voice of this.voices)for(const loop of voice.all){loop.gain.gain.setTargetAtTime(0,t,.05);loop.source.stop(t+.3);}
+   for(const voice of this.voices)for(const loop of voice.all){loop.gain.gain.setTargetAtTime(0,t,.05);loop.source?.stop(t+.3);}
    this.voices=this.outputs.map((output,i)=>this.voice(bank,idle,output,i>0));
    this.bank=choice.bank;this.idleName=choice.idle;this.ready=true;this.error=null;
   }).catch(e=>{this.error=e.message||String(e);});
  }
  voice(bank,idle,output,light){
-  const run=(buffer,a,b)=>{
-   const source=this.ctx.createBufferSource(),gain=this.ctx.createGain();gain.gain.value=0;
-   Object.assign(source,{buffer,loop:true,loopStart:a,loopEnd:b});source.connect(gain);gain.connect(output);
-   source.start(0,a+Math.random()*(b-a));return {source,gain,level:0};
-  };
+  // A loop's level stays on its gain; its source exists only while it is heard (wake, sleep).
+  const run=(buffer,a,b)=>{const gain=this.ctx.createGain();gain.gain.value=0;gain.connect(output);return {buffer,a,b,source:null,gain,level:0,quiet:0};};
   const layers={on:[],off:[]};
   for(const loop of bank.meta.loops)layers[loop.layer].push(loop);
   for(const [name,list] of Object.entries(layers)){
@@ -93,7 +95,7 @@ export class LoopEngine{
  // Fades every loop out and stops it (the synthesized engine was chosen); the decoded banks stay cached.
  dispose(){
   const t=this.ctx.currentTime;
-  for(const voice of this.voices)for(const loop of voice.all){loop.gain.gain.setTargetAtTime(0,t,.03);loop.source.stop(t+.2);}
+  for(const voice of this.voices)for(const loop of voice.all){loop.gain.gain.setTargetAtTime(0,t,.03);loop.source?.stop(t+.2);}
   this.voices=[];this.ready=false;this.choice=null;
   setTimeout(()=>this.outputs.forEach(o=>o.disconnect()),300);
  }
@@ -104,6 +106,15 @@ export class LoopEngine{
  // plays slower instead); idleLoop and idlePitch, the idle loop's level and speed; revRise/revFall, how fast a
  // voice's revs may rise and fall (an engine has inertia, the physics' revs may jump).
  shape(t){Object.assign(this,{loopSpan:Math.max(1.05,t.loopSpan??1.5),onFrom:t.onFrom??0,offFrom:t.offFrom??0,idleLoop:t.idleLoop??1,idlePitch:t.idlePitch??1,revRise:t.revRise??9000,revFall:t.revFall??18000});}
+ // A loop starts playing at rate (from a random point of it: the loops start apart, as before) or goes quiet.
+ wake(loop,rate,t){
+  const source=this.ctx.createBufferSource();
+  Object.assign(source,{buffer:loop.buffer,loop:true,loopStart:loop.a,loopEnd:loop.b});source.playbackRate.value=rate;
+  source.connect(loop.gain);source.start(t,loop.a+Math.random()*(loop.b-loop.a));loop.source=source;
+ }
+ sleep(loop,t){if(loop.source&&loop.level===0&&t-loop.quiet>SLEEP){loop.source.stop();loop.source.disconnect();loop.source=null;}}
+ // A loop's level: faded to, and the moment it went silent noted.
+ fade(loop,level,t){if(level>0||loop.level>0){loop.gain.gain.setTargetAtTime(level,t,.03);if(level===0)loop.quiet=t;loop.level=level;}}
  flush(){
   if(!this.ready)return;
   const t=this.ctx.currentTime;
@@ -126,18 +137,19 @@ export class LoopEngine{
    if(list.length&&part>0)for(const [loop,w] of bracket(list,rpm))share.set(loop,(share.get(loop)??0)+part*w);
   for(const loop of [...voice.layers.on,...voice.layers.off]){
    const level=(share.get(loop)??0)*gain;
-   if(level>0){const rate=clamp(rpm/loop.rpm,.3,2);if(loop.level===0)loop.source.playbackRate.setValueAtTime(rate,t);else loop.source.playbackRate.setTargetAtTime(rate,t,.02);}
-   if(level>0||loop.level>0){loop.gain.gain.setTargetAtTime(level,t,.03);loop.level=level;}
+   if(level>0){const rate=clamp(rpm/loop.rpm,.3,2);if(!loop.source)this.wake(loop,rate,t);else if(loop.level===0)loop.source.playbackRate.setValueAtTime(rate,t);else loop.source.playbackRate.setTargetAtTime(rate,t,.02);}
+   this.fade(loop,level,t);this.sleep(loop,t);
   }
   if(voice.idle){
-   const level=Math.sqrt(idle)*gain*this.idleLoop;
-   if(level>0||voice.idle.level>0){voice.idle.gain.gain.setTargetAtTime(level,t,.03);voice.idle.level=level;}
-   voice.idle.source.playbackRate.setTargetAtTime(clamp(rpm/GAME_IDLE*this.idlePitch,.4,3),t,.02);
+   const loop=voice.idle,level=Math.sqrt(idle)*gain*this.idleLoop,rate=clamp(rpm/GAME_IDLE*this.idlePitch,.4,3);
+   if(level>0&&!loop.source)this.wake(loop,rate,t);else loop.source?.playbackRate.setTargetAtTime(rate,t,.02);
+   this.fade(loop,level,t);this.sleep(loop,t);
   }
  }
  info(){
   const voice=this.voices[0],playing=voice?[...voice.layers.on.map(l=>['on',l]),...voice.layers.off.map(l=>['off',l])].filter(([,l])=>l.level>.001).map(([layer,l])=>`${layer} ${l.rpm}`):[];
   return {ready:this.ready,error:this.error,bank:this.bank??null,idle:this.idleName??null,playing,idleLevel:+(voice?.idle?.level??0).toFixed(3),
+   sources:this.voices.reduce((n,v)=>n+v.all.filter(l=>l.source).length,0),
    voices:this.values.map(v=>({rpm:Math.round(v.rpm),heard:Math.round(v.heard),load:+v.load.toFixed(2),gain:+v.gain.toFixed(3)}))};
  }
 }

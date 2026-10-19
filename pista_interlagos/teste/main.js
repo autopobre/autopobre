@@ -57,7 +57,7 @@ import {PlayerPreferences,CAMERA_MODES,LAPS} from './player-preferences.js';
 import {createSky,SUN_DIRECTION} from './sky.js';
 import {weatherProfile,weatherCaption,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,drawWeather,chosenWeather,EFFECT_LIGHT,STAND_LIGHTS,TIMES_OF_DAY,RAIN_LEVELS,nextTimeOfDay,nextRainLevel,weatherName} from './weather.js';
 import {createCinematic,SMEAR_CARS,compileInSlices} from './cinematic.js';
-import {SunPlacement} from './sun-light.js';import {CarShadow} from './car-shadow.js';
+import {SunPlacement} from './sun-light.js';import {CarShadow} from './car-shadow.js';import {steeringWheelAngle} from './driver-rig.js';
 import {createLandscape,loadTerrainTextures,buildTrackField,readOrtho,looseGround,terrainMaterial,structureMaterial,createCrowd,SKYLINE_FAR} from './landscape.js';
 import {LakeContact} from './lake-contact.js';
 import {fitGround,applyGroundHeights,groundHeight} from './track-clearance.js';
@@ -1323,7 +1323,7 @@ function skinLabel(){
 }
 function hud(){
  const fuel=immersive?.active?immersive.state.fuel:immersive?.freeFuel??12,staged=immersive?.active&&['crowd','podium'].includes(immersive.state.phase);$('fuelGauge').classList.toggle('hidden',!!staged);$('fuelGauge').classList.toggle('reserve',fuel<1);$('fuelVolume').textContent=fuel.toFixed(1)+' L';$('fuelBar').value=fuel;$('fuelStatus').textContent=fuel<=0?(immersive?.active?'TANQUE VAZIO':'VAZIO · R PARA REABASTECER'):fuel<1?'RESERVA':immersive?.active&&immersive.state.tankDetached?'VAZAMENTO':'COMBUSTÍVEL';const p=car.surface,watch=watchedRival(),shown=watch?.car??car,speed=Math.hypot(shown.vx,shown.vy)*3.6;
- $('speed').textContent=Math.round(speed);$('gear').textContent=watch?watch.car.gear:carAudio.state.gear;$('rev').style.width=`${(watch?watch.car.rpm:carAudio.state.rpm)/7400*100}%`;
+ $('speed').textContent=Math.round(speed);$('gear').textContent=watch?watch.car.gear:carAudio.state.gear;if(touchDevice)mobile.showWheel(steeringWheelAngle(shown.steerVisual??shown.steer??0));$('rev').style.width=`${(watch?watch.car.rpm:carAudio.state.rpm)/7400*100}%`;
  // Recon lap: the Piloto button (N) names the driver the cameras watch; speed and gear are that car's.
  const touring=automatic&&!immersive.active;$('watchButton').hidden=$('tourBadge').hidden=$('touchTourBadge').hidden=!touring;if(touring)$('watchButton').textContent=`Piloto: ${watch?`#${watch.entry.number} ${watch.entry.shortName}`:'você'} (${keyName('KeyN')})`;
  $('grade').textContent=`${(p.grade*100).toFixed(1).replace('.',',')}%`;$('bank').textContent=`${(p.bank*100).toFixed(1).replace('.',',')}%`;$('alt').textContent=circuit.altitude===null?'—':`${(p.z+circuit.altitude).toFixed(1)} m`;
@@ -1493,7 +1493,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  const walkCommand=walker?.active?{throttle:0,brake:0,left:0,right:0,listen:clamp(7/Math.max(7,walker.carDistance()),.06,1)}:walker?.stopping?{...input(),throttle:0,brake:1,reverse:0}:null;
  const driveCommand=pitstop?.opened?{throttle:0,brake:1,engineOff:true}:walkCommand??immersive?.audioCommand(automatic?pilot():arenaMode?.demo?arenaMode.demo.last():input())??input();
  const rivalSound=heard!==car?immersive.rivalSound(heard):null;
- const braking=driveCommand.engineOff?0:driveCommand.brake;brakeLamps.userData.set(model?.visible?braking:0,!!model?.visible&&playerLamps.lit);fuscaBody.brake(braking,playerLamps.lit);
+ const braking=driveCommand.engineOff?0:driveCommand.brake;if(touchDevice)mobile.showPedals(driveCommand.throttle??0,Math.max(driveCommand.brake??0,driveCommand.reverse??0));brakeLamps.userData.set(model?.visible?braking:0,!!model?.visible&&playerLamps.lit);fuscaBody.brake(braking,playerLamps.lit);
  carAudio.update(heard,rivalSound?.command??driveCommand,rivalSound?.skid??skid,paused||frozen,mode);
  carAudio.updateScene({...immersive?.audioScene(heard),speed:Math.hypot(heard.vx,heard.vy),onRoad:heard.surface.onRoad,rain:weather.drops,wet:weather.wetness,...speedFx?.sound(heard===car?car:null),camera:mode},immersive?.state.takeSounds()??[],dt);
  if(futebol){futebol.view.ahead=renderAhead();futebol.view.shown=sessionStarted&&!paused&&!intro.active&&raceResults.root.hidden;}
@@ -1698,11 +1698,14 @@ function hold(on){
  keys.clear();mobile?.clear();cameraReturn.reset(performance.now());$('pauseBadge').hidden=!on;
 }
 $('pauseBadge').onclick=()=>hold(false);
-function menu(show){if(!show)sceneryToast();held=false;$('pauseBadge').hidden=true;if(!show&&!immersive?.active&&immersive?.freeResultReady)show=true;paused=show;if(show)takeDrop();updateMenuLabels();carAudio.setPaused(show);if(!show)carAudio.unlock();if(show&&document.pointerLockElement===$('view'))document.exitPointerLock();cameraReturn.reset(performance.now());updateScreens();keys.clear();mobile?.clear();status('');}
+// The touch pads' places (mobile-controls.js arrange, the ✥ beside ⚙): the race waits as in the menu, without
+// it, while the pads are dragged.
+function arrangePause(on){held=false;$('pauseBadge').hidden=true;paused=on;carAudio.setPaused(on);if(!on)carAudio.unlock();if(on&&document.pointerLockElement===$('view'))document.exitPointerLock();keys.clear();cameraReturn.reset(performance.now());updateScreens();}
+function menu(show){mobile?.arrange(false,false,true);if(!show)sceneryToast();held=false;$('pauseBadge').hidden=true;if(!show&&!immersive?.active&&immersive?.freeResultReady)show=true;paused=show;if(show)takeDrop();updateMenuLabels();carAudio.setPaused(show);if(!show)carAudio.unlock();if(show&&document.pointerLockElement===$('view'))document.exitPointerLock();cameraReturn.reset(performance.now());updateScreens();keys.clear();mobile?.clear();status('');}
 function updateScreens(){
  const free=paused&&!sessionStarted,tracks=free&&screen==='tracks',cars=free&&screen==='cars';
  // The arena's panel and editor pause the car without the menu (drift-arena-mode.js).
- $('menu').classList.toggle('hidden',!paused||tracks||cars||!!(arenaMode?.editing||arenaMode?.panelOpen));$('tracks').classList.toggle('hidden',!tracks);$('cars').classList.toggle('hidden',!cars);
+ $('menu').classList.toggle('hidden',!paused||tracks||cars||!!(arenaMode?.editing||arenaMode?.panelOpen||mobile?.arranging));$('tracks').classList.toggle('hidden',!tracks);$('cars').classList.toggle('hidden',!cars);
  // The car screen is the canvas's window: the race's HUD steps aside (carros.css).
  document.body.classList.toggle('cars-open',cars);
  if(tracks)renderTracks();if(cars)openCarScreen();
@@ -1830,7 +1833,7 @@ const lapRecords=new LapRecords(circuit.id),raceResults=new RaceResults({
 const pilotPicker=new PilotPicker(),automaticRecords=new AutomaticRecords(pilotStorage()),automaticAIRecords=new AutomaticAIRecords(pilotStorage());
 $('recordsButton').onclick=()=>{lapRecords.circuit=circuit.id;lapRecords.open();};
 $('settingsButton').onclick=openSettings;
-mobile=new MobileControls({enabled:touchDevice,onMenu:openSettings,onCamera:()=>{if(ready)setCameraMode(nextCameraMode(),true);},onSkin:cycleLivery,onReset:()=>{if(ready&&!immersive.finishing){if(!immersive?.handleKey('KeyR'))reset(true);}},onUnlock:()=>carAudio.unlock()});
+mobile=new MobileControls({enabled:touchDevice,onMenu:openSettings,onCamera:()=>{if(ready)setCameraMode(nextCameraMode(),true);},onSkin:cycleLivery,onReset:()=>{if(ready&&!immersive.finishing){if(!immersive?.handleKey('KeyR'))reset(true);}},onUnlock:()=>carAudio.unlock(),onArrange:arrangePause});
 // Xbox / PlayStation controller (gamepad-controls.js) and racing wheel (wheel-controls.js): their
 // buttons arrive as keys. Menu opens the pause menu and, paused, goes back to the race (as P does
 // from the menu or the pause badge).

@@ -19,12 +19,16 @@ with sync_playwright() as p:
   page.evaluate("()=>{const s=document.querySelector('#camera');s.value='chase';s.dispatchEvent(new Event('change'))}");wait_js(page,"interlagos.state.mode==='chase'")
   wait_js(page,"document.querySelector('#lap').textContent==='1 / 3'");page.wait_for_selector('#touchControls:not(.hidden)');check('three_laps_and_visible_position',page.is_visible('#racePosition') and page.inner_text('#racePosition')=='15º / 15')
   def check_control_layout(width):
-   report.setdefault('layouts',{})[str(width)]=page.evaluate("()=>['#touchSteering','#touchPedals','#touchReverse','#touchHandbrake'].map(s=>({selector:s,...document.querySelector(s).getBoundingClientRect().toJSON()}))")
-   check(f'steering_left_all_pedals_right_{width}',page.evaluate("()=>{const r=s=>document.querySelector(s).getBoundingClientRect();const steering=r('#touchSteering');const pedals=['#touchPedals','#touchReverse','#touchHandbrake'].map(r);return steering.right<innerWidth/2&&pedals.every(p=>p.left>innerWidth/2&&p.right<=innerWidth&&p.bottom<=innerHeight)&&pedals.every((a,i)=>pedals.slice(i+1).every(b=>a.right<=b.left||b.right<=a.left||a.bottom<=b.top||b.bottom<=a.top))&&pedals[0].height>pedals[0].width}"))
+   report.setdefault('layouts',{})[str(width)]=page.evaluate("()=>['#touchSteering','#touchPedals','#touchArrange'].map(s=>({selector:s,...document.querySelector(s).getBoundingClientRect().toJSON()}))")
+   # (no handbrake nor RÉ on the phone since 10-19: the brake backs up; the ✥ sits on the toolbar beside ⚙)
+   check(f'steering_left_pedals_right_{width}',page.evaluate("()=>{const r=s=>document.querySelector(s).getBoundingClientRect();const steering=r('#touchSteering'),pedals=r('#touchPedals'),arrange=r('#touchArrange');return steering.right<innerWidth/2&&arrange.width>0&&arrange.left>steering.right&&arrange.right<pedals.left&&document.querySelector('#touchArrange').nextElementSibling.id==='touchMenu'&&pedals.left>innerWidth/2&&pedals.right<=innerWidth&&pedals.bottom<=innerHeight&&pedals.height>pedals.width&&!document.querySelector('#touchReverse')&&!document.querySelector('#touchHandbrake').getClientRects().length}"))
   check_control_layout(844)
   cdp=context.new_cdp_session(page);steer=page.locator('#touchSteering').bounding_box();gas=page.locator('#touchPedals').bounding_box();pedal={'x':gas['x']+gas['width']/2,'y':gas['y']+18,'id':1};center=steer['x']+steer['width']/2
+  # The pads answer some 30 px past their edges (players missed them by a little, 10-19); past that the
+  # touch is the canvas's, and dragging it near a pad still moves no camera.
   for selector,ratio in [('#touchSteering',.5),('#touchPedals',.2),('#touchPedals',.85)]:
-   rect=page.locator(selector).bounding_box();stray={'x':rect['x']+rect['width']+12,'y':rect['y']+rect['height']*ratio,'id':8}
+   rect=page.locator(selector).bounding_box();stray={'x':rect['x']+rect['width']+44,'y':rect['y']+rect['height']*ratio,'id':8}
+   check(f'just_past_control_is_the_pad_{selector}_{ratio}',page.evaluate('p=>!!document.elementFromPoint(p.x,p.y).closest(".touch-steering,.touch-pedals")',dict(stray,x=rect['x']+rect['width']+12)))
    check(f'near_control_test_hits_canvas_{selector}_{ratio}',page.evaluate('p=>document.elementFromPoint(p.x,p.y).id',stray)=='view')
    cdp.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[stray]})
    for x in [stray['x']-40,420]:cdp.send('Input.dispatchTouchEvent',{'type':'touchMove','touchPoints':[dict(stray,x=x,y=200)]})
@@ -46,8 +50,6 @@ with sync_playwright() as p:
    check(f'pedal_60_10_30_response_{position}',True)
   cdp.send('Input.dispatchTouchEvent',{'type':'touchCancel','touchPoints':[]});check('cancel_releases_both_pedals',page.evaluate('interlagos.mobileInfo().throttle===0&&interlagos.mobileInfo().brake===0'))
   check('keyboard_help_and_technical_hud_hidden',not page.is_visible('footer>div') and not page.is_visible('#cameraHint') and not page.is_visible('#telemetry .sensors'))
-  page.tap('#touchHandbrake');page.wait_for_timeout(250);check('handbrake_latches_after_finger_released',page.evaluate("interlagos.mobileInfo().pressed.includes('Space')") and page.get_attribute('#touchHandbrake','aria-pressed')=='true')
-  page.tap('#touchMenu');page.tap('#settingsResume');check('handbrake_remains_latched_after_pause',page.evaluate("interlagos.mobileInfo().pressed.includes('Space')"));page.tap('#touchHandbrake');check('second_tap_releases_handbrake',not page.evaluate("interlagos.mobileInfo().pressed.includes('Space')") and page.get_attribute('#touchHandbrake','aria-pressed')=='false')
   page.tap('#touchMenu');check('resume_labels',page.inner_text('#resume')=='Voltar à pista →' and page.is_visible('#settingsResume'));page.tap('#settingsClose');check('resume_first_restart_second',page.evaluate("()=>[...document.querySelectorAll('#menu .menu-modes>button')].filter(b=>b.getClientRects().length).slice(0,2).map(b=>b.id).join(',')==='resume,restartRace'"));shot('menu_voltar_recomecar');before=page.evaluate('[interlagos.car.x,interlagos.car.y,interlagos.car.clock]');page.tap('#resume');wait_js(page,'!interlagos.state.paused');check('resume_keeps_race_state',page.evaluate('interlagos.car.clock')>=before[2]);wait_js(page,'interlagos.car.clock>.5');check('stationary_player_does_not_lead_at_finish_line',page.inner_text('#racePosition')=='15º / 15');shot('mobile_limpo')
   page.evaluate("async()=>{const {ImmersiveMode}=await import('./immersive-mode.js');const original=ImmersiveMode.prototype.info;ImmersiveMode.prototype.info=function(){window.fixtureMode=this;return original.call(this)};interlagos.immersiveInfo();}")
   # Crossing the line (players' request): one line with the lap and its gap to the best lap before it, no frame.
@@ -60,7 +62,7 @@ with sync_playwright() as p:
   page.evaluate('interlagos.car.laps=3');wait_js(page,'interlagos.state.paused&&fixtureMode.freeFinished');check('third_lap_finishes_with_result',page.is_visible('#raceResult') and '3 voltas' in page.inner_text('#raceResult'))
   page.tap('#resultsContinue');wait_js(page,'!interlagos.state.paused');check('new_race_resets_laps',page.evaluate('interlagos.car.laps')==0 and not page.evaluate('fixtureMode.freeFinished'))
   page.evaluate('interlagos.car.laps=1');page.tap('#touchMenu');page.tap('#settingsClose');page.tap('#restartRace');check('explicit_restart_resets_race',page.evaluate("interlagos.car.laps===0&&interlagos.car.clock<.5&&interlagos.state.mode==='chase'"))
-  page.tap('#touchMenu');page.tap('#settingsBack');choose_race(page,story=True,tap=True)
+  page.tap('#touchMenu');page.tap('#settingsBack');enter_track(page,tap=True,story=True)  # (skips the career's cards, which came after this check)
   # Fuel and the windscreen film are chosen at the team's desk in the paddock (no separate purchase screen).
   page.evaluate("()=>{fixtureMode.state.cash=300;fixtureMode.action('desk')}");page.wait_for_selector('#immLitres');page.wait_for_timeout(250)
   page.locator('#immLitres').fill('8');check('fuel_slider_at_team_desk',page.evaluate('fixtureMode.prepLitres')==8 and '8 L' in page.inner_text('#deskFuel'));shot('compra_mesa_equipe')
@@ -69,7 +71,7 @@ with sync_playwright() as p:
    page.set_viewport_size({'width':width,'height':height});page.wait_for_timeout(250);shot(f'reboque_{width}')
    check_control_layout(width)
    check(f'tow_panel_leaves_center_visible_{width}',page.evaluate("()=>{const r=document.querySelector('#immersivePanel').getBoundingClientRect();return r.left>innerWidth*.5&&r.right<=innerWidth&&r.bottom<innerHeight-75}"))
-   check(f'tow_panel_clear_of_pedals_{width}',page.evaluate("()=>{const panel=document.querySelector('#immersivePanel').getBoundingClientRect();return ['#touchPedals','#touchHandbrake'].every(s=>panel.bottom<document.querySelector(s).getBoundingClientRect().top)}"))
+   check(f'tow_panel_clear_of_pedals_{width}',page.evaluate("()=>{const panel=document.querySelector('#immersivePanel').getBoundingClientRect();return panel.bottom<document.querySelector('#touchPedals').getBoundingClientRect().top}"))
   page.tap('#touchMenu');page.tap('#settingsBack');choose_race(page,tap=True);wait_js(page,'!interlagos.state.paused');check('return_to_normal_uses_rear_camera',page.evaluate("interlagos.state.mode==='chase'"))
   check('no_browser_errors',not report['errors']);report['passed']=True
  finally:

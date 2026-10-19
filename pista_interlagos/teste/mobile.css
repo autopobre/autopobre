@@ -8,21 +8,37 @@
 html,body{width:100%;height:100%;overflow:hidden}#view{position:fixed;inset:0;width:100%;height:100%}#dqScreen,#touchControls{position:fixed}.touch-device{-webkit-text-size-adjust:100%;text-size-adjust:100%}.touch-device.podium-scene #immersivePanel{left:auto;right:12px;top:55px;bottom:12px;transform:none;width:260px;max-height:calc(100dvh - 67px)}
 
 /* Left thumb steers; right thumb uses vertically stacked pedals and auxiliary controls. */
-.touch-device .touch-pedals{left:auto;right:max(32px,env(safe-area-inset-right));bottom:max(28px,env(safe-area-inset-bottom));width:84px;height:148px}.touch-device .touch-steering{left:max(32px,env(safe-area-inset-left));right:auto;bottom:max(28px,env(safe-area-inset-bottom))}.touch-device #touchHandbrake,.touch-device #touchReverse{left:auto;right:calc(max(32px,env(safe-area-inset-right)) + 96px);width:90px;height:68px}.touch-device #touchHandbrake{bottom:calc(max(28px,env(safe-area-inset-bottom)) + 80px)}.touch-device #touchReverse{bottom:max(28px,env(safe-area-inset-bottom))}
+/* Where the pads sit (players' report: curling a thumb toward the palm, steering left or braking, hurt after an hour): the steering a little in from the left edge, the pedals a little up and in (as in a player's mockup). The ✥ lets each player drag them (mobile-controls.js arrange): its places come inline on #touchControls. */
+.touch-device #touchControls{--steer-left:calc(max(32px,env(safe-area-inset-left)) + 28px);--steer-bottom:max(28px,env(safe-area-inset-bottom),min(26dvh,calc(100dvh - 268px)));--pedal-right:calc(max(32px,env(safe-area-inset-right)) + 16px);--pedal-bottom:calc(max(28px,env(safe-area-inset-bottom)) + 24px)}
+@supports not (height:1dvh){.touch-device #touchControls{--steer-bottom:max(28px,min(26vh,calc(100vh - 268px)))}}
+.touch-device .touch-pedals{left:auto;right:var(--pedal-right);bottom:var(--pedal-bottom);width:84px;height:148px}
+.touch-device .touch-steering{left:var(--steer-left);right:auto;bottom:var(--steer-bottom)}
+/* No handbrake (nor a RÉ button: the brake backs up) on the phone, except in the Arena de Drift, where it starts the drifts. */
+.touch-device #touchHandbrake{left:auto;right:calc(var(--pedal-right) + 96px);width:90px;height:68px;bottom:calc(var(--pedal-bottom) + 80px)}
+.touch-device:not(.arena-mode) #touchHandbrake{display:none}
 .touch-device #telemetry{left:12px;right:auto;bottom:147px;width:100px}.touch-device #fuelGauge{top:118px}.touch-device #timing .position-row{margin-top:8px}.touch-device #valid:not([hidden]){display:block;font-size:8px;max-width:114px}.touch-device #immAlert{display:none}.touch-device #immersiveHud{top:60px;left:128px;right:auto;width:114px}.touch-device #immersiveHud .imm-meters{gap:10px}.touch-device #immersiveHud .imm-meters b{font-size:12px}
-.touch-device.tow-scene #immersivePanel{left:auto;right:12px;top:36px;bottom:auto;transform:none;width:190px;max-height:calc(100dvh - max(28px,env(safe-area-inset-bottom)) - 196px);padding:12px}.touch-device.tow-scene #immersivePanel h2{font-size:17px;margin:5px 0}.touch-device.tow-scene #immersivePanel p{font-size:10px;line-height:1.35;margin:6px 0}.touch-device.tow-scene #immersiveHud,.touch-device.tow-scene #fuelGauge,.touch-device.tow-scene #timing{display:none!important}.touch-device.tow-scene #immersivePanel .imm-eyebrow{font-size:7px}.touch-device #settings .settings-footer>span{display:none}.touch-device #settings .settings-footer{justify-content:flex-end;gap:8px}.touch-device #settings .settings-footer button{font-size:10px;padding:9px}
+.touch-device.tow-scene #immersivePanel{left:auto;right:12px;top:36px;bottom:auto;transform:none;width:190px;max-height:calc(100dvh - max(28px,env(safe-area-inset-bottom)) - 220px);padding:12px}.touch-device.tow-scene #immersivePanel h2{font-size:17px;margin:5px 0}.touch-device.tow-scene #immersivePanel p{font-size:10px;line-height:1.35;margin:6px 0}.touch-device.tow-scene #immersiveHud,.touch-device.tow-scene #fuelGauge,.touch-device.tow-scene #timing{display:none!important}.touch-device.tow-scene #immersivePanel .imm-eyebrow{font-size:7px}.touch-device #settings .settings-footer>span{display:none}.touch-device #settings .settings-footer{justify-content:flex-end;gap:8px}.touch-device #settings .settings-footer button{font-size:10px;padding:9px}
 
 .touch-device #touchHandbrake{width:90px;padding:5px 7px;line-height:1.3}
 
 #startFullscreen[hidden]{display:none!important}
 
 
-.touch-device .touch-steering{width:min(210px,calc(50vw - 120px));height:70px}#touchSteering{position:relative;width:100%;height:100%;border:1px solid #d0dca36b;border-radius:35px;background:#142822c9;pointer-events:auto;touch-action:none;box-shadow:0 4px 15px #0004;overflow:hidden}#touchSteering .steer-track{position:absolute;left:22px;right:22px;height:4px;top:33px;background:#d9e1bf70;border-radius:4px}#touchSteering .steer-track:after{content:'';position:absolute;left:50%;top:-10px;height:24px;width:1px;background:#e4e8c582}#touchSteering .steer-left,#touchSteering .steer-right{position:absolute;top:5px;font-size:9px;color:#e2e7c3}#touchSteering .steer-left{left:18px}#touchSteering .steer-right{right:18px}#steeringThumb{position:absolute;left:50%;top:13px;width:42px;height:42px;transform:translateX(-50%);border-radius:50%;background:#e8ce58;color:#21362b;display:grid;place-items:center;font-size:15px;font-weight:900;font-style:italic;border:2px solid #fff1a5;box-shadow:0 2px 8px #0005}#touchSteering.active{border-color:#f5db72;background:#203c30dd}
+.touch-device .touch-steering{width:min(210px,calc(50vw - 120px));height:70px}#touchSteering{position:relative;width:100%;height:100%;border:1px solid #d0dca380;border-radius:35px;background:#1428224d;pointer-events:auto;touch-action:none;box-shadow:0 2px 8px #0003;overflow:hidden}
+#touchSteering .steer-track{position:absolute;left:22px;right:22px;height:4px;top:33px;background:#e6ecd0a8;border-radius:4px;box-shadow:0 1px 2px #0006}
+#touchSteering .steer-track:after{content:'';position:absolute;left:50%;top:-10px;height:24px;width:1px;background:#eef1d8b0}
+#steeringThumb{position:absolute;left:50%;top:13px;width:42px;height:42px;transform:translateX(-50%);border-radius:50%;background:#e8ce58;color:#21362b;display:grid;place-items:center;border:2px solid #fff1a5;box-shadow:0 2px 8px #0005}
+#steeringThumb svg{width:28px;height:28px;display:block}
+#touchSteering.active{border-color:#f5db72;background:#203c3073}
 
-#touchPedals{position:relative;width:100%;height:100%;pointer-events:auto;touch-action:none;border:1px solid #d0dca36b;border-radius:20px;background:#142822c9;box-shadow:0 4px 15px #0004;overflow:hidden}#touchPedals small{position:absolute;left:7px;font-size:8px;font-weight:700;letter-spacing:0;pointer-events:none}#touchGasLabel{top:13px;color:#f1dc78}#touchBrakeLabel{bottom:13px;color:#efb29b}#touchPedals .pedal-track{position:absolute;top:22px;bottom:22px;right:18px;width:5px;border-radius:4px;background:linear-gradient(to bottom,#e8ce5880 0% 60%,#eff2c5 60% 70%,#e7886b99 70% 100%)}#pedalThumb{position:absolute;right:7px;top:89.6px;width:27px;height:30px;transform:translateY(-50%);border-radius:10px;background:#e8ce58;border:1px solid #fff1a5;color:#21362b;font-size:10px;line-height:28px;text-align:center;font-weight:900;pointer-events:none;box-shadow:0 2px 8px #0005}#touchPedals.active{border-color:#f5db72;background:#203c30dd}#touchPedals.braking #pedalThumb{background:#efb29b;border-color:#ffd4ba}
+#touchPedals{position:relative;width:100%;height:100%;pointer-events:auto;touch-action:none;border:1px solid #d0dca380;border-radius:20px;background:#1428224d;box-shadow:0 2px 8px #0003;overflow:hidden}
+#touchPedals small{position:absolute;left:7px;font-size:8px;font-weight:700;letter-spacing:0;pointer-events:none;text-shadow:0 1px 2px #000c}#touchGasLabel{top:13px;color:#f1dc78}/* FREAR where the red stretch starts (70% of the travel), RÉ at the very bottom: held there through a stop the brake backs up (players' request). */
+#touchBrakeLabel{top:calc(22px + (100% - 44px)*.7 - 4px);color:#efb29b}
+#touchReverseLabel{bottom:13px;color:#f08f74}
+#touchReverseLabel[hidden],#touchReverseDigital[hidden]{display:none}#touchPedals .pedal-track{position:absolute;top:22px;bottom:22px;right:18px;width:5px;border-radius:4px;background:linear-gradient(to bottom,#e8ce5880 0% 60%,#eff2c5 60% 70%,#e7886b99 70% 100%)}#pedalThumb{position:absolute;right:7px;top:89.6px;width:27px;height:30px;transform:translateY(-50%);border-radius:10px;background:#e8ce58;border:1px solid #fff1a5;color:#21362b;font-size:10px;line-height:28px;text-align:center;font-weight:900;pointer-events:none;box-shadow:0 2px 8px #0005}#touchPedals.active{border-color:#f5db72;background:#203c3073}#touchPedals.braking #pedalThumb{background:#efb29b;border-color:#ffd4ba}
 
 /* Held look-back above the handbrake, in the cockpit camera only (main.js sets can-look-back). */
-#touchLookBack{display:none}.touch-device.can-look-back #touchLookBack{display:block;position:absolute;right:calc(max(32px,env(safe-area-inset-right)) + 96px);bottom:calc(max(28px,env(safe-area-inset-bottom)) + 160px);width:90px;height:44px;min-height:44px;padding:5px 7px;font-size:8px;border-radius:15px}
+#touchLookBack{display:none}.touch-device.can-look-back #touchLookBack{display:block;position:absolute;right:calc(var(--pedal-right) + 96px);bottom:calc(var(--pedal-bottom) + 160px);width:90px;height:44px;min-height:44px;padding:5px 7px;font-size:8px;border-radius:15px}
 @media(max-width:740px) and (orientation:landscape){.touch-device #settings .settings-tabs button{gap:8px;padding-inline:10px}.touch-device #settings .tab-long{display:none}.touch-device #settings .tab-short{display:inline}}
 /* Registration with the team at the stand: taller than a supporter's chat (it stays clear of the pedals and the toolbar), compact rows. */
 .touch-device #immersivePanel.desk-dialogue{top:36px;max-height:calc(100dvh - 100px)}.touch-device #immersivePanel.desk-dialogue .speech-bubble{display:none}.touch-device #immersivePanel.desk-dialogue .desk-fuel-hint{font-size:9px;margin:2px 0 4px}.touch-device #immersivePanel.desk-dialogue .social-person{margin-bottom:8px}.touch-device #immersivePanel.desk-dialogue .desk-choices{display:grid;grid-template-columns:1fr 1fr;gap:6px}.touch-device #immersivePanel.desk-dialogue .desk-choices button{padding:8px;margin:0;text-align:center;line-height:1.25}.touch-device .imm-budget{font-size:10px;gap:2px 8px;padding:7px 10px;margin:7px 0}.touch-device .imm-budget .imm-budget-cash{font-size:12px}.touch-device .imm-budget .imm-budget-total{padding-top:4px}.touch-device .imm-desk-hint{padding:7px}
@@ -37,7 +53,6 @@ html:has(body.touch-device),.touch-device,.touch-device *{touch-action:pan-x pan
 .touch-device header{display:none}
 .touch-device #mapcard{top:max(10px,env(safe-area-inset-top));left:max(12px,env(safe-area-inset-left))}
 .touch-device #telemetry{top:calc(max(10px,env(safe-area-inset-top)) + 110px);bottom:auto;left:max(12px,env(safe-area-inset-left))}
-.touch-device .touch-steering{bottom:max(28px,min(26vh,calc(100vh - 268px)));bottom:max(28px,env(safe-area-inset-bottom),min(26dvh,calc(100dvh - 268px)))}
 .touch-device #status{top:12px}
 .touch-device #immersiveHud,.touch-device.immersive-mode.cockpit-mode #immersiveHud{top:max(10px,env(safe-area-inset-top));left:128px;bottom:auto}
 
@@ -56,8 +71,73 @@ html:has(body.touch-device),.touch-device,.touch-device *{touch-action:pan-x pan
 .touch-device #immersivePanel.social-explore .career-bar{grid-template-columns:46px 1fr 30px;margin:2px 0;font-size:9px}.touch-device #immersivePanel.social-explore .career-wallet b{font-size:15px}
 .touch-device #immersivePanel.career-cutscene{z-index:6;left:50%;right:auto;top:auto;bottom:calc(7vh + 50px);transform:translateX(-50%);height:auto;max-height:none;padding:8px 14px 10px;width:min(620px,calc(100vw - 24px))}
 /* Over the scene only the menu stays on the touch toolbar, under the subtitle. */
-.touch-device.story-cutscene #touchCamera,.touch-device.story-cutscene #touchSkin,.touch-device.story-cutscene #touchGhost,.touch-device.story-cutscene #touchLights,.touch-device.story-cutscene #touchWipers,.touch-device.story-cutscene #touchReset,.touch-device.story-cutscene #touchFullscreen{display:none!important}.touch-device #immersivePanel.career-cutscene p{font-size:14px;margin:3px 0 7px}.touch-device #immersivePanel.career-cutscene .cutscene-buttons button{padding:6px 14px;font-size:12px}
+.touch-device.story-cutscene #touchCamera,.touch-device.story-cutscene #touchSkin,.touch-device.story-cutscene #touchGhost,.touch-device.story-cutscene #touchLights,.touch-device.story-cutscene #touchWipers,.touch-device.story-cutscene #touchReset,.touch-device.story-cutscene #touchArrange,.touch-device.story-cutscene #touchFullscreen{display:none!important}.touch-device #immersivePanel.career-cutscene p{font-size:14px;margin:3px 0 7px}.touch-device #immersivePanel.career-cutscene .cutscene-buttons button{padding:6px 14px;font-size:12px}
 .touch-device .map-round{padding:5px 8px 7px;font-size:7px}.touch-device .map-round b{font-size:7px;letter-spacing:.6px}
 /* Faróis (headlights.js): only when the weather wants lights (dusk, night, rain: body.lights-weather); lit = active. */
 #touchLights{display:none}.touch-device.lights-weather #touchLights{display:inline-block}#touchLights.active{background:#f3e7a6;color:#13201d}
 #touchWipers{display:none}.touch-device.rain-weather #touchWipers{display:inline-block}#touchWipers.active{background:#f3e7a6;color:#13201d}
+
+
+/* Each pad answers a little past its edges (players missed them by a little): an invisible margin on its zone. */
+.touch-device .touch-steering,.touch-device .touch-pedals{pointer-events:auto;touch-action:none}
+.touch-steering:before,.touch-pedals:before{content:'';position:absolute;pointer-events:auto;border-radius:26px}
+.touch-steering:before{inset:-34px -30px}
+.touch-pedals:before{inset:-26px -30px}
+
+/* The ✥ that opens the arranging sits on the toolbar beside ⚙ (the user: by the steering, players would tap it by mistake). */
+#touchArrange svg{width:14px;height:14px;display:block}
+.touch-toolbar button{white-space:nowrap}
+
+/* Arranging: the race waits, the rest of the screen fades under a veil, each pad shows its reach and moves with the finger; the card at the top says what to do. */
+#touchControls.arranging{pointer-events:auto;background:#060d0b8c}
+.touch-arranging #mapcard,.touch-arranging #telemetry,.touch-arranging #timing,.touch-arranging #fuelGauge,.touch-arranging #immersiveHud,.touch-arranging #status,.touch-arranging #lapBanner,.touch-arranging #raceAction{opacity:.25}
+#touchControls.arranging .touch-toolbar,#touchControls.arranging #touchLookBack,#touchControls.arranging #touchHandbrake,#touchControls.arranging #miniWheel,#touchControls.arranging #miniPedals{opacity:.2;pointer-events:none}
+#touchControls.arranging .touch-steering:before,#touchControls.arranging .touch-pedals:before{border:2px dashed #f5db72b8;background:#f5db7214}
+#touchControls.arranging .dragging:before{border-style:solid;background:#f5db7226}
+#touchControls.arranging #touchSteering,#touchControls.arranging #touchPedals{border-color:#f5db72;box-shadow:0 0 0 1px #f5db7255,0 4px 18px #0007}
+#touchArrangePanel{position:absolute;left:50%;top:max(12px,env(safe-area-inset-top));transform:translateX(-50%);width:min(400px,calc(100vw - 300px));min-width:250px;pointer-events:auto;padding:11px 14px 12px;border:1px solid #f5db7290;border-radius:14px;background:#10231ef0;box-shadow:0 8px 30px #0008;text-align:center;color:#f2f3df}
+#touchArrangePanel[hidden]{display:none}
+#touchArrangePanel b{display:block;font-size:14px;letter-spacing:.3px;color:#f5db72}
+#touchArrangePanel p{margin:5px 0 8px;font-size:11px;line-height:1.4;color:#dfe5cf}
+#touchArrangePanel div{display:flex;gap:8px;justify-content:center}
+#touchControls #touchArrangePanel button{flex:1;min-height:36px;padding:7px 8px;font-size:11px;border-radius:11px}
+#touchArrangePanel .arrange-mode{align-items:center;gap:6px;margin-bottom:3px}
+#touchArrangePanel .arrange-mode span{font-size:11px;color:#dfe5cf;margin-right:2px}
+#touchControls #touchArrangePanel .arrange-mode button{flex:0 0 auto;min-height:30px;padding:5px 12px;border-radius:15px}
+#touchControls #touchArrangePanel .arrange-mode button[aria-checked=true]{background:#f5db72;color:#182820;border-color:#f9e68c;font-weight:800}
+#touchArrangePanel small{display:block;margin:0 0 9px;font-size:10px;color:#b9c6b4}
+#touchControls #touchArrangePanel #touchArrangeDone{background:#e8ce58;color:#182820;border-color:#f9e68c;font-weight:800}
+
+/* The mini steering wheel by the map (players' request): the car's wheel as turned, the yellow mark at the top when it is straight, the small notch above for the middle. */
+#miniWheel{position:absolute;top:max(10px,env(safe-area-inset-top));left:calc(max(12px,env(safe-area-inset-left)) + 114px);width:56px;height:56px;padding:4px;border:1px solid #fff2;border-radius:7px;background:var(--glass);pointer-events:none}
+#miniWheel[hidden]{display:none}
+#miniWheel svg{display:block;width:100%;height:100%;overflow:visible}
+#miniWheel .mini-ref{fill:#ffffffb0}
+#miniWheel .mini-rim{fill:none;stroke:#e9edd6;stroke-width:8}
+#miniWheel .mini-spokes{fill:none;stroke:#e9edd6;stroke-width:7;stroke-linecap:round}
+#miniWheel .mini-hub{fill:#1d2f27;stroke:#e9edd6;stroke-width:4}
+#miniWheel .mini-mark{stroke:#f3cf3a;stroke-width:9}
+/* (the story's meters move over to make room for it) */
+.touch-device #immersiveHud,.touch-device.immersive-mode.cockpit-mode #immersiveHud{left:calc(max(12px,env(safe-area-inset-left)) + 176px)}
+
+/* Its mirror for the pedal, left of the timing (players' request): the pedal's track in small, the thumb where the pedal's sits and the stretch from the coasting zone lit, red while braking (and backing up on the brake). The tow's panel takes that corner. */
+#miniPedals{position:absolute;top:max(10px,env(safe-area-inset-top));right:132px;width:34px;height:56px;border:1px solid #fff2;border-radius:7px;background:var(--glass);pointer-events:none}
+#miniPedals[hidden],.touch-device.tow-scene #miniPedals{display:none}
+#miniPedals .mini-pedal-track{position:absolute;left:50%;top:7px;height:40px;width:5px;margin-left:-2.5px;border-radius:3px;background:linear-gradient(to bottom,#e8ce5866 0% 60%,#eff2c5 60% 70%,#e7886b80 70% 100%)}
+#miniPedalFill{position:absolute;left:50%;top:33px;height:0;width:5px;margin-left:-2.5px;border-radius:3px;background:#f3cf3a}
+#miniPedals.braking #miniPedalFill{background:#ef8a6c}
+#miniPedalThumb{position:absolute;left:50%;top:33px;width:18px;height:9px;margin:-4.5px 0 0 -9px;border-radius:3px;background:#e8ce58;border:1px solid #fff1a5;box-shadow:0 1px 3px #0006}
+#miniPedals.braking #miniPedalThumb{background:#efb29b;border-color:#ffd4ba}
+
+/* Digital pedal (chosen in the arranging): two buttons in the pedal's place, ACELERAR above and FREAR below, all or nothing; the pad's own frame steps aside. */
+#touchPedals .pedal-digital{display:none}
+#touchPedals.digital,#touchPedals.digital.active{background:transparent;border-color:transparent;box-shadow:none}
+#touchPedals.digital>small,#touchPedals.digital .pedal-track,#touchPedals.digital #pedalThumb{display:none}
+#touchPedals.digital .pedal-digital{display:flex;flex-direction:column;gap:8px;height:100%}
+#touchPedals .pedal-digital b{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:1px solid #d0dca380;border-radius:18px;background:#1428224d;box-shadow:0 2px 8px #0003;font-size:9px;font-weight:800;letter-spacing:.3px;color:#f1dc78;text-shadow:0 1px 2px #000c;pointer-events:none}
+#touchPedals .pedal-digital b+b{color:#efb29b}
+#touchPedals .pedal-digital span{display:inline;font-size:inherit;line-height:1.2}
+#touchPedals .pedal-digital small{position:static;font-size:7px;letter-spacing:.3px;opacity:.85}
+#touchPedals.gas-held .pedal-digital b:first-child{background:#e8ce58dd;border-color:#f9e68c;color:#182820;text-shadow:none}
+#touchPedals.brake-held .pedal-digital b:last-child{background:#efb29bdd;border-color:#ffd4ba;color:#2a1610;text-shadow:none}
+#touchControls.arranging #touchPedals.digital .pedal-digital b{border-color:#f5db72}

@@ -25,7 +25,8 @@ with sync_playwright() as p:
   session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':points});wait_js(page,"interlagos.mobileInfo().throttle>.9&&interlagos.mobileInfo().steering<-.5")
   wait_js(page,'Math.hypot(interlagos.car.vx,interlagos.car.vy)>1');check('simultaneous_gas_and_steering',True);shot('corrida')
   session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]});check('touch_release_clears_controls',page.evaluate('interlagos.mobileInfo().pressed.length===0&&interlagos.mobileInfo().throttle===0&&interlagos.mobileInfo().brake===0'))
-  session.send('Input.dispatchTouchEvent',{'type':'touchStart','touchPoints':[dict(center('#touchHandbrake'),id=3)]});check('handbrake_held',page.evaluate("interlagos.mobileInfo().pressed.includes('Space')"));session.send('Input.dispatchTouchEvent',{'type':'touchEnd','touchPoints':[]})
+  # No handbrake nor RÉ on the phone (players' round 10-19: the brake backs up; the arena keeps its handbrake).
+  check('no_handbrake_or_reverse_button',page.evaluate("!document.querySelector('#touchReverse')&&!document.querySelector('#touchHandbrake').getClientRects().length"))
   page.tap('#touchCamera');check('camera_button_works',page.evaluate('interlagos.state.mode')!='chase')
   page.set_viewport_size({'width':390,'height':844});wait_js(page,'interlagos.state.paused');check('portrait_prompt_pauses_game',page.is_visible('#rotatePhone'));shot('girar')
   page.set_viewport_size({'width':667,'height':375});page.tap('#settingsButton');page.tap('#settingsBack');enter_track(page,tap=True,story=True)
