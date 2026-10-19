@@ -6,6 +6,7 @@ import {footState,stepOnFoot,footGround,clearView,placeFootCamera,turnFootView,z
 import {OPENINGS,carSpot,SPOT_OPENING} from './car-openings.js';
 import {dressPerson,STEVAN_OUTFITS} from './pit-crew.js';
 import {outfitOf} from './story-career.js';
+import {keyName,keyText} from './key-bindings.js';
 const money=n=>'R$ '+n.toFixed(2).replace('.',','),pct=n=>Math.round(n*100)+'%';
 const idle={throttle:0,brake:1,left:0,right:0,reverse:0,handbrake:0},still={throttle:0,brake:0,left:0,right:0};
 export const CAFE_MENU=Object.freeze([{id:'cafe',name:'Café',price:4,bites:3,verb:'beber',portion:'gole'},{id:'pao',name:'Pão de queijo',price:6,bites:2,verb:'comer',portion:'mordida'},{id:'doce',name:'Doce de leite',price:5,bites:3,verb:'comer',portion:'colherada'}]);
@@ -20,9 +21,9 @@ const snackItem=id=>CAFE_MENU.find(item=>item.id===id);
 export function giveSnack(s,id){const item=snackItem(id);if(!item||s.held.length>=2)return null;const held={id,bites:item.bites,side:s.held.some(h=>h.side===1)?-1:1};s.held.push(held);return held;}
 export function buySnack(s,id,{pay,emit,touch=false}){
  const item=snackItem(id);if(!item)return false;
- if(s.held.length>=2){s.feedback='As duas mãos estão ocupadas: coma ou beba primeiro (E).';return false;}
+ if(s.held.length>=2){s.feedback=`As duas mãos estão ocupadas: coma ou beba primeiro (${keyName('KeyE')}).`;return false;}
  if(!pay(item.price))return false;
- giveSnack(s,id);s.snackTime=4;s.feedback=`${item.name} na mão! ${money(item.price)} pagos. ${touch?'Toque em':'Aperte E para'} ${item.verb}, sô!`;emit('pitCoffee');return true;
+ giveSnack(s,id);s.snackTime=4;s.feedback=`${item.name} na mão! ${money(item.price)} pagos. ${touch?'Toque em':`Aperte ${keyName('KeyE')} para`} ${item.verb}, sô!`;emit('pitCoffee');return true;
 }
 // One sip or bite: the hand goes to the mouth; the last one finishes the item.
 export function useSnack(s){if(s.menu||s.using||!s.held.length)return false;s.using={item:s.held[0],t:0,taken:false};return true;}
@@ -231,7 +232,7 @@ export class PitStop {
   for(const p of CAR_PARTS){const q=this.condition.quality[p.id];this.panel.querySelector(`[data-quality="${p.id}"]`).textContent=pct(q);this.panel.querySelector(`[data-quality-bar="${p.id}"]`).value=q;}
   for(const b of this.panel.querySelectorAll('[data-repair]')){const quote=this.condition.quote(b.dataset.repair,b.dataset.kind),proper=b.dataset.kind==='proper',pending=this.service.has(b.dataset.repair);b.textContent=pending?(jobs.some(j=>j.id===b.dataset.repair)?'Em serviço':'Na fila · pago'):quote?`${proper?'Resolver pra valer':'Gambiarra'} · ${money(quote.cost)} · ${Math.ceil(quote.seconds)} s → ${pct(quote.to)}`:proper?'Tudo certo · 100%':'Gambiarra não melhora';b.disabled=pending||!quote||quote.cost>this.wallet;}
   for(const [id,amount] of [['pitFill2',2],['pitFillAll',12]]){const litres=Math.min(amount,12-this.fuel),cost=Math.ceil(litres*6.5);$(id).textContent=this.service.has('fuel')?'Abastecimento · pago':litres<.05?'Tanque cheio':(id==='pitFill2'?'Abastecer ':'Completar · ')+litres.toFixed(1)+' L · '+money(cost);$(id).disabled=this.service.has('fuel')||litres<.05||cost>this.wallet;}
-  $('pitGarage').hidden=menu;$('pitCafe').hidden=!menu;$('pitCoffee').hidden=walking;$('pitCoffee').textContent=document.body.classList.contains('touch-device')?'Sair do carro · Café da Tia grátis':'Sair do carro (F) · Café da Tia grátis';$('pitLeave').hidden=walking;$('pitLeave').textContent=busy?'Sair agora · interromper serviços':'Voltar à pista →';
+  $('pitGarage').hidden=menu;$('pitCafe').hidden=!menu;$('pitCoffee').hidden=walking;$('pitCoffee').textContent=document.body.classList.contains('touch-device')?'Sair do carro · Café da Tia grátis':`Sair do carro (${keyName('KeyF')}) · Café da Tia grátis`;$('pitLeave').hidden=walking;$('pitLeave').textContent=busy?'Sair agora · interromper serviços':'Voltar à pista →';
   $('pitCafeStatus').textContent=this.coffee?.feedback||'Escolha um quitute. Só paga o que pedir.';
   for(const button of this.panel.querySelectorAll('[data-snack]'))button.disabled=CAFE_MENU.find(item=>item.id===button.dataset.snack).price>this.wallet||(this.coffee?.held.length??0)>=2;
   if(walking){
@@ -239,7 +240,7 @@ export class PitStop {
    hud('pitWalkJob').textContent=busy?'Equipe: '+jobs.map(j=>`${jobName(j)} ${Math.ceil(j.seconds-j.elapsed)} s`).join(' · ')+(this.service.queue.length?` · +${this.service.queue.length} na fila`:''):'Opala pronto. Volte quando quiser.';
    hud('pitWalkHold').hidden=!first;hud('pitWalkHold').textContent='Na mão: '+snackLabel(s);
    const lid=SPOT_OPENING[action]?this.openingLabel(action):'',eText=firstItem?`${firstItem.verb} ${firstItem.name.toLowerCase()}`:action==='cafe'?'cardápio':action==='car'?(!this.openings?.has(OPENINGS.driverDoor)?'entrar no Opala':this.openings.held(OPENINGS.driverDoor,'manual')?'fechar a porta':'abrir a porta'):lid?lid[0].toLowerCase()+lid.slice(1):'interagir';
-   hud('pitWalkHint').textContent=`Saldo: ${money(this.wallet)} · `+(touch?'Caminhe até a Tia ou o carro.':`Mouse: câmera · W/A/S/D: andar · Shift: correr · Espaço: pular · C: agachar · E: ${eText} · F: ${action==='car'?'entrar no Opala':'sair/entrar no carro'} · Tab: mouse no menu`);
+   hud('pitWalkHint').textContent=`Saldo: ${money(this.wallet)} · `+(touch?'Caminhe até a Tia ou o carro.':keyText(`Mouse: câmera · {KeyW}/{KeyA}/{KeyS}/{KeyD}: andar · {ShiftLeft}: correr · {Space}: pular · {KeyC}: agachar · {KeyE}: ${eText} · {KeyF}: ${action==='car'?'entrar no Opala':'sair/entrar no carro'} · Tab: mouse no menu`));
    hud('pitRepairs').textContent=s.repairs?'Esconder consertos':'Consertos do Opala';
    const use=hud('pitUse');use.hidden=!firstItem;if(firstItem)use.textContent=`${firstItem.verb[0].toUpperCase()+firstItem.verb.slice(1)} ${firstItem.name.toLowerCase()}`+(touch?'':' · E');use.disabled=!!s.using;
    const button=hud('pitInteract');button.hidden=!action;button.textContent=action==='car'?(busy?'Entrar e sair · interromper serviços':'Entrar no Opala e voltar à pista')+(touch?'':' · F'):lid?lid+(touch?'':' · E'):'Ver cardápio da Tia';

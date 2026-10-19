@@ -8,6 +8,7 @@ import {ImmersiveState,FANS,JOKES,BLAZER_COST,COSTS,START,startCost} from './imm
 import {SWITCH_TILT} from './cockpit-instruments.js';
 import {ImmersiveVisuals,trackPoint} from './immersive-visuals.js';
 import {footGround} from './on-foot.js';
+import {keyName,keyText,playerKeys} from './key-bindings.js';
 import {CAFE_MENU,snackState,giveSnack,buySnack,useSnack,stepSnack,snackArms,snackHead,snackHands,showSnacks,snackLabel,snackVerb} from './pitstop.js';
 import {entryFor,CHALLENGES,MORALE,MORALE_NAMES,MORALE_LABELS,OUTCOME_TITLES,GAME_OVER,MISSED,REFUSED,STORY_PROFILE_KEY} from './story-career.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -140,15 +141,15 @@ export class ImmersiveMode {
  }
  // The paddock hint by the Opala: what E does where the pilot stands.
  carHint(){
-  const spot=this.visual.carAction();if(spot){const text=CAR_ACTIONS[spot](this.visual.ownOpen(spot));return `E: ${text[0].toLowerCase()+text.slice(1)}`+(spot==='porta'?' (ou F)':'');}
-  return this.visual.nearCar()?'F: entrar no Opala 99 · E na frente abre o capô, atrás o porta-malas':'';
+  const spot=this.visual.carAction();if(spot){const text=CAR_ACTIONS[spot](this.visual.ownOpen(spot));return `${keyName('KeyE')}: ${text[0].toLowerCase()+text.slice(1)}`+(spot==='porta'?` (ou ${keyName('KeyF')})`:'');}
+  return this.visual.nearCar()?keyText('{KeyF}: entrar no Opala 99 · {KeyE} na frente abre o capô, atrás o porta-malas'):'';
  }
  // Leonardo Martins, of the #19, and his coffee: the question with two answers (1, 2), then
  // what he says back. The pilot's name comes from the player: escaped before it goes in.
  leoPanel(){
   const s=this.state,name=escapeHtml(this.pilotName||'Stevan'),line={ask:`E aí, ${name}! Aceita um café? A Tia acabou de passar um fresquinho.`,yes:'Toma aí, puro e quentinho. Boa corrida — e cuidado comigo na freada do S do Senna!',no:'Beleza, fica pra próxima. Boa corrida!',chat:'E o café, tava bom? Agora é acelerar!'}[s.leo];
   const head=`<div class="social-person"><span class="social-avatar">19</span><div><span>CONVERSANDO COM</span><h2>Leonardo Martins · #19</h2></div><b>◆</b></div><div class="speech-bubble fan-speech" role="status">“${line}”</div>`;
-  if(s.leo!=='ask')return head+this.button('leo:close','Valeu! Boa corrida (E)',true);
+  if(s.leo!=='ask')return head+this.button('leo:close','Valeu! Boa corrida ({KeyE})',true);
   // The cup goes into a free hand: with both busy (the Tia's snacks) it has to wait.
   const full=this.cafe.held.length>=2;
   return head+`<div class="social-prompt">Sua resposta</div><div class="social-choices">${[['yes','Aceito! Valeu, Leo',full?'As duas mãos estão ocupadas: coma ou beba primeiro.':'Um cafezinho antes da largada cai bem.'],['no','Agora não, obrigado','Fica pra depois da corrida.']].map(([answer,text,more],i)=>`<button type="button" data-action="leo:${answer}" class="speech-choice" ${answer==='yes'&&full?'disabled':''}><span>${i+1}</span><div><b>${text}</b><small>${more}</small></div></button>`).join('')}</div>`;
@@ -162,17 +163,17 @@ export class ImmersiveMode {
   return `<div class="social-person"><span class="social-avatar">☕</span><div><span>LANCHONETE DA TIA</span><h2>Cardápio da Tia</h2></div><b>◆</b></div><div class="speech-bubble fan-speech" role="status">“${line}”</div>`
    +`<div class="social-prompt">Na vaquinha: ${money(s.cash)}${s.profile.fund>0?` · carteira: ${money(s.profile.fund)}`:''}${c.held.length?` · na mão: ${snackLabel(c)}`:''}</div>`
    +`<div class="social-choices">${CAFE_MENU.map((item,i)=>`<button type="button" data-action="snack:${item.id}" class="speech-choice" ${full||item.price>wallet?'disabled':''}><span>${i+1}</span><div><b>${item.name} · ${money(item.price)}</b><small>${item.bites} ${item.portion}s · ${full?'as duas mãos estão ocupadas':item.price>wallet?(item.price>kept?'não cabe no dinheiro':'o resto é da inscrição'):item.price>s.cash?'sai da carteira':'sai da vaquinha'}</small></div></button>`).join('')}</div>`
-   +this.button('closeCafe','Continuar o passeio (E)');
+   +this.button('closeCafe','Continuar o passeio ({KeyE})');
  }
  // What E does on foot in the paddock, GTA style: the team stand's registration, the Opala's hood,
  // trunk lid or door, Leonardo or the nearest supporter where they are; elsewhere it eats or drinks
  // what is in hand, as during a pit stop, and at the Tia's counter with empty hands opens her menu.
  actionKey(){const v=this.visual;return v.nearDesk()?'desk':v.carAction()?'car':v.nearLeo()?'leo':this.near>=0?'talk':this.cafe.held.length?'eat':v.nearCafe()?'cafe':'talk';}
  // The café's line on the HUD: at the counter, the menu; with something in hand, eating it.
- cafeHint(){const key=this.actionKey();if(key==='cafe')return touchScreen()?'Lanchonete da Tia: toque em Ver cardápio da Tia':'E: cardápio da Tia';return key==='eat'&&!touchScreen()?`E: ${snackVerb(this.cafe)}`:'';}
+ cafeHint(){const key=this.actionKey();if(key==='cafe')return touchScreen()?'Lanchonete da Tia: toque em Ver cardápio da Tia':keyText('{KeyE}: cardápio da Tia');return key==='eat'&&!touchScreen()?`${keyName('KeyE')}: ${snackVerb(this.cafe)}`:'';}
  // The paddock panel's café part, under the kitty: what is in hand with its button, and the menu at the counter.
  cafeButtons(){
-  const c=this.cafe,key=this.actionKey(),e=k=>touchScreen()||key!==k?'':' (E)';let html='';
+  const c=this.cafe,key=this.actionKey(),e=k=>touchScreen()||key!==k?'':' ({KeyE})';let html='';
   if(c.held.length)html+=`<p class="imm-desk-hint"><b>Na mão:</b> ${snackLabel(c)}</p>`+this.button('eat',capital(snackVerb(c))+e('eat'),false,!!c.using);
   if(this.visual.nearCafe()&&c.held.length<2)html+=this.button('cafe','Ver cardápio da Tia'+e('cafe'),true);
   return html;
@@ -181,7 +182,7 @@ export class ImmersiveMode {
  cafeGuest(){return this.onFoot()?{hero:this.visual.hero.getWorldPosition(new THREE.Vector3()),snack:this.cafe.snackTime}:null;}
  // Guidance to the registration: the action key by the team stand, else the way there once the kitty is enough.
  deskHint(){
-  if(!this.visual.desk)return '';if(this.visual.nearDesk())return touchScreen()?'Entre no círculo amarelo para falar com a equipe 99':'E: falar com a equipe 99 · inscrição';
+  if(!this.visual.desk)return '';if(this.visual.nearDesk())return touchScreen()?'Entre no círculo amarelo para falar com a equipe 99':keyText('{KeyE}: falar com a equipe 99 · inscrição');
   return this.state.cash+this.state.profile.fund>=this.state.minimum?'Já dá para a inscrição! Na barraca da equipe 99, sobre o muro: suba a escadinha ao lado dela.':'';
  }
  // The team at the computers: the kitty against the costs, with the fuel and the optional
@@ -197,7 +198,7 @@ export class ImmersiveMode {
    +`<dt><label class="imm-budget-check"><input id="immFilm" type="checkbox" ${this.prepFilm?'checked':''}> Proteção do para-brisa <small>opcional</small></label></dt><dd id="deskFilm"></dd>`
    +`<dt class="imm-budget-total">Total</dt><dd class="imm-budget-total" id="deskTotal"></dd>${row('','','deskLeft')}</dl>`
    +`<p class="desk-fuel-hint">${CIRCUITS[circuitId(this.data.meta.id)].fuel} Burnout e vazamentos gastam mais.${away?' Fora de Interlagos a inscrição inclui a cegonha, as passagens e o hotel da equipe.':''} A vaquinha paga primeiro; o resto sai da carteira.</p>`
-   +`<div class="desk-choices">${this.button('buy',touchScreen()?'Pagar e ir →':'Pagar e ir pra partida → (Enter)',true,!ready)}${this.button('leaveDesk',touchScreen()?'Pedir mais dindin':'Voltar e pedir mais dindin (E)')}</div>`;
+   +`<div class="desk-choices">${this.button('buy',touchScreen()?'Pagar e ir →':'Pagar e ir pra partida → (Enter)',true,!ready)}${this.button('leaveDesk',touchScreen()?'Pedir mais dindin':'Voltar e pedir mais dindin ({KeyE})')}</div>`;
  }
  updateDeskCosts(){
   const q=id=>this.panel.querySelector('#'+id);if(!q('deskTotal'))return;
@@ -277,9 +278,9 @@ export class ImmersiveMode {
  // Hora de acordar o Opala: the steps (IGN, PARTIDA, throttle), the throttle dial with its
  // bands and three meters (catching, flooding, battery); updateStartPanel moves them each frame.
  startPanel(){
-  const touch=touchScreen(),key=k=>touch?'':`<kbd>${k}</kbd>`;
+  const touch=touchScreen(),key=k=>touch?'':`<kbd>${keyName(k)}</kbd>`;
   return `<div class="imm-eyebrow">SEM AFOGAR!</div><h2>Hora de acordar o Opala.</h2>`
-   +`<ol class="start-steps"><li data-step="ign">${key('L')}<span>Ligue o <b>IGN</b> no painel de cima</span></li><li data-step="part">${key('I')}<span>Segure a <b>PARTIDA</b></span></li><li data-step="gas">${key('W')}<span>${touch?'ACELERAR':'Acelerador'} <b>no ponto</b></span></li></ol>`
+   +`<ol class="start-steps"><li data-step="ign">${key('KeyL')}<span>Ligue o <b>IGN</b> no painel de cima</span></li><li data-step="part">${key('KeyI')}<span>Segure a <b>PARTIDA</b></span></li><li data-step="gas">${key('KeyW')}<span>${touch?'ACELERAR':'Acelerador'} <b>no ponto</b></span></li></ol>`
    +`<div class="start-gauge">${START_DIAL}<div class="start-readout"><b id="startZone"></b><span id="startPct"></span></div></div>`
    +`<div class="start-meters"><span>Pegando<i><b id="startCatch"></b></i></span><span>Afogamento<i><b id="startFlood"></b></i></span><span>Bateria<i><b id="startBattery"></b></i></span></div>`
    +`<div class="start-buttons"><button type="button" data-action="ign" class="start-ign${this.state.ignOn?' on':''}"><span class="start-led"></span>IGN <b>${this.state.ignOn?'ON':'OFF'}</b></button><button type="button" data-hold="crank" class="start-crank">PARTIDA <small>segure</small></button></div><p class="start-tip" id="startTip" role="status"></p>`;
@@ -296,8 +297,8 @@ export class ImmersiveMode {
   this.panel.querySelector('.start-crank')?.classList.toggle('pressed',cranking);
   // Pumping the pedal between tries only soaks the plugs; wet plugs want little throttle to dry.
   const touch=touchScreen(),wet=s.flood>.5,tip=pumping?'Pisando sem dar partida você só molha a vela!'
-   :!s.ignOn?(cranking?'Sem IGN o motor gira, mas não pega! Ligue o IGN.':`Primeiro o painel de cima: IGN em ON (${touch?'toque no IGN':'L, ou clique no interruptor'}).`)
-   :!cranking?(wet?'Vela molhada: dê partida com pouco acelerador para secar.':`Agora segure a PARTIDA (${touch?'botão PARTIDA':'I'}) e dose o acelerador na faixa verde.`)
+   :!s.ignOn?(cranking?'Sem IGN o motor gira, mas não pega! Ligue o IGN.':`Primeiro o painel de cima: IGN em ON (${touch?'toque no IGN':`${keyName('KeyL')}, ou clique no interruptor`}).`)
+   :!cranking?(wet?'Vela molhada: dê partida com pouco acelerador para secar.':`Agora segure a PARTIDA (${touch?'botão PARTIDA':keyName('KeyI')}) e dose o acelerador na faixa verde.`)
    :(s.battery<.3?'Bateria arriando! ':'')+(wet&&zone<2?'Vela molhada: segura no ponto que ela seca…':['Falta acelerador: dê toques.','No ponto! Segura assim…','Alto demais: alivia um pouco.','AFOGANDO! Tira o pé do acelerador!'][zone]);
   q('startTip').textContent=tip;q('startTip').dataset.zone=pumping?3:cranking&&s.ignOn?zone:'';
  }
@@ -538,27 +539,28 @@ export class ImmersiveMode {
   const names={crowd:'VAQUINHA',starting:'PARTIDA',grid:'LARGADA',race:`${this.storyLaps} VOLTA${this.storyLaps>1?'S':''}`,broken:'SOCORRO',tow:'REBOQUE',snag:'FITA ENROSCADA',inspection:'PÓS-CORRIDA',podium:'SEXTO, SEMPRE',complete:'ATÉ A PRÓXIMA',disqualified:'A FOTO FICOU'};
   document.getElementById('dqScreen').classList.toggle('hidden',s.phase!=='disqualified');document.getElementById('dqCountdown').textContent='Nova vaquinha em '+Math.max(1,Math.ceil(s.disqualifiedTime))+' s';
   document.getElementById('immPhase').textContent=names[s.phase];document.getElementById('immFuel').textContent=s.fuel.toFixed(1)+' L';document.getElementById('immHealth').textContent=Math.ceil(s.health*100)+'%';document.getElementById('immGlass').textContent=Math.round((1-s.glass)*100)+'%';document.getElementById('immPosition').textContent=s.phase==='podium'?'6º no pódio':s.position+'º / '+GRID_SIZE;
-  document.getElementById('immAlert').textContent=s.phase==='podium'?(touchScreen()?'Arraste na cena para girar a câmera pelo pódio.':'Câmera livre: clique na cena e o mouse olha em volta · roda aproxima · W A S D passeia · Espaço ou E continua · Tab solta o mouse'):s.phase==='crowd'?(this.inCar?'F: sair do Opala · o mouse olha em volta':talking||s.scene?'':this.carHint()||this.cafeHint()||this.deskHint()):s.phase==='race'?(s.alertTime>0?s.alert:s.tankDetached?'Tanque solto · combustível vazando':s.fuel<1?'Reserva! A gasolina está acabando.':'Guarde distância: o carro da frente pode soltar peças.'):s.phase==='tow'?(s.towGap<3?'FREIE · FITA FROUXA':'Controle o freio quando o caminhão diminuir.'):'';
-  const spot=s.phase==='crowd'?this.visual.carAction():null,nearDesk=s.phase==='crowd'&&this.visual.nearDesk(),cafe=s.phase==='crowd'?[this.actionKey(),this.visual.nearCafe(),snackLabel(this.cafe),!!this.cafe.using,this.cafe.feedback].join('/'):'',key=[s.phase,s.revision,this.near,s.fan,s.desk,s.leo,s.cafe,nearDesk,spot,spot&&this.visual.ownOpen(spot),cafe].join(':');
+  document.getElementById('immAlert').textContent=s.phase==='podium'?(touchScreen()?'Arraste na cena para girar a câmera pelo pódio.':keyText('Câmera livre: clique na cena e o mouse olha em volta · roda aproxima · {KeyW} {KeyA} {KeyS} {KeyD} passeia · {Space} ou {KeyE} continua · Tab solta o mouse')):s.phase==='crowd'?(this.inCar?keyText('{KeyF}: sair do Opala · o mouse olha em volta'):talking||s.scene?'':this.carHint()||this.cafeHint()||this.deskHint()):s.phase==='race'?(s.alertTime>0?s.alert:s.tankDetached?'Tanque solto · combustível vazando':s.fuel<1?'Reserva! A gasolina está acabando.':'Guarde distância: o carro da frente pode soltar peças.'):s.phase==='tow'?(s.towGap<3?'FREIE · FITA FROUXA':'Controle o freio quando o caminhão diminuir.'):'';
+  const spot=s.phase==='crowd'?this.visual.carAction():null,nearDesk=s.phase==='crowd'&&this.visual.nearDesk(),cafe=s.phase==='crowd'?[this.actionKey(),this.visual.nearCafe(),snackLabel(this.cafe),!!this.cafe.using,this.cafe.feedback].join('/'):'',key=[s.phase,s.revision,playerKeys.revision,this.near,s.fan,s.desk,s.leo,s.cafe,nearDesk,spot,spot&&this.visual.ownOpen(spot),cafe].join(':');
   if(key!==this.lastUI){this.lastUI=key;let body='';
    if(s.phase==='crowd'){
-    if(s.fan!==null){const fan=FANS[s.fan];body=`<div class="social-person"><span class="social-avatar">${fan.name[0]}</span><div><span>CONVERSANDO COM</span><h2>${fan.name}</h2></div><b>◆</b></div><div class="speech-bubble fan-speech" role="status">${s.feedback||'“'+fan.hint+'”'}</div><div class="social-prompt">Escolha sua fala</div><div class="imm-jokes social-choices">${JOKES.map((j,i)=>`<button type="button" data-action="joke:${i}" class="speech-choice"><span>${i+1}</span><div><b>${['Família e boletos','Vida de oficina','Perrengues de piloto'][i]}</b><small>${j.text}</small></div></button>`).join('')}</div><div class="social-help">Clique em uma fala para contar a piada.</div>${this.button('close','Encerrar conversa (E)')}`;}
+    if(s.fan!==null){const fan=FANS[s.fan];body=`<div class="social-person"><span class="social-avatar">${fan.name[0]}</span><div><span>CONVERSANDO COM</span><h2>${fan.name}</h2></div><b>◆</b></div><div class="speech-bubble fan-speech" role="status">${s.feedback||'“'+fan.hint+'”'}</div><div class="social-prompt">Escolha sua fala</div><div class="imm-jokes social-choices">${JOKES.map((j,i)=>`<button type="button" data-action="joke:${i}" class="speech-choice"><span>${i+1}</span><div><b>${['Família e boletos','Vida de oficina','Perrengues de piloto'][i]}</b><small>${j.text}</small></div></button>`).join('')}</div><div class="social-help">Clique em uma fala para contar a piada.</div>${this.button('close','Encerrar conversa ({KeyE})')}`;}
     else if(s.desk)body=this.deskPanel();
     else if(s.leo)body=this.leoPanel();
     else if(s.cafe)body=this.cafePanel();
-    else body=`<div class="imm-eyebrow">ANTES DA CORRIDA</div><h2>Patrocínio? Só na risada.</h2><p>${touchScreen()?'Caminhe pelos boxes até a torcida. Toque em uma pessoa para conversar. Depois, toque na piada que quer contar.':'Ande à vontade pelos boxes, pela garagem do 99 e pela lanchonete da Tia (café e quitutes, pagos da vaquinha). Chegue perto de um torcedor e aperte E para conversar; depois clique na piada (ou 1, 2, 3).'}</p><strong class="imm-cash">${money(s.cash)}</strong>${this.cafeButtons()}${this.careerBlock()}<p>Inscrição${s.entry>COSTS.entry?' fora de Interlagos':''}: ${money(s.entry)} · gasolina: ${money(COSTS.litre)}/L · para largar: pelo menos ${money(s.minimum)}, da vaquinha e da carteira.</p><p class="imm-desk-hint"><b>Inscrição com a equipe 99</b> nos computadores da barraca sobre o muro dos boxes: suba a escadinha ao lado dela e entre no círculo amarelo${touchScreen()?' (ou toque nele e o piloto vai sozinho)':''}.</p><p class="imm-controls">${touchScreen()?'Toque no torcedor · toque na fala para enviar · toque na placa da Tia para ir à lanchonete':'W A S D anda · mouse gira a câmera · Shift corre · Espaço pula · C agacha · E ação (conversar; na barraca: inscrição; no balcão da Tia: cardápio; com algo na mão: comer ou beber; no Opala: capô na frente, porta-malas atrás, porta para entrar) · F entra no Opala · Tab solta o mouse'}</p>${spot?this.button('car',CAR_ACTIONS[spot](this.visual.ownOpen(spot))+(touchScreen()?'':' (E)')):nearDesk?this.button('desk','Falar com a equipe 99 · inscrição'+(touchScreen()?'':' (E)'),true):this.button('talk',this.near<0?'Aproxime-se de um torcedor ou do Opala':'Conversar com '+FANS[this.near].name+(touchScreen()?'':' (E)'),false,this.near<0)}`;
+    else body=`<div class="imm-eyebrow">ANTES DA CORRIDA</div><h2>Patrocínio? Só na risada.</h2><p>${touchScreen()?'Caminhe pelos boxes até a torcida. Toque em uma pessoa para conversar. Depois, toque na piada que quer contar.':'Ande à vontade pelos boxes, pela garagem do 99 e pela lanchonete da Tia (café e quitutes, pagos da vaquinha). Chegue perto de um torcedor e aperte {KeyE} para conversar; depois clique na piada (ou {Digit1}, {Digit2}, {Digit3}).'}</p><strong class="imm-cash">${money(s.cash)}</strong>${this.cafeButtons()}${this.careerBlock()}<p>Inscrição${s.entry>COSTS.entry?' fora de Interlagos':''}: ${money(s.entry)} · gasolina: ${money(COSTS.litre)}/L · para largar: pelo menos ${money(s.minimum)}, da vaquinha e da carteira.</p><p class="imm-desk-hint"><b>Inscrição com a equipe 99</b> nos computadores da barraca sobre o muro dos boxes: suba a escadinha ao lado dela e entre no círculo amarelo${touchScreen()?' (ou toque nele e o piloto vai sozinho)':''}.</p><p class="imm-controls">${touchScreen()?'Toque no torcedor · toque na fala para enviar · toque na placa da Tia para ir à lanchonete':'{KeyW} {KeyA} {KeyS} {KeyD} anda · mouse gira a câmera · {ShiftLeft} corre · {Space} pula · {KeyC} agacha · {KeyE} ação (conversar; na barraca: inscrição; no balcão da Tia: cardápio; com algo na mão: comer ou beber; no Opala: capô na frente, porta-malas atrás, porta para entrar) · {KeyF} entra no Opala · Tab solta o mouse'}</p>${spot?this.button('car',CAR_ACTIONS[spot](this.visual.ownOpen(spot))+(touchScreen()?'':' ({KeyE})')):nearDesk?this.button('desk','Falar com a equipe 99 · inscrição'+(touchScreen()?'':' ({KeyE})'),true):this.button('talk',this.near<0?'Aproxime-se de um torcedor ou do Opala':'Conversar com '+FANS[this.near].name+(touchScreen()?'':' ({KeyE})'),false,this.near<0)}`;
    }
    if(s.phase==='starting')body=this.startPanel();
    if(s.phase==='grid')body='';
-   if(s.phase==='broken')body=`<div class="imm-eyebrow">DEU RUIM</div><h2>${s.reason}</h2><p>O reboque está chegando. Durante o resgate, <b>S</b> controla o freio. Não deixe a fita frouxa entrar debaixo da roda dianteira.</p>`;
-   if(s.phase==='tow')body='<div class="imm-eyebrow">REBOQUE</div><h2>Olho na fita!</h2><p>A fita tem 5 m e não recolhe sozinha. Quando o caminhão diminuir, freie com <b>S</b>.</p><meter id="immTowGap" min="0" max="5" low="2.2" optimum="5"></meter><p id="immTowText"></p>';
-   if(s.phase==='snag')body=`<div class="imm-eyebrow">A FITA ENTROU NA RODA</div><h2>Mais R$ 25 na conta.</h2><p>O carro avançou sobre a fita frouxa e ela enroscou na dianteira. O socorrista vai soltar; no próximo trecho, controle o freio com <b>S</b>.</p>${this.button('untangle','Desenroscar e continuar',true)}`;
+   if(s.phase==='broken')body=`<div class="imm-eyebrow">DEU RUIM</div><h2>${s.reason}</h2><p>O reboque está chegando. Durante o resgate, <b>{KeyS}</b> controla o freio. Não deixe a fita frouxa entrar debaixo da roda dianteira.</p>`;
+   if(s.phase==='tow')body='<div class="imm-eyebrow">REBOQUE</div><h2>Olho na fita!</h2><p>A fita tem 5 m e não recolhe sozinha. Quando o caminhão diminuir, freie com <b>{KeyS}</b>.</p><meter id="immTowGap" min="0" max="5" low="2.2" optimum="5"></meter><p id="immTowText"></p>';
+   if(s.phase==='snag')body=`<div class="imm-eyebrow">A FITA ENTROU NA RODA</div><h2>Mais R$ 25 na conta.</h2><p>O carro avançou sobre a fita frouxa e ela enroscou na dianteira. O socorrista vai soltar; no próximo trecho, controle o freio com <b>{KeyS}</b>.</p>${this.button('untangle','Desenroscar e continuar',true)}`;
    if(s.phase==='inspection')body=`<div class="imm-eyebrow">${s.result?.position===1?'VENCEU NA PISTA!':'FIM DA PARTICIPAÇÃO'}</div><h2>Depois da foto.</h2><p>O movimento continua no paddock. O juiz está por perto e o pessoal já espera nos boxes.</p>${s.judging?'<progress id="immInspection" max="8" value="0"></progress><p>O juiz está conferindo o carro…</p>':this.button('inspect','Parar e aguardar a vistoria',true)+this.button('box','Levar o carro ao box')}`;
    if(['podium','complete'].includes(s.phase))body=`<div class="imm-eyebrow">AUTO-POBRE RACING · PÓDIO OFICIAL DA ZOEIRA</div><h2>Sexto. Sempre sexto.</h2><p>Na pista: <b>${s.result?.position?s.result.position+'º lugar':s.result?.status}</b><br>Situação: ${s.result?.status}${s.inspected?' · vistoriado':''}<br>Na foto do pódio: <b>6º lugar</b></p><p>${s.reason||'A corrida acabou. Os boletos continuam.'}</p><p>Prêmio: <b>${money(s.prize)}</b>${s.snagCost?` · fita do guincho: −${money(s.snagCost)}`:''}</p><p>Sobra da vaquinha guardada: <b>${money(s.savedCash)}</b><br>Carteira: <b>${money(s.profile.fund)}</b></p>${this.goalBlock()}${s.phase==='complete'&&this.blazerDue()?this.button('blazer','Pagar o mecânico e buscar a Blazer',true,s.profile.fund<BLAZER_COST):''}${s.phase==='podium'?this.button('afterPodium','Continuar →',true):this.button('again','Próxima etapa, nova vaquinha →',true)+this.button('normal','Voltar à sessão livre')}`;
    if(['podium','complete'].includes(s.phase))body+=this.button('mainMenu','Voltar ao menu principal');
    // The career's cards cover the paddock's panel and the summary after the race.
    if(s.scene&&['crowd','complete'].includes(s.phase))body=this.scenePanel();
-   if(document.body.classList.contains('touch-device'))body=body.replaceAll('Clique','Toque').replaceAll('clique','toque').replaceAll('<b>W</b>','<b>ACELERAR</b>').replaceAll('<b>S</b>','<b>FREAR</b>').replaceAll('<b>I</b>','<b>Dar partida</b>').replaceAll(' (E)','').replaceAll(' (I)','');
+   if(document.body.classList.contains('touch-device'))body=body.replaceAll('Clique','Toque').replaceAll('clique','toque').replaceAll('<b>{KeyW}</b>','<b>ACELERAR</b>').replaceAll('<b>{KeyS}</b>','<b>FREAR</b>').replaceAll('<b>{KeyI}</b>','<b>Dar partida</b>').replaceAll(' ({KeyE})','').replaceAll(' ({KeyI})','');
+   body=keyText(body);
    this.panel.innerHTML=body;this.panel.classList.toggle('hidden',!body);this.updateDeskCosts();
   }
   if(s.phase==='starting')this.updateStartPanel();

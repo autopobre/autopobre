@@ -9,6 +9,7 @@ import {ArenaWorld} from './drift-arena-world.js';
 import {DriftScore,ArenaChallenge,CHALLENGES,CHALLENGE_ORDER,MEDAL_NAMES} from './drift-score.js';
 import {ArenaProps,FLOOR_Y} from './drift-arena-props.js';
 import {ArenaAi,AI_DEMOS} from './drift-arena-ai.js';
+import {applyKeyLabels} from './key-bindings.js';
 
 const fmt=n=>Math.round(n).toLocaleString('pt-BR');
 const html=(strings,...values)=>strings.reduce((out,s,i)=>out+s+(i<values.length?String(values[i]).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])):''),'');
@@ -106,29 +107,29 @@ export class ArenaMode{
 <section id="arenaChallenge" hidden></section>
 <div id="arenaHandbrake" hidden role="status">FREIO DE MÃO</div>
 <div id="arenaToast" role="status" aria-live="polite"></div>
-<section id="arenaDemo" hidden aria-live="off"><b>IA DEMONSTRANDO · SÓ TECLAS</b><div><span class="k" id="arenaDemoLeft">←</span><span class="k" id="arenaDemoUp">↑</span><span class="k" id="arenaDemoRight">→</span></div><p id="arenaDemoCaption"></p><small>Aperte ↑ ← → (ou W A D) para assumir o carro daqui · T volta ao painel</small></section>
-<button id="arenaButton" type="button" title="Arena: layouts, desafios e editor (T)">Arena <kbd>T</kbd></button>
+<section id="arenaDemo" hidden aria-live="off"><b>IA DEMONSTRANDO · SÓ TECLAS</b><div><span class="k" id="arenaDemoLeft">←</span><span class="k" id="arenaDemoUp">↑</span><span class="k" id="arenaDemoRight">→</span></div><p id="arenaDemoCaption"></p><small>Aperte <span data-key="ArrowUp">↑</span> <span data-key="ArrowLeft">←</span> <span data-key="ArrowRight">→</span> (ou <span data-key="KeyW">W</span> <span data-key="KeyA">A</span> <span data-key="KeyD">D</span>) para assumir o carro daqui · <span data-key="KeyT">T</span> volta ao painel</small></section>
+<button id="arenaButton" type="button" title="Arena: layouts, desafios e editor (T)" data-keys-title="Arena: layouts, desafios e editor ({KeyT})">Arena <kbd data-key="KeyT">T</kbd></button>
 <section id="arenaTune" aria-label="Ajuste do carro">
- <label class="arena-tune-row" title="Quanto ↑ / W acelera apertado até o fim · teclas 9 e 0"><span>Acelerador</span><input id="arenaThrottle" type="range" min="20" max="100" step="5"><output id="arenaThrottleValue"></output><kbd>9 0</kbd></label>
- <label class="arena-tune-row" title="Quanto as rodas viram com o carro parado (com a velocidade, menos) · teclas − e ="><span>Volante</span><input id="arenaSteer" type="range" min="10" max="49" step="1"><output id="arenaSteerValue"></output><kbd>− =</kbd></label>
+ <label class="arena-tune-row" title="Quanto ↑ / W acelera apertado até o fim · teclas 9 e 0" data-keys-title="Quanto {ArrowUp} / {KeyW} acelera apertado até o fim · teclas {Digit9} e {Digit0}"><span>Acelerador</span><input id="arenaThrottle" type="range" min="20" max="100" step="5"><output id="arenaThrottleValue"></output><kbd><span data-key="Digit9">9</span> <span data-key="Digit0">0</span></kbd></label>
+ <label class="arena-tune-row" title="Quanto as rodas viram com o carro parado (com a velocidade, menos) · teclas − e =" data-keys-title="Quanto as rodas viram com o carro parado (com a velocidade, menos) · teclas {Minus} e {Equal}"><span>Volante</span><input id="arenaSteer" type="range" min="10" max="49" step="1"><output id="arenaSteerValue"></output><kbd><span data-key="Minus">−</span> <span data-key="Equal">=</span></kbd></label>
 </section>
 <div id="arenaPanel" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="arenaPanelTitle"><div class="arena-shell">
- <div class="arena-head"><div><span class="tracks-kicker">ARENA DE DRIFT · AUTO-POBRE RACING</span><h2 id="arenaPanelTitle">O que vamos fazer?</h2></div><button id="arenaClose" type="button">Voltar a dirigir (T)</button></div>
+ <div class="arena-head"><div><span class="tracks-kicker">ARENA DE DRIFT · AUTO-POBRE RACING</span><h2 id="arenaPanelTitle">O que vamos fazer?</h2></div><button id="arenaClose" type="button">Voltar a dirigir (<span data-key="KeyT">T</span>)</button></div>
  <div class="arena-cols">
   <section><h3>Treino livre</h3><p class="arena-note">Dirija à vontade na sua arena. Cada drift vale pontos: ângulo, velocidade, combo e rodas de trás na zona amarela.</p>
-   <p class="arena-note arena-keys">Freio de mão: segure <b>Espaço</b>, <b>Shift</b>, <b>B</b> ou <b>N</b> (solta ao soltar). De lado, D/A contra a curva segura o drift; para dentro, aprofunda.</p>
+   <p class="arena-note arena-keys">Freio de mão: segure <b data-key="Space">Espaço</b>, <b data-key="ShiftLeft">Shift</b>, <b data-key="KeyB">B</b> ou <b data-key="KeyN">N</b> (solta ao soltar). De lado, <span data-key="KeyD">D</span>/<span data-key="KeyA">A</span> contra a curva segura o drift; para dentro, aprofunda.</p>
    <button id="arenaFree" class="primary" type="button">Treino livre na minha arena →</button>
    <button id="arenaEdit" type="button">Montar a minha arena (editor)</button>
    <h4>Layouts prontos <small>(substituem a sua arena)</small></h4><div id="arenaPresets" class="arena-presets"></div></section>
   <section><h3>Desafios</h3><div id="arenaChallenges" class="arena-challenges"></div></section>
  </div></div></div>
 <div id="arenaEditor" hidden><aside><h3>Montar arena</h3><div id="arenaTools" class="arena-tools"></div><p id="arenaToolHint" class="arena-note"></p>
- <div class="arena-edit-actions"><button id="arenaRotL" type="button" title="Girar (Q)">⟲</button><button id="arenaRotR" type="button" title="Girar (E)">⟳</button><button id="arenaSmaller" type="button" title="Menor (−)">−</button><button id="arenaBigger" type="button" title="Maior (+)">+</button><button id="arenaDelete" type="button" title="Apagar (Delete)">Apagar</button></div>
+ <div class="arena-edit-actions"><button id="arenaRotL" type="button" title="Girar (Q)" data-keys-title="Girar ({KeyQ})">⟲</button><button id="arenaRotR" type="button" title="Girar (E)" data-keys-title="Girar ({KeyE})">⟳</button><button id="arenaSmaller" type="button" title="Menor (−)" data-keys-title="Menor ({Minus})">−</button><button id="arenaBigger" type="button" title="Maior (+)" data-keys-title="Maior ({Equal})">+</button><button id="arenaDelete" type="button" title="Apagar (Delete)">Apagar</button></div>
  <div class="arena-edit-actions"><button id="arenaUndo" type="button">Desfazer</button><button id="arenaClear" type="button">Limpar tudo</button></div>
- <button id="arenaDone" class="primary" type="button">Pronto, dirigir (T)</button>
- <p class="arena-note arena-keys">Clique no piso para pôr · arraste para mover · Q/E gira · +/− tamanho · Delete apaga · roda do mouse aproxima · botão direito apaga</p></aside>
+ <button id="arenaDone" class="primary" type="button">Pronto, dirigir (<span data-key="KeyT">T</span>)</button>
+ <p class="arena-note arena-keys">Clique no piso para pôr · arraste para mover · <span data-key="KeyQ">Q</span>/<span data-key="KeyE">E</span> gira · <span data-key="Equal">=</span>/<span data-key="Minus">−</span> tamanho · Delete apaga · roda do mouse aproxima · botão direito apaga</p></aside>
  <p id="arenaCount" class="arena-count"></p></div>`;
-  document.body.append(root);
+  document.body.append(root);applyKeyLabels(root);
   // Ready-made layouts and challenges.
   this.$('arenaPresets').innerHTML=PRESET_ORDER.map(id=>html`<button type="button" data-arena-preset="${id}"><b>${PRESETS[id].name}</b><small>${PRESETS[id].items.length} itens</small></button>`).join('');
   this.$('arenaTools').innerHTML=[['mover','Mover / escolher','Clique num item para escolher e arrastar.'],...ITEM_ORDER.map(k=>[k,ITEM_KINDS[k].name,ITEM_KINDS[k].hint])].map(([k,name,hint])=>html`<button type="button" data-arena-tool="${k}" title="${hint}"><i class="arena-icon arena-icon-${k}"></i>${name}</button>`).join('');

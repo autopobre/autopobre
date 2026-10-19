@@ -10,6 +10,7 @@
 // street circuit's walls are not; in a city zone open to roam (meta.roam) its edges and what stands in it stop him, and
 // he never walks into a lake or over a plateau's rim. Q takes his phone out for a selfie (selfie.js; user, 2026-10-18).
 import * as THREE from 'three';
+import {keyName,keyText} from './key-bindings.js';
 import {footState,stepOnFoot,footGround,placeFootCamera,turnFootView,zoomFootView,footJump} from './on-foot.js';
 import {OPENINGS,carSpot,SPOT_OPENING} from './car-openings.js';
 import {createPeople,dressPerson,knockOver,applyPose,clonePose,POSES,OUTFITS,STEVAN_OUTFITS} from './pit-crew.js';
@@ -243,9 +244,9 @@ export class FreeWalk {
   const set=(id,key,value)=>{if(this.shown[id+key]!==value){this.shown[id+key]=value;this.$(id)[key]=value;}};
   set('walkTitle','textContent',this.title());set('walkCarDistance','textContent',close?'Seu carro: aqui':`Seu carro: ${Math.round(distance)} m`);
   set('walkMessage','textContent',this.tumble?'Atropelado! Espere ele levantar…':this.messageTime>0?this.message:this.goingIn?'Indo até a porta…':'');
-  set('walkHint','textContent',touch?'Pedais: andar · direção: virar':`Mouse: câmera · W/A/S/D: andar · Shift: correr · Espaço: pular · C: agachar · Q: selfie${action&&action!=='entrar no carro'?` · E: ${action}`:''} · F: ${fText}`);
-  set('walkAction','hidden',!action||action==='entrar no carro'||!!this.tumble);if(action)set('walkAction','textContent',action[0].toUpperCase()+action.slice(1)+(touch?'':' · E'));
-  set('walkCar','hidden',!close||!!this.tumble);set('walkSelfie','hidden',!touch||!!this.tumble);set('walkCar','textContent',(atDoor?'Entrar no carro':'Voltar ao carro')+(touch?'':' · F'));
+  set('walkHint','textContent',touch?'Pedais: andar · direção: virar':keyText('Mouse: câmera · {KeyW}/{KeyA}/{KeyS}/{KeyD}: andar · {ShiftLeft}: correr · {Space}: pular · {KeyC}: agachar · {KeyQ}: selfie')+`${action&&action!=='entrar no carro'?` · ${keyName('KeyE')}: ${action}`:''} · ${keyName('KeyF')}: ${fText}`);
+  set('walkAction','hidden',!action||action==='entrar no carro'||!!this.tumble);if(action)set('walkAction','textContent',action[0].toUpperCase()+action.slice(1)+(touch?'':` · ${keyName('KeyE')}`));
+  set('walkCar','hidden',!close||!!this.tumble);set('walkSelfie','hidden',!touch||!!this.tumble);set('walkCar','textContent',(atDoor?'Entrar no carro':'Voltar ao carro')+(touch?'':` · ${keyName('KeyF')}`));
  }
  // The circuit goes (main.js clearCircuit): the driver back in his seat, no camera to hand back.
  dispose(){this.stopping=false;this.selfie.dispose();if(this.foot){this.foot=this.tumble=this.goingIn=null;this.driver.root.visible=true;}this.hero.removeFromParent();this.hud?.remove();globalThis.document?.body?.classList.remove('free-walking');}

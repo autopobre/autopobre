@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {applyPose,clonePose,POSES} from './pit-crew.js';
+import {keyName,keyText} from './key-bindings.js';
 
 // The photo: its shape and its height's lens. 9:16 upright and 16:9 lying, a story's and a video's (user, 2026-10-18: "seria
 // se a foto fosse 9:16 e 16:9"; it was a phone's 3:4), with SHORT degrees across the short side either way: wide enough
@@ -368,11 +369,12 @@ export class Selfie {
  }
  showReview(on){
   if(!this.hud)return;this.$('selfieReview').hidden=!on;if(!on)return;
+  // (The keys the player chose, key-bindings.js; Enter is fixed.)
   const touch=this.touch,key=k=>touch?'':` · ${k}`;this.say(this.copied?this.copiedText():'');
   this.$('selfieShare').textContent='Compartilhar'+key('Enter');this.$('selfieShare').hidden=!this.canShare();
-  this.$('selfieSave').textContent='Baixar foto'+key('B');
-  this.$('selfieCopy').textContent='Copiar'+key('C');this.$('selfieCopy').hidden=touch||!clipboardImages();
-  this.$('selfieAgain').textContent='Tirar outra'+key('Espaço');this.$('selfieDone').textContent='Guardar celular'+key('Q');
+  this.$('selfieSave').textContent='Baixar foto'+key(keyName('KeyB'));
+  this.$('selfieCopy').textContent='Copiar'+key(keyName('KeyC'));this.$('selfieCopy').hidden=touch||!clipboardImages();
+  this.$('selfieAgain').textContent='Tirar outra'+key(keyName('Space'));this.$('selfieDone').textContent='Guardar celular'+key(keyName('KeyQ'));
  }
  // The phone's screen over the game: its frame round the photo, the rest dimmed, the buttons.
  showHud(visible){
@@ -382,7 +384,7 @@ export class Selfie {
   const frame=this.$('selfieFrame');frame.classList.toggle('horizontal',this.orientation==='horizontal');
   set('selfieFrame','style.left',`${r.x}px`);set('selfieFrame','style.top',`${r.y}px`);set('selfieFrame','style.width',`${r.w}px`);set('selfieFrame','style.height',`${r.h}px`);
   set('selfieMode','textContent',`SELFIE · ${PHOTO[this.orientation].label.toUpperCase()}`);
-  set('selfieHint','textContent',this.phase==='review'?'':this.phase==='pose'?'Sorria!':this.touch?'Arraste na tela: girar e subir/descer o celular · − +: perto/longe · ⟲: vertical/horizontal':'Mouse ou A/D: girar · W/S: subir/descer · roda: perto/longe · 1/2/3: você à esquerda/no centro/à direita · R: vertical/horizontal · Espaço ou clique: foto · Q: guardar');
+  set('selfieHint','textContent',this.phase==='review'?'':this.phase==='pose'?'Sorria!':this.touch?'Arraste na tela: girar e subir/descer o celular · − +: perto/longe · ⟲: vertical/horizontal':keyText('Mouse ou {KeyA}/{KeyD}: girar · {KeyW}/{KeyS}: subir/descer · roda: perto/longe · {Digit1}/{Digit2}/{Digit3}: você à esquerda/no centro/à direita · {KeyR}: vertical/horizontal · {Space} ou clique: foto · {KeyQ}: guardar'));
   set('selfieShot','disabled',this.phase!=='frame');if(this.shown.place!==this.place){this.shown.place=this.place;for(const b of this.hud.querySelectorAll('[data-place]'))b.setAttribute('aria-pressed',String(+b.dataset.place===this.place));}
  }
  dispose(){this.finish();this.phone.removeFromParent();this.phone.geometry.dispose();this.grin.removeFromParent();this.grin.geometry.dispose();for(const m of Object.values(this.fingers)){m.removeFromParent();m.geometry.dispose();}this.url&&URL.revokeObjectURL(this.url);this.hud?.remove();globalThis.document?.body?.classList.remove('selfie-mode');}

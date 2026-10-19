@@ -4,6 +4,7 @@
 // when the front passes close to a clip. It is banked when the car straightens (0.7 s), lost when the car spins round or
 // hits something hard. The challenges (CHALLENGES) read the same drift. No three.js: Node tests drive it.
 import {CLIP_REACH} from './drift-arena.js';
+import {keyName} from './key-bindings.js';
 
 const wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
@@ -108,7 +109,7 @@ export class ArenaChallenge{
  zerinho(car,score){
   const cone=this.world.props[0];if(!cone)return null;
   const spot=this.world.layout.items[cone.item],near=Math.hypot(car.x-spot.x,car.y-spot.y)<=this.def.reach;
-  if(cone.hit){this.lastAngle=null;if(this.state==='running')return this.finish(0,{reason:'Derrubou o cone. R arruma.'});return null;}
+  if(cone.hit){this.lastAngle=null;if(this.state==='running')return this.finish(0,{reason:`Derrubou o cone. ${keyName('KeyR')} arruma.`});return null;}
   if(score.drift&&near){
    if(this.lastAngle!==null)this.sweep+=wrap(car.heading-this.lastAngle);this.lastAngle=car.heading;this.state='running';this.current=Math.abs(this.sweep)/(2*Math.PI);
    return null;
@@ -122,7 +123,7 @@ export class ArenaChallenge{
  rosquinha(car,score){
   const cone=this.world.props[0];if(!cone)return null;
   const spot=this.world.layout.items[cone.item],near=Math.hypot(car.x-spot.x,car.y-spot.y)<=this.def.reach;
-  if(cone.hit){this.lastAngle=null;if(this.state==='running')return this.finish(0,{reason:'Derrubou o cone. R arruma.'});return null;}
+  if(cone.hit){this.lastAngle=null;if(this.state==='running')return this.finish(0,{reason:`Derrubou o cone. ${keyName('KeyR')} arruma.`});return null;}
   const a=Math.atan2(car.y-spot.y,car.x-spot.x);
   if(score.drift&&near){
    if(this.lastAngle!==null)this.sweep+=wrap(a-this.lastAngle);this.lastAngle=a;this.state='running';this.current=Math.abs(this.sweep)/(2*Math.PI);

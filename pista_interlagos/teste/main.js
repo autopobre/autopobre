@@ -47,6 +47,8 @@ import {MobileControls} from './mobile-controls.js';
 import {GamepadControls} from './gamepad-controls.js';
 import {WheelControls} from './wheel-controls.js';
 import {WheelPanel} from './wheel-panel.js';
+import {playerKeys,installKeyBindings,applyKeyLabels,keyName} from './key-bindings.js';
+import {KeysPanel} from './keys-panel.js';
 import {ManualGearbox} from './manual-gearbox.js';
 import {BrakeReverse} from './brake-reverse.js';
 import {setupSettings} from './settings.js';
@@ -111,6 +113,8 @@ import {ArenaMode} from './drift-arena-mode.js';
 import {DriftCar} from './drift-physics.js';
 import {createArenaScene,arenaLandscape,oldStockPicture} from './drift-arena-scene.js';
 const $=id=>document.getElementById(id);
+// The player's keys (Controles tab, key-bindings.js): every keyboard event reads through them from here on.
+installKeyBindings(playerKeys);
 const touchDevice=matchMedia('(pointer:coarse)').matches||navigator.maxTouchPoints>0;let mobile;
 const preferences=new PlayerPreferences();
 let circuit=selectedCircuit(preferences.values.circuit,window.location.search);
@@ -467,9 +471,9 @@ function ghostHud(){
 function toggleGhost(){
  if(!ready||!sessionStarted)return;
  ghostKey='';const lap=currentGhost(),owner=ghostOwner();let text;
- if(preferences.values.ghost){preferences.update({ghost:false});text='Fantasma desligado · G liga de novo';}
+ if(preferences.values.ghost){preferences.update({ghost:false});text=`Fantasma desligado · ${keyName('KeyG')} liga de novo`;}
  else if(!lap)text=`Ainda não há volta gravada para o fantasma de ${owner.pilot||'você'} em ${circuit.name} (${immersive.active?'Modo História':'Modo Corrida'}). Complete uma volta válida pilotando e ela fica gravada.`;
- else{preferences.update({ghost:true});text=`Fantasma ligado · sua melhor volta, ${fmt(lap.time)} · G desliga`;}
+ else{preferences.update({ghost:true});text=`Fantasma ligado · sua melhor volta, ${fmt(lap.time)} · ${keyName('KeyG')} desliga`;}
  status(text);setTimeout(()=>{if($('status').textContent===text)status('');},4500);ghostHud();
 }
 function initializeRenderer(){
@@ -621,13 +625,13 @@ function setWipers(on){fuscaScreen.setWipers(on);return windscreen.setWipers(on)
 // J (the touch button, a learnt wheel button): the wipers on or off (they finish their stroke and park).
 function toggleWipers(){
  if(!ready||!sessionStarted||immersive?.onFoot())return;
- const on=setWipers(!windscreen.wiping),text=on?'Limpador ligado · J desliga':'Limpador desligado · J liga';
+ const on=setWipers(!windscreen.wiping),text=`Limpador ${on?'ligado':'desligado'} · ${keyName('KeyJ')} ${on?'desliga':'liga'}`;
  status(text);setTimeout(()=>{if($('status').textContent===text)status('');},2500);headlightsHud();
 }
 // H (the controller's L3, the touch button, a learnt wheel button): the player's headlights on or off.
 function toggleHeadlights(){
  if(!ready||!sessionStarted||immersive?.onFoot())return;
- const on=playerLamps.toggle(),text=on?'Faróis acesos · H apaga':'Faróis apagados · H acende';
+ const on=playerLamps.toggle(),text=`Faróis ${on?'acesos':'apagados'} · ${keyName('KeyH')} ${on?'apaga':'acende'}`;
  status(text);setTimeout(()=>{if($('status').textContent===text)status('');},2500);headlightsHud();
 }
 // Y and U on the track: the next time of day (dia, fim de tarde, noite) or rain (seco, garoa, chuva) after the one
@@ -688,7 +692,7 @@ function debugLines(){
 const carAudio=new CarAudio();
 // Each channel keeps its level while silenced: the slider stays put, dimmed, and says so.
 const AUDIO_CHANNELS=Object.freeze([['musicVolume','music','música'],['effectsVolume','effects','efeitos']]);
-function audioControls(){ for(const [key,channel,label] of AUDIO_CHANNELS){const muted=!!carAudio[channel+'Muted'];$(key).value=Math.round(carAudio[key]*100);$(key).classList.toggle('channel-muted',muted);$(key+'Value').textContent=`${Math.round(carAudio[key]*100)}%${muted?' · mudo':''}`;$(channel+'Mute').textContent=`${muted?'Ativar':'Silenciar'} ${label}`;$(channel+'Mute').setAttribute('aria-pressed',String(muted));} $('volume').value=Math.round(carAudio.volume*100);$('volumeValue').textContent=`${Math.round(carAudio.volume*100)}%`;$('mute').textContent=carAudio.muted?'Ativar som (M)':'Silenciar (M)';$('mute').setAttribute('aria-pressed',String(carAudio.muted));$('synthEngine').checked=carAudio.synthEngine; }
+function audioControls(){ for(const [key,channel,label] of AUDIO_CHANNELS){const muted=!!carAudio[channel+'Muted'];$(key).value=Math.round(carAudio[key]*100);$(key).classList.toggle('channel-muted',muted);$(key+'Value').textContent=`${Math.round(carAudio[key]*100)}%${muted?' · mudo':''}`;$(channel+'Mute').textContent=`${muted?'Ativar':'Silenciar'} ${label}`;$(channel+'Mute').setAttribute('aria-pressed',String(muted));} $('volume').value=Math.round(carAudio.volume*100);$('volumeValue').textContent=`${Math.round(carAudio.volume*100)}%`;$('mute').textContent=`${carAudio.muted?'Ativar som':'Silenciar'} (${keyName('KeyM')})`;$('mute').setAttribute('aria-pressed',String(carAudio.muted));$('synthEngine').checked=carAudio.synthEngine; }
 audioControls();
 // Moving a silenced channel's slider turns it back on; the effects slider plays its preview.
 for(const [key,channel] of AUDIO_CHANNELS){
@@ -807,8 +811,7 @@ async function setLivery(value){
   if(token===loadToken){
    $('skinButton').disabled=!ready;$('livery').disabled=false;
    if(activeLivery)$('livery').value=activeLivery;
-   $('skinButton').textContent=`Pintura: ${activeLivery==='seiva_danilo'?'Seiva':'OMP'} (V)`;
-   $('skinButton').title=`Trocar para ${activeLivery==='seiva_danilo'?'Assinaturas · OMP':'Seiva · Danilo Veículos'} (V)`;
+   skinLabel();
   }
  }
 }
@@ -1292,11 +1295,16 @@ function pilot(step=0){
  if(step||!heroCommand)heroCommand=immersive&&!immersive.active?immersive.field.heroInput(car,step||1/120):recognitionInput(car);
  return {...heroCommand};
 }
+// The Pintura button: the paint on the car, the other one, and the key (V unless the player moved it).
+function skinLabel(){
+ $('skinButton').textContent=`Pintura: ${activeLivery==='seiva_danilo'?'Seiva':'OMP'} (${keyName('KeyV')})`;
+ $('skinButton').title=`Trocar para ${activeLivery==='seiva_danilo'?'Assinaturas · OMP':'Seiva · Danilo Veículos'} (${keyName('KeyV')})`;
+}
 function hud(){
  const fuel=immersive?.active?immersive.state.fuel:immersive?.freeFuel??12,staged=immersive?.active&&['crowd','podium'].includes(immersive.state.phase);$('fuelGauge').classList.toggle('hidden',!!staged);$('fuelGauge').classList.toggle('reserve',fuel<1);$('fuelVolume').textContent=fuel.toFixed(1)+' L';$('fuelBar').value=fuel;$('fuelStatus').textContent=fuel<=0?(immersive?.active?'TANQUE VAZIO':'VAZIO · R PARA REABASTECER'):fuel<1?'RESERVA':immersive?.active&&immersive.state.tankDetached?'VAZAMENTO':'COMBUSTÍVEL';const p=car.surface,watch=watchedRival(),shown=watch?.car??car,speed=Math.hypot(shown.vx,shown.vy)*3.6;
  $('speed').textContent=Math.round(speed);$('gear').textContent=watch?watch.car.gear:carAudio.state.gear;$('rev').style.width=`${(watch?watch.car.rpm:carAudio.state.rpm)/7400*100}%`;
  // Recon lap: the Piloto button (N) names the driver the cameras watch; speed and gear are that car's.
- const touring=automatic&&!immersive.active;$('watchButton').hidden=$('tourBadge').hidden=$('touchTourBadge').hidden=!touring;if(touring)$('watchButton').textContent=watch?`Piloto: #${watch.entry.number} ${watch.entry.shortName} (N)`:'Piloto: você (N)';
+ const touring=automatic&&!immersive.active;$('watchButton').hidden=$('tourBadge').hidden=$('touchTourBadge').hidden=!touring;if(touring)$('watchButton').textContent=`Piloto: ${watch?`#${watch.entry.number} ${watch.entry.shortName}`:'você'} (${keyName('KeyN')})`;
  $('grade').textContent=`${(p.grade*100).toFixed(1).replace('.',',')}%`;$('bank').textContent=`${(p.bank*100).toFixed(1).replace('.',',')}%`;$('alt').textContent=circuit.altitude===null?'—':`${(p.z+circuit.altitude).toFixed(1)} m`;
  const totalLaps=immersive.active?immersive.storyLaps:immersive.freeTotalLaps;$('lap').textContent=Number.isFinite(totalLaps)?`${Math.min(car.laps+1,totalLaps)} / ${totalLaps}`:String(car.laps+1);$('racePosition').textContent=`${immersive.active?immersive.state.result?.position??immersive.state.position:immersive.freePosition}º / ${immersive.fieldSize}`;$('racePosition').parentElement.hidden=immersive.practice;$('timer').textContent=fmt(car.clock-car.lapStart);$('best').textContent=fmt(car.best);const rejected=car.lastLapValid===false&&car.clock-car.lapStart<10;$('valid').textContent=rejected?(car.lastInvalidReason==='pit'?'Volta não contou · excesso de velocidade nos boxes':'Volta não contou · trecho cortado ou incompleto'):car.lapValid?'Volta válida':car.invalidReason==='pit'?`Volta inválida · ${Math.round(car.pitPenalty?.kmh??0)} km/h nos boxes (máx. 60)`:'Volta inválida · trecho cortado';$('valid').hidden=car.lapValid&&!rejected;$('valid').style.color=car.lapValid&&!rejected?'#e2fb57':'#ffb789';
  $('surface').textContent=automatic?(watch?`RECONHECIMENTO · #${watch.entry.number} ${watch.entry.shortName.toUpperCase()}`:'RECONHECIMENTO AUTOMÁTICO'):p.pit&&data.pit?(car.limiter?'PIT LANE · MÁX. 60 km/h':'PIT LANE'):p.onRoad?'ASFALTO · SESSÃO LIVRE':'FORA DA PISTA · ADERÊNCIA REDUZIDA';$('location').textContent=p.pit&&data.pit?'Pit lane · boxes':p.branch!=null&&data.branches?.[p.branch]?data.branches[p.branch].label:location(p.s);drawMap();
@@ -1414,7 +1422,7 @@ function lapBanner(dt){
    $('lapBannerDelta').textContent=delta===null?'':`${delta<0?'−':'+'}${Math.abs(delta).toFixed(3).replace('.',',')}`;
    // A lap that became the ghost says so (the first one tells where the ghost is).
    const ghostSaved=valid&&ghostSavedAt===car.lapStart;banner.classList.toggle('ghost-saved',ghostSaved);
-   $('lapBannerNote').textContent=valid&&car.lastLapFell?'Não vale recorde · queda no abismo':valid?ghostSaved?preferences.values.ghost?'Novo fantasma':'Fantasma gravado · G mostra':'':car.lastInvalidReason==='pit'?'Não contou · velocidade nos boxes':'Não contou · trecho cortado';
+   $('lapBannerNote').textContent=valid&&car.lastLapFell?'Não vale recorde · queda no abismo':valid?ghostSaved?preferences.values.ghost?'Novo fantasma':`Fantasma gravado · ${keyName('KeyG')} mostra`:'':car.lastInvalidReason==='pit'?'Não contou · velocidade nos boxes':'Não contou · trecho cortado';
    banner.classList.toggle('faster',delta!==null&&delta<0);banner.classList.toggle('slower',delta!==null&&delta>=0);banner.classList.toggle('invalid',!valid);
    // Restart the entrance animation even when two crossings come close together.
    banner.hidden=true;void banner.offsetWidth;banner.hidden=false;lapShown=5;
@@ -1834,6 +1842,11 @@ $('wheelLock').onchange=()=>{preferences.update({wheelLock:Number($('wheelLock')
 wheelPanel=new WheelPanel({wheel,gearbox,manual:manualGearbox,onManual:()=>{preferences.update({gearbox:'manual'});$('gearbox').value='manual';}});
 // Closing the settings ends a wheel setup left half done.
 $('settings').addEventListener('close',()=>wheelPanel.cancel());
+// Teclado do seu jeito: a key moved lets go of whatever was held (it would read as another key on release), and the
+// screen's key names follow.
+new KeysPanel();
+const keyLabels=()=>{applyKeyLabels(document);audioControls();if(activeLivery)skinLabel();};
+playerKeys.onChange(()=>{keys.clear();keyLabels();});keyLabels();
 $('settings').addEventListener('close',()=>{sceneryToastDue=sceneryNotice();});
 // For checks: what the wheel reads and the gear asked for (from the opening menu on).
 window.interlagosVolante={info:()=>({configured:wheel.configured,connected:wheel.connected,learning:wheel.learning,steering:wheel.steering,degrees:wheel.degrees,throttle:wheel.throttle,brake:wheel.brake,clutch:wheel.clutch,lever:wheel.lever,held:[...wheel.held],map:structuredClone(wheel.map),lock:wheel.lock,gear:gearbox.gear,manual:manualGearbox(),carGear:car?.gear??null,carManual:!!car?.manualGear})};
