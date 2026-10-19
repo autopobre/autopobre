@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 // What a frame costs, part by part of the scene: for medir_pc_fraco.py and for tuning the light levels (Baixo on a
 // notebook's integrated video). count() tallies every draw the renderer makes over a few frames (the picture,
 // the sun's shadow map, mirrors and reflection captures) by the part it belongs to (parts(): main.js names the
@@ -17,6 +18,78 @@ export function freezeStatic(root){
  root.traverse(o=>{if(live.has(o)&&o!==root||!o.matrixAutoUpdate)return;o.matrixAutoUpdate=false;frozen++;});
  return frozen;
 }
+// Culling by a box for big still meshes spread wide (cullBoxes): three.js tests each object's bounding sphere against the
+// picture's view, the sun's shadow box and every reflection-probe face. A 400 m block of trees, a 450 m block of houses or a
+// 300 m stretch of wall has a sphere some 280 m round, as high as it is wide: blocks off to the side, behind the camera,
+// under the sun's thin slanted box or above the probe's up face went in whole (Pampulha's woods: half the trees drawn in
+// the probe and the shadow map lay outside them). The box of what the object really covers (each instance's sphere,
+// grown for what the vertex shaders add) is far tighter and as safe: an object carrying one (userData.cullBox, world
+// frame) is tested by it instead. Nothing is drawn differently, only less is sent. Never for anything that moves.
+const sphereTest=THREE.Frustum.prototype.intersectsObject;
+THREE.Frustum.prototype.intersectsObject=function(object){const box=object.userData.cullBox;return box?this.intersectsBox(box):sphereTest.call(this,object);};
+// Every still mesh under root gets its world box (call once its matrices and instances are final; again after instances
+// are added). grow: how far past its geometry's own sphere an instance's vertex shader may push it (trees, houses: 1.6).
+// skip(o): objects left to their sphere (anything placed per frame). Returns how many got a box.
+export function cullBoxes(root,{grow=1.6,skip=null}={}){
+ if(!root)return 0;root.updateMatrixWorld(true);let count=0;
+ const box=new THREE.Box3(),m=new THREE.Matrix4(),c=new THREE.Vector3(),s=new THREE.Vector3(),e=new THREE.Vector3();
+ root.traverse(o=>{
+  if(!o.isMesh||o.isSkinnedMesh||o.userData.live||skip?.(o))return;const g=o.geometry;
+  if(o.isInstancedMesh){
+   if(!g.boundingSphere)g.computeBoundingSphere();const sphere=g.boundingSphere;box.makeEmpty();
+   for(let i=0;i<o.count;i++){o.getMatrixAt(i,m);const r=sphere.radius*grow*m.getMaxScaleOnAxis();if(!(r>0))continue;c.copy(sphere.center).applyMatrix4(m);box.expandByPoint(e.copy(c).addScalar(r)).expandByPoint(e.copy(c).subScalar(r));}
+   if(box.isEmpty())return;box.applyMatrix4(o.matrixWorld);
+  }else{if(!g.boundingBox)g.computeBoundingBox();box.copy(g.boundingBox).applyMatrix4(o.matrixWorld);box.getSize(s);box.expandByScalar(.5+.02*Math.max(s.x,s.y,s.z)*(grow-1));}
+  o.userData.cullBox=(o.userData.cullBox??new THREE.Box3()).copy(box);count++;
+ });
+ return count;
+}
+// Far pieces drawn together (farMerge): a circuit-wide thing cut in pieces (splitByCells, blocks of instances) is culled
+// piece by piece, but over a wide view (Pampulha across its lake: the far shore's walls, fences, banners, houses and
+// ground) every piece in view is a draw of its own, a hundred and more. The pieces of each `cell`-metre square go into one
+// mesh (their geometries merged, the pieces then drawing their own range of its buffers: no second copy; or one instanced
+// mesh holding all their instances, in the pieces' order) shown instead of them while the camera is more than `gap`
+// metres from them all: the same triangles, material and order, a draw or two for what were dozens. Nearer, the pieces
+// themselves, so the passes round the car (the sun's shadow box, the probe's faces: gap past their reach) draw no more
+// than before. Pieces: still meshes of one material (the plain ones indexed, standing as their parent does), the instanced
+// ones of one geometry, whose visibility nothing else switches. Returns {meshes, update(camera)}: the merged meshes are
+// added beside the first piece (before cullBoxes runs: they get their boxes there); update every frame before drawing.
+export function farMerge(pieces,{cell,gap,name=null}){
+ pieces=pieces.filter(p=>p?.isMesh&&!p.isSkinnedMesh&&p.parent);const cells=new Map(),centre=new THREE.Vector3(),merges=[];
+ for(const p of pieces){p.updateWorldMatrix(true,false);const g=p.geometry;if(!g.boundingBox)g.computeBoundingBox();if(p.isInstancedMesh&&!p.boundingBox)p.computeBoundingBox();
+  const box=(p.isInstancedMesh?p.boundingBox:g.boundingBox).clone().applyMatrix4(p.matrixWorld);
+  box.getCenter(centre);const key=Math.floor(centre.x/cell)+':'+Math.floor(centre.z/cell);if(!cells.has(key))cells.set(key,{pieces:[],box:new THREE.Box3()});
+  const c=cells.get(key);c.pieces.push(p);c.box.union(box);}
+ const m=new THREE.Matrix4(),local=new THREE.Matrix4(),inverse=new THREE.Matrix4(),col=new THREE.Color();
+ for(const c of cells.values()){
+  if(c.pieces.length<2)continue;const first=c.pieces[0],parent=first.parent;let mesh;inverse.copy(parent.matrixWorld).invert();
+  // Each piece's frame in the parent's, where the merged mesh stands (the identity for pieces placed as they are).
+  const frame=p=>local.multiplyMatrices(inverse,p.matrixWorld);
+  if(first.isInstancedMesh){
+   const total=c.pieces.reduce((n,p)=>n+p.count,0);mesh=new THREE.InstancedMesh(first.geometry,first.material,total);let k=0;
+   for(const p of c.pieces){frame(p);for(let i=0;i<p.count;i++,k++){p.getMatrixAt(i,m);mesh.setMatrixAt(k,m.premultiply(local));if(p.instanceColor){p.getColorAt(i,col);mesh.setColorAt(k,col);}}}
+   mesh.computeBoundingSphere();
+  }else{
+   // One copy of the vertices: the cell's pieces become views (their index range) of the merged geometry's buffers.
+   if(!c.pieces.every(p=>frame(p).equals(IDENTITY)&&p.geometry.index&&!p.geometry.groups.length))continue;
+   const merged=mergeGeometries(c.pieces.map(p=>p.geometry),false);if(!merged)continue;merged.computeBoundingSphere();mesh=new THREE.Mesh(merged,first.material);
+   let start=0;
+   for(const p of c.pieces){
+    const old=p.geometry,count=old.index.count,view=new THREE.BufferGeometry();if(!old.boundingSphere)old.computeBoundingSphere();
+    for(const [key,attribute] of Object.entries(merged.attributes))view.setAttribute(key,attribute);
+    view.setIndex(merged.index);view.setDrawRange(start,count);view.boundingBox=old.boundingBox.clone();view.boundingSphere=old.boundingSphere.clone();
+    p.geometry=view;old.dispose();start+=count;
+   }
+  }
+  mesh.name=(name??first.name)+'_longe';mesh.castShadow=first.castShadow;mesh.receiveShadow=first.receiveShadow;mesh.renderOrder=first.renderOrder;
+  if(first.customDepthMaterial)mesh.customDepthMaterial=first.customDepthMaterial;mesh.visible=false;parent.add(mesh);mesh.updateMatrixWorld(true);mesh.matrixAutoUpdate=false;
+  merges.push({mesh,pieces:c.pieces,box:c.box,active:false});
+ }
+ return {meshes:merges.map(x=>x.mesh),update(camera){
+  for(const x of merges){const active=x.box.distanceToPoint(camera.position)>gap;if(x.active===active)continue;x.active=active;x.mesh.visible=active;for(const p of x.pieces)p.visible=!active;}
+ }};
+}
+const IDENTITY=new THREE.Matrix4();
 // A big still mesh cut into pieces of `cell` metres (by each triangle's centre, x and z of the scene). One mesh over a
 // whole circuit (an open circuit's ground, a street circuit's walls) was drawn whole in every pass: the picture, the
 // sun's shadow map, the mirrors; in pieces three.js culls what is out of each view, and the sun's box takes the few

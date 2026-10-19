@@ -82,6 +82,7 @@ import {createPampulhaNiemeyer,hasPampulhaNiemeyer} from './pampulha-niemeyer.js
 import {createPampulhaOrla,hasPampulhaOrla} from './pampulha-orla.js';
 import {createPampulhaBarragem,hasPampulhaBarragem} from './pampulha-barragem.js';
 import {createPampulhaParques,hasPampulhaParques} from './pampulha-parques.js';
+import {createPampulhaPontes,hasPampulhaPontes} from './pampulha-pontes.js';
 import {createBranchScenery} from './branch-scenery.js';
 import {hasBranches} from './branch-layout.js';
 import {createCityStreets} from './city-streets.js';
@@ -100,7 +101,7 @@ import {CinematicIntro} from './intro-cinematic.js';
 import {resolveGraphics,resolutionFloor,ResolutionPace,gpuTier,autoLevel,autoReason,lowerLevel,FrameWatch,FrameLimiter,DisplayCadence,adaptivePixelRatio,SHADOW_LEVELS,VIEW_DISTANCES,VALLEY_VIEW,SCENERY_LEVELS,MIRROR_SIZES,CAR_DETAIL,PEOPLE_REACH,GRAPHICS_LEVEL_NAMES,GRAPHICS_OPTIONS,DEBUG_OVERLAY_MODES,DEBUG_OVERLAY_CORNERS} from './graphics-settings.js';
 import {GraphicsPanel} from './graphics-panel.js';
 import {DebugOverlay} from './debug-overlay.js';
-import {PerfProbe,freezeStatic,splitByCells} from './perf-probe.js';
+import {PerfProbe,freezeStatic,splitByCells,cullBoxes,farMerge} from './perf-probe.js';
 import {RaceAction,ActionNotice} from './race-action.js';
 import {GhostRecorder,loadGhost,saveGhost} from './ghost-lap.js';
 import {GhostCar} from './ghost-car.js';
@@ -306,6 +307,8 @@ const fallView=new FallView($('fallFade'),$('fallFlash'));let fallMode=null;
 let explosions=null;
 // What a circuit adds to the world and moves every frame (the sea's chop, Floripa's bridges and landmarks).
 let circuitExtras=[];
+// The far pieces of the circuit-wide scenery drawn together (perf-probe.js farMerge), switched round the camera each frame.
+let farMerges=[];const FAR_MERGE_GAP=750;
 // The world round an enclosed bowl out of the pictures taken from inside it (an extra's encloses(camera): the Mineirão's
 // floor, pampulha-estadios.js), each render by its own camera (the picture, a mirror, each face of a reflection capture;
 // the sun's shadow map is drawn within the same render) and given back after it: true leaves out the circuit's still
@@ -1475,7 +1478,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(
  const braking=driveCommand.engineOff?0:driveCommand.brake;brakeLamps.userData.set(model?.visible?braking:0,!!model?.visible&&playerLamps.lit);fuscaBody.brake(braking,playerLamps.lit);
  carAudio.update(heard,rivalSound?.command??driveCommand,rivalSound?.skid??skid,paused||frozen,mode);
  carAudio.updateScene({...immersive?.audioScene(heard),speed:Math.hypot(heard.vx,heard.vy),onRoad:heard.surface.onRoad,rain:weather.drops,wet:weather.wetness,...speedFx?.sound(heard===car?car:null),camera:mode},immersive?.state.takeSounds()??[],dt);
- sky.update(paused?0:dt);landscape?.update(paused?0:dt,camera);arenaMode?.frame(paused?0:dt);for(const extra of circuitExtras)extra.update?.(paused?0:dt,camera);
+ sky.update(paused?0:dt);landscape?.update(paused?0:dt,camera);for(const far of farMerges)far.update(camera);arenaMode?.frame(paused?0:dt);for(const extra of circuitExtras)extra.update?.(paused?0:dt,camera);
  // A watched rival is posed by immersive.update below: its camera follows after that.
  updateOpenings(paused?0:dt);updateCar(dt);if(!watchedRival())updateCamera(dt);const dash=cockpit.update(car,paused?0:dt,heard===car?carAudio.state:null),phoneArrived=dash.phoneArrived;if(phoneArrived)carAudio.notifyPhone();fuscaBody.update(dash.speed,dash.rpm,(immersive?.active?immersive.state.fuel:immersive?.freeFuel??12)/12);driver.update(car,paused?0:dt,{command:driveCommand,impact:frameImpact,phoneArrived});gamepad.bump(actionImpact);frameImpact=0;lapBanner(paused?0:dt);lastHud+=dt;if(lastHud>.07){hud();lastHud=0;}
  if(immersive?.visual)immersive.visual.renderAhead=renderAhead();immersive?.update(paused?0:dt,camera);if(watchedRival())updateCamera(dt);
@@ -2082,7 +2085,7 @@ $('settingsRestart').onclick=()=>{$('settings').close();beginRace(true);};
 $('tour').onclick=()=>{$('settings').close();beginRace(true,true,false);};$('menuButton').onclick=openSettings;$('camera').onchange=e=>setCameraMode(e.target.value,true);$('livery').onchange=async e=>{preferences.update({livery:e.target.value});if(!ready||!sessionStarted||raceCar!=='99'||raceModel==='fusca')return;try{await setLivery(e.target.value);}catch(err){status('Não foi possível carregar a pintura. Tente novamente.');console.error(err);}};
 // Keep the car and audio session; release the previous circuit before loading another.
 function clearCircuit(){
- explosions=null;circuitExtras=[];enclosure=null;fallView.stop(camera);
+ explosions=null;circuitExtras=[];farMerges=[];enclosure=null;fallView.stop(camera);
  if(arenaMode)mobile?.setHandbrakeHold(false);arenaMode?.dispose();arenaMode=null;arenaScene=null;document.body.classList.remove('arena-mode');if(car)car.world=null;
  action.reset();actionNotice.update(0,null,false);intro.stop();const retired=[];
  if(pitstop){pitstop.reset();pitstop.panel.remove();pitstop.hud.remove();pitstop.walkHud.remove();pitstop.markers.removeFromParent();retired.push(pitstop.markers);pitstop=null;}
@@ -2126,7 +2129,7 @@ async function loadCircuit(){
  car=circuit.arena?new DriftCar(data):new TestCar(data);ghostRecorder.reset();
  roadSurface=await createTrackSurface(renderer,data,{quality:graphics.values.materials});
  // Roots placed once and never moved: frozen below (perf-probe.js freezeStatic).
- const fixed=[];
+ const fixed=[],wide=[];
  // The circuit's ground and far relief, with the rest of its still scenery out of sight from inside an enclosed bowl.
  const world=[];
  if(!driver){driver=await createDriver(cockpit);carBody.add(driver.root);}
@@ -2148,9 +2151,9 @@ async function loadCircuit(){
   // A real city round the lap (Floripa): its streets, sidewalks and squares are drawn on the ground from the city map.
   const cityMap=data.scenery.city?await loadCityMap(data,circuit.ground.replace(/[^/]*$/,'')):null;
   const open=await createOpenCircuit(data,roadSurface,{heights:groundFit.heights,textures:terrainTextures,field:landscapeField,groundUrl:circuit.ground,label:`${circuit.track} · AUTO-POBRE RACING`,mobile:scenery.mobile,city:cityMap});
-  scene.add(open.root);world.push(open.root);cameraObstacles.push(...open.obstacles);
+  scene.add(open.root);fixed.push(open.root);wide.push(open.root);world.push(open.root);cameraObstacles.push(...open.obstacles);
   // The valley out to 22 km below a plateau circuit (Chapada dos Sonhos), from the same folder as its ground photo.
-  const far=data.scenery.far?await createFarTerrain(data,circuit.ground.replace(/[^/]*$/,''),{stride:sceneryLevel==='basico'?2:1,heights:groundFit.heights}):null;if(far){scene.add(far.root);world.push(far.root);}applyViewDistance();
+  const far=data.scenery.far?await createFarTerrain(data,circuit.ground.replace(/[^/]*$/,''),{stride:sceneryLevel==='basico'?2:1,heights:groundFit.heights}):null;if(far){scene.add(far.root);fixed.push(far.root);wide.push(far.root);world.push(far.root);}applyViewDistance();
   explosions=data.scenery.cliff?new Explosions(scene,{mobile:scenery.mobile}):null;
   // A coastal street circuit (Floripa): the sea at its level, the bridges round the decks the road runs on and the
   // city's landmarks, each with its own model.
@@ -2173,6 +2176,8 @@ async function loadCircuit(){
   if(hasPampulhaOrla(data))circuitExtras.push(createPampulhaOrla(data,{mobile:scenery.mobile,ground:groundAt}));
   if(hasPampulhaBarragem(data))circuitExtras.push(createPampulhaBarragem(data,{mobile:scenery.mobile,ground:groundAt}));
   if(hasPampulhaParques(data))circuitExtras.push(createPampulhaParques(data,{mobile:scenery.mobile,ground:groundAt}));
+  // The bridge at "Orla · Zoológico" and the Ressaca and Sarandi creeks running under it into the lake (pampulha-pontes.js).
+  if(hasPampulhaPontes(data))circuitExtras.push(createPampulhaPontes(data,{mobile:scenery.mobile,ground:groundAt}));
   // Round 3 of the Pampulha: the fork by the Igrejinha (data.branches): the avenue's asphalt and lines past the Parque
   // Guanabara, the attenuators on the noses and the sign over the road before it (branch-scenery.js; its walls are the
   // lap's, street-walls.js).
@@ -2189,6 +2194,8 @@ async function loadCircuit(){
   landscape=createLandscape({data,field:landscapeField,ground:(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y),cover:data.scenery.cover,buildings:data.scenery.city?.buildings?null:data.scenery.buildings,city:cityMap,cityAngle:data.meta.city_angle??Math.PI/2,mobile:scenery.mobile,density:scenery.density,lod:scenery.lod,lean:sceneryLevel==='basico',style:'urban'});
   // The trees the land cover put where a landmark's yard or apron is (floripa-landmarks.js) go.
   for(const extra of circuitExtras)if(extra.clearings)landscape.clearAround(extra.clearings);
+  // An extra's own woods (pampulha-parques.js: the Parque Ecológico's) grow as the landscape's trees, in its blocks.
+  for(const extra of circuitExtras)if(extra.trees?.length)landscape.plant(extra.trees);
   const stands=createGrandstands(data,terrainTextures,(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y));scene.add(stands.root);fixed.push(stands.root);cameraObstacles.push(...stands.obstacles);standTops=stands.rows;
   // Out in a city open to roam the car stands on the ground as drawn (physics.js terrain).
   if(data.meta.roam)car.heights=groundFit.heights;
@@ -2246,6 +2253,21 @@ async function loadCircuit(){
  {const [s,d]=circuit.podium??[35,-32],p=podiumPoint(data,s,d);landscape.clearAround([{x:p.x,y:-p.z,r:24}]);}
  // The trees left standing are posts the Opala can hit.
  treeField=new TreeField(landscape.trunks(),{mobile:scenery.mobile});scene.add(treeField.points);car.posts=treeField;
+ // The woods, houses and horizon are placed once too (the lake's wave patch under the car stays live). Past FAR_MERGE_GAP
+ // metres (beyond the probe's faces and the sun's box) the pieces of the walls, fences, banners, ground and houses within a
+ // square are one draw each (perf-probe.js farMerge: the far shore across a lake was hundreds of draws); then every wide
+ // still piece (blocks of trees and houses, the ground, the walls, the banners) is culled by its own box, not by a sphere
+ // as high as it is wide (cullBoxes): the same picture, far fewer blocks in the shadow map and the probe's faces.
+ if(!circuit.arena){
+  freezeStatic(landscape.root);
+  const within=(root,name)=>root?.getObjectByName(name)?.children??[],named=(root,name)=>root?.children.filter(o=>o.name===name)??[];
+  for(const [pieces,cell] of [[within(roadRails?.root,'Muro_concreto_trechos'),1200],[within(roadRails?.root,'Alambrado_trechos'),1800],[within(roadRails?.root,'Postes_alambrado_trechos'),1800],
+   [named(trackside.root,'Faixas_nos_guardrails'),1800],[wide.flatMap(root=>within(root,'Terreno_ANADEM')),1200],
+   [within(landscape.root,'Casas'),1800],[within(landscape.root,'Casas_laje'),1800],[within(landscape.root,'Predios'),2700],[within(landscape.root,'Predios_redondos'),2700],
+   [within(landscape.root,'Horizonte_casas'),4400],[within(landscape.root,'Horizonte_cidade'),4500]])
+   if(pieces.length>1)farMerges.push(farMerge(pieces,{cell,gap:FAR_MERGE_GAP}));
+  for(const root of [landscape.root,...wide,roadRails?.root,trackside.root])cullBoxes(root);
+ }
  speedFx=createSpeedEffects({smoke:tyreSmoke,level:graphics.values.speedEffects});scene.add(speedFx.root);speedFx.motes.setSun(sunDirection);
  // An enclosed bowl's (enclosure above): the circuit's still scenery, whole roots and, for the view through its mouth,
  // every piece drawn of them.

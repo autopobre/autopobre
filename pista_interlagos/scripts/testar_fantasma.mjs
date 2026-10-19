@@ -3,9 +3,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
-import {TestCar} from '../teste/physics.js';
+import {TestCar,steerLimit,wrap,clamp} from '../teste/physics.js';
 import {RaceField} from '../teste/race-field.js';
-import {GhostRecorder,GhostLap,encodeGhost,decodeGhost,saveGhost,loadGhost,readGhosts,GHOST_KEY,GHOST_LIMIT,GHOST_RATE} from '../teste/ghost-lap.js';
+import {branchGeometries,branchPoint} from '../teste/branch-lane.js';
+import {GhostRecorder,GhostLap,encodeGhost,decodeGhost,saveGhost,loadGhost,readGhosts,ghostMaxTime,GHOST_KEY,GHOST_LIMIT,GHOST_RATE,GHOST_MAX_TIME,GHOST_LONGEST,GHOST_SAMPLES,GHOST_MIN_RATE,GHOST_BUDGET} from '../teste/ghost-lap.js';
 const data=JSON.parse(fs.readFileSync(new URL('../dados/pista.json',import.meta.url))),L=data.meta.reconstructed_xy_m;
 const memory=(limit=Infinity)=>{const values=new Map();return {values,getItem:k=>values.get(k)??null,setItem(k,v){if(v.length>limit)throw new Error('QuotaExceededError');values.set(k,v);}};};
 
@@ -101,6 +102,53 @@ assert.deepEqual(readGhosts({getItem:()=>'{broken'}),[]);assert.deepEqual(readGh
 {const s=memory();s.setItem(GHOST_KEY,JSON.stringify([{...encodeGhost(second),circuit:'interlagos',mode:'normal',pilot:' Stevan\u0000\u001b ',date:{toString:'x'}}]));
  const got=loadGhost(s,key);assert.equal(got.pilot,'Stevan');assert.equal(got.date,'');}
 
+// A long lap: the Circuito da Pampulha (20.5 km, one lap a race) driven whole from the grid by a scripted car (pure pursuit
+// on the lap with the fork's avenue branch in it, as testar_ramal.mjs) takes far past GHOST_MAX_TIME and is still a ghost.
+// Its track distance is the car's surface.s (on the branch, the lap's s its station stands for): it runs on with no jump.
+// Saved thinned within GHOST_SAMPLES (4 or 5 a second), it replays within centimetres, on the branch too.
+assert.equal(ghostMaxTime(L),GHOST_MAX_TIME,'a few-km circuit keeps the 6 minutes');
+let longLap=null,longReport=null;
+{
+ const pdata=JSON.parse(fs.readFileSync(new URL('../dados/pista_pampulha.json',import.meta.url))),PL=pdata.meta.reconstructed_xy_m,geo=branchGeometries(pdata)[0];
+ assert.ok(geo&&ghostMaxTime(PL)>1000,'Pampulha: a branch, and room for a slow lap');
+ const pts=[];for(const p of pdata.samples)if(p[0]<geo.entryMainS||p[0]>geo.exitMainS)pts.push({x:p[1],y:p[2],s:p[0]});
+ {const k=pts.findIndex(p=>p.s>geo.exitMainS),way=[];for(let b=0;b<=geo.length;b+=2){const q=branchPoint(geo,b);way.push({x:q.x,y:q.y});}pts.splice(k,0,...way);}
+ const N=pts.length,c=new TestCar(pdata),r=new GhostRecorder(),seen=[],NONE={left:0,right:0,throttle:0,brake:0,reverse:0,handbrake:0};
+ c.resetGrid();r.step(c,true);let k=0;
+ for(let step=0;step<120*1500&&!longLap;step++){
+  let best=Infinity;for(let j=k-5;j<k+40;j++){const p=pts[(j+N)%N],d2=(p.x-c.x)**2+(p.y-c.y)**2;if(d2<best){best=d2;k=(j+N)%N;}}
+  const speed=Math.hypot(c.vx,c.vy),T=pts[(k+Math.round((8+speed*.5)/2))%N],alpha=wrap(Math.atan2(T.y-c.y,T.x-c.x)-c.heading),steer=Math.atan2(2*2.667*Math.sin(alpha),Math.hypot(T.x-c.x,T.y-c.y));
+  let v=40;for(let j=2;j<60;j+=2){const p=pts[(k+j-3+N)%N],q=pts[(k+j)%N],o=pts[(k+j+3)%N],kap=Math.abs(wrap(Math.atan2(o.y-q.y,o.x-q.x)-Math.atan2(q.y-p.y,q.x-p.x)))/Math.max(1,Math.hypot(o.x-p.x,o.y-p.y)/2);v=Math.min(v,Math.sqrt(6/Math.max(kap,1e-4)+20*j));}
+  const cmd=clamp(steer/steerLimit(speed),-1,1);c.step({...NONE,left:Math.max(0,cmd),right:Math.max(0,-cmd),throttle:clamp((v-speed)*.5,0,1),brake:clamp((speed-v)*.6,0,1)},1/120);
+  longLap=r.step(c,true);const p=c.pose(0);if(!longLap&&c.lapStart===0)seen.push({t:c.clock,x:p.x,y:p.y,z:p.z,heading:c.heading,branch:c.surface.branch!=null});
+ }
+ assert.ok(longLap&&c.lastLapValid===true,'the long lap counts and is recorded');
+ assert.ok(longLap.time>GHOST_MAX_TIME&&longLap.time<ghostMaxTime(PL),`a ${longLap.time.toFixed(0)} s lap`);
+ const onBranch=seen.filter(s=>s.branch).length/120;assert.ok(onBranch>5,`by the avenue branch (${onBranch.toFixed(1)} s on it)`);
+ const n=longLap.values.length/7;let jump=0;for(let i=1;i<n;i++)jump=Math.max(jump,Math.abs(longLap.values[i*7+6]-longLap.values[i*7-1]));
+ assert.ok(jump<5&&Math.abs(longLap.values[n*7-1]-PL)<20,`the track distance runs one lap with no jump (${jump.toFixed(2)} m between samples at most)`);
+ const saved=encodeGhost(longLap),text=JSON.stringify(saved),back=decodeGhost(JSON.parse(text));
+ assert.ok(saved.rate>=GHOST_MIN_RATE&&saved.rate<GHOST_RATE&&saved.n<=GHOST_SAMPLES&&text.length<70000,`saved at ${saved.rate} a second, ${saved.n} samples, ${text.length} characters`);
+ assert.ok(back&&back.time===longLap.time&&back.rate===saved.rate);
+ let worst=0,worstBranch=0,worstHeading=0;
+ for(const s of seen){const q=back.poseAt(s.t),e=Math.hypot(q.x-s.x,q.y-s.y,q.z-s.z);worst=Math.max(worst,e);if(s.branch)worstBranch=Math.max(worstBranch,e);worstHeading=Math.max(worstHeading,Math.abs(wrap(q.heading-s.heading)));}
+ assert.ok(worst<.15&&worstHeading<.03,`the thinned lap replays within ${(worst*100).toFixed(1)} cm and ${worstHeading.toFixed(3)} rad`);
+ assert.ok(worstBranch<.15,`on the branch within ${(worstBranch*100).toFixed(1)} cm`);
+ assert.ok(back.timeAt(PL/2)>back.timeAt(PL/4)&&back.timeAt(PL*2)===back.time);
+ longReport={time:longLap.time,rate:saved.rate,kB:text.length/1000,worst,onBranch};
+ const s=memory(),key={circuit:'pampulha',mode:'normal',pilot:'Stevan'};
+ assert.ok(saveGhost(s,{...key,lap:longLap})&&loadGhost(s,key).time===longLap.time,'saved and loaded');
+ assert.equal(decodeGhost({...saved,time:GHOST_LONGEST+1}),null,'no lap longer than GHOST_LONGEST');
+}
+// All the ghosts together stay within GHOST_BUDGET: long laps push the oldest out (short ones too), the newest stay.
+{
+ const s=memory();for(let i=0;i<6;i++)saveGhost(s,{circuit:'interlagos',mode:'normal',pilot:`Curta ${i}`,lap:second},new Date(Date.UTC(2026,9,1,0,i)));
+ for(let i=0;i<GHOST_LIMIT;i++)saveGhost(s,{circuit:'pampulha',mode:'normal',pilot:`Longa ${i}`,lap:longLap},new Date(Date.UTC(2026,9,2,0,i)));
+ const kept=readGhosts(s),size=s.getItem(GHOST_KEY).length;
+ assert.ok(size<=GHOST_BUDGET&&kept.length<GHOST_LIMIT&&kept.some(g=>g.pilot===`Longa ${GHOST_LIMIT-1}`)&&!kept.some(g=>g.pilot.startsWith('Curta')),`${kept.length} ghosts in ${size} characters`);
+ assert.ok(kept.every(g=>decodeGhost(g)),'every one kept still loads');
+}
+
 // The shell: a pose of the replay places it as main.js places the player's car from TestCar.pose.
 globalThis.document??={createElement:()=>({width:0,height:0,getContext:()=>null})};
 const {GhostCar}=await import('../teste/ghost-car.js');
@@ -122,4 +170,4 @@ assert.equal(detailed.model,'opala','building another model keeps the one shown'
 assert.ok(detailed.has('fusca')&&detailed.model==='fusca'&&detailed.near.visible&&detailed.triangles===12&&!detailed.shells.get('opala').near.visible&&!detailed.shells.get('opala').far.visible);
 detailed.use('kombi');assert.equal(detailed.model,'fusca','a model never built keeps the one shown');detailed.use('opala');assert.equal(detailed.triangles,14);
 
-console.log(`Ghost lap passed: laps ${first.time.toFixed(2)} s (grid) and ${second.time.toFixed(2)} s recorded whole, replay within ${(worst*100).toFixed(1)} cm, ${(text.length/1000).toFixed(1)} kB a lap, one per pilot/circuit/mode/car, faster replaces, oldest out, autopilot and late laps left out, shell placed as the car.`);
+console.log(`Ghost lap passed: laps ${first.time.toFixed(2)} s (grid) and ${second.time.toFixed(2)} s recorded whole, replay within ${(worst*100).toFixed(1)} cm, ${(text.length/1000).toFixed(1)} kB a lap, one per pilot/circuit/mode/car, faster replaces, oldest out, autopilot and late laps left out, shell placed as the car; a Pampulha lap of ${longReport.time.toFixed(0)} s (${longReport.onBranch.toFixed(1)} s on the avenue branch) saved at ${longReport.rate} a second in ${longReport.kB.toFixed(1)} kB, replay within ${(longReport.worst*100).toFixed(1)} cm, all ghosts within ${GHOST_BUDGET/1e6} M characters.`);

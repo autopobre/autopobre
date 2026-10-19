@@ -186,7 +186,7 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
     for(const q of [far,near])assert(Math.abs(q.i-i)<=2,`Pampulha: a car at s=${p[0].toFixed(0)} d=${d.toFixed(1)} is found at s=${a[q.i][0].toFixed(0)}`);checked++;}}
   const gap=Math.min(...a.filter(p=>p[0]>=shared[0][0]&&p[0]<=shared[0][1]).map(p=>Math.min(...a.filter(q=>q[0]>=shared[1][0]&&q[0]<=shared[1][1]).map(q=>Math.hypot(q[1]-p[1],q[2]-p[2])))));
   assert(gap>12,`Pampulha: the two carriageways of the first block ${gap.toFixed(1)} m apart`);
-  // The global search by cells (physics.js lapGrid) gives the full scan's answer to the bit: over the Mineirão's floor (180 m
+  // The global search by cells (physics.js segmentGrid) gives the full scan's answer to the bit: over the Mineirão's floor (180 m
   // off the lap, where the window fell back to the scan every frame) and round the whole lap.
   const scan=(x,y)=>{let best=Infinity,o;for(let i=0;i<n;i++){const p=a[i],q=a[(i+1)%n],dx=q[1]-p[1],dy=q[2]-p[2],u=Math.max(0,Math.min(1,((x-p[1])*dx+(y-p[2])*dy)/(dx*dx+dy*dy))),ex=x-p[1]-u*dx,ey=y-p[2]-u*dy,d2=ex*ex+ey*ey;if(d2<best){best=d2;o={i,u,ex,ey};}}return o;};
   const bowl=data.scenery.landmarks.find(m=>m.kind==='mineirao').stadium.centre;let exact=0;

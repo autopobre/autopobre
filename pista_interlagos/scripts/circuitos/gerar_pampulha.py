@@ -475,6 +475,7 @@ def main():
     terra = terra_no_contorno(pasta, lago, q, zt, (ny, nx), rel, marcos_)
     agua, zt = fundo_da_lagoa(lago, q, zt, (ny, nx), fora, terra)
     agua, zt, canal = vertedouro(q, zt, agua, (ny, nx))
+    agua, zt, corregos = canais(pasta, ORIGEM, q, zt, agua, fora, tab[k])
     sob_tabuleiro = tab[k] & (road - zt > 3.0)
     peso = np.clip((24 - fora) / 16, 0, 1) * ~sob_tabuleiro * ~agua * ~canal
     zt = zt * (1 - peso) + (road - .06) * peso
@@ -509,6 +510,7 @@ def main():
     scenery['cover']['classes'] = ''.join(classes.ravel())
     marcos_na_volta(marcos_, P, s, E, largura)
     scenery['landmarks'] = marcos_
+    scenery['canals'] = corregos
     scenery['buildings'], scenery['skyline'] = edificios(pasta, ORIGEM, P, largura, folga, pit, gx, gy, agua.reshape(ny, nx), rel,
                                                          s, E, scenery['landmarks'], [ramal])
     solo_orto(pasta, ORIGEM, gx, gy)
@@ -593,6 +595,11 @@ NIVEL_LAGOA = 800.8
 TERRA_ACIMA_M = .4
 TERRA_MIN_HA = .25
 NA_AGUA = ('casa_do_baile', 'iate')
+# Os corregos Ressaca e Sarandi (OSM) se juntam na rotatoria da orla do zoologico, passam sob a avenida (a ponte da
+# volta, BHGeo) e desaguam no braco da lagoa ao lado do Parque Ecologico: canal de concreto aberto ate `alcance_m` da
+# ponte (os bueiros sob as outras ruas ficam fechados), `largura_m` de largura, agua no nivel da lagoa, fundo `fundo_m`
+# abaixo dela.
+CANAIS = {'nomes': ('Córrego Ressaca', 'Córrego Sarandi'), 'alcance_m': 160.0, 'largura_m': 10.0, 'fundo_m': 1.2}
 # O vertedouro principal da barragem (canal lateral de 2002 na ombreira esquerda, PAE da barragem: soleira livre de
 # 33,2 m a 801 m, galeria sob o macico): a borda da soleira do lado da lagoa, de oeste para leste, e o fundo do deck da
 # praca sobre o canal, de leste para oeste, medidos na ortofoto de 2015 (10 cm), em coordenadas locais. O deck e o
@@ -1187,6 +1194,52 @@ def vertedouro(q, zt, agua, forma):
     zt = np.where(canal, np.minimum(zt, VERTEDOURO_FUNDO - BASE), zt)
     print(f'vertedouro: {int(canal.sum())} nos do canal escavados a {VERTEDOURO_FUNDO} m, {int(frente.sum())} de lagoa diante da soleira')
     return agua, zt, canal
+
+
+def canais(pasta, origem, q, zt, agua, fora, ponte):
+    """Os corregos sob a ponte da volta (CANAIS, OSM): os trechos abertos (sem os bueiros sob as outras ruas; o da ponte
+    entra) ate CANAIS['alcance_m'] do meio da ponte, ligados a agua da lagoa mais perto (a boca), viram canal de
+    concreto: agua no nivel da lagoa, fundo CANAIS['fundo_m'] abaixo dela, nunca no asfalto da volta fora da ponte.
+    Devolve a agua, o terreno e os canais para o cenario (eixo, largura, nivel da agua e do fundo)."""
+    import shapely
+    from shapely.geometry import LineString, Point
+    from shapely.ops import unary_union
+    o = gf.osm_local(pasta, origem, 31983)
+    nivel = NIVEL_LAGOA - BASE
+    sob = ponte & (fora < 12)
+    centro = q[sob].mean(axis=0) if sob.any() else None
+    assert centro is not None, 'a volta tem de ter a ponte sobre os corregos'
+    alcance = Point(centro).buffer(CANAIS['alcance_m'])
+    linhas = []
+    for v in o['vias']:
+        tg = v.get('tags', {})
+        if tg.get('name') not in CANAIS['nomes'] or tg.get('waterway') not in ('stream', 'drain', 'canal'):
+            continue
+        L_ = LineString(gf.linha_via(o, v))
+        if tg.get('tunnel') and L_.distance(Point(centro)) > 25:
+            continue
+        g_ = L_.intersection(alcance)
+        for parte in getattr(g_, 'geoms', [g_]):
+            if parte.geom_type == 'LineString' and parte.length > 1:
+                linhas.append(parte)
+    eixo_ = unary_union(linhas)
+    # A boca: do fim do canal mais perto da lagoa ate a agua dela.
+    ag = q[agua]
+    pontas = [np.array(c_) for l_ in getattr(eixo_, 'geoms', [eixo_]) for c_ in (l_.coords[0], l_.coords[-1])]
+    dists = [cKDTree(ag).query(p_) for p_ in pontas]
+    j = int(np.argmin([d_[0] for d_ in dists]))
+    boca = LineString([pontas[j], ag[dists[j][1]]])
+    assert boca.length < 60, f'a boca do canal fica a {boca.length:.0f} m da lagoa'
+    linhas.append(boca)
+    poli = unary_union([l_.buffer(CANAIS['largura_m'] / 2) for l_ in linhas])
+    dentro = shapely.contains_xy(poli, q[:, 0], q[:, 1]) & ((fora > 2.0) | sob)
+    zt = np.where(dentro, np.minimum(zt, nivel - CANAIS['fundo_m']), zt)
+    agua = agua | dentro
+    saida = [{'name': 'Córregos Ressaca e Sarandi', 'line': np.round(np.array(l_.coords), 2).tolist(), 'width': CANAIS['largura_m'],
+              'water': round(nivel, 2), 'bed': round(nivel - CANAIS['fundo_m'], 2)} for l_ in linhas]
+    print(f'canais dos corregos: {len(linhas)} trechos, {sum(l_.length for l_ in linhas):.0f} m, {int(dentro.sum())} nos de agua '
+          f'(boca de {boca.length:.0f} m)')
+    return agua, zt, saida
 
 
 def pontes_da_volta(pasta, origem, P, largura, s, L):

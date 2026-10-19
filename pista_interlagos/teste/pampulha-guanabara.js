@@ -847,9 +847,11 @@ export function createPampulhaGuanabara(data,{ground,mobile=false}={}){
  function pose(dt){for(const r of rides)r.update(time,dt);boneRoot.updateMatrixWorld(true);}
  pose(0);
  Object.assign(stats,{drawCalls,triangles,trianglesK:Math.round(triangles/1000),parts,perRide:tris,bones:bones.length,bulbs:T.bulbs.triangles/8|0,sprites:sprites.length,driveSpace:drive,outside,
-  clearings:clearings.length,railingPanels:panels,pavingCells:cells,built,night:{level:0,lights:sprites.length},rides:info(),time});
+  clearings:clearings.length,railingPanels:panels,pavingCells:cells,built,night:{level:0,lights:sprites.length},time});
+ // The rides' poses for the checks, read when asked (built every frame, they were a dozen objects a frame for the collector).
+ Object.defineProperty(stats,'rides',{get:info,enumerable:true});
  function update(dt,camera){
-  time=(time+dt)%7200;glow.uGbTime.value=time;pose(dt);stats.time=+time.toFixed(2);stats.rides=info();
+  time=(time+dt)%7200;glow.uGbTime.value=time;pose(dt);stats.time=+time.toFixed(2);
   if(lit>0&&glowLights){night.uTime.value=time;night.uScreen.value=screenHalf(mobile);
    if(!camera||camera.position.distanceTo(sphere.center)<3000){const pos=glowLights.positions;moving.forEach(([l,i],k)=>{const b=bones[l.bone];tmpM.multiplyMatrices(b.matrixWorld,skeleton.boneInverses[l.bone]);tmpV.copy(restV[k]).applyMatrix4(tmpM);pos[i*3]=tmpV.x;pos[i*3+1]=tmpV.y;pos[i*3+2]=tmpV.z;});glowLights.update();}}
  }
@@ -857,7 +859,7 @@ export function createPampulhaGuanabara(data,{ground,mobile=false}={}){
  function setNight(level){lit=level;night.uNight.value=level;stats.night.level=level;glow.uGbGain.value=lerp(2,5.5,level);materials.signs.emissiveIntensity=.12+.75*level;if(glowLights)glowLights.mesh.visible=level>0;}
  root.updateMatrixWorld(true);
  const extra={root,obstacles:[],clearings,stats,update,setNight};
- pampulhaGuanabara.current={...extra,setTime(t){time=t;for(const r of rides)r.update(t,0);boneRoot.updateMatrixWorld(true);stats.rides=info();},rides:info};
+ pampulhaGuanabara.current={...extra,setTime(t){time=t;for(const r of rides)r.update(t,0);boneRoot.updateMatrixWorld(true);},rides:info};
  return extra;
 }
 // Whether a track file carries the park (main.js builds it then).

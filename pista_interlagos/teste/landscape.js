@@ -448,7 +448,7 @@ function realisticLakes(field,bodies,shore,waves,{mobile=false}={}){
   geometry.computeBoundingBox();lakes.push({mesh,level:body.level,box:geometry.boundingBox,weight:material.userData.planarWeight});
  }
  const patchMaterial=lakeMaterial(uniforms,mobile,true),patch=new THREE.Mesh(waves.patchGeometry(),patchMaterial),patchWeight=patchMaterial.userData.planarWeight;
- patch.name='Lago_realista_ondas';patch.receiveShadow=true;patch.renderOrder=1;patch.visible=false;root.add(patch);
+ patch.name='Lago_realista_ondas';patch.receiveShadow=true;patch.renderOrder=1;patch.visible=false;patch.userData.live=true;root.add(patch);
  const virtual=new THREE.PerspectiveCamera(),frustum=new THREE.Frustum(),matrix=new THREE.Matrix4(),size=new THREE.Vector2();
  const eye=new THREE.Vector3(),look=new THREE.Vector3(),normal=new THREE.Vector3(0,1,0),plane=new THREE.Plane(),clip=new THREE.Vector4(),q=new THREE.Vector4(),point=new THREE.Vector3();
  const scale=mobile?.35:.5,state={frame:0,rendered:-1,reflections:0,level:null};
@@ -1490,7 +1490,7 @@ export function createLandscape({data,field,ortho=null,cover=null,buildings=null
    terrainShore.shoreMap.value=shore.texture;terrainShore.shoreBounds.value.copy(shore.bounds);terrainShore.shoreOn.value=1;
    waves=water.waves=new LakeWaves(water,{mobile});
    simpleWater=waterMesh(field,bodies,waves,shore);root.add(simpleWater);
-   simplePatch=new THREE.Mesh(waves.patchGeometry(),simpleWaterMaterial(shore,waves,true));simplePatch.name='Lago_ondas';simplePatch.receiveShadow=true;simplePatch.visible=false;root.add(simplePatch);
+   simplePatch=new THREE.Mesh(waves.patchGeometry(),simpleWaterMaterial(shore,waves,true));simplePatch.name='Lago_ondas';simplePatch.receiveShadow=true;simplePatch.visible=false;simplePatch.userData.live=true;root.add(simplePatch);
   }
   const spacing=(mobile?8.5:6)*spread;woodAt=(x,y)=>{const i=ortho.index(x,y);return i<0?0:landCover(ortho,i).tree;};
   for(let y=y0+spacing/2;y<y0+height;y+=spacing)for(let x=x0+spacing/2;x<x0+width;x+=spacing){
@@ -1587,24 +1587,62 @@ export function createLandscape({data,field,ortho=null,cover=null,buildings=null
  // more draws only in the near blocks, and no vertex work for crowns a tree does not wear).
  const seeds={round:[11,37,59],tall:[23,71,97]},forms=mobile?1:3;
  const treeMaterial=sceneryMaterial('tree',{foliage:!mobile,plain:lean}),treeShadow=treeDepthMaterial();
- const lodBlocks=[],geometries=[],matrix=new THREE.Matrix4(),color=new THREE.Color(),treeBlock=mobile?200:400;
- for(const [list,kind,name] of [[[...trees,...shrubs],'round','Arvores'],[tall,'tall','Arvores_altas']]){
-  if(!list.length)continue;
+ const lodBlocks=[],geometries=[],matrix=new THREE.Matrix4(),color=new THREE.Color(),treeBlock=mobile?200:400,kinds={};
+ // A kind's meshes (its group, distant and near crowns) and its blocks by cell, made when its first trees come (plant()
+ // may bring a kind the land cover had none of).
+ const kindOf=(kind,name)=>{
+  if(kinds[kind])return kinds[kind];
   const far=mobile?treeGeometry(kind,seeds[kind][0],0):foliageTreeGeometry(kind,seeds[kind][0],0);
   const near=seeds[kind].slice(0,forms).map((seed,form)=>mobile?treeGeometry(kind,seed,1,lean):foliageTreeGeometry(kind,seed,1,form));geometries.push(far,...near);
-  const group=new THREE.Group(),blocks=new Map();group.name=name;root.add(group);
-  for(const item of list){item.kind=kind;item.form=Math.floor(hash2(item.x*.731,item.y*.917)*forms);const key=Math.floor(item.x/treeBlock)+':'+Math.floor(item.y/treeBlock);if(!blocks.has(key))blocks.set(key,[]);blocks.get(key).push(item);}
-  const instanced=(geometry,items,slot)=>{
-   const mesh=new THREE.InstancedMesh(geometry,treeMaterial,items.length);mesh.name=name+'_bloco';mesh.customDepthMaterial=treeShadow;mesh.castShadow=mesh.receiveShadow=true;
-   items.forEach((item,i)=>{composeTree(item,matrix,color);mesh.setMatrixAt(i,matrix);mesh.setColorAt(i,color);item[slot]={mesh,index:i};});
-   mesh.computeBoundingSphere();group.add(mesh);return mesh;
-  };
-  for(const items of blocks.values()){
-   const distant=instanced(far,items,'instance'),close=near.map((g,form)=>items.filter(item=>item.form===form)).map((own,form)=>own.length?instanced(near[form],own,'nearInstance'):null).filter(Boolean);
-   for(const mesh of close)mesh.visible=false;
-   lodBlocks.push({far:distant,near:close,center:distant.boundingSphere.center.clone(),radius:distant.boundingSphere.radius,close:false});
-  }
+  const group=new THREE.Group();group.name=name;root.add(group);
+  return kinds[kind]={name,far,near,group,blocks:new Map()};
+ };
+ const instanced=(K,geometry,items,slot)=>{
+  const mesh=new THREE.InstancedMesh(geometry,treeMaterial,items.length);mesh.name=K.name+'_bloco';mesh.customDepthMaterial=treeShadow;mesh.castShadow=mesh.receiveShadow=true;
+  items.forEach((item,i)=>{composeTree(item,matrix,color);mesh.setMatrixAt(i,matrix);mesh.setColorAt(i,color);item[slot]={mesh,index:i};});
+  mesh.computeBoundingSphere();K.group.add(mesh);return mesh;
+ };
+ // A block's meshes from its trees (again, with the trees planted later in the same cell: no extra draws for them).
+ const buildBlock=block=>{
+  const K=block.kind;
+  if(block.lod){for(const mesh of [block.lod.far,...block.lod.near]){K.group.remove(mesh);mesh.dispose();}lodBlocks.splice(lodBlocks.indexOf(block.lod),1);}
+  const items=block.items.filter(item=>!item.removed),distant=instanced(K,K.far,items,'instance');
+  const close=K.near.map((g,form)=>items.filter(item=>item.form===form)).map((own,form)=>own.length?instanced(K,K.near[form],own,'nearInstance'):null).filter(Boolean);
+  for(const mesh of close)mesh.visible=false;
+  block.lod={block,far:distant,near:close,center:distant.boundingSphere.center.clone(),radius:distant.boundingSphere.radius,close:false};lodBlocks.push(block.lod);
+ };
+ // The trees of a list into their kind's blocks; returns the blocks they went into.
+ const place=(list,kind,name)=>{
+  const K=kindOf(kind,name),touched=new Set();
+  for(const item of list){item.kind=kind;item.form=Math.floor(hash2(item.x*.731,item.y*.917)*forms);const key=Math.floor(item.x/treeBlock)+':'+Math.floor(item.y/treeBlock);
+   if(!K.blocks.has(key))K.blocks.set(key,{kind:K,items:[],lod:null});const block=K.blocks.get(key);block.items.push(item);touched.add(block);}
+  return touched;
+ };
+ for(const [list,kind,name] of [[[...trees,...shrubs],'round','Arvores'],[tall,'tall','Arvores_altas']]){
+  if(!list.length)continue;
+  for(const block of place(list,kind,name))buildBlock(block);
  }
+ // Far off, a kind's distant crowns of three by three blocks go in one draw (a super block: the same trees, crowns,
+ // colours and order as the blocks' own distant meshes, a copy of their instances), shown while all nine are distant;
+ // nearer, each block shows its own near or distant crowns as before. Over a wide view (Pampulha's lake: the far shore's
+ // woods) the blocks' distant crowns were a hundred draws or more each frame. A super block stays SUPER_GAP metres clear of
+ // the camera: never in the sun's shadow box nor in the reflection probe's faces (400 m deep, 700 m to their corners),
+ // whose few draws there keep the blocks' smaller meshes.
+ const supers=new Map(),SUPER_GAP=700;
+ const buildSupers=()=>{
+  for(const sup of supers.values()){sup.kind.group.remove(sup.mesh);sup.mesh.dispose();for(const block of sup.blocks){block.super=null;for(const item of block.items)item.superInstance=null;if(block.lod)block.lod.far.visible=!block.lod.close;}}supers.clear();
+  for(const K of Object.values(kinds))for(const [key,block] of K.blocks){
+   const [i,j]=key.split(':').map(Number),skey=K.name+':'+Math.floor(i/3)+':'+Math.floor(j/3);
+   if(!supers.has(skey))supers.set(skey,{kind:K,blocks:[],mesh:null,active:false});supers.get(skey).blocks.push(block);
+  }
+  for(const [skey,sup] of supers){
+   const items=sup.blocks.flatMap(block=>block.items.filter(item=>!item.removed));
+   if(sup.blocks.length<2||!items.length){supers.delete(skey);continue;}
+   sup.mesh=instanced(sup.kind,sup.kind.far,items,'superInstance');sup.mesh.visible=false;for(const block of sup.blocks)block.super=sup;
+   const p=new THREE.Vector3();sup.box=new THREE.Box3();for(const item of items)sup.box.expandByPoint(p.set(item.x,item.z,-item.y));sup.box.expandByScalar(25);
+  }
+ };
+ buildSupers();
  const lodDistance=lod;
  const houseMaterial=sceneryMaterial('house'),composeHouse=(item,matrix,color)=>{matrix.compose(new THREE.Vector3(item.x,item.z,-item.y),new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),item.turn),new THREE.Vector3(item.w,item.h,item.d));color.setRGB(...item.color);};
  const houseShadow=houses.length||lajes.length?houseDepthMaterial():null;
@@ -1639,7 +1677,8 @@ export function createLandscape({data,field,ortho=null,cover=null,buildings=null
   if(waves){waves.sync();const patch=realistic?lakes?.patch:simplePatch;if(simplePatch)simplePatch.visible=false;if(lakes)lakes.patch.visible=false;if(patch&&waves.active){patch.visible=true;waves.placePatch(patch);}}
   if(!camera)return;
   verge?.update(camera);
-  for(const block of lodBlocks){const close=camera.position.distanceTo(block.center)-block.radius<lodDistance;if(block.close===close)continue;block.close=close;block.far.visible=!close;for(const mesh of block.near)mesh.visible=close;}
+  for(const lod of lodBlocks){const close=camera.position.distanceTo(lod.center)-lod.radius<lodDistance;if(lod.close===close)continue;lod.close=close;lod.far.visible=!close&&!lod.block.super?.active;for(const mesh of lod.near)mesh.visible=close;}
+  for(const sup of supers.values()){const active=sup.blocks.every(block=>!block.lod.close)&&sup.box.distanceToPoint(camera.position)>SUPER_GAP;if(sup.active===active)continue;sup.active=active;sup.mesh.visible=active;for(const block of sup.blocks)block.lod.far.visible=!block.lod.close&&!active;}
  },
  // Cars passing the verge grass push it (speed-particles.js wakeCars); none on the light builds.
  setCars(cars){verge?.setCars(cars);},
@@ -1649,13 +1688,26 @@ export function createLandscape({data,field,ortho=null,cover=null,buildings=null
   let removed=0;const zero=new THREE.Matrix4().makeScale(0,0,0),changed=new Set();
   for(const item of [...trees,...tall,...shrubs]){
    if(item.removed||!item.instance||!points.some(q=>Math.hypot(item.x-q.x,item.y-q.y)<q.r+item.width*.45))continue;
-   item.removed=true;for(const {mesh,index} of [item.instance,item.nearInstance].filter(Boolean)){mesh.setMatrixAt(index,zero);changed.add(mesh);}removed++;
+   item.removed=true;for(const {mesh,index} of [item.instance,item.nearInstance,item.superInstance].filter(Boolean)){mesh.setMatrixAt(index,zero);changed.add(mesh);}removed++;
   }
   for(const mesh of changed){mesh.instanceMatrix.needsUpdate=true;mesh.computeBoundingSphere();}
   stats.cleared=(stats.cleared??0)+removed;return removed;
  },
  // Standing trees, for their trunks (tree-contact.js): position, size, kind, colour and instance.
  trunks:()=>[...trees,...tall].filter(t=>!t.removed&&t.instance),
+ // Trees a circuit's own scenery brings (an extra's trees: pampulha-parques.js, the Parque Ecológico's woods), planted as
+ // the land cover's are: the same crowns, near and distant, the same colours (ipês in their groves), in the same blocks.
+ // items: {x, y, z (trunk foot), height, width, turn, tall}. Before the trunks are read (main.js: TreeField).
+ plant(items){
+  const rand=random(items.length*104729+7),round=[],high=[];
+  for(const item of items){const tree={x:item.x,y:item.y,z:item.z,height:item.height,width:item.width,turn:item.turn??rand()*Math.PI*2,color:treeColor(rand,item.dry??0,mobile)};(item.tall?high:round).push(tree);}
+  plantIpes(round,high,mobile);trees.push(...round);tall.push(...high);
+  const touched=[...place(round,'round','Arvores'),...place(high,'tall','Arvores_altas')];
+  for(const block of touched)buildBlock(block);
+  buildSupers();
+  stats.trees+=items.length;stats.planted=(stats.planted??0)+items.length;stats.ipes=trees.filter(t=>t.ipe).length;stats.chunks=0;root.traverse(o=>{if(o.isInstancedMesh)stats.chunks++;});
+  return touched.length;
+ },
  // The physics ground was dug when the lakes were found; the visible terrain grid gets the same basin.
  digLakeBeds:heights=>shore?digLakeBeds(data.terrain,heights,shore):0,
  water,

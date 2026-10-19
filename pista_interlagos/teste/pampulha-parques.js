@@ -26,8 +26,9 @@ import {lightUniforms,nightLights,screenHalf} from './sea-water.js';
 //   city's legal water mirror, which still covers the park (its ground dug as lake bed, its land cover water), so while it
 //   is drowned (checked at load) the park's ground is drawn here: an island in the lake's level following the OSM outline,
 //   banks into the channels, the lawn 5 to 7 m over the water (the 2015 laser reads 806..810 m), the paths of OSM and the
-//   photo, the Lagoa do Parque Ecológico (OSM 135477238) in its concrete banks, its trees (instanced; dense woods in the
-//   north half, scattered in the lawns). On a fixed track file it stands on the real ground and the landscape's trees.
+//   photo, the Lagoa do Parque Ecológico (OSM 135477238) in its concrete banks, its trees (the landscape's own, planted
+//   by main.js: groves and woods in the north half, scattered in the lawns). On a fixed track file it stands on the real
+//   ground and the landscape's trees.
 //   On it: the entrance 60 m right of the lap at s 5450 (a white concrete frame 27.5 × 13.5 m over the road, slender
 //   columns, dark wooden booths, the green signpost with its bird; PARQUE ECOLÓGICO on its south wall, facing the lap,
 //   and along its east fascia for the cars coming down the east bank),
@@ -36,7 +37,7 @@ import {lightUniforms,nightLights,screenHalf} from './sea-water.js';
 //   (OSM node 9753280499), the Memorial Minas-Japão (OSM 332176304: a white drum standing in a 107 m long reflecting
 //   pool, white ribbon walls curving to it), the corten-steel monument to the promotor Francisco Lins do Rêgo (Commons;
 //   at OSM's sculpture node 9753280498), lamps and benches. After dark the lamps, the gates' uplights and the booths glow
-//   warm. Merged per material (a draw call each, the trees and the giraffes instanced/animated); nothing enters the lap's
+//   warm. Merged per material (a draw call each, the giraffes instanced/animated); nothing enters the lap's
 //   driving space (checked per vertex), no logos.
 
 const DRIVE=4.6,TAU=Math.PI*2;
@@ -361,7 +362,7 @@ function build(data,{ground,mobile=false}={}){
   giraffes:giraffeMaterial(tex.coat,girTime)
  };
  const SIZES={concrete:6,paving:1.6},T=Object.fromEntries(Object.keys(materials).map(k=>[k,new Batch(SIZES[k]??0)]));
- const lamps=[],floods=[],clearings=[],obstacles=[],white=[1,1,1];let islandBatch=null,treeMesh=null;
+ const lamps=[],floods=[],clearings=[],obstacles=[],trees=[],white=[1,1,1];let islandBatch=null;
  // A sign: the atlas rectangle R on quad a-b-c-d (bottom left, bottom right, top right, top left as read), facing o.
  const sign=(a,b,c,d,R,o,col=white)=>T.signs.quad(a,b,c,d,col,o,rectUv(R));
  // A board centred at (x, y) facing the horizontal direction o, w wide from z0 to z1 (read the right way round: the
@@ -646,21 +647,37 @@ function build(data,{ground,mobile=false}={}){
      acc-=len;}}
    park.lamps=k;}
   // ---------- The park's trees (the land cover has none there: lawn in the track file): woods in the north half,
-  // scattered over the lawns, never on the paths, the pond, the structures or the sight lines; one instanced draw.
+  // scattered over the lawns, never on the paths, the pond, the structures or the sight lines. Grown as the landscape's
+  // own trees (main.js plants this module's `trees` with landscape.js plant(): the same crowns near and far, the same
+  // greens and ipês, in its blocks), placed as a wood grows rather than on a grid: random darts kept where a slow noise
+  // gathers groves and opens glades, never closer than their crowns allow, taller in the woods than out on the lawns.
   {
-   const r=random(2003),spots=[],gap=mobile?13:9,clr=clearings.slice();
+   const r=random(2003),spots=[],cell=4,hashed=new Map(),clr=clearings.slice(),max=mobile?1100:2600;
    const pathNear=(x,y,m)=>PATHS.some(([wd,pts])=>lineDist(x,y,pts)<wd/2+m)||lineDist(x,y,GATE_ROAD)<6;
-   for(let x=PLAN.x0;x<PLAN.x1;x+=gap)for(let y=PLAN.y0;y<PLAN.y1;y+=gap){const px=x+(r()-.5)*gap*.9,py=y+(r()-.5)*gap*.9,dP=polyDist(px,py,PARK);if(dP<5)continue;
-    const n=fbm(px/45,py/45),zone=py>330?.5:py>-300?(px>-1700&&py<-90?.25:.88):py>-430?.07:py>-760?.32:.13,p=zone*(.55+.9*n);if(r()>p)continue;
-    if(polyDist(px,py,POND)>-6||pathNear(px,py,2.5)||clr.some(c=>Math.hypot(px-c.x,py-c.y)<c.r+2)||!lap.free(px,py,9))continue;
-    spots.push([px,py,gP(px,py)]);}
-   const max=mobile?420:1000;while(spots.length>max)spots.splice(Math.floor(r()*spots.length),1);
-   const tree=treeGeometry(mobile),mat=new THREE.MeshStandardMaterial({name:'Parques_arvores',vertexColors:true,roughness:.92,metalness:0}),im=new THREE.InstancedMesh(tree,mat,spots.length);
-   const m4=new THREE.Matrix4(),q=new THREE.Quaternion(),e=new THREE.Euler(),c=new THREE.Color();
-   spots.forEach(([x,y,z],i)=>{const woods=y>-300&&y<330,s=(woods?1.05:.8)+r()*.55,sy=s*(.85+r()*.35);e.set(0,r()*TAU,0);q.setFromEuler(e);m4.compose(new THREE.Vector3(x,z-.2,-y),q,new THREE.Vector3(s,sy,s));im.setMatrixAt(i,m4);
-    const dry=r()<.12?.25:0;c.setRGB(.82+r()*.3+dry,.85+r()*.25+dry*.6,.8+r()*.25);im.setColorAt(i,c);});
-   im.instanceMatrix.needsUpdate=true;if(im.instanceColor)im.instanceColor.needsUpdate=true;im.castShadow=true;im.receiveShadow=true;im.name='Parques_arvores';im.computeBoundingSphere();root.add(im);
-   park.trees=spots.length;park.treeTriangles=tree.index?tree.index.count/3*spots.length:tree.attributes.position.count/3*spots.length;treeMesh=im;
+   const zoneAt=(x,y)=>y>330?.5:y>-300?(x>-1700&&y<-90?.25:.88):y>-430?.07:y>-760?.32:.13;
+   // Groves: a slow noise (about 70 m) gathers the trees, a quicker one (about 22 m) frays the groves' edges.
+   const grove=(x,y)=>sstep(.34,.72,.7*fbm(x/70+3.7,y/70-1.9)+.3*fbm(x/22-8.3,y/22+4.1));
+   const crowded=(x,y,w)=>{const i0=Math.floor(x/cell),j0=Math.floor(y/cell),reach=Math.ceil(13/cell);
+    for(let i=i0-reach;i<=i0+reach;i++)for(let j=j0-reach;j<=j0+reach;j++)for(const t of hashed.get(i+':'+j)??[])if(Math.hypot(t.x-x,t.y-y)<.42*(t.width+w))return true;return false;};
+   const tries=Math.round((PLAN.x1-PLAN.x0)*(PLAN.y1-PLAN.y0)/8);
+   for(let k=0;k<tries;k++){
+    const px=PLAN.x0+r()*(PLAN.x1-PLAN.x0),py=PLAN.y0+r()*(PLAN.y1-PLAN.y0),zone=zoneAt(px,py),g=grove(px,py),u=r(),v=r(),w0=r(),dry=r();
+    if(u>zone*(zone>.5?.1+.25*g:.035+.12*g)*(mobile?.7:1))continue;
+    if(polyDist(px,py,PARK)<5||polyDist(px,py,POND)>-6||pathNear(px,py,2.5)||!lap.free(px,py,9))continue;
+    // In the woods taller and closer (8..15 m), out on the lawns lower and rounder (6..11 m); a tall crown one in five in
+    // the woods, one in ten out on the lawns.
+    const woods=py>-300&&py<330&&zone>.5,tall=v<(woods?.2:.1),h=(woods?8+7*w0:6+5*w0)*(.85+.3*g);
+    const tree={x:px,y:py,height:tall?h*1.35:h,width:(tall?.75:.95)*h*(.8+.35*r()),tall,dry:dry<.12?.6:0};
+    // The crown too stays off the structures' yards and the sight lines (the clearings).
+    if(clr.some(c=>Math.hypot(px-c.x,py-c.y)<c.r+1+tree.width*(tall?.3:.45)))continue;
+    // The crown (its worst reach, landscape.js CROWN_REACH) clear of the lap's space too; a smaller tree where it is near.
+    const reach=tall?.45:.85;let fit=tree.width;while(fit>=4&&!lap.free(px,py,fit*reach+1.5))fit*=.85;if(fit<4)continue;
+    if(fit<tree.width){tree.height*=Math.sqrt(fit/tree.width);tree.width=fit;}
+    if(crowded(px,py,tree.width))continue;
+    tree.z=gP(px,py)-.3;spots.push(tree);const key=Math.floor(px/cell)+':'+Math.floor(py/cell);if(!hashed.has(key))hashed.set(key,[]);hashed.get(key).push(tree);
+   }
+   park.treesFound=spots.length;while(spots.length>max)spots.splice(Math.floor(r()*spots.length),1);
+   trees.push(...spots);park.trees=spots.length;park.treesTall=spots.filter(t=>t.tall).length;
   }
   stats.park=park;
  }
@@ -671,8 +688,8 @@ function build(data,{ground,mobile=false}={}){
   for(const h of lap.at(x,y)){const over=z-h.road;if(Math.abs(h.lat)<h.back+.3&&over>-.05&&over<DRIVE){drive.violations++;if(!drive.worst||Math.abs(h.lat)<Math.abs(drive.worst.lat))drive.worst={material:k,s:+h.s.toFixed(1),lat:+h.lat.toFixed(2),over:+over.toFixed(2),x:+x.toFixed(1),y:+y.toFixed(1)};}}}};
  for(const [k,b] of Object.entries(T))check(k,b);
  if(islandBatch)check('ilha',islandBatch);
- // Trees: their trunks 9 m clear of the walls already; their crowns checked as 7 m discs.
- if(treeMesh){const im=treeMesh,m4=new THREE.Matrix4(),p=new THREE.Vector3();for(let i=0;i<im.count;i++){im.getMatrixAt(i,m4);p.setFromMatrixPosition(m4);drive.checked++;if(!lap.free(p.x,-p.z,7))drive.violations++;}}
+ // Trees: their trunks 9 m clear of the walls already; their crowns checked at their worst reach.
+ for(const t of trees){drive.checked++;if(!lap.free(t.x,t.y,t.width*(t.tall?.45:.85)+1))drive.violations++;}
  // The giraffes' sway attributes.
  if(T.giraffes.vertices){const b=T.giraffes,ex=b.extra??[],n=b.vertices,piv=new Float32Array(n*3),ax=new Float32Array(n*3),sw=new Float32Array(n*2);
   for(let i=0;i<n;i++){piv.set(ex.slice(i*8,i*8+3),i*3);ax.set(ex.slice(i*8+3,i*8+6),i*3);sw.set(ex.slice(i*8+6,i*8+8),i*2);}
@@ -683,7 +700,6 @@ function build(data,{ground,mobile=false}={}){
   if(k==='giraffes'){mesh.geometry.boundingSphere.radius+=3;}
   root.add(mesh);drawCalls++;triangles+=b.triangles;parts[k]=b.triangles;}
  const island=root.getObjectByName('Parques_ilha');if(island){drawCalls++;triangles+=stats.park.island.triangles;parts.ilha=stats.park.island.triangles;}
- const trees=root.getObjectByName('Parques_arvores');if(trees){drawCalls++;parts.arvores=stats.park.treeTriangles;}
  // ---------- Night: the floods (uplights) wash the lit surfaces; the lamps glow.
  floods.slice(0,MAX_FLOODS).forEach((f,i)=>{U.pqFlood.value[i].set(f.p[0],f.p[2],-f.p[1],f.s);U.pqFloodCol.value[i].set(...f.c);});
  const night=lightUniforms(),glowLights=lamps.length?nightLights(lamps.map(l=>({...l,g:0,on:.3,ph:rand()})),night,{name:'Parques_luzes_noite',minPx:mobile?1.5:1.7,floor:.45,fogKeep:.5}):null;
@@ -694,20 +710,7 @@ function build(data,{ground,mobile=false}={}){
  // 0 by day; dusk (.45) brings the lamps and the uplights; full at night lights the booths and the boards.
  function setNight(level){lit=level;U.pqNight.value=level>0?(level>=.99?1:.55):0;night.uNight.value=level;glow.uPqGlow.value=level*.9;materials.signs.emissiveIntensity=level*.35;if(glowLights)glowLights.mesh.visible=level>0;stats.night=level;}
  function update(dt){girTime.value+=dt;if(lit>0){night.uTime.value+=dt;night.uScreen.value=screenHalf(mobile);}}
- return {root,obstacles,clearings,stats,setNight,update};
+ // trees: the Parque Ecológico's woods, planted by main.js as the landscape's own (landscape.js plant).
+ return {root,obstacles,clearings,trees,stats,setNight,update};
 }
 
-// A park tree: a trunk and three crown lobes (displaced icospheres), coloured per vertex (light tops, darker undersides);
-// the instance colour varies the green. Unit size ~10 m tall, 8 m across.
-function treeGeometry(mobile){
- const parts=[],r=random(31),trunk=new THREE.CylinderGeometry(.22,.38,4.2,mobile?5:7,1,true);trunk.translate(0,2.1,0);parts.push([trunk,[.32,.24,.16]]);
- for(const [x,y,z,s,d] of [[0,6.4,0,3.4,1],[1.6,5.4,.8,2.5,0],[-1.4,5.7,-1,2.6,0]]){const g=new THREE.IcosahedronGeometry(s,mobile?0:d),p=g.attributes.position;
-  for(let i=0;i<p.count;i++){const v=new THREE.Vector3().fromBufferAttribute(p,i),k=1+(fbm(v.x*1.3+x*3,v.y*1.3+z*3)-.5)*.8+(hash(Math.round(v.x*4),Math.round(v.z*4+v.y*7))-.5)*.12;v.multiplyScalar(k);v.y*=.82;p.setXYZ(i,v.x+x,v.y+y,v.z+z);}
-  parts.push([g,null,[x,y,z]]);}
- // Crowns shade as round masses (normals from their middles), not as facets.
- const geos=parts.map(([g,col,mid])=>{g=g.index?g.toNonIndexed():g;const p=g.attributes.position,c=new Float32Array(p.count*3);for(let i=0;i<p.count;i++){let k;if(col)k=col;else{const t=clamp((p.getY(i)-3.5)/6,0,1),n=.62+r()*.5;k=[(.1+.07*t)*n,(.19+.11*t)*n,(.07+.035*t)*n];}c.set(k,i*3);}g.setAttribute('color',new THREE.BufferAttribute(c,3));g.deleteAttribute('uv');g.computeVertexNormals();
-  if(mid){const nr=g.attributes.normal;for(let i=0;i<p.count;i++){const v=unit([p.getX(i)-mid[0],(p.getY(i)-mid[1])*1.2+.6,p.getZ(i)-mid[2]]),f=[nr.getX(i),nr.getY(i),nr.getZ(i)],m=unit([v[0]*.75+f[0]*.25,v[1]*.75+f[1]*.25,v[2]*.75+f[2]*.25]);nr.setXYZ(i,...m);}}
-  return g;});
- const pos=[],nor=[],col=[];for(const g of geos){pos.push(...g.attributes.position.array);nor.push(...g.attributes.normal.array);col.push(...g.attributes.color.array);}
- const out=new THREE.BufferGeometry();out.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));out.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));out.setAttribute('color',new THREE.Float32BufferAttribute(col,3));out.computeBoundingSphere();return out;
-}

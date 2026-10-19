@@ -158,23 +158,22 @@ export function sameLevel(c,o){return Math.abs(c.sample(o.x,o.y).z-o.surface.z)<
 // The level choice in TestCar.nearest: stretches whose asphalt comes within LEVEL_REACH of the point compete; one
 // whose road is more than LEVEL_SPLIT above or below another is on another level.
 const LEVEL_REACH=8,LEVEL_SPLIT=3;
-// The lap's stretches by cells of LAP_CELL metres (each stretch in every cell its box touches), for TestCar.nearest's
-// global search: rings of cells round the point, out to where no stretch left unseen can be nearer than the best found,
-// instead of every stretch of the lap. Same answer to the bit: each stretch measured as the full scan does, the lowest
-// index winning a tie (the scan's first). A car 100 m and more off its window (on the Mineirão's pitch, 180 m from
-// Pampulha's 10 264 stations) searched globally some 20 times a frame (its step, the field's, the skid marks' wheels,
-// the camera): 5 ms of every frame (user, 2026-10-18: "O FPS no estádio, dentro dele é o mais baixo de todos").
-const LAP_CELL=32,lapGrids=new WeakMap();
-function lapGrid(a){
- let g=lapGrids.get(a);if(g)return g;
- const n=a.length;let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(const p of a){x0=Math.min(x0,p[1]);x1=Math.max(x1,p[1]);y0=Math.min(y0,p[2]);y1=Math.max(y1,p[2]);}
- const nx=Math.floor((x1-x0)/LAP_CELL)+1,ny=Math.floor((y1-y0)/LAP_CELL)+1,start=new Int32Array(nx*ny+1),box=new Int32Array(n*4);
- for(let pass=0;pass<2;pass++){const fill=pass?start.slice(0,nx*ny):null;
-  for(let i=0;i<n;i++){const p=a[i],q=a[(i+1)%n];let i0,i1,j0,j1;
-   if(pass){i0=box[4*i];i1=box[4*i+1];j0=box[4*i+2];j1=box[4*i+3];}else{i0=box[4*i]=Math.floor((Math.min(p[1],q[1])-x0)/LAP_CELL);i1=box[4*i+1]=Math.floor((Math.max(p[1],q[1])-x0)/LAP_CELL);j0=box[4*i+2]=Math.floor((Math.min(p[2],q[2])-y0)/LAP_CELL);j1=box[4*i+3]=Math.floor((Math.max(p[2],q[2])-y0)/LAP_CELL);}
-   for(let j=j0;j<=j1;j++)for(let k=i0;k<=i1;k++){if(pass)g.items[fill[j*nx+k]++]=i;else start[j*nx+k+1]++;}}
-  if(!pass){for(let c=0;c<nx*ny;c++)start[c+1]+=start[c];g={x0,y0,nx,ny,start,items:new Int32Array(start[nx*ny]),seen:new Int32Array(n),stamp:0};}}
- lapGrids.set(a,g);return g;
+// The lap's stretches in cells of SEGMENT_CELL metres (built once per track file, on the first search that needs it): the
+// searches over the whole lap (TestCar.nearest global, levelNearest) read only the cells round the point, in rings until
+// no stretch beyond can come nearer. They give exactly what scanning every stretch in order gave (the same arithmetic;
+// among equal distances the lowest station, as the scan's strict comparison kept): a 20 km lap has some 10 thousand
+// stretches, and debris, sparks and probes away from their car searched them all, twice, every frame.
+const SEGMENT_CELL=40,segmentGrids=new WeakMap();
+function segmentGrid(a){
+ let G=segmentGrids.get(a);if(G)return G;
+ const n=a.length;let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,half=0;
+ for(const p of a){x0=Math.min(x0,p[1]);y0=Math.min(y0,p[2]);x1=Math.max(x1,p[1]);y1=Math.max(y1,p[2]);half=Math.max(half,p[4]/2);}
+ const C=SEGMENT_CELL,nx=Math.floor((x1-x0)/C)+1,ny=Math.floor((y1-y0)/C)+1,cells=new Map();
+ for(let i=0;i<n;i++){
+  const p=a[i],q=a[(i+1)%n],i0=Math.floor((Math.min(p[1],q[1])-x0)/C),i1=Math.floor((Math.max(p[1],q[1])-x0)/C),j0=Math.floor((Math.min(p[2],q[2])-y0)/C),j1=Math.floor((Math.max(p[2],q[2])-y0)/C);
+  for(let cx=i0;cx<=i1;cx++)for(let cy=j0;cy<=j1;cy++){const k=cy*nx+cx;let list=cells.get(k);if(!list)cells.set(k,list=[]);list.push(i);}
+ }
+ G={x0,y0,nx,ny,cells,half,seen:new Int32Array(n).fill(-1),stamp:0};segmentGrids.set(a,G);return G;
 }
 export function guardrailClearance(data,s,side){
  if(data.meta.id!=='curvelo'){
@@ -241,35 +240,41 @@ export class TestCar {
  // 6 m: see levelNearest. The window's own fall-back (a car placed more than 100 m from its stretch) takes the
  // car's height.
  nearest(x,y,global=false,hint=null,z=NaN){
-  let best=Infinity,out;
-  if(global&&Number.isFinite(x)&&Number.isFinite(y)&&this.n===this.a.length){out=this.nearestGrid(x,y);return Number.isFinite(z)?this.levelNearest(x,y,z,out):out;}
-  // Contact probes stay within a few metres of the car: a short window around it suffices.
-  const count=global?this.n:hint===null?81:9,start=global?0:hint===null?this.index-40:hint-4;
+  // Contact probes stay within a few metres of the car: a short window around it suffices. (The best stretch so far is
+  // kept in locals and the answer made once: a new object at every closer stretch, a few thousand calls a frame for a
+  // full field, was most of the physics' garbage. Same arithmetic, same answer.)
+  if(global)return this.globalNearest(x,y,z);
+  const n=this.n,A=this.a,count=hint===null?81:9,start=hint===null?this.index-40:hint-4;
+  let best=Infinity,bi=-1,bu=0,bex=0,bey=0,i=(start+n)%n;
   for(let k=0;k<count;k++){
-   const i=(start+k+this.n)%this.n,a=this.a[i],b=this.a[(i+1)%this.n];
-   const dx=b[1]-a[1],dy=b[2]-a[2],u=clamp(((x-a[1])*dx+(y-a[2])*dy)/(dx*dx+dy*dy),0,1);
+   const j=i+1===n?0:i+1,a=A[i],b=A[j];
+   const dx=b[1]-a[1],dy=b[2]-a[2],u=Math.max(0,Math.min(1,((x-a[1])*dx+(y-a[2])*dy)/(dx*dx+dy*dy)));
    const ex=x-a[1]-u*dx,ey=y-a[2]-u*dy,d2=ex*ex+ey*ey;
-   if(d2<best){best=d2;out={i,u,ex,ey};}
+   if(d2<best){best=d2;bi=i;bu=u;bex=ex;bey=ey;}
+   i=j;
   }
-  if(best>10000&&!global&&hint===null)return this.nearest(x,y,true,null,this.z);
-  return global&&Number.isFinite(z)?this.levelNearest(x,y,z,out):out;
+  if(best>10000&&hint===null)return this.globalNearest(x,y,this.z);
+  return bi<0?undefined:{i:bi,u:bu,ex:bex,ey:bey};
  }
- // The global search by lapGrid's cells: ring after ring round the point's cell (from the first on the grid for a point
- // off it), each stretch once, until the best is nearer than the edge of the block of cells seen.
- nearestGrid(x,y){
-  const g=lapGrid(this.a),a=this.a,n=this.n,C=LAP_CELL,ci=Math.floor((x-g.x0)/C),cj=Math.floor((y-g.y0)/C),seen=g.seen,items=g.items,start=g.start;
-  if(g.stamp>1e9){seen.fill(0);g.stamp=0;}const stamp=++g.stamp;let best=Infinity,bi=-1,out;
-  for(let r=Math.max(0,-ci,ci-g.nx+1,-cj,cj-g.ny+1),last=Math.max(ci,g.nx-1-ci,cj,g.ny-1-cj);r<=last;r++){
-   for(let j=Math.max(0,cj-r);j<=Math.min(g.ny-1,cj+r);j++){const rim=j===cj-r||j===cj+r;
-    for(let c=ci-r;c<=ci+r;c+=rim?1:2*r){if(c<0||c>=g.nx)continue;
-     for(let e=start[j*g.nx+c],end=start[j*g.nx+c+1];e<end;e++){const i=items[e];if(seen[i]===stamp)continue;seen[i]=stamp;
-      const p=a[i],q=a[(i+1)%n],dx=q[1]-p[1],dy=q[2]-p[2],u=clamp(((x-p[1])*dx+(y-p[2])*dy)/(dx*dx+dy*dy),0,1);
-      const ex=x-p[1]-u*dx,ey=y-p[2]-u*dy,d2=ex*ex+ey*ey;
-      if(d2<best||d2===best&&i<bi){best=d2;bi=i;out={i,u,ex,ey};}}}}
-   const margin=Math.min(x-g.x0-(ci-r)*C,g.x0+(ci+r+1)*C-x,y-g.y0-(cj-r)*C,g.y0+(cj+r+1)*C-y);
-   if(margin>.001&&best<(margin-.001)**2)break;
+ // nearest over the whole lap (segmentGrid's rings), then the level at z (levelNearest) when z is given.
+ globalNearest(x,y,z){
+  const A=this.a,n=this.n,G=segmentGrid(A),C=SEGMENT_CELL,fx=(x-G.x0)/C,fy=(y-G.y0)/C,cx=Math.floor(fx),cy=Math.floor(fy);
+  let best=Infinity,bi=-1,bu=0,bex=0,bey=0;const stamp=++G.stamp,seen=G.seen;
+  // Rings round the point's cell: past ring r every stretch not yet seen lies wholly outside the cells read, at least
+  // r cells plus the point's way to its own cell's edge off (and a lap within the grid is reached by the last ring).
+  const edge=Math.min(fx-cx,cx+1-fx,fy-cy,cy+1-fy)*C,last=Math.max(cx,G.nx-1-cx,cy,G.ny-1-cy);
+  for(let r=0;r<=last;r++){
+   for(let gx=cx-r;gx<=cx+r;gx++){if(gx<0||gx>=G.nx)continue;const ring=gx===cx-r||gx===cx+r;
+    for(let gy=cy-r;gy<=cy+r;gy+=ring?1:2*r){if(gy<0||gy>=G.ny)continue;const list=G.cells.get(gy*G.nx+gx);if(!list)continue;
+     for(const i of list){if(seen[i]===stamp)continue;seen[i]=stamp;const a=A[i],b=A[i+1===n?0:i+1];
+      const dx=b[1]-a[1],dy=b[2]-a[2],u=Math.max(0,Math.min(1,((x-a[1])*dx+(y-a[2])*dy)/(dx*dx+dy*dy)));
+      const ex=x-a[1]-u*dx,ey=y-a[2]-u*dy,d2=ex*ex+ey*ey;
+      if(d2<best||d2===best&&i<bi){best=d2;bi=i;bu=u;bex=ex;bey=ey;}}
+     if(r===0)break;}}
+   const reach=r*C+edge;if(best<reach*reach)break;
   }
-  return out;
+  const out=bi<0?undefined:{i:bi,u:bu,ex:bex,ey:bey};
+  return Number.isFinite(z)?this.levelNearest(x,y,z,out):out;
  }
  // The level at height z: among the stretches whose asphalt comes within LEVEL_REACH of (x, y), the road nearest z
  // picks the level, and on that level the nearest stretch in plan. A hard choice and not a weight on the height
@@ -279,7 +284,13 @@ export class TestCar {
  levelNearest(x,y,z,out){
   const a=this.a,n=this.n,o0=a[out.i],o1=a[(out.i+1)%n],near=[];
   if(Math.hypot(out.ex,out.ey)-(o0[4]+out.u*(o1[4]-o0[4]))/2>LEVEL_REACH)return out;
-  for(let i=0;i<n;i++){
+  // Only stretches in the cells within the widest road's reach can count (segmentGrid), taken in station order.
+  const G=segmentGrid(a),C=SEGMENT_CELL,R=G.half+LEVEL_REACH,stamp=++G.stamp,seen=G.seen,list=[];
+  for(let gx=Math.max(0,Math.floor((x-R-G.x0)/C)),gx1=Math.min(G.nx-1,Math.floor((x+R-G.x0)/C));gx<=gx1;gx++)
+   for(let gy=Math.max(0,Math.floor((y-R-G.y0)/C)),gy1=Math.min(G.ny-1,Math.floor((y+R-G.y0)/C));gy<=gy1;gy++)
+    for(const i of G.cells.get(gy*G.nx+gx)??[])if(seen[i]!==stamp){seen[i]=stamp;list.push(i);}
+  list.sort((i,j)=>i-j);
+  for(const i of list){
    const p=a[i],q=a[(i+1)%n],dx=q[1]-p[1],dy=q[2]-p[2],u=clamp(((x-p[1])*dx+(y-p[2])*dy)/(dx*dx+dy*dy),0,1);
    const ex=x-p[1]-u*dx,ey=y-p[2]-u*dy,d2=ex*ex+ey*ey,r=(p[4]+u*(q[4]-p[4]))/2+LEVEL_REACH;
    if(d2<=r*r)near.push({i,u,ex,ey,d2,z:p[3]+u*(q[3]-p[3])});

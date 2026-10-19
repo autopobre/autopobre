@@ -19,8 +19,11 @@ import {lightUniforms,nightLights,screenHalf} from './sea-water.js';
 //   shore in 8 bays under the plaza's curved deck on piers (Commons "Pampulha 2018 03 10": the deck's fascia and
 //   railing, the piers in the water, the level gauge). The game's lake stands at 800.8 m, so the weir is drawn 10 cm
 //   under it and a thin sheet always pours over the lip and falls into the dark channel behind (animated). The track
-//   file digs the channel under the deck and brings the lake to the weir's face (gerar_pampulha.py VERTEDOURO_*), the
-//   lake's surface stops there (meta.lake_cuts, sea-water.js).
+//   file brings the lake to the weir's face (gerar_pampulha.py VERTEDOURO_*), the lake's surface stops there
+//   (meta.lake_cuts, sea-water.js); the channel under the deck is the module's own (its 5 m grid climbs back to the
+//   plaza inside most bays): floor, back and end walls and the water in it are drawn first, then a seal across the
+//   bays' mouths writes only depth (renderOrder .2), so the ground drawn after it (open-circuit.js terrainMesh,
+//   renderOrder .25) never shows through them; from above the deck covers it all.
 // - the tulip (the 1940s morning-glory spillway): a 12.5 m concrete ring in the lake (lip at 801.5 m) round its dark
 //   funnel, the 2019 footbridge from the shore with the gate's hoist on its platform.
 // - below the dam, 50 m east of the lap: the galleries' headwall at the valley floor, the stilling basin churning
@@ -178,8 +181,10 @@ float bgN(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(bgH(
 // Moving water: the vertex colour carries its parameters (r how white, g its speed ÷ 10 m/s, b its opacity), the UVs
 // metres across (x) and down the flow (y). Streaks and boils drift down the flow at that speed (uBgTime), the white
 // water froths where r is high; the rest is the lake's green-brown, a little see-through over the concrete.
-function waterMaterial(U){
- const m=new THREE.MeshStandardMaterial({name:'Barragem_agua',vertexColors:true,roughness:.2,metalness:0,transparent:true,depthWrite:false,side:THREE.DoubleSide});
+// (opaque: the pour inside the spillway's bays, drawn before their seal; the same look. There a vertex opacity under .5
+// marks the spray thrown up where the fall lands: only its white shows, the rest is cut away.)
+function waterMaterial(U,opaque=false){
+ const m=new THREE.MeshStandardMaterial({name:opaque?'Barragem_agua_queda':'Barragem_agua',vertexColors:true,roughness:.2,metalness:0,transparent:!opaque,depthWrite:opaque,side:THREE.DoubleSide});
  m.onBeforeCompile=shader=>{
   Object.assign(shader.uniforms,U);
   shader.vertexShader=shader.vertexShader.replace('#include <common>','#include <common>\nvarying vec2 vBgUv;').replace('#include <uv_vertex>','#include <uv_vertex>\nvBgUv=uv;');
@@ -190,10 +195,10 @@ float n=bgN(q*vec2(1.7,.5))*.6+bgN(q*vec2(4.3,1.3)+3.1)*.4;
 float boil=bgN(vBgUv*.8+vec2(t*.6,-t*1.1))*bgN(vBgUv*2.1-vec2(t*1.3,t*.5))*2.2;
 float white=clamp(foam*1.15-.3+(n-.5)*1.3+(boil-.35)*.7,0.,1.);white*=white*(3.-2.*white);
 vec3 froth=mix(vec3(.55,.6,.6),vec3(.9,.92,.91),n);
-diffuseColor.rgb=mix(vec3(.07,.1,.08)+vec3(.05,.06,.05)*n,froth,white);diffuseColor.a*=vColor.b*mix(.72,1.,white);}`)
+diffuseColor.rgb=mix(vec3(.07,.1,.08)+vec3(.05,.06,.05)*n,froth,white);diffuseColor.a*=vColor.b*mix(.72,1.,white);${opaque?'if(vColor.b<.5&&white<.4)discard;':''}}`)
    .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(.12,.85,clamp(vColor.r*1.2,0.,1.));');
  };
- m.customProgramCacheKey=()=>'pampulha-barragem-agua-v1';
+ m.customProgramCacheKey=()=>opaque?'pampulha-barragem-agua-queda-v1':'pampulha-barragem-agua-v1';
  return m;
 }
 
@@ -236,7 +241,9 @@ function build(data,{ground,mobile=false}={}){
   paving:new THREE.MeshStandardMaterial({name:'Barragem_pavimento',vertexColors:true,roughness:.88,metalness:0,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3}),
   metal:new THREE.MeshStandardMaterial({name:'Barragem_metal',vertexColors:true,roughness:.42,metalness:.55}),
   fence:new THREE.MeshStandardMaterial({name:'Barragem_gradil',map:tex.fence,vertexColors:true,alphaTest:.5,side:THREE.DoubleSide,roughness:.5,metalness:.45}),
-  water:waterMaterial(U)
+  water:waterMaterial(U),pour:waterMaterial(U,true),
+  // The spillway bays' seal: depth only (see the header).
+  seal:new THREE.MeshBasicMaterial({name:'Barragem_vedacao',colorWrite:false})
  };
  const SIZES={concrete:6,riprap:3,grass:8},T=Object.fromEntries(Object.keys(materials).map(k=>[k,new Batch(SIZES[k]??0)]));
  const lights=[],clearings=[],count=()=>Object.values(T).reduce((s,b)=>s+b.triangles,0),tris={};
@@ -351,32 +358,42 @@ function build(data,{ground,mobile=false}={}){
    T.concrete.obox(c[0],c[1],q.t,end?2.2:pierW,2.9,zBed,soffit,end?C.concrete:mul(C.concrete,.97),{top:false});
    if(i===bays-1){const f=[q.p[0]-q.n[0]*.27,q.p[1]-q.n[1]*.27];for(let b=0;b<12;b++){const z0=-.4+b*.25,c0=b%2?C.white:lin(0xc23a2a),e=.18;T.paving.quad([f[0]-q.t[0]*e,f[1]-q.t[1]*e,z0],[f[0]+q.t[0]*e,f[1]+q.t[1]*e,z0],[f[0]+q.t[0]*e,f[1]+q.t[1]*e,z0+.25],[f[0]-q.t[0]*e,f[1]-q.t[1]*e,z0+.25],c0,[-q.n[0],-q.n[1],0]);}}}
   // The weir between the piers: its upstream face, the rounded crest 10 cm under the lake, the ogee falling into
-  // the channel (2.4 m inward), the channel's floor and back wall, all in the deck's shadow (dark).
-  const OGEE=[[0,crest],[.35,crest+.04],[.75,crest-.15],[1.2,crest-.8],[1.7,crest-1.9],[2.4,zBed+.2]];
-  let open=0;
+  // the channel (2.4 m inward), all in the deck's shadow; the sheet over the lip and its white fall in every bay.
+  const OGEE=[[0,crest],[.35,crest+.04],[.75,crest-.15],[1.2,crest-.8],[1.7,crest-1.9],[2.4,zBed+.2]],P=(q,v,z)=>[q.p[0]+q.n[0]*v,q.p[1]+q.n[1]*v,z];
+  const SHEET=[[0,crest+.13,.04,.08,.6],[.35,crest+.18,.25,.18,.8],[.75,crest-.04,.45,.3,.85],[1.2,crest-.68,.6,.45,.9],[1.7,crest-1.78,.75,.55,.92],[2.4,zBed+.42,.95,.3,.95]];
+  // (How many bays the ground itself leaves open past 2 m in, for the record: the track file's channel.)
+  let ground=0;
   for(let i=0;i<bays;i++){
    const d0=i*bay+pierW/2,d1=(i+1)*bay-pierW/2,n=4;
-   // How far in the bay stays clear: the track file digs the channel (gerar_pampulha.py VERTEDOURO_*) only where its
-   // 5 m grid leaves no hole round the deck, so the ground climbs back to the plaza somewhere inside each bay. The
-   // channel's darkness closes the bay where it first rises over the lip (1.1 to 3.2 m in): the lip, the fall and its
-   // boil stay in view where they can.
-   let clear=1.1;for(let v=.8;v<=3.2+1e-6;v+=.3){let top=-Infinity;for(let k=0;k<=4;k++){const q=W.at(lerp(d0,d1,k/4));top=Math.max(top,gAt(q.p[0]+q.n[0]*v,q.p[1]+q.n[1]*v));}if(top>crest-.2)break;clear=Math.max(1.1,v);}
-   if(clear>=2)open++;
-   for(let k=0;k<n;k++){const qa=W.at(lerp(d0,d1,k/n)),qb=W.at(lerp(d0,d1,(k+1)/n)),P=(q,v,z)=>[q.p[0]+q.n[0]*v,q.p[1]+q.n[1]*v,z];
+   let top=-Infinity;for(let k=0;k<=4;k++){const q=W.at(lerp(d0,d1,k/4));top=Math.max(top,gAt(q.p[0]+q.n[0]*2,q.p[1]+q.n[1]*2));}if(top<crest-.2)ground++;
+   for(let k=0;k<n;k++){const qa=W.at(lerp(d0,d1,k/n)),qb=W.at(lerp(d0,d1,(k+1)/n)),ua=lerp(d0,d1,k/n),ub=lerp(d0,d1,(k+1)/n);
     T.concrete.quad(P(qa,0,zBed),P(qb,0,zBed),P(qb,0,crest),P(qa,0,crest),C.concrete,[-qa.n[0],-qa.n[1],0]);
     for(let j=0;j+1<OGEE.length;j++)T.concrete.quad(P(qa,OGEE[j][0],OGEE[j][1]),P(qb,OGEE[j][0],OGEE[j][1]),P(qb,OGEE[j+1][0],OGEE[j+1][1]),P(qa,OGEE[j+1][0],OGEE[j+1][1]),j<2?C.concrete:C.shade,[-qa.n[0]*.3,-qa.n[1]*.3,1]);
-    T.concrete.quad(P(qa,2.4,zBed+.2),P(qb,2.4,zBed+.2),P(qb,8.2,zBed+.2),P(qa,8.2,zBed+.2),C.dark,[0,0,1]);
-    T.concrete.quad(P(qa,8.2,zBed+.2),P(qb,8.2,zBed+.2),P(qb,8.2,soffit),P(qa,8.2,soffit),C.dark,[-qa.n[0],-qa.n[1],0]);
-    T.concrete.quad(P(qa,clear,zBed+.2),P(qb,clear,zBed+.2),P(qb,clear,soffit),P(qa,clear,soffit),lin(0x141615),[-qa.n[0],-qa.n[1],0]);
-    // The water: the sheet over the lip (thin, quick), its fall down the ogee (white), the boil in the channel.
-    const sheet=[[0,crest+.11,.04,.08,.6],[.35,crest+.15,.25,.18,.8],[.75,crest-.04,.45,.3,.85],[1.2,crest-.68,.6,.45,.9],[1.7,crest-1.78,.75,.55,.92],[2.4,zBed+.42,.95,.3,.95],[4.6,zBed+.5,.9,.18,.95],[8.1,zBed+.48,.65,.1,.92]];
-    for(let j=0;j+1<sheet.length;j++){const A=sheet[j],B=sheet[j+1],ua=lerp(d0,d1,k/n),ub=lerp(d0,d1,(k+1)/n),va=A[0]+Math.abs(A[1]-crest)*.8,vb=B[0]+Math.abs(B[1]-crest)*.8;
-     T.water.quad(P(qa,A[0],A[1]),P(qb,A[0],A[1]),P(qb,B[0],B[1]),P(qa,B[0],B[1]),[lerp(A[2],B[2],.5),lerp(A[3],B[3],.5),lerp(A[4],B[4],.5)],null,[[ua,va],[ub,va],[ub,vb],[ua,vb]]);}
+    for(let j=0;j+1<SHEET.length;j++){const A=SHEET[j],B=SHEET[j+1],va=A[0]+Math.abs(A[1]-crest)*.8,vb=B[0]+Math.abs(B[1]-crest)*.8;
+     T.pour.quad(P(qa,A[0],A[1]),P(qb,A[0],A[1]),P(qb,B[0],B[1]),P(qa,B[0],B[1]),[lerp(A[2],B[2],.5),lerp(A[3],B[3],.5),lerp(A[4],B[4],.5)],null,[[ua,va],[ub,va],[ub,vb],[ua,vb]]);}
+    // The spray where the fall lands, thrown up past the lip into the bay's mouth (two ragged white curtains rising,
+    // thinner as they climb): what the lake side sees of the pour, the fall itself hiding behind the crest.
+    // (Its pattern 2.4 times finer than the water's: spray, not boils.)
+    for(const [v,top,ph] of [[2.55,crest+1.05,0],[3.3,crest+.7,7.3]]){const z0=zBed+.45,foam=p=>[clamp(1.05-(p[2]-z0)/(top-z0)*.85,.2,1),.22,.3],f=2.4;
+     T.pour.quad(P(qa,v,z0),P(qb,v,z0),P(qb,v,top),P(qa,v,top),foam,null,[[(ua+ph)*f,z0*f],[(ub+ph)*f,z0*f],[(ub+ph)*f,top*f],[(ua+ph)*f,top*f]]);}
    }
   }
+  // The channel behind the weir, along all of it and past the piers' backs: its floor, back wall and the two end walls
+  // up to the soffit, the water boiling below the fall and running east along it to the galleries' intake (its streaks
+  // along the channel). Every ray through a bay's mouth ends on one of these: the seal keeps the ground out.
+  const BACK=8.2,M=24,VIN=2.4,VOUT=BACK-.1,run=[[VIN,zBed+.42,.95,.3],[4.6,zBed+.5,.88,.24],[VOUT,zBed+.48,.62,.18]];
+  for(let k=0;k<M;k++){const qa=W.at(k/M*W.L),qb=W.at((k+1)/M*W.L),ua=k/M*W.L,ub=(k+1)/M*W.L;
+   T.concrete.quad(P(qa,VIN,zBed+.2),P(qb,VIN,zBed+.2),P(qb,BACK,zBed+.2),P(qa,BACK,zBed+.2),C.dark,[0,0,1]);
+   T.concrete.quad(P(qa,BACK,zBed+.2),P(qb,BACK,zBed+.2),P(qb,BACK,soffit),P(qa,BACK,soffit),mul(C.shade,.62),[-qa.n[0],-qa.n[1],0]);
+   for(let j=0;j+1<run.length;j++){const A=run[j],B=run[j+1];
+    T.pour.quad(P(qa,A[0],A[1]),P(qb,A[0],A[1]),P(qb,B[0],B[1]),P(qa,B[0],B[1]),[lerp(A[2],B[2],.5),lerp(A[3],B[3],.5),.95],null,[[A[0],ua],[A[0],ub],[B[0],ub],[B[0],ua]]);}
+   // The seal: the mouths from the crest up to the soffit, 2 cm in front of the lip.
+   T.seal.quad(P(qa,-.02,crest),P(qb,-.02,crest),P(qb,-.02,soffit),P(qa,-.02,soffit),[0,0,0],[-qa.n[0],-qa.n[1],0]);
+  }
+  for(const [d,o] of [[0,1],[W.L,-1]]){const q=W.at(d);T.concrete.quad(P(q,2.6,zBed),P(q,BACK,zBed),P(q,BACK,soffit),P(q,2.6,soffit),mul(C.shade,.7),[q.t[0]*o,q.t[1]*o,0]);}
   // Lamps on the deck's railing (three bollard heads, warm).
   for(const d of [.2,.5,.8]){const q=W.at(d*W.L),p=[q.p[0]+q.n[0]*1.2,q.p[1]+q.n[1]*1.2,deckZ];T.metal.post(p,[p[0],p[1],p[2]+3.6],.07,.05,8,C.grey);T.metal.post([p[0],p[1],p[2]+3.6],[p[0],p[1],p[2]+3.95],.2,.2,10,C.lamp);lamp([p[0],p[1],p[2]+3.8],[1,.82,.55],.9,.18);}
-  return {weir:+W.L.toFixed(1),bays,openBays:open,crest:+crest.toFixed(2),deck:+deckZ.toFixed(2)};
+  return {weir:+W.L.toFixed(1),bays,openBays:bays,groundOpenBays:ground,sealed:true,crest:+crest.toFixed(2),deck:+deckZ.toFixed(2)};
  });
 
  // ---------- The tulip in the lake and its footbridge.
@@ -479,7 +496,9 @@ function build(data,{ground,mobile=false}={}){
   for(const h of lap.at(x,y)){const over=z-h.road;if(Math.abs(h.lat)<h.back+.3&&over>-.05&&over<DRIVE){drive.violations++;const key=k+'@'+Math.round(h.s/10)*10;drive.where[key]=(drive.where[key]??0)+1;if(!drive.worst||Math.abs(h.lat)<Math.abs(drive.worst.lat))drive.worst={material:k,s:+h.s.toFixed(1),lat:+h.lat.toFixed(2),over:+over.toFixed(2),x:+x.toFixed(1),y:+y.toFixed(1)};}}
  }
  let drawCalls=0,triangles=0;const parts={};
- for(const [k,b] of Object.entries(T)){if(!b.vertices)continue;const m=b.mesh('Barragem_'+k,materials[k],!['riprap','grass','paving','water'].includes(k));if(k==='water')m.renderOrder=2;root.add(m);drawCalls++;triangles+=b.triangles;parts[k]=b.triangles;}
+ for(const [k,b] of Object.entries(T)){if(!b.vertices)continue;const m=b.mesh('Barragem_'+k,materials[k],!['riprap','grass','paving','water','pour','seal'].includes(k));if(k==='water')m.renderOrder=2;
+  // (The seal after the rest of the module's opaque parts, before the ground; nothing to shade.)
+  if(k==='seal'){m.renderOrder=.2;m.receiveShadow=false;}root.add(m);drawCalls++;triangles+=b.triangles;parts[k]=b.triangles;}
  const night=lightUniforms();night.uGroups.value[0].set(1,1,1,1.5);
  const glow=lights.length?nightLights(lights,night,{name:'Barragem_luzes_noite',minPx:mobile?1.5:1.7,floor:.45,fogKeep:.45}):null;
  if(glow){root.add(glow.mesh);drawCalls++;}

@@ -4,7 +4,8 @@
 
 Abre o Circuito da Pampulha pelo seletor (?circuito=pampulha) no Treino solo e confere o módulo
 (sceneryInfo().extras.Marcos_Pampulha_Barragem): montado sem erro em todas as partes (talude de montante, talude de
-jusante, vertedouro, tulipa, saída das galerias, pontes), nenhum vértice no espaço de rodagem da volta, a água do
+jusante, vertedouro com a água caindo nos 8 vãos, tulipa, saída das galerias, pontes), nenhum vértice no espaço de
+rodagem da volta, a água do
 vertedouro e da bacia andando (o relógio do módulo avança), o detalhe de celular mais leve. Fotografa a barragem da
 volta (a pista desce a crista pela Av. Dom Pedro I com a lagoa à direita) na perseguição, na interna e do olho do
 piloto para os dois lados; do vale (o talude de jusante, a saída das galerias, as pontes); do outro lado da lagoa; de
@@ -151,10 +152,11 @@ with sync_playwright() as p:
             falhas.append(('parte', parte, est.get(parte)))
     if (est.get('driveSpace') or {}).get('violations'):
         falhas.append(('espaço de rodagem', est['driveSpace']))
-    # O canal do vertedouro escavado no arquivo de pista (gerar_pampulha.py VERTEDOURO_*): vãos abertos sob o deck, e a
-    # lagoa para na soleira (meta.lake_cuts).
-    if not (est.get('spillway') or {}).get('openBays') or not DADOS['meta'].get('lake_cuts'):
-        falhas.append(('vertedouro sem canal', est.get('spillway'), DADOS['meta'].get('lake_cuts')))
+    # O canal do vertedouro sob o deck é do módulo (piso, paredes, a água caindo e a espuma) em todos os 8 vãos, com a
+    # vedação que tira o chão da grade de dentro deles; a lagoa para na soleira (meta.lake_cuts).
+    vert = est.get('spillway') or {}
+    if not vert.get('bays') or vert.get('openBays') != vert.get('bays') or not vert.get('sealed') or not DADOS['meta'].get('lake_cuts'):
+        falhas.append(('vertedouro sem a água em todos os vãos', vert, DADOS['meta'].get('lake_cuts')))
     # A água anda: o relógio do módulo (update) avança com o jogo.
     t0 = page.evaluate(f"()=>interlagos.sceneryInfo().extras?.{CHAVE}?.flow?.time??null")
     page.wait_for_timeout(1500)
