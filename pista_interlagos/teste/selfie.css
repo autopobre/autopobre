@@ -1,0 +1,43 @@
+/* The selfie's phone screen over the game (selfie.js): the photo's frame as a phone, the rest dimmed, its buttons, the flash
+   and the photo to share. */
+#selfieHud[hidden],#selfieReview[hidden],#selfieHud button[hidden]{display:none!important}
+#selfieHud{position:fixed;inset:0;z-index:46;pointer-events:none}
+#selfieFrame{position:fixed;box-sizing:content-box;margin:-12px 0 0 -12px;border:12px solid #0b0d0f;border-radius:34px;box-shadow:0 0 0 1px #3d4247,0 0 0 200vmax #060c0aa6,0 18px 50px #000a;pointer-events:auto;touch-action:none;cursor:grab}
+.selfie-notch{position:absolute;top:9px;left:50%;width:11px;height:11px;margin-left:-5.5px;border-radius:50%;background:#040506;box-shadow:0 0 0 2px #1b1f22}
+#selfieFrame.horizontal .selfie-notch{top:50%;left:9px;margin:-5.5px 0 0}
+#selfieMode{position:absolute;top:12px;left:16px;font-size:10px;font-weight:800;letter-spacing:.12em;color:#fff;text-shadow:0 1px 5px #000c}
+#selfieFrame.horizontal #selfieMode{left:30px}
+#selfieFrame button{position:absolute;display:grid;place-items:center;padding:0;border-radius:50%;border:0;color:#fff;background:#000000a0;font-size:18px;line-height:1;cursor:pointer}
+#selfieClose{top:10px;right:12px;width:34px;height:34px}
+#selfieTurn{bottom:22px;left:18px;width:42px;height:42px;font-size:22px!important}
+#selfieShot{bottom:14px;left:50%;width:66px;height:66px;margin-left:-33px;background:#fff!important;box-shadow:0 0 0 3px #0007,inset 0 0 0 3px #fff,inset 0 0 0 6px #15181b}
+#selfieShot:active{transform:scale(.93)}
+#selfieShot:disabled{opacity:.55;cursor:default}
+#selfieFrame.horizontal #selfieShot{bottom:auto;left:auto;top:50%;right:14px;margin:-33px 0 0}
+#selfieFrame.horizontal #selfieTurn{left:auto;right:26px;bottom:14px}
+#selfieFrame.horizontal #selfieClose{right:26px}
+/* Where he stands in the photo: left, middle, right. */
+.selfie-place{position:absolute;top:34px;left:50%;display:flex;gap:2px;padding:3px;border-radius:16px;background:#000000a0;transform:translateX(-50%)}
+#selfieFrame .selfie-place button{position:static;width:auto;height:auto;padding:5px 9px;border-radius:13px;background:transparent;font-size:10px;font-weight:800;letter-spacing:.04em}
+#selfieFrame .selfie-place button[aria-pressed="true"]{background:#e2fb57;color:#142018}
+#selfieFrame.horizontal .selfie-place{top:12px}
+.selfie-zoom{position:absolute;left:12px;top:50%;display:none;flex-direction:column;gap:8px;transform:translateY(-50%)}
+.selfie-zoom button{position:static!important;width:38px;height:38px;font-size:22px!important}
+body.touch-device .selfie-zoom{display:flex}
+#selfieFrame.horizontal .selfie-zoom{left:30px}
+#selfieHint{position:fixed;left:50%;bottom:max(6px,1.5vh);transform:translateX(-50%);max-width:92vw;padding:5px 12px;border-radius:12px;background:#0b1512d0;color:#e5eadf;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#selfieHint:empty{display:none}
+#selfieFlash{position:fixed;inset:0;background:#fff;opacity:0}
+#selfieFlash.on{animation:selfieFlash .5s ease-out}
+@keyframes selfieFlash{0%{opacity:.9}100%{opacity:0}}
+#selfieReview{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;background:#040806c4;pointer-events:auto;z-index:1}
+#selfiePhoto{display:block;max-width:min(86vw,900px);max-height:68vh;border:6px solid #f7f4ea;border-radius:10px;box-shadow:0 18px 60px #000c;background:#111}
+#selfieNote{min-height:1.2em;margin:0;color:#ffe08a;font-size:12px;font-weight:700;text-align:center}
+.selfie-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:760px}
+.selfie-actions button{padding:10px 14px;font-size:12px;font-weight:800}
+#selfieShare{background:#e2fb57;color:#142018;border:0}
+#selfieShare:hover{background:#efffa0}
+/* The race's panels step aside while the phone frames (the walking panel too); on touch screens only ⚙ stays. */
+body.selfie-mode :is(header,#mapcard,#timing,#fuelGauge,#telemetry,footer,#cameraTools,#walkHud,#status){visibility:hidden!important}
+body.selfie-mode #touchControls>:not(.touch-toolbar),body.selfie-mode .touch-toolbar>:not(#touchMenu){display:none!important}
+@media(max-height:520px){#selfieMode{display:none}.selfie-place{top:10px!important}#selfieFrame .selfie-place button{padding:4px 7px;font-size:9px}#selfieFrame{border-width:8px;margin:-8px 0 0 -8px;border-radius:24px}#selfieShot{width:52px;height:52px;margin-left:-26px;bottom:8px}#selfieFrame.horizontal #selfieShot{margin:-26px 0 0}#selfieTurn{width:36px;height:36px;bottom:12px}#selfieClose{width:30px;height:30px}#selfiePhoto{max-height:58vh}.selfie-actions button{padding:7px 10px;font-size:11px}#selfieHint{font-size:10px}}

@@ -360,6 +360,18 @@ with sync_playwright() as p:
         foto(page, 'tunel_saida_gramado')
         vista(page, tf(-25, 30, 2), tf(60, -10, 10), 78, carro=e['s'])
         foto(page, 'gramado_arquibancadas')
+        # Do gramado o mundo de fora (cidade, mata, a volta) sai da imagem (pampulha-estadios.js encloses): os contadores
+        # andam; da esplanada (o portal), não.
+        for nome, de, para, fora in (('gramado', tf(-25, 30, 2), tf(60, -10, 10), False), ('gramado_rumo_ao_tunel', tf(-30, 5, 2.5), tf(A_PISO + 10, 0, 2), False),
+                                     ('portal', tf(A_PORTAL + 45, 9, 3.5), tf(A_PORTAL, 0, 4), True)):
+            vista(page, de, para, 60, espera=900, carro=e['s'])
+            c0 = page.evaluate('interlagosGraficos.enclosure()')
+            page.wait_for_timeout(600)
+            c1 = page.evaluate('interlagosGraficos.enclosure()')
+            andou = bool(c0 and c1) and c1['renders'] + c1['portals'] > c0['renders'] + c0['portals']
+            print('mundo de fora fora da imagem:', nome, andou, c1, flush=True)
+            if andou == fora:
+                falhas.append(('mundo de fora no estádio', nome, c0, c1))
         f = ZONA['fences'][0] if ZONA.get('fences') else None
         if f:
             # De dentro da zona (o lado do chão aberto dela), 16 m para dentro e um pouco de lado.

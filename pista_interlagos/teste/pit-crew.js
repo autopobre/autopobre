@@ -81,7 +81,10 @@ function hipsGeometry(o){
  return merge(p);
 }
 const upperGeometry=o=>merge([piece(capsule(.052,.19),o.top,[0,-.14,0]),...(o.trim?[piece(tube(.054,.054,.03,10),o.trim,[0,-.05,0])]:[])]);
-function foreGeometry(o){const sleeve=o.sleeves==='short'?o.skin:o.top,hand=o.hands??o.skin;return merge([piece(capsule(.045,.18),sleeve,[0,-.12,0]),piece(tube(.05,.05,.04,10),o.sleeves==='short'?o.skin:hand,[0,-.22,0]),piece(ball(.05,10,8),hand,[0,-.285,0],[0,0,0],[.75,1.15,.52]),piece(ball(.022,6,5),hand,[.035,-.26,0])]);}
+function foreGeometry(o){const sleeve=o.sleeves==='short'?o.skin:o.top,hand=o.hands??o.skin;return merge([piece(capsule(.045,.18),sleeve,[0,-.12,0]),piece(tube(.05,.05,.04,10),o.sleeves==='short'?o.skin:hand,[0,-.22,0])]);}
+// The hand rides its own bone (Mao_, .29 m down the forearm), so a wrist can turn it (selfie.js: the V by the face);
+// nobody else turns it, and at rest it sits where it always did.
+function handGeometry(o){const hand=o.hands??o.skin;return merge([piece(ball(.05,10,8),hand,[0,.005,0],[0,0,0],[.75,1.15,.52]),piece(ball(.022,6,5),hand,[.035,.03,0])]);}
 function thighGeometry(o,side){const p=[piece(capsule(.072,.3),o.skirt?(o.legs??o.skin):o.bottom,[0,-.21,0])];if(o.trim&&!o.skirt)p.push(piece(block(.014,.38,.012),o.trim,[0,-.21,side*.071]));return merge(p);}
 function shinGeometry(o,side){const p=[piece(capsule(.058,.3),o.skirt?(o.legs??o.skin):o.bottom,[0,-.2,0]),piece(block(.24,.1,.11),o.shoes,[.045,-.45,0]),piece(ball(.056,10,7),o.shoes,[.155,-.455,0],[0,0,0],[1,.8,1])];if(o.trim&&!o.skirt)p.push(piece(block(.012,.3,.012),o.trim,[0,-.2,side*.059]));return merge(p);}
 
@@ -269,10 +272,10 @@ export function dressPerson(root,outfit){
 }
 function skeletonFor(o){
  const bones=[],bone=(name,parent,x,y,z)=>{const b=new THREE.Bone();b.name=name;b.position.set(x,y,z);parent?.add(b);bones.push(b);return b;};
- const hips=bone('Quadril',null,0,.93,0),torso=bone('Tronco',hips,0,0,0),head=bone('Cabeca',torso,0,.6,0),lids=bone('Palpebras',head,0,.142,0),limbs={},parts=[[hipsGeometry(o),hips],[torsoGeometry(o),torso],[lidsGeometry(o),lids]],upper=upperGeometry(o),fore=foreGeometry(o);
+ const hips=bone('Quadril',null,0,.93,0),torso=bone('Tronco',hips,0,0,0),head=bone('Cabeca',torso,0,.6,0),lids=bone('Palpebras',head,0,.142,0),limbs={},parts=[[hipsGeometry(o),hips],[torsoGeometry(o),torso],[lidsGeometry(o),lids]],upper=upperGeometry(o),fore=foreGeometry(o),palm=handGeometry(o);
  for(const side of [-1,1]){
   const arm=bone('Membro_braco_'+side,torso,0,.47,side*.2),forearm=bone('Antebraco_'+side,arm,0,-.28,0),hand=bone('Mao_'+side,forearm,0,-.29,0),leg=bone('Membro_perna_'+side,hips,0,0,side*.095),shin=bone('Canela_'+side,leg,0,-.43,0);
-  limbs[side]={arm,fore:forearm,hand,leg,shin};parts.push([side<0?upper:upper.clone(),arm],[side<0?fore:fore.clone(),forearm],[thighGeometry(o,side),leg],[shinGeometry(o,side),shin]);
+  limbs[side]={arm,fore:forearm,hand,leg,shin};parts.push([side<0?upper:upper.clone(),arm],[side<0?fore:fore.clone(),forearm],[side<0?palm:palm.clone(),hand],[thighGeometry(o,side),leg],[shinGeometry(o,side),shin]);
  }
  return {bones,parts,rig:{hips,torso,head,lids,limbs},head:headGeometry(o)};
 }

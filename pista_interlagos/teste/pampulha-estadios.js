@@ -34,6 +34,8 @@ import {lightUniforms,nightLights,screenHalf} from './sea-water.js';
 // on with the lit pitch and the membrane glowing, the façade's open decks and the Mineirinho's hoods warm.
 
 const DRIVE=4.6;
+// The highest a camera on the Mineirão's floor may be for the world outside to stay out of its sight (encloses).
+const BOWL_EYE=8;
 function random(seed){let t=seed>>>0;return ()=>{t=t+0x6D2B79F5>>>0;let r=Math.imul(t^t>>>15,1|t);r=r+Math.imul(r^r>>>7,61|r)^r;return ((r^r>>>14)>>>0)/4294967296;};}
 // Linear colours (vertex colours are linear): an sRGB hex scaled by k.
 const lin=(hex,k=1)=>{const c=new THREE.Color(hex);return [c.r*k,c.g*k,c.b*k];};
@@ -416,12 +418,18 @@ function mineirao(m,K){
   for(const [z0,z1,c] of [[Zp-.3,Zp+.25,kerb],[Zp+.25,Zp+1.2,dado],[Zp+1.2,Zp+2.3,inner],[Zp+2.3,Zp+2.6,band],[Zp+2.6,Zp+TH,inner]])tq(T.paint,[[a0,b,z0],[a1,b,z0],[a1,b,z1],[a0,b,z1]],c,o);
   tq(T.lit,[[a0+.6,b-s*.02,Zp+3.35],[a1-.6,b-s*.02,Zp+3.35],[a1-.6,b-s*.02,Zp+3.5],[a0+.6,b-s*.02,Zp+3.5]],lamp,o);
   const z=a=>zStand(a)+.9;
-  tq(T.paint,[[aFl,b,Zp-.3],[aM,b,Zp-.3],[aM,b,Zp+.25],[aFl,b,Zp+.25]],kerb,o);
-  tq(T.concrete,[[aFl,b,Zp+.25],[aM,b,Zp+.25],[aM,b,z(aM)],[aFl,b,z(aFl)]],grey,o);
-  tq(T.concrete,[[aFl,b,z(aFl)],[aM,b,z(aM)],[aM,b+s*.6,z(aM)],[aFl,b+s*.6,z(aFl)]],deck,[0,0,1]);
-  tq(T.concrete,[[aFl,b+s*.6,zStand(aFl)-.2],[aM,b+s*.6,zStand(aM)-.2],[aM,b+s*.6,z(aM)],[aFl,b+s*.6,z(aFl)]],grey,[0,s,0]);
+  // The cutting wall starts where the floor's wall, cut for the corridor, ends on its outer line (that wall's chord across
+  // it): from the floor's ellipse on the cutting's axis it stood 12 cm short of there (the ellipse curves away from the
+  // straight cutting), a slit into the hollow under the stands and a hole in the floor at its foot, the world outside
+  // showing through both.
+  const B=b+s*.6;let w0=aFl;
+  for(let k=0;k<K2;k++){const p=Q(ts[k],dFl[k]),q=Q(ts[(k+1)%K2],dFl[(k+1)%K2]),b0=bOf(p)-B,b1=bOf(q)-B;if(aOf(p)>0&&b0*b1<=0&&b0!==b1){const u=b0/(b0-b1);w0=Math.min(aFl,aOf([p[0]+(q[0]-p[0])*u,p[1]+(q[1]-p[1])*u]));break;}}
+  tq(T.paint,[[w0,b,Zp-.3],[aM,b,Zp-.3],[aM,b,Zp+.25],[w0,b,Zp+.25]],kerb,o);
+  tq(T.concrete,[[w0,b,Zp+.25],[aM,b,Zp+.25],[aM,b,z(aM)],[w0,b,z(w0)]],grey,o);
+  tq(T.concrete,[[w0,b,z(w0)],[aM,b,z(aM)],[aM,B,z(aM)],[w0,B,z(w0)]],deck,[0,0,1]);
+  tq(T.concrete,[[w0,B,zStand(w0)-.2],[aM,B,zStand(aM)-.2],[aM,B,z(aM)],[w0,B,z(w0)]],grey,[0,s,0]);
   // The cutting wall's end at the floor, the tunnel's mouth (headwall) over it.
-  tq(T.concrete,[[aFl,b,Zp-.3],[aFl,b+s*.6,Zp-.3],[aFl,b+s*.6,z(aFl)],[aFl,b,z(aFl)]],grey,[-1,0,0]);
+  tq(T.concrete,[[w0,b,Zp-.3],[w0,B,Zp-.3],[w0,B,z(w0)],[w0,b,z(w0)]],grey,[-1,0,0]);
  }
  tq(T.concrete,[[aM,-HW-.6,Zp+TH],[aM,HW+.6,Zp+TH],[aM,HW+.6,zStand(aM)+.9],[aM,-HW-.6,zStand(aM)+.9]],grey,[-1,0,0]);
  tq(T.concrete,[[aM,-HW-.6,zStand(aM)+.9],[aM,HW+.6,zStand(aM)+.9],[aM+.6,HW+.6,zStand(aM)+.9],[aM+.6,-HW-.6,zStand(aM)+.9]],deck,[0,0,1]);
@@ -502,7 +510,14 @@ function mineirao(m,K){
  proxies.push(P.mesh('Mineirao_obstaculo',new THREE.MeshBasicMaterial(),false));
  // Trees out of the bowl and a band round it (the plaza is paved).
  const clear=[];for(let x=-150;x<=150;x+=10)for(let y=-125;y<=125;y+=10){const u=x/(RA+14),v=y/(RB+14);if(u*u+v*v<=1)clear.push({x:cx+U[0]*x+V[0]*y,y:cy+U[1]*x+V[1]*y,r:8});}
- return {stats,clearings:clear};
+ // The floor (inside the wall round it) for createPampulhaEstadios' encloses, and the tunnel's inner mouth (the only way
+ // out of sight from there) in the scene's frame: a box a metre to spare round it, its rim (30 cm to spare) in order round
+ // it and its centre, the plane across the tunnel just inside it (facing out).
+ const S3=(a,b,z)=>{const p=tf(a,b,z);return new THREE.Vector3(p[0],p[2],-p[1]);},mouth=new THREE.Box3();
+ for(const a of [aM-1,aM+1])for(const b of [-HW-1.6,HW+1.6])for(const z of [Zp-1.5,Zp+TH+1])mouth.expandByPoint(S3(a,b,z));
+ const rim=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([b,z])=>S3(aM,b*(HW+.3),z<0?Zp-.6:Zp+TH+.3)),centre=S3(aM,0,Zp+TH/2);
+ const beyond=new THREE.Plane().setFromNormalAndCoplanarPoint(S3(1,0,0).sub(S3(0,0,0)).normalize(),S3(aM-.5,0,Zp));
+ return {stats,clearings:clear,bowl:{cx,cy,U,V,a:LA,b:LB,z:Zp,mouth,rim,centre,beyond}};
 }
 
 // ---------- The way in from the lap (meta.roam zone 'mineirao'): an arch over the gap in the straight's wall with
@@ -662,10 +677,10 @@ export function createPampulhaEstadios(data,{ground,mobile=false}={}){
  const sign=(a,b,c,d,key,o)=>{const [x0,y0,x1,y1]=SIGNS[key],u0=(x0+2)/1024,u1=(x1-2)/1024,v0=1-(y1-2)/1064,v1=1-(y0+2)/1064;T.signs.quad(a,b,c,d,[1,1,1],o,[[u0,v0],[u1,v0],[u1,v1],[u0,v1]]);};
  const board=(c,o,w,h,key)=>{const r=[-o[1],o[0]],p=(x,z,k)=>[c[0]+r[0]*x-o[0]*k,c[1]+r[1]*x-o[1]*k,c[2]+z];sign(p(-w/2,-h/2,0),p(w/2,-h/2,0),p(w/2,h/2,0),p(-w/2,h/2,0),key,o);
   T.paint.quad(p(-w/2-.06,-h/2-.06,.05),p(w/2+.06,-h/2-.06,.05),p(w/2+.06,h/2+.06,.05),p(-w/2-.06,h/2+.06,.05),lin(0x30343a),[-o[0],-o[1],0]);};
- const base={T,mobile,rand,lights,proxies,origin,lap,data,solids,fence,sign,board};
+ const base={T,mobile,rand,lights,proxies,origin,lap,data,solids,fence,sign,board};let bowl=null;
  for(const m of marks){
   const before=count(),fallback=m.ground??0,K={...base,gAt:(x,y)=>gridAt(x,y)??fallback};
-  try{const r=BUILDERS[m.kind](m,K);stats.built[m.kind]=r.stats;clearings.push(...r.clearings);}
+  try{const r=BUILDERS[m.kind](m,K);stats.built[m.kind]=r.stats;clearings.push(...r.clearings);bowl??=r.bowl??null;}
   catch(e){console.warn('Estádio da Pampulha não montado:',m.kind,e);stats.built[m.kind]={error:String(e)};continue;}
   tris[m.kind]=count()-before;
  }
@@ -699,7 +714,27 @@ export function createPampulhaEstadios(data,{ground,mobile=false}={}){
   if(glowLights)glowLights.mesh.visible=level>0;
  }
  function update(dt){if(lit>0){night.uTime.value+=dt;night.uScreen.value=screenHalf(mobile);}}
- return {root,obstacles:proxies,clearings,stats,update,setNight};
+ // Whether a camera sees nothing of the world outside the Mineirão (main.js then leaves that world out of its picture):
+ // down on the floor, inside the wall round it and at most BOWL_EYE metres over the pitch, the stands, the roof and the
+ // membrane close every way out but up through the roof's opening into the sky (the woods and roofs round the bowl stay
+ // under its rim from there: the same picture with and without them in some 550 views round the floor, by day, at dusk
+ // and at night) and the tunnel; while the tunnel's inner mouth is out of the camera's view the esplanade beyond it is
+ // too. With the mouth in view, what shows of the world shows through it: the pyramid from the eye through the mouth's
+ // rim, beyond it (a Frustum: main.js leaves out what lies wholly outside it). Looking at the stands from the pitch the
+ // city, the woods and the lap behind them were a thousand draws unseen (user, 2026-10-18: "O FPS no estádio, dentro dele
+ // é o mais baixo de todos").
+ const view=new THREE.Frustum(),viewMatrix=new THREE.Matrix4(),portal=new THREE.Frustum(),eye=new THREE.Vector3(),ahead=new THREE.Vector3();
+ function encloses(camera){
+  const e=camera.matrixWorld.elements,dx=e[12]-bowl.cx,dy=-e[14]-bowl.cy,u=(dx*bowl.U[0]+dy*bowl.U[1])/bowl.a,v=(dx*bowl.V[0]+dy*bowl.V[1])/bowl.b,z=e[13]-bowl.z;
+  if(u*u+v*v>1||z<-2||z>BOWL_EYE)return false;
+  view.setFromProjectionMatrix(viewMatrix.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse),THREE.WebGLCoordinateSystem,camera.reversedDepth);
+  if(!view.intersectsBox(bowl.mouth))return true;
+  eye.setFromMatrixPosition(camera.matrixWorld);const P=portal.planes,R=bowl.rim,through=ahead.copy(bowl.centre).multiplyScalar(2).sub(eye);
+  for(let i=0;i<4;i++){P[i].setFromCoplanarPoints(eye,R[i],R[(i+1)%4]);if(P[i].distanceToPoint(through)<0)P[i].negate();}
+  P[4].copy(bowl.beyond);P[5].copy(bowl.beyond);
+  return portal;
+ }
+ return {root,obstacles:proxies,clearings,stats,update,setNight,...bowl?{encloses}:{}};
 }
 // Whether a track file carries this module's landmarks (main.js builds them then).
 export const hasPampulhaEstadios=data=>(data.scenery?.landmarks??[]).some(m=>m.kind==='mineirao'||m.kind==='mineirinho');

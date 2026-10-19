@@ -302,6 +302,16 @@ const fallView=new FallView($('fallFade'),$('fallFlash'));let fallMode=null;
 let explosions=null;
 // What a circuit adds to the world and moves every frame (the sea's chop, Floripa's bridges and landmarks).
 let circuitExtras=[];
+// The world round an enclosed bowl out of the pictures taken from inside it (an extra's encloses(camera): the Mineirão's
+// floor, pampulha-estadios.js), each render by its own camera (the picture, a mirror, each face of a reflection capture;
+// the sun's shadow map is drawn within the same render) and given back after it: true leaves out the circuit's still
+// scenery (world, loadCircuit), whole; a Frustum (the bowl's way out in view: its tunnel) each piece of it (parts) that
+// lies wholly outside that frustum. Never the cars, the people, the effects, the sky or the lights.
+let enclosure=null,enclosing=0;const shutOut=[];
+scene.onBeforeRender=(r,s,camera)=>{if(enclosing++||!enclosure?.on)return;let view=false;for(const e of enclosure.shut)if(view=e.encloses(camera))break;if(!view)return;
+ if(view===true){for(const o of enclosure.world)if(o.visible){o.visible=false;shutOut.push(o);}enclosure.renders++;}
+ else{for(const o of enclosure.parts)if(o.visible&&o.frustumCulled&&!view.intersectsObject(o)){o.visible=false;shutOut.push(o);}enclosure.portals++;}};
+scene.onAfterRender=()=>{if(--enclosing>0)return;enclosing=0;for(const o of shutOut)o.visible=true;shutOut.length=0;};
 // Look-back (B or the touch button): driving from the cockpit only, not on foot, in the pit stop or menus.
 // (On the arena B is a handbrake key, ARENA_HANDBRAKE: no looking back there.)
 const lookBackAllowed=()=>!arenaMode&&mode==='cockpit'&&ready&&!paused&&!cockpitView&&!pitstop?.opened&&!immersive?.onFoot()&&!walker?.active&&!gridPreview()&&!$('settings').open;
@@ -996,6 +1006,8 @@ $('view').addEventListener('pointerdown',e=>{
  cameraReturn.manual(performance.now());
  if(e.pointerType==='mouse'&&!lockUnavailable&&$('view').requestPointerLock){
   e.stopImmediatePropagation();
+  // On foot with the phone out (selfie.js), a click on the captured mouse is the shutter.
+  if(pointerLocked&&walker?.active&&walker.click())return;
   if(pointerLocked||lockPending)return;
   lockPending=true;
   try{const request=$('view').requestPointerLock();request?.catch(lockFailed);}catch{lockFailed();}
@@ -1567,7 +1579,12 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(
  roadSurface?.setMotion(camera,paused||frozen?0:dt,reducedMotion.matches||smearMode==='still'||filmRoad?0:speedFx?.profile.roadStreak??0);
  speedFx?.motes.setCarBox(moteCarBox(watchedCar?.obj??carRoot,subject));
  perfProbe.enforce();
+ // The selfie's shot (selfie.js): that one frame drawn denser, the photo cut from it while the canvas still holds it.
+ const raceRatio=renderer.getPixelRatio(),shotRatio=walker?.selfie.pending?walker.selfie.density(raceRatio):raceRatio,sharpShot=shotRatio>raceRatio+.01;
+ if(sharpShot){renderer.setPixelRatio(shotRatio);renderer.setSize(innerWidth,innerHeight,false);}
  cinematic.render(scene,camera,{dt:paused?0:dt,topSpeed:topSpeed(subject.mechanics),mode:smearMode,hazeBase:hazeBase(),dof,roadSmear,smearCars:(graphics.values.motionBlur||roadSmear)&&smearMode!=='still'?ridingCars(watchedCar?.obj??carRoot,subject):null});
+ walker?.selfie.capture(renderer.domElement);
+ if(sharpShot){renderer.setPixelRatio(raceRatio);renderer.setSize(innerWidth,innerHeight,false);}
 }
 // The player's car went over the rim ('fall': seen from outside, whatever the view) or is back on the track
 // ('back': the view it had, the follow cameras placed afresh, the trails and the smoke cut).
@@ -1729,6 +1746,8 @@ window.interlagosGraficos={
  heavy:()=>{frameWatch.fired=true;heavyRace();return window.interlagosGraficos.info();},forget:()=>{device.drop=null;device.ratios={};try{localStorage.removeItem(AUTO_KEY);}catch{}applyGraphics();return window.interlagosGraficos.info();},
  // What the frame costs by part of the scene (perf-probe.js): cost(frames) draw calls and triangles, hide(parts, hidden).
  cost:frames=>perfProbe.count(frames),hide:(parts,hidden=true)=>perfProbe.hide(parts,hidden),graph:part=>perfProbe.graph(part),
+ // The world left out from inside an enclosed bowl (enclosure): enclosure(false) draws it all the same (a check's A/B).
+ enclosure:on=>{if(enclosure&&on!=null)enclosure.on=!!on;return enclosure&&{on:enclosure.on,renders:enclosure.renders,portals:enclosure.portals,world:enclosure.world.length,parts:enclosure.parts.length};},
  // Every frame's interval from record(true) to record(false): average FPS, 1% low, worst frame, hitches (debug-overlay.js frameStats).
  record:on=>debugOverlay.record(on)
 };
@@ -2050,7 +2069,7 @@ $('settingsRestart').onclick=()=>{$('settings').close();beginRace(true);};
 $('tour').onclick=()=>{$('settings').close();beginRace(true,true,false);};$('menuButton').onclick=openSettings;$('camera').onchange=e=>setCameraMode(e.target.value,true);$('livery').onchange=async e=>{preferences.update({livery:e.target.value});if(!ready||!sessionStarted||raceCar!=='99'||raceModel==='fusca')return;try{await setLivery(e.target.value);}catch(err){status('Não foi possível carregar a pintura. Tente novamente.');console.error(err);}};
 // Keep the car and audio session; release the previous circuit before loading another.
 function clearCircuit(){
- explosions=null;circuitExtras=[];fallView.stop(camera);
+ explosions=null;circuitExtras=[];enclosure=null;fallView.stop(camera);
  if(arenaMode)mobile?.setHandbrakeHold(false);arenaMode?.dispose();arenaMode=null;arenaScene=null;document.body.classList.remove('arena-mode');if(car)car.world=null;
  action.reset();actionNotice.update(0,null,false);intro.stop();const retired=[];
  if(pitstop){pitstop.reset();pitstop.panel.remove();pitstop.hud.remove();pitstop.walkHud.remove();pitstop.markers.removeFromParent();retired.push(pitstop.markers);pitstop=null;}
@@ -2095,6 +2114,8 @@ async function loadCircuit(){
  roadSurface=await createTrackSurface(renderer,data,{quality:graphics.values.materials});
  // Roots placed once and never moved: frozen below (perf-probe.js freezeStatic).
  const fixed=[];
+ // The circuit's ground and far relief, with the rest of its still scenery out of sight from inside an enclosed bowl.
+ const world=[];
  if(!driver){driver=await createDriver(cockpit);carBody.add(driver.root);}
  terrainTextures??=await loadTerrainTextures(renderer);landscapeField=buildTrackField(data);let standTops=[];tyreSmoke.soft=null;smearRiders.length=0;releaseWakeCars();
  if(circuit.id==='curvelo'){
@@ -2114,9 +2135,9 @@ async function loadCircuit(){
   // A real city round the lap (Floripa): its streets, sidewalks and squares are drawn on the ground from the city map.
   const cityMap=data.scenery.city?await loadCityMap(data,circuit.ground.replace(/[^/]*$/,'')):null;
   const open=await createOpenCircuit(data,roadSurface,{heights:groundFit.heights,textures:terrainTextures,field:landscapeField,groundUrl:circuit.ground,label:`${circuit.track} · AUTO-POBRE RACING`,mobile:scenery.mobile,city:cityMap});
-  scene.add(open.root);cameraObstacles.push(...open.obstacles);
+  scene.add(open.root);world.push(open.root);cameraObstacles.push(...open.obstacles);
   // The valley out to 22 km below a plateau circuit (Chapada dos Sonhos), from the same folder as its ground photo.
-  const far=data.scenery.far?await createFarTerrain(data,circuit.ground.replace(/[^/]*$/,''),{stride:sceneryLevel==='basico'?2:1,heights:groundFit.heights}):null;if(far)scene.add(far.root);applyViewDistance();
+  const far=data.scenery.far?await createFarTerrain(data,circuit.ground.replace(/[^/]*$/,''),{stride:sceneryLevel==='basico'?2:1,heights:groundFit.heights}):null;if(far){scene.add(far.root);world.push(far.root);}applyViewDistance();
   explosions=data.scenery.cliff?new Explosions(scene,{mobile:scenery.mobile}):null;
   // A coastal street circuit (Floripa): the sea at its level, the bridges round the decks the road runs on and the
   // city's landmarks, each with its own model.
@@ -2213,6 +2234,12 @@ async function loadCircuit(){
  // The trees left standing are posts the Opala can hit.
  treeField=new TreeField(landscape.trunks(),{mobile:scenery.mobile});scene.add(treeField.points);car.posts=treeField;
  speedFx=createSpeedEffects({smoke:tyreSmoke,level:graphics.values.speedEffects});scene.add(speedFx.root);speedFx.motes.setSun(sunDirection);
+ // An enclosed bowl's (enclosure above): the circuit's still scenery, whole roots and, for the view through its mouth,
+ // every piece drawn of them.
+ {const shut=circuitExtras.filter(e=>e.encloses);if(shut.length){
+  const roots=[...world,...fixed,landscape.root,crowd.root,roadRails.root,roadCurbs,floods?.root,branding.root,trackside.root,flags.root,treeField.points,...circuitExtras.filter(e=>!e.encloses).map(e=>e.root)];
+  const still=roots.filter((o,i)=>o&&roots.indexOf(o)===i),parts=[];for(const root of still)root.traverse(o=>{if(o.isMesh||o.isPoints||o.isLine||o.isSprite)parts.push(o);});
+  enclosure={on:true,shut,renders:0,portals:0,world:still,parts};}}
  restBodyPose();
  carLivery.clear();
  immersive=new ImmersiveMode({scene,carRoot,car,data,driver,rivalTemplate:model,skidMarks,layout:pitLayout,obstacles:cameraObstacles,setView:setCameraMode,getView:()=>mode,playerView:()=>preferences.values.camera,resetVehicle:()=>reset(),releaseMouse:()=>{keys.clear();mobile?.clear();if(document.pointerLockElement)document.exitPointerLock();},onNormal:()=>{storyRound=null;chooseImmersive(false);reset();menu(true);},
@@ -2245,7 +2272,11 @@ async function loadCircuit(){
   title:()=>circuit.arena?'A PÉ · NA ARENA':reconLap||immersive.lineup?.length===0?'A PÉ · NA PISTA':'A PÉ · A CORRIDA CONTINUA',
   emit:(name,options)=>carAudio.effect(name,options),
   onOut:()=>{walkView=mode;setCameraMode('chase');keys.clear();mobile?.clear();if(!touchDevice&&!pointerLocked&&!lockUnavailable)try{$('view').requestPointerLock()?.catch?.(()=>{});}catch{}},
-  onIn:()=>{keys.clear();mobile?.clear();setCameraMode(walkView??preferences.values.camera);walkView=null;followInitialized=false;}});
+  onIn:()=>{keys.clear();mobile?.clear();setCameraMode(walkView??preferences.values.camera);walkView=null;followInitialized=false;},
+  // The selfie (selfie.js): the circuit and the pilot's name in the photo's signature; the captured mouse let go to click the photo's buttons
+  // (no menu: mouseFreed) and taken again to frame another.
+  selfie:{label:()=>circuit.name,pilot:()=>immersive?.pilotName||typedPilot(),freeMouse:()=>{if(document.pointerLockElement!==$('view'))return;mouseFreed=true;document.exitPointerLock();},
+   lockMouse:()=>{if(!touchDevice&&!pointerLocked&&!lockUnavailable)try{$('view').requestPointerLock()?.catch?.(()=>{});}catch{}}}});
  syncDamage(true);
  if(circuit.arena){
   arenaMode=new ArenaMode({scene,view:$('view'),textures:terrainTextures,mobile:scenery.mobile,storage:pilotStorage(),stadium:arenaScene,pilot:()=>immersive?.pilotName||typedPilot(),

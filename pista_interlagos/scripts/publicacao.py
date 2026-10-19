@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 GAME = 'pista_interlagos/teste/'
 MODULES = (
     'pilot-profile.js', 'ai-records.js', 'ai-record-references.js',
-    'car-condition.js', 'pit-lane.js', 'interlagos-pit.js', 'pit-building.js', 'pit-box99.js', 'pit-crew.js', 'pit-textures.js', 'on-foot.js', 'free-walk.js', 'pitstop.js', 'pitstop.css',
+    'car-condition.js', 'pit-lane.js', 'interlagos-pit.js', 'pit-building.js', 'pit-box99.js', 'pit-crew.js', 'pit-textures.js', 'on-foot.js', 'free-walk.js', 'selfie.js', 'selfie.css', 'pitstop.js', 'pitstop.css',
     'circuits.js', 'curvelo-data.js', 'curvelo-scene.js', 'open-circuit.js', 'track-clearance.js', 'interlagos-stands.js',
     'cliff-edge.js', 'cliff-fall.js', 'cliff-scenery.js', 'far-terrain.js', 'explosion.js',
     'drift-arena.js', 'drift-arena-world.js', 'drift-score.js', 'drift-physics.js', 'drift-arena-ai.js', 'drift-arena-props.js', 'drift-arena-mode.js', 'drift-arena-scene.js', 'drift-arena-stadium.js', 'arena.css',

@@ -21,7 +21,7 @@ export class Synth {
  stop(tag=null,fade=.025){const t=this.ctx.currentTime;for(const v of this.voices){if(tag&&v.tag!==tag)continue;v.level.gain.cancelScheduledValues(t);v.level.gain.setTargetAtTime(0,t,fade/3);try{v.source.stop(t+fade);}catch{}}}
 }
 
-export const EFFECT_NAMES=Object.freeze(['pitRepair','pitCoffee','click','paint','crowdWelcome','talk','donation','badJoke','noDonation','paper','fuelFill','denied','ignition','engineCatch','countdown','raceGo','flooded','batteryDead','fuelEmpty','breakdown','collision','debrisFly','debrisMiss','glassHit','glassBreak','tankDrop','towArrive','towBrake','strapSnag','strapFree','towWarning','finish','judgeStart','judgeCheck','judgeApprove','disqualified','podiumWin','podiumLoss','blazer','footstep','reserve','sip','bite','splash','wade','bonk','boing','passBy','explosion']);
+export const EFFECT_NAMES=Object.freeze(['pitRepair','pitCoffee','click','paint','crowdWelcome','talk','donation','badJoke','noDonation','paper','fuelFill','denied','ignition','engineCatch','countdown','raceGo','flooded','batteryDead','fuelEmpty','breakdown','collision','debrisFly','debrisMiss','glassHit','glassBreak','tankDrop','towArrive','towBrake','strapSnag','strapFree','towWarning','finish','judgeStart','judgeCheck','judgeApprove','disqualified','podiumWin','podiumLoss','blazer','footstep','reserve','sip','bite','splash','wade','bonk','boing','passBy','explosion','shutter']);
 
 export class SoundEffects {
  constructor(ctx,world,ui,noise){
@@ -127,6 +127,8 @@ export class SoundEffects {
    // Someone run over (by accident): a cartoon bonk and a slide whistle up as they fly;
    // a rubbery boing each time they bounce off the ground.
    case 'bonk':note(150,.12,.16,'triangle',0,70,900);noise(.08,.12,700);note(520,.75,.05,'sine',.08,1900,4000);break;
+   // A phone's shutter (selfie.js): the click of the shot and its echo.
+   case 'shutter':noise(.03,.16,5200);note(2100,.025,.05,'square',0,1300,7000);noise(.05,.1,2600,.075);note(1500,.03,.035,'square',.075,900,6000);break;
    case 'boing':note(140,.38,.09,'sine',0,360,1400);note(95,.3,.05,'triangle',.02,210,900);break;
    // A pole, rod or board flicking past the window at speed (trackside-flags.js): a short swell of air
    // falling in pitch, on its side.

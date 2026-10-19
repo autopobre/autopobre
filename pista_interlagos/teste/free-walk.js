@@ -8,13 +8,14 @@
 // the car waits on its brakes with the engine idling and the rivals race past; one that hits him throws him like the
 // marshals (pit-crew.js knockOver), and he gets up where he lands. Guardrails are jumped over (as the low pit walls), a
 // street circuit's walls are not; in a city zone open to roam (meta.roam) its edges and what stands in it stop him, and
-// he never walks into a lake or over a plateau's rim.
+// he never walks into a lake or over a plateau's rim. Q takes his phone out for a selfie (selfie.js; user, 2026-10-18).
 import * as THREE from 'three';
 import {footState,stepOnFoot,footGround,placeFootCamera,turnFootView,zoomFootView,footJump} from './on-foot.js';
 import {OPENINGS,carSpot,SPOT_OPENING} from './car-openings.js';
 import {createPeople,dressPerson,knockOver,applyPose,clonePose,POSES,OUTFITS,STEVAN_OUTFITS} from './pit-crew.js';
 import {outfitOf} from './story-career.js';
 import {guardrailPresent,guardrailClearance} from './physics.js';
+import {Selfie} from './selfie.js';
 
 // Under STOP m/s the braking car lets him out; a rival faster than HIT throws him (slower, it is solid); from REACH
 // metres F walks him to the door; a guardrail stands RAIL high; MARGIN keeps him off a car's body.
@@ -44,8 +45,9 @@ export class FreeWalk {
  // circuit's Box 99 (pit-box99.js: its rooms, people and camera framing) where it has one; obstacles: the camera's
  // (main.js cameraObstacles); water(x, y): a lake there ({depth}, landscape.water.at); outfit(): pilotOutfit's answer
  // for the race; title(): the walking panel's heading; emit(name, options): a sound; onOut / onIn: main.js's camera
- // and mouse, as he gets out and back in; hud: the walking panel (none in the Node checks).
- constructor({scene,car,driver,openings=null,layout=null,obstacles=[],water=null,outfit=()=>OUTFITS.driver,title=()=>'A PÉ · A CORRIDA CONTINUA',emit=()=>{},onOut=()=>{},onIn=()=>{},hud=typeof document!=='undefined'}){
+ // and mouse, as he gets out and back in; hud: the walking panel (none in the Node checks); selfie: the phone's options
+ // (selfie.js: label, freeMouse, lockMouse).
+ constructor({scene,car,driver,openings=null,layout=null,obstacles=[],water=null,outfit=()=>OUTFITS.driver,title=()=>'A PÉ · A CORRIDA CONTINUA',emit=()=>{},onOut=()=>{},onIn=()=>{},hud=typeof document!=='undefined',selfie={}}){
   Object.assign(this,{scene,car,driver,openings,layout,obstacles,water,outfit,title,emit,onOut,onIn});
   this.data=car.data;this.street=this.data.meta?.barrier==='street';
   this.hero=createPeople().person(OUTFITS.driver);this.hero.name='Piloto_a_pe';this.hero.visible=false;this.outfitKey=JSON.stringify(OUTFITS.driver);scene.add(this.hero);
@@ -56,6 +58,7 @@ export class FreeWalk {
   this.groundAt=(x,y)=>this.sample(x,y,'eye').z-.055;
   const base=footGround({car:this.walker,pit:layout?.pit??null,layout,blocked:pos=>this.solid(pos)});
   this.ground=(pos,elevation,from)=>{const floor=base(pos,elevation,from);return floor===null||from&&!this.passes(from,pos,elevation)?null:floor;};
+  this.selfie=new Selfie({hero:this.hero,emit,hud,...selfie});this.phoneView=false;
   if(hud)this.buildHud();
  }
  get active(){return !!this.foot;}
@@ -105,7 +108,7 @@ export class FreeWalk {
  }
  enter(){this.leave();this.openings?.pulse(OPENINGS.driverDoor,1.2);this.emit('click');}
  // Back in the car at once (a restart, the race ending, the circuit going), or to get in: the door he left open shuts.
- leave(){this.stopping=false;if(!this.foot)return;this.openings?.hold(OPENINGS.driverDoor,'manual',false);this.foot=this.tumble=this.goingIn=this.follow=null;this.hero.visible=false;this.driver.root.visible=true;this.showHud(false);this.onIn();}
+ leave(){this.stopping=false;if(!this.foot)return;this.selfie.close(true);this.phoneView=false;this.openings?.hold(OPENINGS.driverDoor,'manual',false);this.foot=this.tumble=this.goingIn=this.follow=null;this.hero.visible=false;this.driver.root.visible=true;this.showHud(false);this.onIn();}
  reset(){this.leave();}
  say(text,seconds=3.5){this.message=text;this.messageTime=seconds;}
  // E on foot: the driver's door at the door (a car without hinges: in), the hood at the nose, the trunk lid at the tail.
@@ -122,15 +125,26 @@ export class FreeWalk {
  }
  handleKey(code){
   const s=this.foot;if(!s)return false;
+  // The phone out: its keys (F puts it away and goes to the car).
+  if(this.selfie.busy){if(code==='KeyF'){this.selfie.close(true);this.getIn();}else this.selfie.handleKey(code);return true;}
   if(code==='KeyF'){this.getIn();return true;}
   if(this.tumble)return true;
+  if(code==='KeyQ'){this.takeSelfie();return true;}
   if(code==='KeyE'){this.action();return true;}
   if(code==='Space'){footJump(s);return true;}
   if(code==='KeyC'){s.crouch=!s.crouch;return true;}
   return false;
  }
- turnView(dx,dy){if(this.foot)turnFootView(this.foot,dx,dy);}
- zoom(k){if(this.foot)zoomFootView(this.foot,k);}
+ turnView(dx,dy){if(this.selfie.busy)this.selfie.turn(dx,dy);else if(this.foot)turnFootView(this.foot,dx,dy);}
+ zoom(k){if(this.selfie.busy)this.selfie.zoom(k);else if(this.foot)zoomFootView(this.foot,k);}
+ // Q: the phone out for a selfie, on his feet (not in the air, falling or on his way to the door), turned round to face
+ // the camera, so what it looked at is behind him in the picture.
+ takeSelfie(){
+  const s=this.foot;if(!s||this.tumble||this.goingIn||s.lift>0)return false;
+  s.crouch=false;return this.selfie.open({facing:s.yaw+Math.PI,outfit:this.outfit()});
+ }
+ // A click on the captured mouse: the shutter, while framing.
+ click(){return this.selfie.phase==='frame'&&this.selfie.shoot();}
  // Not where he could stand: the bodies of his car and of the rivals at rest (a moving one throws him instead), the
  // drift arena's wall and solids (drift-arena-world.js), and a lake past wading depth.
  solid(pos){
@@ -189,6 +203,8 @@ export class FreeWalk {
   this.driver.root.visible=false;
   if(dt>0){
    if(this.tumble)this.stepTumble(dt);
+   // Holding the phone he stands (selfie.js poses him); a rival still throws him, and the phone goes back in his pocket.
+   else if(this.selfie.busy){if(this.hitBy(rivals))this.selfie.close(true);}
    else{
     let walk=input,touch=this.touch;
     // Walking himself to the door: straight there, whatever the camera does; in after a few seconds anyway.
@@ -201,6 +217,9 @@ export class FreeWalk {
     this.hitBy(rivals);
    }
   }
+  // Framing, the phone's front camera is the view; put away, the walking camera pulls back from it, looking the same way.
+  if(this.selfie.busy&&this.selfie.update(dt,camera,{input,visible})){this.phoneView=true;this.showHud(visible);return;}
+  if(this.phoneView){this.phoneView=false;this.selfie.releaseCamera(camera);s.yaw=this.selfie.viewYaw();s.pitch=.25;s.distance=Math.max(s.distance,2.5);this.follow=null;if(camera){camera.fov=s.zoomFov??58;camera.updateProjectionMatrix();}}
   this.showHud(visible);
   if(!visible||!camera)return;
   // The walking lens (on-foot.js zoom), a little wider at a run.
@@ -209,25 +228,26 @@ export class FreeWalk {
  }
  buildHud(){
   const hud=this.hud=document.createElement('aside');hud.id='walkHud';hud.hidden=true;
-  hud.innerHTML='<div><b id="walkTitle"></b><span id="walkCarDistance"></span></div><span id="walkMessage" role="status"></span><small id="walkHint"></small><button id="walkAction" hidden></button><button id="walkCar" hidden></button>';
+  hud.innerHTML='<div><b id="walkTitle"></b><span id="walkCarDistance"></span></div><span id="walkMessage" role="status"></span><small id="walkHint"></small><button id="walkAction" hidden></button><button id="walkCar" hidden></button><button id="walkSelfie" hidden>Selfie</button>';
   document.body.append(hud);this.$=id=>hud.querySelector('#'+id);
-  this.$('walkCar').onclick=()=>this.getIn();this.$('walkAction').onclick=()=>this.action();
+  this.$('walkCar').onclick=()=>this.getIn();this.$('walkAction').onclick=()=>this.action();this.$('walkSelfie').onclick=()=>this.takeSelfie();
   this.shown={};
  }
  // The walking panel: where the car is, what E and F do here, and the same as buttons (touch screens).
  showHud(visible){
-  if(!this.hud)return;const on=visible&&!!this.foot;
-  if(this.hud.hidden===on)this.hud.hidden=!on;document.body.classList.toggle('free-walking',on);if(!on)return;
+  // (The phone out: its own screen, selfie.js.)
+  if(!this.hud)return;const out=visible&&!!this.foot,on=out&&!this.selfie.busy;
+  if(this.hud.hidden===on)this.hud.hidden=!on;document.body.classList.toggle('free-walking',out);if(!on)return;
   const touch=this.touch,distance=this.carDistance(),atDoor=this.doorDistance()<1.2||this.spot()==='porta',close=distance<REACH,action=this.actionLabel();
   const fText=atDoor?'entrar no carro':close?'ir até a porta e entrar':'entrar (chegue perto do carro)';
   const set=(id,key,value)=>{if(this.shown[id+key]!==value){this.shown[id+key]=value;this.$(id)[key]=value;}};
   set('walkTitle','textContent',this.title());set('walkCarDistance','textContent',close?'Seu carro: aqui':`Seu carro: ${Math.round(distance)} m`);
   set('walkMessage','textContent',this.tumble?'Atropelado! Espere ele levantar…':this.messageTime>0?this.message:this.goingIn?'Indo até a porta…':'');
-  set('walkHint','textContent',touch?'Pedais: andar · direção: virar':`Mouse: câmera · W/A/S/D: andar · Shift: correr · Espaço: pular · C: agachar${action&&action!=='entrar no carro'?` · E: ${action}`:''} · F: ${fText}`);
+  set('walkHint','textContent',touch?'Pedais: andar · direção: virar':`Mouse: câmera · W/A/S/D: andar · Shift: correr · Espaço: pular · C: agachar · Q: selfie${action&&action!=='entrar no carro'?` · E: ${action}`:''} · F: ${fText}`);
   set('walkAction','hidden',!action||action==='entrar no carro'||!!this.tumble);if(action)set('walkAction','textContent',action[0].toUpperCase()+action.slice(1)+(touch?'':' · E'));
-  set('walkCar','hidden',!close||!!this.tumble);set('walkCar','textContent',(atDoor?'Entrar no carro':'Voltar ao carro')+(touch?'':' · F'));
+  set('walkCar','hidden',!close||!!this.tumble);set('walkSelfie','hidden',!touch||!!this.tumble);set('walkCar','textContent',(atDoor?'Entrar no carro':'Voltar ao carro')+(touch?'':' · F'));
  }
  // The circuit goes (main.js clearCircuit): the driver back in his seat, no camera to hand back.
- dispose(){this.stopping=false;if(this.foot){this.foot=this.tumble=this.goingIn=null;this.driver.root.visible=true;}this.hero.removeFromParent();this.hud?.remove();globalThis.document?.body?.classList.remove('free-walking');}
- info(){const p=this.hero.position;return {active:!!this.foot,stopping:this.stopping,tumble:this.tumble?.phase??null,goingIn:!!this.goingIn,hero:[p.x,p.y,p.z],car:this.carDistance(),door:this.doorDistance(),spot:this.foot?this.spot():null,floor:this.foot?.floor??null,lift:this.foot?.lift??0,crouch:!!this.foot?.crouch,message:this.messageTime>0?this.message:''};}
+ dispose(){this.stopping=false;this.selfie.dispose();if(this.foot){this.foot=this.tumble=this.goingIn=null;this.driver.root.visible=true;}this.hero.removeFromParent();this.hud?.remove();globalThis.document?.body?.classList.remove('free-walking');}
+ info(){const p=this.hero.position;return {active:!!this.foot,stopping:this.stopping,tumble:this.tumble?.phase??null,goingIn:!!this.goingIn,hero:[p.x,p.y,p.z],car:this.carDistance(),door:this.doorDistance(),spot:this.foot?this.spot():null,floor:this.foot?.floor??null,lift:this.foot?.lift??0,crouch:!!this.foot?.crouch,message:this.messageTime>0?this.message:'',selfie:this.selfie.info()};}
 }

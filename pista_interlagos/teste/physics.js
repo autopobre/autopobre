@@ -158,6 +158,24 @@ export function sameLevel(c,o){return Math.abs(c.sample(o.x,o.y).z-o.surface.z)<
 // The level choice in TestCar.nearest: stretches whose asphalt comes within LEVEL_REACH of the point compete; one
 // whose road is more than LEVEL_SPLIT above or below another is on another level.
 const LEVEL_REACH=8,LEVEL_SPLIT=3;
+// The lap's stretches by cells of LAP_CELL metres (each stretch in every cell its box touches), for TestCar.nearest's
+// global search: rings of cells round the point, out to where no stretch left unseen can be nearer than the best found,
+// instead of every stretch of the lap. Same answer to the bit: each stretch measured as the full scan does, the lowest
+// index winning a tie (the scan's first). A car 100 m and more off its window (on the Mineirão's pitch, 180 m from
+// Pampulha's 10 264 stations) searched globally some 20 times a frame (its step, the field's, the skid marks' wheels,
+// the camera): 5 ms of every frame (user, 2026-10-18: "O FPS no estádio, dentro dele é o mais baixo de todos").
+const LAP_CELL=32,lapGrids=new WeakMap();
+function lapGrid(a){
+ let g=lapGrids.get(a);if(g)return g;
+ const n=a.length;let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(const p of a){x0=Math.min(x0,p[1]);x1=Math.max(x1,p[1]);y0=Math.min(y0,p[2]);y1=Math.max(y1,p[2]);}
+ const nx=Math.floor((x1-x0)/LAP_CELL)+1,ny=Math.floor((y1-y0)/LAP_CELL)+1,start=new Int32Array(nx*ny+1),box=new Int32Array(n*4);
+ for(let pass=0;pass<2;pass++){const fill=pass?start.slice(0,nx*ny):null;
+  for(let i=0;i<n;i++){const p=a[i],q=a[(i+1)%n];let i0,i1,j0,j1;
+   if(pass){i0=box[4*i];i1=box[4*i+1];j0=box[4*i+2];j1=box[4*i+3];}else{i0=box[4*i]=Math.floor((Math.min(p[1],q[1])-x0)/LAP_CELL);i1=box[4*i+1]=Math.floor((Math.max(p[1],q[1])-x0)/LAP_CELL);j0=box[4*i+2]=Math.floor((Math.min(p[2],q[2])-y0)/LAP_CELL);j1=box[4*i+3]=Math.floor((Math.max(p[2],q[2])-y0)/LAP_CELL);}
+   for(let j=j0;j<=j1;j++)for(let k=i0;k<=i1;k++){if(pass)g.items[fill[j*nx+k]++]=i;else start[j*nx+k+1]++;}}
+  if(!pass){for(let c=0;c<nx*ny;c++)start[c+1]+=start[c];g={x0,y0,nx,ny,start,items:new Int32Array(start[nx*ny]),seen:new Int32Array(n),stamp:0};}}
+ lapGrids.set(a,g);return g;
+}
 export function guardrailClearance(data,s,side){
  if(data.meta.id!=='curvelo'){
   const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L,section=guardrailSections(data,side).find(([from,to])=>t>=from&&t<=to),gap=wallGap(data,t,side),base=gap??GUARDRAIL_CLEARANCE;
@@ -224,6 +242,7 @@ export class TestCar {
  // car's height.
  nearest(x,y,global=false,hint=null,z=NaN){
   let best=Infinity,out;
+  if(global&&Number.isFinite(x)&&Number.isFinite(y)&&this.n===this.a.length){out=this.nearestGrid(x,y);return Number.isFinite(z)?this.levelNearest(x,y,z,out):out;}
   // Contact probes stay within a few metres of the car: a short window around it suffices.
   const count=global?this.n:hint===null?81:9,start=global?0:hint===null?this.index-40:hint-4;
   for(let k=0;k<count;k++){
@@ -234,6 +253,23 @@ export class TestCar {
   }
   if(best>10000&&!global&&hint===null)return this.nearest(x,y,true,null,this.z);
   return global&&Number.isFinite(z)?this.levelNearest(x,y,z,out):out;
+ }
+ // The global search by lapGrid's cells: ring after ring round the point's cell (from the first on the grid for a point
+ // off it), each stretch once, until the best is nearer than the edge of the block of cells seen.
+ nearestGrid(x,y){
+  const g=lapGrid(this.a),a=this.a,n=this.n,C=LAP_CELL,ci=Math.floor((x-g.x0)/C),cj=Math.floor((y-g.y0)/C),seen=g.seen,items=g.items,start=g.start;
+  if(g.stamp>1e9){seen.fill(0);g.stamp=0;}const stamp=++g.stamp;let best=Infinity,bi=-1,out;
+  for(let r=Math.max(0,-ci,ci-g.nx+1,-cj,cj-g.ny+1),last=Math.max(ci,g.nx-1-ci,cj,g.ny-1-cj);r<=last;r++){
+   for(let j=Math.max(0,cj-r);j<=Math.min(g.ny-1,cj+r);j++){const rim=j===cj-r||j===cj+r;
+    for(let c=ci-r;c<=ci+r;c+=rim?1:2*r){if(c<0||c>=g.nx)continue;
+     for(let e=start[j*g.nx+c],end=start[j*g.nx+c+1];e<end;e++){const i=items[e];if(seen[i]===stamp)continue;seen[i]=stamp;
+      const p=a[i],q=a[(i+1)%n],dx=q[1]-p[1],dy=q[2]-p[2],u=clamp(((x-p[1])*dx+(y-p[2])*dy)/(dx*dx+dy*dy),0,1);
+      const ex=x-p[1]-u*dx,ey=y-p[2]-u*dy,d2=ex*ex+ey*ey;
+      if(d2<best||d2===best&&i<bi){best=d2;bi=i;out={i,u,ex,ey};}}}}
+   const margin=Math.min(x-g.x0-(ci-r)*C,g.x0+(ci+r+1)*C-x,y-g.y0-(cj-r)*C,g.y0+(cj+r+1)*C-y);
+   if(margin>.001&&best<(margin-.001)**2)break;
+  }
+  return out;
  }
  // The level at height z: among the stretches whose asphalt comes within LEVEL_REACH of (x, y), the road nearest z
  // picks the level, and on that level the nearest stretch in plan. A hard choice and not a weight on the height
