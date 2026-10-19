@@ -83,6 +83,7 @@ import {createPampulhaOrla,hasPampulhaOrla} from './pampulha-orla.js';
 import {createPampulhaBarragem,hasPampulhaBarragem} from './pampulha-barragem.js';
 import {createPampulhaParques,hasPampulhaParques} from './pampulha-parques.js';
 import {createPampulhaPontes,hasPampulhaPontes} from './pampulha-pontes.js';
+import {createPampulhaFutebol,hasPampulhaFutebol} from './pampulha-futebol.js';
 import {createBranchScenery} from './branch-scenery.js';
 import {hasBranches} from './branch-layout.js';
 import {createCityStreets} from './city-streets.js';
@@ -307,6 +308,8 @@ const fallView=new FallView($('fallFade'),$('fallFlash'));let fallMode=null;
 let explosions=null;
 // What a circuit adds to the world and moves every frame (the sea's chop, Floripa's bridges and landmarks).
 let circuitExtras=[];
+// The football on the Mineirão's floor (pampulha-futebol.js), one of them: its balls step with the cars.
+let futebol=null;
 // The far pieces of the circuit-wide scenery drawn together (perf-probe.js farMerge), switched round the camera each frame.
 let farMerges=[];const FAR_MERGE_GAP=750;
 // The world round an enclosed bowl out of the pictures taken from inside it (an extra's encloses(camera): the Mineirão's
@@ -1008,12 +1011,15 @@ for(const type of ['pointerdown','pointermove','pointerup','pointercancel']){
 window.addEventListener('blur',()=>blockedCameraTouches.clear());
 // Native lock is requested only from a deliberate click on the playing surface.
 $('view').addEventListener('pointerdown',e=>{
+ // On foot the right button winds up a pass (pampulha-futebol.js; held: harder).
+ if(e.button===2&&pointerLocked&&walker?.active&&!paused){e.preventDefault();e.stopImmediatePropagation();walkMouse.passe=true;walker.rightClick();return;}
  if(!ready||paused||pitstop?.opened||e.button!==0||immersive?.active&&!immersive.allowsPointer())return;
  cameraReturn.manual(performance.now());
  if(e.pointerType==='mouse'&&!lockUnavailable&&$('view').requestPointerLock){
   e.stopImmediatePropagation();
-  // On foot with the phone out (selfie.js), a click on the captured mouse is the shutter.
-  if(pointerLocked&&walker?.active&&walker.click())return;
+  // On foot with the phone out (selfie.js), a click on the captured mouse is the shutter; with a ball at his feet it winds up
+  // a shot (held: harder, walkMouse).
+  if(pointerLocked&&walker?.active){walkMouse.chute=true;if(walker.click())return;}
   if(pointerLocked||lockPending)return;
   lockPending=true;
   try{const request=$('view').requestPointerLock();request?.catch(lockFailed);}catch{lockFailed();}
@@ -1061,7 +1067,9 @@ function padLook(dx,dy){
 }
 function padLookEnd(){if(padLooked)cameraReturn.recall();padLooked=false;}
 $('view').addEventListener('pointermove',e=>{if(!pointerLocked&&e.buttons)cameraReturn.manual(performance.now());});
-window.addEventListener('pointerup',()=>$('view').classList.remove('dragging'));
+window.addEventListener('pointerup',e=>{$('view').classList.remove('dragging');walkMouse[e.button===2?'passe':'chute']=false;});
+// The mouse's buttons held on foot (a shot, a pass winding up); the menu the right button would open stays shut there.
+const walkMouse={chute:false,passe:false};$('view').addEventListener('contextmenu',e=>{if(walker?.active)e.preventDefault();});
 $('view').addEventListener('pointercancel',()=>$('view').classList.remove('dragging'));
 $('view').addEventListener('wheel',e=>{if(walker?.active){if(!paused)walker.zoom(Math.sign(e.deltaY));return;}if(ready&&!paused&&!pitstop?.opened&&!immersive?.ownsMouse()){if(pointerLocked&&isInside()){e.stopImmediatePropagation();return;}orbitFromView();cameraReturn.manual(performance.now());}},{capture:true,passive:true});
 // The rival the cameras watch in the recon lap (null: the player's own car).
@@ -1453,7 +1461,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(
  const heard=watchedRival()?.car??car;
  if(automatic&&!paused&&(mobile?.throttle||mobile?.brake||mobile?.steering||gamepad.driving||wheel.driving))takeWheel();
  if(arenaMode?.demo&&!paused&&(mobile?.throttle||mobile?.brake||mobile?.steering||gamepad.driving||wheel.driving))arenaMode.stopDemo('VOCÊ ASSUMIU O CARRO');
- if(!paused&&!frozen){if(automatic)immersive.recordAssisted=true;accumulator+=dt*fallView.timeScale;while(accumulator>=1/120){const command=automatic?pilot(1/120):arenaMode?.demo?arenaMode.demoCommand():input(1/120);if(outOfFuel()){command.throttle=0;command.reverse=0;}if(car.fall)Object.assign(command,{throttle:0,brake:0,left:0,right:0,reverse:0,handbrake:0});walker?.drive(command,{wait:!!(pitstop?.opened||pitstop?.willOpen())});if(!(walker?.active?false:pitstop?.beforeStep(command,1/120))&&!immersive?.step(command,1/120)){const before=Math.hypot(car.vx,car.vy);arenaMode?.beforeStep();car.step(command,1/120);const impact=Math.max(car.wallImpactSpeed??0,car.crashImpactSpeed??0,before-Math.hypot(car.vx,car.vy));arenaMode?.step(1/120,impact,{handbrake:!!command.handbrake,latched:!!mobile?.handbrake});if(impact>4){if(heard===car)carAudio.effect('collision');if(!car.fall)immersive?.wallImpact(impact);frameImpact=Math.max(frameImpact,impact);}const heardBefore=Math.hypot(heard.vx,heard.vy);immersive?.stepFree(1/120,command);if(heard!==car&&Math.max(heard.wallImpactSpeed??0,heard.crashImpactSpeed??0,heardBefore-Math.hypot(heard.vx,heard.vy))>4)carAudio.effect('collision');}lakeContact?.step(car,1/120);skidMarks.update(car,command,1/120);recordGhost();accumulator-=1/120;if(!immersive.active&&immersive.freeResultReady&&!multiplayer?.holdResults()){menu(true);break;}}}
+ if(!paused&&!frozen){if(automatic)immersive.recordAssisted=true;accumulator+=dt*fallView.timeScale;while(accumulator>=1/120){const command=automatic?pilot(1/120):arenaMode?.demo?arenaMode.demoCommand():input(1/120);if(outOfFuel()){command.throttle=0;command.reverse=0;}if(car.fall)Object.assign(command,{throttle:0,brake:0,left:0,right:0,reverse:0,handbrake:0});walker?.drive(command,{wait:!!(pitstop?.opened||pitstop?.willOpen())});if(!(walker?.active?false:pitstop?.beforeStep(command,1/120))&&!immersive?.step(command,1/120)){const before=Math.hypot(car.vx,car.vy);arenaMode?.beforeStep();car.step(command,1/120);const impact=Math.max(car.wallImpactSpeed??0,car.crashImpactSpeed??0,before-Math.hypot(car.vx,car.vy));arenaMode?.step(1/120,impact,{handbrake:!!command.handbrake,latched:!!mobile?.handbrake});if(impact>4){if(heard===car)carAudio.effect('collision');if(!car.fall)immersive?.wallImpact(impact);frameImpact=Math.max(frameImpact,impact);}const heardBefore=Math.hypot(heard.vx,heard.vy);immersive?.stepFree(1/120,command);if(heard!==car&&Math.max(heard.wallImpactSpeed??0,heard.crashImpactSpeed??0,heardBefore-Math.hypot(heard.vx,heard.vy))>4)carAudio.effect('collision');}lakeContact?.step(car,1/120);futebol?.step(car,1/120);skidMarks.update(car,command,1/120);recordGhost();accumulator-=1/120;if(!immersive.active&&immersive.freeResultReady&&!multiplayer?.holdResults()){menu(true);break;}}}
  if(car.cliff&&!paused&&!frozen)playerFall(trackFall(car,dt*fallView.timeScale));
  // Any car meeting the ground below the wall goes up (the player's, a rival's): heard from afar, fainter.
  if(explosions&&!paused&&!frozen){
@@ -1478,6 +1486,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(
  const braking=driveCommand.engineOff?0:driveCommand.brake;brakeLamps.userData.set(model?.visible?braking:0,!!model?.visible&&playerLamps.lit);fuscaBody.brake(braking,playerLamps.lit);
  carAudio.update(heard,rivalSound?.command??driveCommand,rivalSound?.skid??skid,paused||frozen,mode);
  carAudio.updateScene({...immersive?.audioScene(heard),speed:Math.hypot(heard.vx,heard.vy),onRoad:heard.surface.onRoad,rain:weather.drops,wet:weather.wetness,...speedFx?.sound(heard===car?car:null),camera:mode},immersive?.state.takeSounds()??[],dt);
+ if(futebol){futebol.view.ahead=renderAhead();futebol.view.shown=sessionStarted&&!paused&&!intro.active&&raceResults.root.hidden;}
  sky.update(paused?0:dt);landscape?.update(paused?0:dt,camera);for(const far of farMerges)far.update(camera);arenaMode?.frame(paused?0:dt);for(const extra of circuitExtras)extra.update?.(paused?0:dt,camera);
  // A watched rival is posed by immersive.update below: its camera follows after that.
  updateOpenings(paused?0:dt);updateCar(dt);if(!watchedRival())updateCamera(dt);const dash=cockpit.update(car,paused?0:dt,heard===car?carAudio.state:null),phoneArrived=dash.phoneArrived;if(phoneArrived)carAudio.notifyPhone();fuscaBody.update(dash.speed,dash.rpm,(immersive?.active?immersive.state.fuel:immersive?.freeFuel??12)/12);driver.update(car,paused?0:dt,{command:driveCommand,impact:frameImpact,phoneArrived});gamepad.bump(actionImpact);frameImpact=0;lapBanner(paused?0:dt);lastHud+=dt;if(lastHud>.07){hud();lastHud=0;}
@@ -1488,7 +1497,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(
  if(walker){
   if(walker.stopping&&pitstop?.opened){walker.cancel();pitstop.visitCafe();}
   if(walker.busy&&!walkRace())walker.reset();
-  walker.update(paused?0:dt,camera,{input:paused?undefined:input(),shift:pressed('ShiftLeft')||pressed('ShiftRight'),rivals:immersive?.rivals??[],visible:sessionStarted&&!paused});
+  walker.update(paused?0:dt,camera,{input:paused?undefined:input(),shift:pressed('ShiftLeft')||pressed('ShiftRight'),rivals:immersive?.rivals??[],visible:sessionStarted&&!paused,hold:{chute:pressed('KeyE')||walkMouse.chute,passe:pressed('KeyR')||walkMouse.passe}});
   if(touchDevice){const show=!walker.active&&(walker.stopping||walkRace()),label=walker.stopping?'Parando…':'Sair do carro';if($('touchExit').hidden===show)$('touchExit').hidden=!show;if($('touchExit').textContent!==label)$('touchExit').textContent=label;}
  }
  // Specks in the air, the rivals' dust and the pushed verge grass; the pad buzzes on the kerbs.
@@ -2085,7 +2094,7 @@ $('settingsRestart').onclick=()=>{$('settings').close();beginRace(true);};
 $('tour').onclick=()=>{$('settings').close();beginRace(true,true,false);};$('menuButton').onclick=openSettings;$('camera').onchange=e=>setCameraMode(e.target.value,true);$('livery').onchange=async e=>{preferences.update({livery:e.target.value});if(!ready||!sessionStarted||raceCar!=='99'||raceModel==='fusca')return;try{await setLivery(e.target.value);}catch(err){status('Não foi possível carregar a pintura. Tente novamente.');console.error(err);}};
 // Keep the car and audio session; release the previous circuit before loading another.
 function clearCircuit(){
- explosions=null;circuitExtras=[];farMerges=[];enclosure=null;fallView.stop(camera);
+ explosions=null;circuitExtras=[];farMerges=[];enclosure=null;futebol?.dispose();futebol=null;fallView.stop(camera);
  if(arenaMode)mobile?.setHandbrakeHold(false);arenaMode?.dispose();arenaMode=null;arenaScene=null;document.body.classList.remove('arena-mode');if(car)car.world=null;
  action.reset();actionNotice.update(0,null,false);intro.stop();const retired=[];
  if(pitstop){pitstop.reset();pitstop.panel.remove();pitstop.hud.remove();pitstop.walkHud.remove();pitstop.markers.removeFromParent();retired.push(pitstop.markers);pitstop=null;}
@@ -2168,6 +2177,9 @@ async function loadCircuit(){
   if(hasMinhocaoLandmarks(data))circuitExtras.push(createMinhocaoLandmarks(data,{mobile:scenery.mobile,ground:groundAt}));
   // Belo Horizonte's Pampulha (pedido #8): the Mineirão and the Mineirinho by the start, the Igrejinha on the lake shore.
   if(hasPampulhaEstadios(data))circuitExtras.push(createPampulhaEstadios(data,{mobile:scenery.mobile,ground:groundAt}));
+  // On the Mineirão's floor, football Rocket League style (pampulha-futebol.js; user, 2026-10-19): a giant ball for the car,
+  // an ordinary one for the pilot on foot, two giant goals and the score on the stadium's screens.
+  if(hasPampulhaFutebol(data)){futebol=createPampulhaFutebol(data,{mobile:scenery.mobile,ground:groundAt,sound:(name,options)=>carAudio.effect(name,options)});circuitExtras.push(futebol);}
   if(hasPampulhaIgrejinha(data))circuitExtras.push(createPampulhaIgrejinha(data,{mobile:scenery.mobile,ground:groundAt}));
   // Round 2 of the Pampulha (pedido #8): the Parque Guanabara's rides, Niemeyer's other buildings, the shore's monuments and
   // viewpoints, the dam and its spillway, the zoo and the Parque Ecológico.
@@ -2272,7 +2284,8 @@ async function loadCircuit(){
  // An enclosed bowl's (enclosure above): the circuit's still scenery, whole roots and, for the view through its mouth,
  // every piece drawn of them.
  {const shut=circuitExtras.filter(e=>e.encloses);if(shut.length){
-  const roots=[...world,...fixed,landscape.root,crowd.root,roadRails.root,roadCurbs,floods?.root,branding.root,trackside.root,flags.root,treeField.points,...circuitExtras.filter(e=>!e.encloses).map(e=>e.root)];
+  // (An extra drawn inside the bowl, enclosed: the football on its floor, stays.)
+  const roots=[...world,...fixed,landscape.root,crowd.root,roadRails.root,roadCurbs,floods?.root,branding.root,trackside.root,flags.root,treeField.points,...circuitExtras.filter(e=>!e.encloses&&!e.enclosed).map(e=>e.root)];
   const still=roots.filter((o,i)=>o&&roots.indexOf(o)===i),parts=[];for(const root of still)root.traverse(o=>{if(o.isMesh||o.isPoints||o.isLine||o.isSprite)parts.push(o);});
   enclosure={on:true,shut,renders:0,portals:0,world:still,parts};}}
  restBodyPose();
@@ -2311,7 +2324,10 @@ async function loadCircuit(){
   // The selfie (selfie.js): the circuit and the pilot's name in the photo's signature; the captured mouse let go to click the photo's buttons
   // (no menu: mouseFreed) and taken again to frame another.
   selfie:{label:()=>circuit.name,pilot:()=>immersive?.pilotName||typedPilot(),freeMouse:()=>{if(document.pointerLockElement!==$('view'))return;mouseFreed=true;document.exitPointerLock();},
-   lockMouse:()=>{if(!touchDevice&&!pointerLocked&&!lockUnavailable)try{$('view').requestPointerLock()?.catch?.(()=>{});}catch{}}}});
+   lockMouse:()=>{if(!touchDevice&&!pointerLocked&&!lockUnavailable)try{$('view').requestPointerLock()?.catch?.(()=>{});}catch{}}},
+  // On the Mineirão's floor the balls are his to kick (pampulha-futebol.js).
+  play:futebol?.game??null});
+ futebol?.attach(walker);
  syncDamage(true);
  if(circuit.arena){
   arenaMode=new ArenaMode({scene,view:$('view'),textures:terrainTextures,mobile:scenery.mobile,storage:pilotStorage(),stadium:arenaScene,pilot:()=>immersive?.pilotName||typedPilot(),
@@ -2336,7 +2352,7 @@ async function loadCircuit(){
  updateCar(1);updateCamera(1);cockpit.outsideBatch();landscape.revealWaves(true);try{await cinematic.compile(scene,camera);await landscape.compileWater(renderer,scene,camera);}catch(err){console.warn(err);}finally{landscape.revealWaves(false);}
  ready=true;loadedCircuit=circuit.id;sceneryBuilt=sceneryLevel;mirrorPrograms=null;setCameraMode(preferences.values.camera);$('skinButton').disabled=false;updateCar(1);cockpit.update(car,0);driver.update(car,0);updateCamera(1);cameraHint();hud();$('start').disabled=false;
  window.interlagos={ready:true,circuit:circuit.id,car,explosionInfo:()=>explosions?.info()??null,fallInfo:()=>({timeScale:fallView.timeScale,active:fallView.active,shot:!!fallView.shot,sight:fallInSight(fallView,car,camera)}),renderAhead,telemetry:()=>car.telemetry(),setLivery,reset:()=>reset(),reposition:index=>{car.reset(index);driver.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();cockpit.resetPhone();updateCar(1);updateCamera(1);},setTour:value=>{if(immersive.active)return;automatic=value;menu(false);},
-  immersiveInfo:()=>immersive.info(),pitInfo:()=>pitstop?.info()??null,walkInfo:()=>walker?.info()??null,
+  immersiveInfo:()=>immersive.info(),pitInfo:()=>pitstop?.info()??null,walkInfo:()=>walker?.info()??null,walker:()=>walker,futebolInfo:()=>futebol?.info()??null,futebol:()=>futebol,
   audioInfo:()=>carAudio.info(),mobileInfo:()=>({enabled:touchDevice,steering:mobile?.steering??0,throttle:mobile?.throttle??0,brake:mobile?.brake??0,pressed:[...(mobile?.pressed??[])],pixelRatio:renderer.getPixelRatio()}),gamepadInfo:()=>({connected:gamepad.connected,name:gamepad.connected?gamepad.name:'',steering:gamepad.steering,throttle:gamepad.throttle,brake:gamepad.brake,held:[...gamepad.held],rumble:gamepad.rumble,curve:gamepad.curve}),
   cinematicInfo:()=>({...cinematic.info(),adaptation:cinematic.adaptation()}),tvInfo:()=>tvCamera.info(),tvCamera:()=>tvCamera,introInfo:()=>intro.info(),skipIntro:()=>intro.stop(),setCinematic:level=>cinematic.setLevel(level),cinematicLook:patch=>Object.assign(cinematic.look,patch||{}),
   skidInfo:()=>skidMarks.info(),smokeInfo:()=>tyreSmoke.info(),sceneryInfo:()=>({...landscape.stats,sky:sky.info()}),waterInfo:()=>landscape.waterInfo(),lakeInfo:()=>lakeContact?.info()??null,treeInfo:()=>treeField?.info()??null,tumbleInfo,waterAt:(x,y)=>landscape.water.at(x,y),

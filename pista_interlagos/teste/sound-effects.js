@@ -21,7 +21,7 @@ export class Synth {
  stop(tag=null,fade=.025){const t=this.ctx.currentTime;for(const v of this.voices){if(tag&&v.tag!==tag)continue;v.level.gain.cancelScheduledValues(t);v.level.gain.setTargetAtTime(0,t,fade/3);try{v.source.stop(t+fade);}catch{}}}
 }
 
-export const EFFECT_NAMES=Object.freeze(['pitRepair','pitCoffee','click','paint','crowdWelcome','talk','donation','badJoke','noDonation','paper','fuelFill','denied','ignition','engineCatch','countdown','raceGo','flooded','batteryDead','fuelEmpty','breakdown','collision','debrisFly','debrisMiss','glassHit','glassBreak','tankDrop','towArrive','towBrake','strapSnag','strapFree','towWarning','finish','judgeStart','judgeCheck','judgeApprove','disqualified','podiumWin','podiumLoss','blazer','footstep','reserve','sip','bite','splash','wade','bonk','boing','passBy','explosion','shutter']);
+export const EFFECT_NAMES=Object.freeze(['pitRepair','pitCoffee','click','paint','crowdWelcome','talk','donation','badJoke','noDonation','paper','fuelFill','denied','ignition','engineCatch','countdown','raceGo','flooded','batteryDead','fuelEmpty','breakdown','collision','debrisFly','debrisMiss','glassHit','glassBreak','tankDrop','towArrive','towBrake','strapSnag','strapFree','towWarning','finish','judgeStart','judgeCheck','judgeApprove','disqualified','podiumWin','podiumLoss','blazer','footstep','reserve','sip','bite','splash','wade','bonk','boing','passBy','explosion','shutter','chute','bolaGigante','quique','gol','apito','toque']);
 
 export class SoundEffects {
  constructor(ctx,world,ui,noise){
@@ -66,7 +66,7 @@ export class SoundEffects {
  }
  play(name,options={},ui=false){
   if(!EFFECT_NAMES.includes(name))return false;
-  const t=this.ctx.currentTime,minGap={collision:.3,glassHit:.15,footstep:.2,click:.06,towBrake:1.5,towWarning:2.5,splash:.35,wade:.22,passBy:.11}[name]??.08;
+  const t=this.ctx.currentTime,minGap={collision:.3,glassHit:.15,footstep:.2,click:.06,towBrake:1.5,towWarning:2.5,splash:.35,wade:.22,passBy:.11,quique:.14,bolaGigante:.12,gol:2,apito:.8,toque:.1}[name]??.08;
   if(t-(this.last[name]??-100)<minGap)return false;
   this.last[name]=t;this.counts[name]=(this.counts[name]||0)+1;
   const rack=ui?this.ui:this.world,pan=clamp(options.pan??0,-1,1),strength=clamp(options.strength??1,.2,1.5);
@@ -130,6 +130,15 @@ export class SoundEffects {
    // A phone's shutter (selfie.js): the click of the shot and its echo.
    case 'shutter':noise(.03,.16,5200);note(2100,.025,.05,'square',0,1300,7000);noise(.05,.1,2600,.075);note(1500,.03,.035,'square',.075,900,6000);break;
    case 'boing':note(140,.38,.09,'sine',0,360,1400);note(95,.3,.05,'triangle',.02,210,900);break;
+   // Football in the Mineirão (pampulha-futebol.js): a foot (or a bumper) on the small ball; the car into the giant rubber
+   // ball, a deep hollow thump; the giant ball landing; a goal, the stadium roaring with the horns; the referee's whistle.
+   case 'chute':noise(.04,.24,2100);note(170,.1,.16,'sine',0,85,900);note(420,.05,.04,'triangle',.005,260,2400);break;
+   case 'bolaGigante':note(58,.55,.3,'sine',0,38,280);noise(.14,.22,520);note(150,.34,.08,'triangle',.02,92,800);note(240,.28,.03,'sine',.05,180,1200);break;
+   case 'quique':note(52,.34,.2,'sine',0,36,240);noise(.07,.1,420);note(118,.2,.04,'triangle',.02,80,700);break;
+   case 'gol':cheer(3.4);for(const [hz,d] of [[349,0],[440,.02],[523,.04]])note(hz,1.6,.045,'sawtooth',.08+d,hz*.97,1600);for(const [hz,d] of [[392,1.9],[494,1.92],[587,1.94]])note(hz,1.1,.035,'sawtooth',d,hz*.97,1500);noise(4.2,.11,620,.15);noise(3,.07,1300,.5);break;
+   // A dribbler's soft touch on the ball.
+   case 'toque':noise(.025,.07,1500);note(140,.06,.05,'sine',0,95,700);break;
+   case 'apito':whistle();note(2350,.55,.07,'sine',.34,2280,2600);noise(.5,.03,2600,.34);break;
    // A pole, rod or board flicking past the window at speed (trackside-flags.js): a short swell of air
    // falling in pitch, on its side.
    case 'passBy':for(const [delay,duration,gain,filter,side] of [[0,.13,.1,2600,1],[.03,.17,.085,1350,.8],[.07,.2,.055,700,.5]])rack.note({at:t+delay,hz:440,duration,gain:gain*strength,type:'noise',filter,q:.9,pan:pan*side,attack:.04});break;

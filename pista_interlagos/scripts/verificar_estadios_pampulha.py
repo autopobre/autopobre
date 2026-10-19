@@ -199,7 +199,9 @@ def quero(nome):
 PILOTO = r"""async(arg)=>{
  const P=await import('./physics.js'),car=interlagos.car,data=car.data,w=P.roamWorld(data),z=w.zones.find(q=>q.name==='mineirao'),a=data.samples;
  const wrapA=x=>Math.atan2(Math.sin(x),Math.cos(x)),S=2,nx=Math.ceil((z.x1-z.x0)/S),ny=Math.ceil((z.y1-z.y0)/S),free=new Uint8Array(nx*ny),xy=k=>[z.x0+(k%nx+.5)*S,z.y0+(Math.floor(k/nx)+.5)*S];
- const clear=(x,y)=>(car.posts?.near(x,y,4)??[]).every(t=>Math.hypot(t.x-x,t.y-y)>t.r+3.2)&&w.query(x,y,5).every(it=>it.t===1?it.xs.every((v,k)=>Math.hypot(v-x,it.ys[k]-y)>2.6)&&Math.hypot(it.xs.reduce((s,v)=>s+v,0)/4-x,it.ys.reduce((s,v)=>s+v,0)/4-y)>3:it.t===2?Math.hypot(it.x-x,it.y-y)>it.r+2.2:true);
+ // (A box's distance from its outline, not its corners: the giant goals' nets are 23 m long; pampulha-futebol.js.)
+ const quad=(it,x,y)=>{let inside=true,best=1e9;for(let k=0;k<4;k++){const k1=(k+1)&3,ax=it.xs[k],ay=it.ys[k],dx=it.xs[k1]-ax,dy=it.ys[k1]-ay,u=Math.max(0,Math.min(1,((x-ax)*dx+(y-ay)*dy)/(dx*dx+dy*dy)));best=Math.min(best,Math.hypot(ax+dx*u-x,ay+dy*u-y));if(dx*(y-ay)-dy*(x-ax)<0)inside=false;}return inside?0:best;};
+ const clear=(x,y)=>(car.posts?.near(x,y,4)??[]).every(t=>Math.hypot(t.x-x,t.y-y)>t.r+3.2)&&w.query(x,y,5).every(it=>it.t===1?quad(it,x,y)>3.4:it.t===2?Math.hypot(it.x-x,it.y-y)>it.r+2.2:true);
  for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const x=z.x0+(i+.5)*S,y=z.y0+(j+.5)*S;if(w.inside(z,x,y)&&!w.edge(x,y,2.5,z,w.query(x,y,2.5))&&clear(x,y))free[j*nx+i]=1;}
  const cellOf=([x,y])=>{let best=-1,d=1e9;const i0=Math.floor((x-z.x0)/S),j0=Math.floor((y-z.y0)/S);for(let j=j0-8;j<=j0+8;j++)for(let i=i0-8;i<=i0+8;i++){if(i<0||j<0||i>=nx||j>=ny)continue;const k=j*nx+i;if(!free[k])continue;const c=xy(k),e=Math.hypot(c[0]-x,c[1]-y);if(e<d){d=e;best=k;}}return best;};
  const bfs=(from,to)=>{const k0=cellOf(from),k1=cellOf(to);if(k0<0||k1<0)return null;const prev=new Int32Array(free.length).fill(-2),q=[k0];prev[k0]=-1;

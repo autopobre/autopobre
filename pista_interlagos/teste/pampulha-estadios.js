@@ -34,6 +34,9 @@ import {lightUniforms,nightLights,screenHalf} from './sea-water.js';
 // on with the lit pitch and the membrane glowing, the façade's open decks and the Mineirinho's hoods warm.
 
 const DRIVE=4.6;
+// The grass of the Mineirão's floor stands this much over the ground the car drives on (so it never fights the terrain);
+// the football's balls rest on it (pampulha-futebol.js).
+export const PITCH_LIFT=.03;
 // The highest a camera on the Mineirão's floor may be for the world outside to stay out of its sight (encloses).
 const BOWL_EYE=8;
 function random(seed){let t=seed>>>0;return ()=>{t=t+0x6D2B79F5>>>0;let r=Math.imul(t^t>>>15,1|t);r=r+Math.imul(r^r>>>7,61|r)^r;return ((r^r>>>14)>>>0)/4294967296;};}
@@ -399,13 +402,10 @@ function mineirao(m,K){
  // The floor: grass and the pitch (texture in the pitch's frame: 120 × 80 m round its centre) laid on the ground
  // the car drives on (the pad), a few centimetres up and pulled toward the eye.
  const fr=mobile?[1,.6,0]:[1,.8,.6,.4,.2,0],uv=p=>{const dx=p[0]-cx,dy=p[1]-cy;return [(dx*U[0]+dy*U[1]+60)/120,(dx*V[0]+dy*V[1]+40)/80];};
- const fl=(k,f)=>{const q=Q(ts[k],dFl[k]),x=cx+(q[0]-cx)*f,y=cy+(q[1]-cy)*f;return [x,y,gAt(x,y)+.03];};
+ const fl=(k,f)=>{const q=Q(ts[k],dFl[k]),x=cx+(q[0]-cx)*f,y=cy+(q[1]-cy)*f;return [x,y,gAt(x,y)+PITCH_LIFT];};
  for(let k=0;k<K2;k++){const k1=(k+1)%K2;for(let r=0;r+1<fr.length;r++){const a=fl(k,fr[r]),b=fl(k1,fr[r]),c=fl(k1,fr[r+1]),d=fl(k,fr[r+1]);
   if(fr[r+1]===0)T.pitch.tri(a,b,c,[1,1,1],[uv(a),uv(b),uv(c)]);else T.pitch.quad(a,b,c,d,[1,1,1],[0,0,1],[uv(a),uv(b),uv(c),uv(d)]);}}
- // Goals at both ends (their posts are solids: a car meets them).
- for(const s of [-1,1]){const g=(v,z)=>[cx+U[0]*52.5*s+V[0]*v,cy+U[1]*52.5*s+V[1]*v,gAt(cx+U[0]*52.5*s,cy+U[1]*52.5*s)+z];const w=lin(0xf4f4f2);
-  for(const v of [-3.66,3.66]){const p=g(v,0);T.metal.post(p,g(v,2.44),.06,.06,6,w);solids.push({x:p[0],y:p[1],r:.12});}T.metal.post(g(-3.72,2.44),g(3.72,2.44),.06,.06,6,w);
-  if(!mobile)for(const v of [-3.66,3.66])T.metal.post(g(v,2.44),[g(v,0)[0]+U[0]*1.8*s,g(v,0)[1]+U[1]*1.8*s,g(v,0)[2]],.03,.03,4,w);}
+ // (The goals are the football's: two giant ones for the giant ball, pampulha-futebol.js; user, 2026-10-19.)
 
  // ---- The drive-in tunnel (invented for the game): through the west façade under a portal block lettered
  // MINEIRÃO, a lit concrete tube under the stands, out through an open cutting onto the floor.
@@ -518,6 +518,26 @@ function mineirao(m,K){
  const rim=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([b,z])=>S3(aM,b*(HW+.3),z<0?Zp-.6:Zp+TH+.3)),centre=S3(aM,0,Zp+TH/2);
  const beyond=new THREE.Plane().setFromNormalAndCoplanarPoint(S3(1,0,0).sub(S3(0,0,0)).normalize(),S3(aM-.5,0,Zp));
  return {stats,clearings:clear,bowl:{cx,cy,U,V,a:LA,b:LB,z:Zp,mouth,rim,centre,beyond}};
+}
+
+// The Mineirão's floor and bowl in numbers for the football on its floor (pampulha-futebol.js: the giant ball's world, the
+// goals), from the same lines mineirao() draws on; null where the track file has no Mineirão. Heights over the pitch:
+// wall, the wall round the floor (its top is the lower tier's first row); stands, the section of the bowl outward from
+// there, [metres in from the roof's edge, height] along each normal of that edge: the lower tier's top, the walkway, the
+// boxes' glass and the upper tier's parapet, the upper tier to its top row, the wall behind it, the roof's underside to
+// the membrane's inner edge, back out over the membrane's top and the roof's deck to the parapet round its edge.
+export function mineiraoField(data,{ground=null}={}){
+ const m=(data.scenery?.landmarks??[]).find(l=>l.kind==='mineirao');if(!m)return null;
+ const S=m.stadium??{},M=MINEIRAO,origin=data.meta?.origin_utm??null;
+ const [cx,cy]=S.centre??(origin?[M.utm[0]-origin[0],M.utm[1]-origin[1]]:[m.x+6.1,m.y+1.7]),heading=S.heading??M.axis;
+ const [RA,RB]=S.roof_semi??[M.a,M.b],[FA,FB]=S.facade_semi??M.facade,[LA,LB]=S.floor_semi??M.floorSemi,TN={...M.tunnel,...S.tunnel};
+ const E=ellipse(cx,cy,heading,RA,RB),U=E.U,V=E.V,th=TN.heading,tc=Math.cos(th),tsn=Math.sin(th);
+ const along=(A,B)=>{const du=tc*U[0]+tsn*U[1],dv=tc*V[0]+tsn*V[1];return 1/Math.hypot(du/A,dv/B);};
+ const Zp=m.ground??ground?.(cx,cy)??gridHeight(data.terrain,cx,cy)??0,R=M.roof,TIP=R+3.4,dTop=-4.5+(TIP-(R+.6))*.27+2.2+.45;
+ const FC=(10.5-(TN.height+1))/(10.5-1.2),aR=along(RA,RB),aFl=along(LA,LB),aF=along(FA,FB),aM=aR-(26.6+FC*(aR-aFl-26.6));
+ const stands=[[26.6,R-18.5],[25.5,R-18.5],[25.5,R-14],[25,R-14],[8.2,R-2.6],[8.2,R-1.4],[M.deck,R-1.4],[M.deck,R-1],[M.membrane,R-1.25],[M.membrane,R-.2],[M.deck,R+.8],[M.deck,R],[dTop,R],[dTop,R+.6],[dTop-.4,R+.6]];
+ return {cx,cy,heading,U,V,roof:[RA,RB],facade:[FA,FB],floor:[LA,LB],pitch:Zp,roofHeight:R,wall:1.2,stands,deck:M.deck,membrane:M.membrane,
+  tunnel:{heading:th,width:TN.width,height:TN.height,floor:aFl,portal:aF,mouth:aM}};
 }
 
 // ---------- The way in from the lap (meta.roam zone 'mineirao'): an arch over the gap in the straight's wall with

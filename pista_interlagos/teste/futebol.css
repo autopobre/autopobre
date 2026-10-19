@@ -1,0 +1,34 @@
+/* Football on the Mineirão's floor (pampulha-futebol.js): the score at the top while the player is in the stadium, the
+   hint the first time on the floor, and the big GOL! banner. */
+#futebolHud[hidden],#golBanner[hidden]{display:none!important}
+#futebolHud{position:fixed;z-index:44;top:clamp(58px,9vh,86px);left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px #000b}
+#futebolHud>div{display:flex;align-items:stretch;border-radius:7px;overflow:hidden;box-shadow:0 6px 22px #0006;font-weight:900;font-size:13px;letter-spacing:.06em}
+#futebolHud b{display:flex;align-items:center;gap:8px;padding:6px 12px;color:#fff}
+#futebolHud b i{font-style:normal;font-size:19px;letter-spacing:0}
+#futebolHud .azul{background:linear-gradient(90deg,#123f9e,#2f7dff)}
+#futebolHud .laranja{background:linear-gradient(90deg,#ff7a1f,#b34a07)}
+#futebolHud>div>span{display:flex;align-items:center;padding:0 9px;background:#0b0f16e8;color:#f3efe2;font-size:15px}
+#futebolDica{max-width:min(520px,86vw);padding:5px 10px;border-radius:6px;background:#0b0f16d9;color:#f6e7a6;font-size:11px;font-weight:700;text-align:center;line-height:1.35}
+#futebolDica:empty{display:none}
+#golBanner{position:fixed;inset:0;z-index:64;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;pointer-events:none;animation:golBanner 4.2s ease forwards}
+#golBanner strong{font-size:clamp(76px,16vh,170px);font-weight:950;line-height:1;letter-spacing:-.04em;color:#fff;text-shadow:0 6px 0 var(--gol-sombra,#123f9e),0 10px 38px #000b;animation:golPulo .55s ease-out}
+#golBanner[data-team="azul"]{--gol-sombra:#123f9e;--gol-cor:#6fa6ff}
+#golBanner[data-team="laranja"]{--gol-sombra:#9c3e05;--gol-cor:#ffb071}
+#golBanner span{padding:5px 16px;border-radius:6px;background:var(--gol-sombra,#123f9e);color:#fff;font-size:clamp(17px,3vh,28px);font-weight:900;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 0 0 2px var(--gol-cor,#6fa6ff),0 6px 22px #0007}
+#golBanner em{font-style:normal;color:#f6efdb;font-size:clamp(14px,2.4vh,22px);font-weight:800;letter-spacing:.12em;font-variant-numeric:tabular-nums;text-shadow:0 2px 8px #000c}
+@keyframes golBanner{0%{opacity:0}5%,82%{opacity:1}100%{opacity:0}}
+@keyframes golPulo{0%{transform:scale(.4)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+/* On foot the walking panel (pitstop.css #walkHud) has the top: the score goes under it. */
+body.free-walking #futebolHud{top:clamp(150px,24vh,190px)}
+@media(max-height:520px){#futebolHud{top:44px}body.free-walking #futebolHud{top:118px}#futebolHud>div{font-size:11px}#futebolHud b{padding:4px 9px}#futebolHud b i{font-size:15px}}
+body.selfie-mode #futebolHud,body.selfie-mode #golBanner{display:none!important}
+/* On foot with the ball (free-walk.js): Chutar and Passe side by side, held like the keys; the wind-up's bar. */
+#walkBall[hidden],#walkPower[hidden]{display:none!important}
+#walkBall{display:flex;gap:8px;margin-top:8px}
+#walkHud #walkBall button{flex:1;margin-top:0;touch-action:none;user-select:none;-webkit-user-select:none}
+#walkKick{background:#e4c85f;color:#172d25}
+#walkPass{background:#1d4a3f;color:#f6efdb;border:1px solid #dabf63}
+#walkPower{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:10px;font-weight:900;letter-spacing:.1em;color:#f0d477}
+#walkPower b{flex:1;height:9px;border-radius:5px;background:#0b1512;overflow:hidden;box-shadow:inset 0 0 0 1px #d6bf7255}
+#walkPower i{display:block;height:100%;width:0;background:linear-gradient(90deg,#5fcf6a,#f2d24b 55%,#ff5a2a)}
+#walkPower.passe i{background:linear-gradient(90deg,#5fcf6a,#9be3ff)}
