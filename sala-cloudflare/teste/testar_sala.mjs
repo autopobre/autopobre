@@ -13,8 +13,8 @@ let rooms=0;const fresh=()=>'sala-'+(++rooms)+'-'+Math.random().toString(36).sli
 const refused=(path,origin)=>new Promise(done=>{const req=http.request({host:'127.0.0.1',port:PORT,path,headers:{Connection:'Upgrade',Upgrade:'websocket','Sec-WebSocket-Version':'13','Sec-WebSocket-Key':'dGhlIHNhbXBsZSBub25jZQ==',...(origin?{Origin:origin}:{})}});
  req.on('response',res=>{res.resume();done(res.statusCode);});req.on('upgrade',(res,socket)=>{socket.destroy();done(101);});req.on('error',()=>done(0));req.end();});
 // A client: its messages, its close, and helpers to wait for them.
-async function open(room,{origin=ORIGIN,key=KEY,token=null,name='Piloto',auth=true,ip='192.0.2.1'}={}){
- const ws=new WebSocket(`ws://127.0.0.1:${PORT}/sala/${room}`,{headers:{Origin:origin,'CF-Connecting-IP':ip}}),c={ws,got:[],closed:null};
+async function open(room,{origin=ORIGIN,key=KEY,token=null,name='Piloto',auth=true,ip='192.0.2.1',headers={}}={}){
+ const ws=new WebSocket(`ws://127.0.0.1:${PORT}/sala/${room}`,{headers:{...headers,Origin:origin,'CF-Connecting-IP':ip}}),c={ws,got:[],closed:null};
  ws.onmessage=e=>c.got.push(JSON.parse(e.data));ws.onclose=e=>{c.closed={code:e.code,reason:e.reason};};ws.onerror=()=>{};
  await new Promise(r=>{ws.onopen=r;const t=setInterval(()=>{if(c.closed){clearInterval(t);r();}},20);});
  c.send=m=>{try{ws.send(typeof m==='string'?m:JSON.stringify(m));}catch{}};
@@ -36,6 +36,8 @@ const report={};
  // No key at all in time (a slow connection): its own code, which the game tries again instead of
  // asking for the key.
  const slow=await open(fresh(),{auth:false});await slow.until(()=>slow.closed,AUTH_WAIT+3000);assert.equal(slow.closed.code,4012,'late, not a wrong key');
+ // Before the key nothing but the key: anything else closes the socket at once.
+ const chatty=await open(fresh(),{auth:false});chatty.send({t:'eco'});await chatty.until(()=>chatty.closed);assert.equal(chatty.closed.code,1008,'something else before the key');
 }
 
 // Roles, the doorman, and who is who.
@@ -153,13 +155,20 @@ const report={};
  assert(others.every(o=>o.me?.role==='guest'));
  const late=await open(room);assert.equal(late.closed?.code,4002,'19 in the room: the 20th is turned away');
  for(const c of [host,...others])c.ws.close();
- const locked=fresh(),owner=await open(locked);
- for(let i=0;i<20;i++)await open(locked,{key:'errada'});
+ const BAD='192.0.2.7',locked=fresh(),owner=await open(locked,{ip:BAD});
+ for(let i=0;i<20;i++)await open(locked,{key:'errada',ip:BAD});
  const right=await open(locked,{ip:'192.0.2.2'});assert(right.me,'another IP can still enter');
- const blocked=await open(locked,{key:'errada'});assert.equal(blocked.closed?.code,4009,'only the offending IP waits');
- const back=await open(locked,{token:owner.me.token});assert.equal(back.me?.role,'host','known host resumes on the same IP');
- for(const c of [owner,right,back])c.ws.close();
- const retained=fresh(),keeper=await open(retained),tokens=[];
+ const blocked=await open(locked,{key:'errada',ip:BAD});assert.equal(blocked.closed?.code,4009,'only the offending IP waits');
+ const back=await open(locked,{token:owner.me.token,ip:BAD});assert.equal(back.me?.role,'host','known host resumes on the same IP');
+ // The Porteiro counts the wrong keys of every room: a new room name gives no fresh tries, and a
+ // header the client sets itself changes nothing.
+ await wait(200);
+ const elsewhere=await open(fresh(),{ip:BAD});assert.equal(elsewhere.closed?.code,4009,'another room: the IP still waits');
+ const forged=await open(fresh(),{ip:BAD,headers:{'X-Porteiro':'livre'}});assert.equal(forged.closed?.code,4009,'the client cannot speak for the Porteiro');
+ const neighbour=await open(fresh(),{ip:'192.0.2.2'});assert.equal(neighbour.me?.role,'host','another IP opens a new room');
+ for(const c of [owner,right,back,neighbour])c.ws.close();
+ // (with the doorman off: the door's own limit is checked below)
+ const retained=fresh(),keeper=await open(retained),tokens=[];keeper.send({t:'config',porteiro:false});await wait(30);
  for(let i=0;i<20;i++){
   const guest=await open(retained);tokens.push(guest.me.token);guest.ws.close();await guest.until(()=>guest.closed);
   await keeper.until(()=>keeper.of('bye').some(m=>m.from===guest.me.id));
@@ -176,6 +185,16 @@ const report={};
  assert.equal(extra.closed.code,4012,'pending capacity retries instead of permanently stopping the game');
  const other=await open(pending,{ip:'192.0.2.2'});assert(other.me,'another source can authenticate');
  for(const c of [...idle,other])c.ws.close();
+ // The door: four knocks from one IP wait together, a fifth tries again (4013, not a refusal);
+ // another IP still knocks, and one let in makes room.
+ const hall=fresh(),warden=await open(hall,{ip:'192.0.2.3'}),knocks=[];
+ for(let i=0;i<4;i++)knocks.push(await open(hall,{ip:'192.0.2.4'}));
+ assert(knocks.every(k=>k.me?.pending),'four at the door');
+ const fifth=await open(hall,{ip:'192.0.2.4'});assert.equal(fifth.closed?.code,4013,'a fifth from that IP tries again');
+ const stranger=await open(hall,{ip:'192.0.2.5'});assert(stranger.me?.pending,'another IP knocks');
+ warden.send({t:'admit',to:knocks[0].me.id});await knocks[0].until(()=>knocks[0].of('admitted')[0]);
+ const sixth=await open(hall,{ip:'192.0.2.4'});assert(sixth.me?.pending,'one let in makes room at the door');
+ for(const c of [warden,...knocks,stranger,sixth])c.ws.close();
  report.limits='ok';
 }
 stop();

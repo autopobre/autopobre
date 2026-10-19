@@ -115,6 +115,16 @@ import {ArenaMode} from './drift-arena-mode.js';
 import {DriftCar} from './drift-physics.js';
 import {createArenaScene,arenaLandscape,oldStockPicture} from './drift-arena-scene.js';
 const $=id=>document.getElementById(id);
+// Inside another site's frame (a page that lays its own buttons over the game to steer the player's
+// clicks) the game does not start: a link opens it at its own address. The header that forbids the
+// frame outright (frame-ancestors) comes from Cloudflare's proxy, not from GitHub Pages: this holds
+// should that ever be off (SEGURANCA.md).
+if(window.top!==window.self){
+ const link=document.createElement('a');link.href=location.href;link.target='_top';link.textContent='Abrir o Auto-Pobre Racing';
+ link.style.cssText='display:block;margin:30vh auto 0;width:max-content;padding:14px 22px;border-radius:8px;background:#e2fb57;color:#111;font:700 18px system-ui,sans-serif;text-decoration:none';
+ document.body.replaceChildren(link);
+ await new Promise(()=>{});
+}
 // The player's keys (Controles tab, key-bindings.js): every keyboard event reads through them from here on.
 installKeyBindings(playerKeys);
 const touchDevice=matchMedia('(pointer:coarse)').matches||navigator.maxTouchPoints>0;let mobile;

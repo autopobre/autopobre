@@ -10,8 +10,9 @@
 //   guests; guests' messages (hello, ready, state, ping, bye) reach the host only;
 // - the doorman: a guest waits outside until the host admits it; the host can refuse or kick;
 // - the line check: an echo the server answers itself, so a player's game can tell a dead connection;
-// - limits: message size, messages and bytes per second per connection, players per room, failed
-//   keys per IP (never a room-wide lockout).
+// - limits: message size, messages and bytes per second per connection, players per room, guests
+//   waiting at the door, nothing but the key before the key, failed keys per IP across every room
+//   (Porteiro: a new room name gives no fresh tries; never a room-wide lockout).
 // A tab keeps its token (sessionStorage): back within HOST_GRACE after a reload, a host hosts again
 // and a guest keeps its id and its admission; a host that does not come back hands the room to the
 // admitted guest that has been there longest (one still at the door never hosts). During a race (the
@@ -25,8 +26,10 @@ const RATE_MESSAGES=90;      // per connection, per second
 const RATE_BYTES=320000;     // per connection, per second
 const OVER_LIMIT_CLOSE=3;    // seconds over the limit before the connection is closed
 const AUTH_WAIT=10000;       // ms to present the key
-const FAILS_PER_MINUTE=20;   // wrong keys per IP in a room before that IP waits a minute
+const FAILS_PER_MINUTE=20;   // wrong keys per IP, in a room and in all of them, before that IP waits a minute
 const MAX_AUTH_SOURCES=1024,MAX_PENDING=64,MAX_PENDING_PER_IP=MAX_PEERS+2;
+const MAX_GATE_SOURCES=4096; // IPs the Porteiro remembers at once
+const MAX_DOOR=10,MAX_DOOR_PER_IP=4; // guests waiting at the door at once, and from one IP
 const TOKEN_TTL=24*60*60*1000,MAX_TOKENS=256; // bounded reconnect history; active identities are kept
 const HOST_GRACE=15000;      // ms a host that left may take to come back (env HOST_GRACE_MS in tests)
 const RACE_GRACE=600000;     // the same during a race (env RACE_GRACE_MS in tests)
@@ -34,8 +37,9 @@ const HOST_TYPES=new Set(['lobby','go','snap','pong','admit','deny','kick','conf
 const GUEST_TYPES=new Set(['hello','ready','state','ping','bye']);
 const ROOM=/^[a-z0-9-]{1,24}$/,ID=/^[0-9a-f]{8}$/,TOKEN=/^[0-9a-f]{32}$/;
 // Close codes the game explains to the player (net-link.js); late (no key within AUTH_WAIT: a slow
-// connection, not a wrong key) it just tries again.
-export const CLOSE={key:4001,full:4002,denied:4003,kicked:4004,flood:4008,busy:4009,elsewhere:4010,origin:4011,late:4012};
+// connection, not a wrong key) and door (the door is full: room is made as the host lets guests in)
+// it just tries again, as it does a socket that sent something else before its key (1008).
+export const CLOSE={key:4001,full:4002,denied:4003,kicked:4004,flood:4008,busy:4009,elsewhere:4010,origin:4011,late:4012,door:4013};
 const hex=bytes=>[...crypto.getRandomValues(new Uint8Array(bytes))].map(b=>b.toString(16).padStart(2,'0')).join('');
 const cleanName=value=>(typeof value==='string'?value:'').replace(/\p{C}/gu,'').replace(/\s+/g,' ').trim().slice(0,24)||'Piloto';
 // Same length and every byte compared: the time taken says nothing about the key.
@@ -46,6 +50,13 @@ function sameKey(a,b){
  return diff===0&&y.length>0;
 }
 const origins=env=>String(env.ORIGENS??'').split(',').map(s=>s.trim()).filter(Boolean);
+// The Porteiro's word on an IP (entrada: a socket on its way to a room), or news for it (erro: that
+// socket's key was wrong; saida: it is past its key, or gone). Unreachable, it says livre: the rooms'
+// own limits still hold.
+async function porteiro(env,what,ip){
+ if(!env.PORTEIRO)return 'livre';
+ try{const r=await env.PORTEIRO.get(env.PORTEIRO.idFromName('porteiro'),{locationHint:'sam'}).fetch(`https://porteiro/${what}?ip=${encodeURIComponent(ip)}`);return r.ok?await r.text():'livre';}catch{return 'livre';}
+}
 
 export default {
  async fetch(request,env){
@@ -54,10 +65,42 @@ export default {
   if(!room||!ROOM.test(room))return new Response('Sala inválida',{status:404});
   if(request.headers.get('Upgrade')!=='websocket')return new Response('Esperava WebSocket',{status:426});
   if(!origins(env).includes(request.headers.get('Origin')??''))return new Response('Origem não permitida',{status:403});
+  // The room hears the Porteiro's word in a header this Worker always sets (a client's own is
+  // replaced; the rooms are reached only through here).
+  const headers=new Headers(request.headers);headers.set('X-Porteiro',await porteiro(env,'entrada',request.headers.get('CF-Connecting-IP')||'local'));
   // South America: the room lives near the players.
-  return env.SALAS.get(env.SALAS.idFromName(room),{locationHint:'sam'}).fetch(request);
+  return env.SALAS.get(env.SALAS.idFromName(room),{locationHint:'sam'}).fetch(new Request(request,{headers}));
  }
 };
+
+// One for every room, per IP: the wrong keys of the last minute and the sockets still to present
+// their key. FAILS_PER_MINUTE wrong keys anywhere and that IP waits a minute in every room (bloqueado:
+// the room lets in only an identity it knows, with its token and the key); MAX_PENDING_PER_IP sockets
+// waiting at once and the next tries again (cheio). In memory, bounded: a restart forgets it all.
+export class Porteiro {
+ constructor(){this.sources=new Map();this.swept=0;}
+ async fetch(request){const url=new URL(request.url);return new Response(this.answer(url.pathname.slice(1),url.searchParams.get('ip')||'local',Date.now()));}
+ answer(what,ip,now){
+  if(now-this.swept>=10000){this.swept=now;for(const [k,s] of this.sources){this.fresh(s,now);if(!s.waiting.length&&now>=s.until&&now-s.since>=60000)this.sources.delete(k);}}
+  let s=this.sources.get(ip);
+  if(!s){
+   if(what!=='entrada')return 'ok';
+   if(this.sources.size>=MAX_GATE_SOURCES)this.sources.delete(this.sources.keys().next().value);
+   s={since:now,count:0,until:0,waiting:[]};this.sources.set(ip,s);
+  }
+  this.fresh(s,now);
+  if(what==='entrada'){
+   if(now<s.until)return 'bloqueado';
+   if(s.waiting.length>=MAX_PENDING_PER_IP)return 'cheio';
+   s.waiting.push(now);return 'livre';
+  }
+  s.waiting.shift();
+  if(what==='erro'){if(now-s.since>=60000){s.since=now;s.count=0;}if(++s.count>=FAILS_PER_MINUTE)s.until=now+60000;}
+  return 'ok';
+ }
+ // A socket never heard of again (its room restarted) stops counting once its key would be late.
+ fresh(s,now){while(s.waiting.length&&now-s.waiting[0]>AUTH_WAIT+5000)s.waiting.shift();}
+}
 
 export class Sala {
  constructor(state,env){
@@ -74,8 +117,9 @@ export class Sala {
   const ip=request.headers.get('CF-Connecting-IP')||'local';
   const [client,socket]=Object.values(new WebSocketPair());
   socket.accept();
-  const peer={socket,ip,id:null,token:null,authed:false,window:{since:Date.now(),messages:0,bytes:0,over:0}};
-  if(this.pending.size>=MAX_PENDING||[...this.pending].filter(p=>p.ip===ip).length>=MAX_PENDING_PER_IP){
+  // gate: the Porteiro's word on this IP (the Worker's header; none in the in-memory checks).
+  const peer={socket,ip,gate:request.headers.get('X-Porteiro'),id:null,token:null,authed:false,window:{since:Date.now(),messages:0,bytes:0,over:0}};
+  if(peer.gate==='cheio'||this.pending.size>=MAX_PENDING||[...this.pending].filter(p=>p.ip===ip).length>=MAX_PENDING_PER_IP){
    this.shut(peer,CLOSE.late,'Muitas conexões aguardando chave');return new Response(null,{status:101,webSocket:client});
   }
   this.pending.add(peer);
@@ -103,9 +147,12 @@ export class Sala {
   const size=new TextEncoder().encode(data).byteLength;
   if(size>MAX_BYTES){this.shut(peer,CLOSE.flood,'Mensagem grande demais');return;}
   if(!this.allow(peer,size))return;
-  let m;try{m=JSON.parse(data);}catch{return;}
-  if(!m||typeof m!=='object'||Array.isArray(m)||typeof m.t!=='string')return;
-  if(!peer.authed){if(m.t==='auth')this.auth(peer,m);return;}
+  let m;try{m=JSON.parse(data);}catch{m=null;}
+  const valid=!!m&&typeof m==='object'&&!Array.isArray(m)&&typeof m.t==='string';
+  // Before the key, nothing but the key: the game sends it first, so anything else is not the game
+  // (and a socket without the key costs the room one message, not a stream of them).
+  if(!peer.authed){if(valid&&m.t==='auth')this.auth(peer,m);else this.shut(peer,1008,'Esperava a chave');return;}
+  if(!valid)return;
   // The line check (net-room.js): answered here, whatever the host is doing; no answer for a few
   // seconds tells the player's game its connection is dead before the browser notices.
   if(m.t==='eco'){this.send(peer,{t:'eco'});return;}
@@ -131,8 +178,9 @@ export class Sala {
   for(const [source,a] of this.attempts)if(now-a.since>=60000&&now>=a.until)this.attempts.delete(source);
   const attempt=this.attempts.get(ip);
   // An already authenticated identity may reconnect even behind the same NAT as a mistyping
-  // player, but only with both its unguessable token and the current group key.
-  if(attempt&&now<attempt.until&&!(entry&&!this.banned.has(token)&&sameKey(m.key,this.env.CHAVE_GRUPO))){
+  // player, but only with both its unguessable token and the current group key. The IP waits for
+  // its wrong keys here or, the Porteiro says, in any room.
+  if((peer.gate==='bloqueado'||attempt&&now<attempt.until)&&!(entry&&!this.banned.has(token)&&sameKey(m.key,this.env.CHAVE_GRUPO))){
    this.shut(peer,CLOSE.busy,'Tente de novo em um minuto');return;
   }
   if(!this.env.CHAVE_GRUPO||!sameKey(m.key,this.env.CHAVE_GRUPO)){
@@ -140,7 +188,7 @@ export class Sala {
    if(++a.count>=FAILS_PER_MINUTE)a.until=now+60000;
    if(!this.attempts.has(ip)&&this.attempts.size>=MAX_AUTH_SOURCES)this.attempts.delete(this.attempts.keys().next().value);
    this.attempts.set(ip,a);
-   this.shut(peer,CLOSE.key,'Chave errada');return;
+   this.settle(peer,true);this.shut(peer,CLOSE.key,'Chave errada');return;
   }
   if(token&&this.banned.has(token)){this.shut(peer,CLOSE.kicked,'Removido pelo anfitrião');return;}
   const old=entry?this.peers.get(entry.id):null;
@@ -149,12 +197,19 @@ export class Sala {
   const reserved=this.hostAwayTimer&&!this.peers.has(this.hostId)?1:0;
   const returningHost=reserved&&entry?.token===this.hostToken;
   if(!old&&this.peers.size+reserved>=MAX_PEERS&&!returningHost){this.shut(peer,CLOSE.full,'Sala cheia');return;}
+  // The door holds MAX_DOOR guests at once, MAX_DOOR_PER_IP of them from one IP: one key holder
+  // cannot fill the room with knocks. One more tries again (CLOSE.door) until the host lets some in.
+  const hosts=!this.hostId||entry?.token===this.hostToken||!this.peers.has(this.hostId)&&!this.hostAwayTimer;
+  if(!hosts&&this.porteiro&&!entry?.admitted){
+   const door=[...this.peers.values()].filter(p=>p!==old&&p.id!==this.hostId&&!this.tokens.get(p.token)?.admitted);
+   if(door.length>=MAX_DOOR||door.filter(p=>p.ip===ip).length>=MAX_DOOR_PER_IP){this.shut(peer,CLOSE.door,'Porta cheia');return;}
+  }
   // The same tab again (a reload, or a duplicated tab): the newer connection keeps the identity.
   if(old&&old!==peer){this.peers.delete(entry.id);this.shut(old,CLOSE.elsewhere,'Aberta em outra aba');}
   if(!entry){this.pruneTokens(now,true);entry={id:this.newId(),token:hex(16),admitted:false,since:now};this.tokens.set(entry.token,entry);}
   entry.lastSeen=now;
   peer.token=entry.token;peer.id=entry.id;peer.name=cleanName(m.name);peer.authed=true;clearTimeout(peer.authTimer);
-  this.pending.delete(peer);
+  this.pending.delete(peer);this.settle(peer);
   this.peers.set(peer.id,peer);
   // The first in an empty room hosts it; a host back within the grace takes it again.
   const hostBack=this.hostToken===peer.token;
@@ -208,9 +263,12 @@ export class Sala {
  }
  toHost(m){const host=this.peers.get(this.hostId);if(host)this.send(host,m);}
  toGuests(m){const data=JSON.stringify(m);for(const p of this.peers.values())if(p.id!==this.hostId&&this.tokens.get(p.token)?.admitted){try{p.socket.send(data);}catch{}}}
+ // Once per socket the Porteiro counted (its word was livre): past its key, wrong (failed), or gone
+ // before it. Not waited for: the room goes on whatever the Porteiro is doing.
+ settle(peer,failed=false){if(peer.gate!=='livre'||peer.settled)return;peer.settled=true;porteiro(this.env,failed?'erro':'saida',peer.ip);}
  gone(peer){
   clearTimeout(peer.authTimer);
-  this.pending.delete(peer);
+  this.pending.delete(peer);this.settle(peer);
   if(!peer.id||this.peers.get(peer.id)!==peer)return;
   this.peers.delete(peer.id);
   const entry=this.tokens.get(peer.token);if(entry)entry.lastSeen=Date.now();

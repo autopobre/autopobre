@@ -10,15 +10,18 @@
   "routes": [{ "pattern": "sala.autopobre.com.br", "custom_domain": true }],
   "workers_dev": false,
   "preview_urls": false,
+  // SALAS: one per room. PORTEIRO: a single one for all of them (wrong keys and sockets waiting for
+  // their key, per IP, across every room).
   "durable_objects": {
-    "bindings": [{ "name": "SALAS", "class_name": "Sala" }]
+    "bindings": [{ "name": "SALAS", "class_name": "Sala" }, { "name": "PORTEIRO", "class_name": "Porteiro" }]
   },
   // The free plan runs SQLite-backed Durable Objects only.
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sala"] }],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sala"] }, { "tag": "v2", "new_sqlite_classes": ["Porteiro"] }],
   "vars": {
-    // Pages allowed to open a room: the site, and the local preview server (INICIAR_TESTE). The old
-    // address (www.inteligenciamilgrau.com.br, an origin all of that account's Pages projects share)
-    // only redirects here now, so it no longer opens rooms.
-    "ORIGENS": "https://autopobre.com.br,http://127.0.0.1:8799"
+    // Pages allowed to open a room: the site only. The local preview (INICIAR_TESTE) talks to
+    // wrangler dev (&servidor=local, origins in .dev.vars), never to this server. The old address
+    // (www.inteligenciamilgrau.com.br, an origin all of that account's Pages projects share) only
+    // redirects here now, so it no longer opens rooms.
+    "ORIGENS": "https://autopobre.com.br"
   }
 }

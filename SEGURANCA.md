@@ -1,5 +1,28 @@
 # Revisão para publicação — 13/09/2026
 
+## Atualização — 19/10/2026
+
+Nova revisão do multiplayer, das entradas de texto, dos saves, da migração e da publicação. As entradas de texto continuam bem protegidas: nomes sempre como texto (`textContent`), escape nos poucos lugares que montam HTML, limpeza de caracteres de controle e invisíveis nos dois lados, e validação de cada mensagem e de cada save ao carregar. Corrigido nesta rodada:
+
+| Achado | Correção |
+|---|---|
+| O site no ar era entregue direto pelo GitHub Pages, que ignora `_headers`: `frame-ancestors`, `X-Frame-Options`, HSTS e `nosniff` não chegavam ao navegador; só valia a CSP do HTML. Outro site podia abrir o jogo dentro de um quadro. | O site passou a ser servido pelo proxy do Cloudflare, que acrescenta os cabeçalhos (abaixo). Como reserva, `main.js` não inicia o jogo dentro de um quadro: mostra só um link que abre o jogo no próprio endereço. |
+| O limite de 20 chaves erradas por minuto valia por sala: trocar o nome da sala dava tentativas novas. | Um Durable Object único (`Porteiro`) conta, por IP, as chaves erradas de todas as salas e as conexões ainda sem chave (até 21). O Worker põe a resposta num cabeçalho que ele mesmo define (o do cliente é substituído). Bloqueado, o IP não descobre nada sobre a chave; uma identidade conhecida, com token e chave, continua voltando. |
+| Antes da chave, uma conexão podia mandar até 90 mensagens por segundo, gastando a cota grátis sem conhecer a chave. | Antes da autenticação só a chave é aceita; qualquer outra coisa fecha a conexão (1008). O jogo sempre manda a chave primeiro. |
+| Quem tinha a chave podia lotar as 19 vagas com conexões paradas na porta. | Na porta ficam no máximo 10 pessoas, 4 por IP; a próxima tenta de novo sozinha (4013) assim que o anfitrião aceita alguém. |
+| `migrar.html` aceitava saves de qualquer link mesmo depois da migração (só preenchia o que faltava, tudo validado). | Navegador já migrado não recebe mais nada. O prazo da migração passou de 01/04/2027 para **15/11/2026**: depois dele o endereço antigo não manda saves e `migrar.html` só redireciona (a página fica, porque o endereço antigo continua levando a ela). Os testes usam datas fixas para não quebrar depois do prazo. |
+| Ferramentas do servidor: wrangler 4.143.1 trazia `sharp` com aviso alto (CVE da librsvg). Só rodava no PC, não no Cloudflare. | wrangler 4.149.0; `npm audit` do servidor e do jogo: zero vulnerabilidades. |
+| `ORIGENS` de produção aceitava `http://127.0.0.1:8799`. | Só `https://autopobre.com.br`. O preview local usa o `wrangler dev` (`&servidor=local`). |
+
+Continua em aberto, por decisão: `/dev/` e o link principal são a mesma origem (mesmos saves e mesma chave do grupo). A separação para `dev.autopobre.com.br` fica para depois; antes de criar o registro no DNS, verificar o domínio na organização do GitHub (registro TXT) para evitar tomada de subdomínio.
+
+### No painel do Cloudflare (não dá para fazer pelo código)
+
+1. **Cabeçalhos do site — feito em 19/10/2026, conferido no ar** (`autopobre.com.br`, `/dev/` e `www` passam pelo Cloudflare; os cinco cabeçalhos e o HSTS de 30 dias com subdomínios chegam; o HTML não é reescrito; DNSSEC continua válido). Como foi feito: em DNS, ligar o proxy (nuvem laranja) nos registros de `autopobre.com.br` que apontam para o GitHub; em SSL/TLS, modo *Full (strict)*; em Rules → Transform Rules → *Modify Response Header*, para `autopobre.com.br`, definir `Content-Security-Policy: frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` e `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()`; em Edge Certificates, ligar o HSTS. Deixar desligados Rocket Loader e Email Address Obfuscation, que reescrevem o HTML. A CSP completa continua no HTML; a do cabeçalho só acrescenta a proibição de quadro.
+2. **Cota do servidor das salas:** em Security → WAF → *Rate limiting rules*, uma regra para `http.host eq "sala.autopobre.com.br"`, contando por IP, 20 pedidos em 10 segundos, bloqueio de 10 segundos. Pedidos barrados ali não chegam ao Worker. Isso barra rajadas; no plano grátis, alguém insistente e devagar ainda consegue gastar as 100 mil requisições do dia.
+
+Verificações: `npm test` do servidor (em memória e no `wrangler dev`, com bloqueio entre salas, cabeçalho forjado, porta e chave primeiro), `testar_sala_jogo.mjs`, `testar_multiplayer.mjs`, `testar_estados_sala.mjs`, `testar_migracao.mjs` e o jogo no navegador, aberto direto e dentro de um quadro de outra origem. As mudanças do servidor só valem depois de `.\wrangler deploy`; as do jogo, na próxima publicação.
+
 ## Atualização — 03/10/2026
 
 A revisão do multiplayer encontrou bloqueio coletivo por tentativas de chave errada e reconexões capazes de ultrapassar as 19 vagas. O Worker agora limita erros por IP, admite a reconexão de uma identidade conhecida com token e chave válidos, conta tokens inativos na ocupação e reserva a vaga do anfitrião durante a tolerância de queda. Conexões aguardando autenticação, histórico de tokens e contadores de tentativas têm limites; o histórico desconectado expira em 24 horas. Mensagens usam o tamanho real em bytes UTF-8. Os detalhes e prazos das expulsões estão no [README do servidor](sala-cloudflare/README.md).

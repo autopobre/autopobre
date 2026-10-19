@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import {savedKey,packSaves,unpackSaves,importSaves,readMigrationLink,safeDestination,moveToNewAddress,arriveFromOldAddress,GHOST_KEY,MIGRATED_KEY,OLD_ADDRESS,MAX_LINK} from '../migracao/save-migration.js';
+import {savedKey,packSaves,unpackSaves,importSaves,readMigrationLink,safeDestination,moveToNewAddress,arriveFromOldAddress,GHOST_KEY,MIGRATED_KEY,OLD_ADDRESS,MAX_LINK,MIGRATION_UNTIL} from '../migracao/save-migration.js';
 import {GHOST_KEY as GAME_GHOST_KEY} from '../teste/ghost-lap.js';
 import {PREFERENCES_KEY} from '../teste/player-preferences.js';
 import {RECORD_VIEW_KEY} from '../teste/lap-records.js';
@@ -9,6 +9,8 @@ import {PILOTS_KEY} from '../teste/pilot-profile.js';
 import {WHEEL_KEY} from '../teste/wheel-controls.js';
 import {SOUND_KEY} from '../teste/sound-tuning.js';
 import {STORY_PROFILE_KEY} from '../teste/story-career.js';
+// A moment before the deadline, so the checks keep passing after it (the deadline is checked on its own).
+const BEFORE=Date.UTC(2026,9,19);
 const fakeStorage=(entries={})=>{const data=new Map(Object.entries(entries));return {data,get length(){return data.size;},key:i=>[...data.keys()][i]??null,getItem:key=>data.has(key)?data.get(key):null,setItem:(key,value)=>data.set(key,String(value))};};
 // Every save the game writes comes along; the group key and other sites' keys stay behind.
 assert.equal(GHOST_KEY,GAME_GHOST_KEY,'save-migration.js trims the same key ghost-lap.js writes');
@@ -64,30 +66,40 @@ assert.deepEqual(readMigrationLink(''),{migration:false,saves:'',destination:'/'
 // the room link kept.
 const place=(pathname,search='',hash='')=>({pathname,search,hash,url:'',replace(url){this.url=url;}});
 const moved=place('/autopobre/dev/','?pista=curvelo','#desafio=ABC');
-assert.equal(await moveToNewAddress('/autopobre',moved,old),'saves');
+assert.equal(await moveToNewAddress('/autopobre',moved,old,BEFORE),'saves');
 assert.ok(moved.url.startsWith('https://autopobre.com.br/migrar.html#'),moved.url);
 const link=readMigrationLink(new URL(moved.url).hash);
 assert.equal(link.destination,'/dev/?pista=curvelo');assert.equal(link.rest,'desafio=ABC');
 assert.ok(moved.url.length<MAX_LINK+200);
 // Without saves it still passes through migrar.html, so the browser is marked and never hops again.
 for(const [path,destination] of [['/autopobre/','/'],['/autopobre','/'],['/autopobre/apr_v1/','/apr_v1/']]){
- const empty=place(path,'','#desafio=XYZ');assert.equal(await moveToNewAddress('/autopobre',empty,fakeStorage()),'none');
+ const empty=place(path,'','#desafio=XYZ');assert.equal(await moveToNewAddress('/autopobre',empty,fakeStorage(),BEFORE),'none');
  assert.deepEqual(readMigrationLink(new URL(empty.url).hash),{migration:true,saves:'',destination,rest:'desafio=XYZ'});
 }
 // Back from a first visit's hop (#volta): the page and link it left, whatever the old path; a hostile
 // #volta lands on the home page.
 const hop=place('/autopobre/','','#volta='+encodeURIComponent('/dev/?pista=curvelo#desafio=ABC'));
-assert.equal(await moveToNewAddress('/autopobre',hop,old),'saves');
+assert.equal(await moveToNewAddress('/autopobre',hop,old,BEFORE),'saves');
 assert.deepEqual({...readMigrationLink(new URL(hop.url).hash),saves:'…'},{migration:true,saves:'…',destination:'/dev/?pista=curvelo',rest:'desafio=ABC'});
-for(const bad of ['//evil.example/','https://evil.example/x','javascript:alert(1)']){const away=place('/autopobre/','','#volta='+encodeURIComponent(bad));await moveToNewAddress('/autopobre',away,fakeStorage());assert.equal(readMigrationLink(new URL(away.url).hash).destination,'/',bad);}
+for(const bad of ['//evil.example/','https://evil.example/x','javascript:alert(1)']){const away=place('/autopobre/','','#volta='+encodeURIComponent(bad));await moveToNewAddress('/autopobre',away,fakeStorage(),BEFORE);assert.equal(readMigrationLink(new URL(away.url).hash).destination,'/',bad);}
 // migrar.html stores the saves, marks the browser (with saves or without) and opens the page asked for.
 const arrived=fakeStorage({[PREFERENCES_KEY]:'{"camera":"chase"}'});
-const arrival=await arriveFromOldAddress(new URL(moved.url).hash,arrived);
+const arrival=await arriveFromOldAddress(new URL(moved.url).hash,arrived,BEFORE);
 assert.equal(arrival.target,'/dev/?pista=curvelo#desafio=ABC');assert.deepEqual(arrival.result.brought,['autopobre-records-v1',STORY_PROFILE_KEY]);
 assert.equal(arrived.getItem('autopobre-records-v1'),records);assert.equal(arrived.getItem(PREFERENCES_KEY),'{"camera":"chase"}');
 assert.equal(JSON.parse(arrived.getItem(MIGRATED_KEY)).brought,2);
-const nothing=fakeStorage();assert.equal((await arriveFromOldAddress('#destino=%2F&migrar=',nothing)).target,'/');assert.equal(JSON.parse(nothing.getItem(MIGRATED_KEY)).brought,0);
-const stray=fakeStorage();assert.equal((await arriveFromOldAddress('',stray)).target,'/');assert.equal(stray.getItem(MIGRATED_KEY),null,'a bare visit to migrar.html marks nothing');
+const nothing=fakeStorage();assert.equal((await arriveFromOldAddress('#destino=%2F&migrar=',nothing,BEFORE)).target,'/');assert.equal(JSON.parse(nothing.getItem(MIGRATED_KEY)).brought,0);
+const stray=fakeStorage();assert.equal((await arriveFromOldAddress('',stray,BEFORE)).target,'/');assert.equal(stray.getItem(MIGRATED_KEY),null,'a bare visit to migrar.html marks nothing');
+// A browser already migrated takes nothing from any link (its own again, or one someone crafted), and
+// keeps its first mark; past the deadline no link brings saves and the old address sends none.
+const planted='#destino=%2F&migrar='+(await packSaves(fakeStorage({'opala99-audio':'{"volume":0}'})));
+const mark=arrived.getItem(MIGRATED_KEY),again=await arriveFromOldAddress(planted,arrived,BEFORE);
+assert.deepEqual(again.result.brought,[]);assert.equal(again.target,'/');assert.equal(arrived.getItem('opala99-audio'),null,'nothing planted');assert.equal(arrived.getItem(MIGRATED_KEY),mark);
+const late=fakeStorage(),after=await arriveFromOldAddress(planted,late,MIGRATION_UNTIL);
+assert.deepEqual(after.result.brought,[]);assert.equal(after.target,'/');assert.equal(late.getItem('opala99-audio'),null);assert.notEqual(late.getItem(MIGRATED_KEY),null,'still marked: no hop again');
+const closed=place('/autopobre/dev/','','#desafio=ABC');assert.equal(await moveToNewAddress('/autopobre',closed,old,MIGRATION_UNTIL),'none');
+assert.deepEqual(readMigrationLink(new URL(closed.url).hash),{migration:true,saves:'',destination:'/dev/',rest:'desafio=ABC'},'past the deadline the old address only redirects');
+assert.equal(MIGRATION_UNTIL,Date.UTC(2026,10,15),'15/11/2026');
 // migration-check.js, before the game: one hop to the old address with the page to come back to, and
 // none when the browser is marked, on a second try in the tab, after the deadline or for a crawler.
 const check=fs.readFileSync(new URL('../migracao/migration-check.js',import.meta.url),'utf8');
@@ -100,7 +112,7 @@ const visit=firstVisit();
 assert.equal(visit.url,OLD_ADDRESS+'#volta='+encodeURIComponent('/dev/?pista=curvelo#desafio=ABC'));assert.equal(visit.session.getItem(MIGRATED_KEY),'tentou');
 assert.equal(firstVisit({local:{[MIGRATED_KEY]:'{}'}}).url,null);
 assert.equal(firstVisit({session:{[MIGRATED_KEY]:'tentou'}}).url,null);
-assert.equal(firstVisit({now:Date.UTC(2027,3,2)}).url,null);
+assert.notEqual(firstVisit({now:MIGRATION_UNTIL-1}).url,null);assert.equal(firstVisit({now:MIGRATION_UNTIL}).url,null,'migration-check.js stops at save-migration.js MIGRATION_UNTIL');
 for(const agent of ['Mozilla/5.0 (compatible; Googlebot/2.1)','Mozilla/5.0 HeadlessChrome/141.0','bingbot/2.0'])assert.equal(firstVisit({agent}).url,null,agent);
 assert.equal(firstVisit({webdriver:true}).url,null);
 assert.ok(check.includes(`'${MIGRATED_KEY}'`)&&check.includes(`'${OLD_ADDRESS}'`),'migration-check.js names the same key and old address');

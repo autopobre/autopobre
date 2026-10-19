@@ -8,7 +8,7 @@ import {RemoteCar,packCar,readCar,CAR_FIELDS} from '../teste/net-cars.js';
 import {RaceField,TOW_ARRIVE,FAINTED,faintedInput,inTheWay,pitRoute} from '../teste/race-field.js';
 import {Multiplayer} from '../teste/multiplayer.js';
 import {AutomaticAIRecords,readAIRecords} from '../teste/ai-records.js';
-import {ROOM_SERVER,ServerLink} from '../teste/net-link.js';
+import {ROOM_SERVER,ServerLink,CLOSED} from '../teste/net-link.js';
 import {TestCar,recognitionInput,wrap} from '../teste/physics.js';
 const data=JSON.parse(fs.readFileSync(new URL('../dados/pista.json',import.meta.url)));
 const wait=(ms=15)=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -413,6 +413,10 @@ const report={};
  s1.onclose({code:4012});assert.deepEqual(reasons,['reconectando']);
  server.open();const s2=sockets.at(-1);s2.readyState=1;s2.onopen();welcome(s2);
  s2.onclose({code:4012});assert.deepEqual(reasons,['reconectando','reconectando']);server.open();sockets.at(-1).onclose({code:4001});assert.deepEqual(reasons,['reconectando','reconectando','chave'],'a wrong key is asked for at once');
+ // The door full (4013, CLOSE.door: room is made as the host lets guests in) and something sent before
+ // the key (1008): tried again as well, never a refusal the player has to answer.
+ reasons.length=0;for(const code of [4013,1008]){server.open();const s=sockets.at(-1);s.readyState=1;s.onopen();welcome(s);s.onclose({code});}
+ assert.deepEqual(reasons,['reconectando','reconectando']);assert.equal(CLOSED[4013],undefined);
  server.close();
  // Which connection the room hears after a reconnect: the old one until the new one's welcome, then the
  // new one only (before, both fed the room, and a new one that failed left it "reconectando" while the

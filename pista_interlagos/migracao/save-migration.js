@@ -5,11 +5,16 @@
 // opens migrar.html here, which stores them and goes on, unseen, to the page the player asked for.
 // A first visit here that never came through the old address hops there once (migration-check.js)
 // and back. Either way migrar.html sets MIGRATED_KEY, and with it set nothing here runs again.
+// Saves travel until MIGRATION_UNTIL only (migration-check.js has the same moment): after it the old
+// address sends none and migrar.html takes none, it only opens the page asked for (the old address's
+// redirect still lands there, so the page stays).
 // The old page imports moveToNewAddress by name: keep that export and the link format working.
 export const NEW_ADDRESS='https://autopobre.com.br',OLD_ADDRESS='https://www.inteligenciamilgrau.com.br/autopobre/';
 export const SAVE_PARAM='migrar',DESTINATION_PARAM='destino',BACK_PARAM='volta';
 // migration-check.js reads the same key.
 export const MIGRATED_KEY='autopobre-migrado-v1';
+// 15/11/2026 (user, 2026-10-19: a month is time enough; it was 01/04/2027).
+export const MIGRATION_UNTIL=Date.UTC(2026,10,15);
 // ghost-lap.js GHOST_KEY: the bulkiest save, trimmed from the oldest lap until the link fits.
 export const GHOST_KEY='autopobre-ghosts-v1';
 // The multiplayer group key is a secret the player types again: it stays behind.
@@ -65,7 +70,8 @@ export function safeDestination(value,origin=NEW_ADDRESS){
  try{const text=String(value??'/');if(!text.startsWith('/')||text.startsWith('//')||text.includes('\\'))return '/';const url=new URL(text,origin);return url.origin===new URL(origin).origin?url.pathname+url.search:'/';}catch{return '/';}
 }
 // A key the player already has here wins: the old save only fills what is missing, so a link (the
-// player's own, or one anyone crafts) never overwrites a race run on this address.
+// player's own, or one anyone crafts) never overwrites a race run on this address. A browser already
+// migrated takes nothing at all (arriveFromOldAddress).
 export async function importSaves(text,storage=browserStorage()){
  const saves=storage&&await unpackSaves(text),brought=[],kept=[];
  if(!saves)return {ok:false,brought,kept};
@@ -82,11 +88,13 @@ export function readMigrationLink(hash){
  return {migration,saves,destination,rest};
 }
 // migrar.html, without a word on screen: stores the saves, marks this browser as migrated (with or
-// without saves, so the first-visit hop never repeats) and returns the page to open.
-export async function arriveFromOldAddress(hash,storage=browserStorage()){
+// without saves, so the first-visit hop never repeats) and returns the page to open. Once marked, or
+// past MIGRATION_UNTIL, a link brings nothing: whoever crafts one cannot plant saves here.
+export async function arriveFromOldAddress(hash,storage=browserStorage(),now=Date.now()){
  const {migration,saves,destination,rest}=readMigrationLink(hash);
- const result=saves?await importSaves(saves,storage):{ok:true,brought:[],kept:[]};
- if(migration)try{storage?.setItem(MIGRATED_KEY,JSON.stringify({v:1,at:new Date().toISOString(),brought:result.brought.length}));}catch{}
+ let marked=false;try{marked=storage?.getItem(MIGRATED_KEY)!=null;}catch{}
+ const result=saves&&!marked&&now<MIGRATION_UNTIL?await importSaves(saves,storage):{ok:true,brought:[],kept:[]};
+ if(migration&&!marked)try{storage?.setItem(MIGRATED_KEY,JSON.stringify({v:1,at:new Date(now).toISOString(),brought:result.brought.length}));}catch{}
  return {target:destination+(rest?'#'+rest:''),result};
 }
 // A page on this site and its link, from the old address's #volta (migration-check.js wrote it).
@@ -95,13 +103,14 @@ function backTo(text){
  return {destination:safeDestination(cut<0?value:value.slice(0,cut)),fragment:new URLSearchParams(cut<0?'':value.slice(cut+1))};
 }
 // The old address's redirect page: the same path here (/autopobre/dev/ becomes /dev/), or the page
-// a first visit hopped from (#volta), through migrar.html with the saves when this browser has any.
-export async function moveToNewAddress(base='/autopobre',place=globalThis.location,storage=browserStorage()){
+// a first visit hopped from (#volta), through migrar.html with the saves when this browser has any
+// (none past MIGRATION_UNTIL).
+export async function moveToNewAddress(base='/autopobre',place=globalThis.location,storage=browserStorage(),now=Date.now()){
  const own=new URLSearchParams(String(place.hash??'').replace(/^#/,''));
  let destination,fragment;
  if(own.has(BACK_PARAM))({destination,fragment}=backTo(own.get(BACK_PARAM)));
  else{const path=(place.pathname.startsWith(base)?place.pathname.slice(base.length):place.pathname)||'/';destination=safeDestination((path.startsWith('/')?path:'/'+path)+place.search);fragment=own;}
- let saves='';try{saves=await packSaves(storage);}catch{}
+ let saves='';if(now<MIGRATION_UNTIL)try{saves=await packSaves(storage);}catch{}
  for(const name of [SAVE_PARAM,DESTINATION_PARAM,BACK_PARAM])fragment.delete(name);
  fragment.set(DESTINATION_PARAM,destination);fragment.set(SAVE_PARAM,saves);
  place.replace(NEW_ADDRESS+'/migrar.html#'+fragment.toString());

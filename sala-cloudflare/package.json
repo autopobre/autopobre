@@ -9,6 +9,6 @@
     "test": "node teste/testar_seguranca.mjs && node teste/testar_sala.mjs"
   },
   "devDependencies": {
-    "wrangler": "^4.143.1"
+    "wrangler": "^4.149.0"
   }
 }
