@@ -749,7 +749,7 @@ function withCleanModel(clone){
 // ('starting') is played in the cockpit (ImmersiveMode switches the view).
 const gridPreview=()=>immersive?.active&&immersive.state.phase==='grid';
 let wasGridPreview=false;
-const keys=new Set(),clock=new THREE.Clock(),matrix=new THREE.Matrix4(),forward=new THREE.Vector3(),up=new THREE.Vector3(),right=new THREE.Vector3(),desired=new THREE.Vector3(),look=new THREE.Vector3();
+const keys=new Set(),clock=new THREE.Timer(),matrix=new THREE.Matrix4(),forward=new THREE.Vector3(),up=new THREE.Vector3(),right=new THREE.Vector3(),desired=new THREE.Vector3(),look=new THREE.Vector3();
 // Number keys pick a view straight away, in the menu's order: 1 chase, 2 close, 3 far, 4 hood,
 // 5 cockpit, 6 TV, 7 aerial, 8 orbit. The numpad does the same.
 const CAMERA_KEYS=Object.fromEntries(cameraModes.flatMap((view,i)=>[[`Digit${i+1}`,view],[`Numpad${i+1}`,view]]));
@@ -1457,9 +1457,9 @@ let displayLocation='',displayCheck=0;
 function frame(now=performance.now()){requestAnimationFrame(frame);
  if(now>displayCheck){displayCheck=now+750;const place=[window.screenX,window.screenY,window.screen.width,window.screen.height,devicePixelRatio].join(':');if(place!==displayLocation){displayLocation=place;displayCadence.reset();}}
  if(!document.hidden)displayCadence.observe(now,!sessionStarted&&!loading&&screen!=='cars');
- if(frameCap.skip(now,displayCadence.measured?displayCadence.hz:0))return;if(graphicsCompiling){clock.getDelta();return;}debugOverlay.begin(now);try{runFrame();}finally{debugOverlay.end();}}
+ if(frameCap.skip(now,displayCadence.measured?displayCadence.hz:0))return;if(graphicsCompiling){clock.update().getDelta();return;}debugOverlay.begin(now);try{runFrame();}finally{debugOverlay.end();}}
 // One frame of the game: controls, physics steps, people, cameras and the picture.
-function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.getDelta(),dt=Math.min(rawDt,.08);gamepad.suspended=wheel.learning;gamepad.poll(dt);wheel.poll(dt);if($('settings').open)wheelPanel.frame();multiplayer?.frame(dt);mobile?.update(paused,pitstop?.coffee||walker?.active?'crowd':immersive?.active?immersive.state.phase:'race');if(touchDevice)document.body.classList.toggle('can-look-back',lookBackAllowed());updateCountdown();if(!ready||!sessionStarted){action.update(0,{active:false});actionNotice.update(0,null,false);carAudio.updateScene({},[],dt);const onCars=renderer&&!sessionStarted&&!$('cars').classList.contains('hidden');studioDensity(onCars,rawDt);if(onCars)carSelect.render(renderer,dt);return;}studioDensity(false);
+function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().getDelta(),dt=Math.min(rawDt,.08);gamepad.suspended=wheel.learning;gamepad.poll(dt);wheel.poll(dt);if($('settings').open)wheelPanel.frame();multiplayer?.frame(dt);mobile?.update(paused,pitstop?.coffee||walker?.active?'crowd':immersive?.active?immersive.state.phase:'race');if(touchDevice)document.body.classList.toggle('can-look-back',lookBackAllowed());updateCountdown();if(!ready||!sessionStarted){action.update(0,{active:false});actionNotice.update(0,null,false);carAudio.updateScene({},[],dt);const onCars=renderer&&!sessionStarted&&!$('cars').classList.contains('hidden');studioDensity(onCars,rawDt);if(onCars)carSelect.render(renderer,dt);return;}studioDensity(false);
  renderedFrame++;if(!paused&&!document.hidden){adaptResolution(rawDt);if(!intro.active&&!navigator.webdriver)watchFrames(rawDt);}
  if(intro.active&&automatic)intro.stop();
  if(intro.active&&!immersive.active&&immersive.freeCountdown>0){immersive.freeCountdown=3;$('raceCountdown').hidden=true;}
