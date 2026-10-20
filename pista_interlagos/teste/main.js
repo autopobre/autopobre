@@ -86,6 +86,7 @@ import {createPampulhaBarragem,hasPampulhaBarragem} from './pampulha-barragem.js
 import {createPampulhaParques,hasPampulhaParques} from './pampulha-parques.js';
 import {createPampulhaPontes,hasPampulhaPontes} from './pampulha-pontes.js';
 import {createPampulhaFutebol,hasPampulhaFutebol} from './pampulha-futebol.js';
+import {createFlyingSaucer,hasFlyingSaucer} from './flying-saucer.js';
 import {createBranchScenery} from './branch-scenery.js';
 import {hasBranches} from './branch-layout.js';
 import {createCityStreets} from './city-streets.js';
@@ -2326,6 +2327,12 @@ async function loadCircuit(){
   const roots=[...world,...fixed,landscape.root,crowd.root,roadRails.root,roadCurbs,floods?.root,branding.root,trackside.root,flags.root,treeField.points,...circuitExtras.filter(e=>!e.encloses&&!e.enclosed).map(e=>e.root)];
   const still=roots.filter((o,i)=>o&&roots.indexOf(o)===i),parts=[];for(const root of still)root.traverse(o=>{if(o.isMesh||o.isPoints||o.isLine||o.isSprite)parts.push(o);});
   enclosure={on:true,shut,renders:0,portals:0,world:still,parts};}}
+ // Over Minas Gerais at night, now and then, a flying saucer crosses the sky and goes (flying-saucer.js; user, 2026-10-20).
+ // Its clock runs while the race is on; it moves on the sky, never shut out of a bowl's view (added after the enclosure).
+ if(hasFlyingSaucer(circuit)){const saucer=createFlyingSaucer({mobile:scenery.mobile,sound:(name,options)=>carAudio.effect(name,options),
+  racing:()=>sessionStarted&&!intro.active&&!gridPreview()&&(immersive?.active?immersive.state.phase==='race':!immersive?.freeCountdown&&!immersive?.freeResultReady),
+  raceSeconds:()=>(immersive?.laps??3)*circuit.length/40,inside:()=>mode==='cockpit'});
+  circuitExtras.push(saucer);scene.add(saucer.root);}
  restBodyPose();
  carLivery.clear();
  immersive=new ImmersiveMode({scene,carRoot,car,data,driver,rivalTemplate:model,skidMarks,layout:pitLayout,obstacles:cameraObstacles,setView:setCameraMode,getView:()=>mode,playerView:()=>preferences.values.camera,resetVehicle:()=>reset(),releaseMouse:()=>{keys.clear();mobile?.clear();if(document.pointerLockElement)document.exitPointerLock();},onNormal:()=>{storyRound=null;chooseImmersive(false);reset();menu(true);},

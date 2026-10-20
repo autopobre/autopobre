@@ -21,7 +21,7 @@ export class Synth {
  stop(tag=null,fade=.025){const t=this.ctx.currentTime;for(const v of this.voices){if(tag&&v.tag!==tag)continue;v.level.gain.cancelScheduledValues(t);v.level.gain.setTargetAtTime(0,t,fade/3);try{v.source.stop(t+fade);}catch{}}}
 }
 
-export const EFFECT_NAMES=Object.freeze(['pitRepair','pitCoffee','click','paint','crowdWelcome','talk','donation','badJoke','noDonation','paper','fuelFill','denied','ignition','engineCatch','countdown','raceGo','flooded','batteryDead','fuelEmpty','breakdown','collision','debrisFly','debrisMiss','glassHit','glassBreak','tankDrop','towArrive','towBrake','strapSnag','strapFree','towWarning','finish','judgeStart','judgeCheck','judgeApprove','disqualified','podiumWin','podiumLoss','blazer','footstep','reserve','sip','bite','splash','wade','bonk','boing','passBy','explosion','shutter','chute','bolaGigante','quique','gol','apito','toque']);
+export const EFFECT_NAMES=Object.freeze(['pitRepair','pitCoffee','click','paint','crowdWelcome','talk','donation','badJoke','noDonation','paper','fuelFill','denied','ignition','engineCatch','countdown','raceGo','flooded','batteryDead','fuelEmpty','breakdown','collision','debrisFly','debrisMiss','glassHit','glassBreak','tankDrop','towArrive','towBrake','strapSnag','strapFree','towWarning','finish','judgeStart','judgeCheck','judgeApprove','disqualified','podiumWin','podiumLoss','blazer','footstep','reserve','sip','bite','splash','wade','bonk','boing','passBy','explosion','shutter','chute','bolaGigante','quique','gol','apito','toque','ovniChega','ovniFeixe','ovniParte']);
 
 export class SoundEffects {
  constructor(ctx,world,ui,noise){
@@ -139,6 +139,11 @@ export class SoundEffects {
    // A dribbler's soft touch on the ball.
    case 'toque':noise(.025,.07,1500);note(140,.06,.05,'sine',0,95,700);break;
    case 'apito':whistle();note(2350,.55,.07,'sine',.34,2280,2600);noise(.5,.03,2600,.34);break;
+   // The flying saucer over MG at night (flying-saucer.js): a theremin's wavering woo-wee as it comes in over a low throb,
+   // the beam's rising shimmer, and the zip up and away as it leaves.
+   case 'ovniChega':for(let i=0;i<6;i++)note(i%2?1040:700,.62,.04,'sine',i*.5,i%2?700:1040,3200);note(58,3.2,.06,'triangle',0,74,420);noise(1.4,.03,2400);break;
+   case 'ovniFeixe':note(180,2.6,.045,'sawtooth',0,270,700);note(1250,2.4,.016,'sine',.15,1650,4000);noise(2.5,.035,2800,.1);break;
+   case 'ovniParte':note(240,1.1,.06,'sine',0,3400,6500);note(360,.95,.03,'triangle',.06,4600,6500);noise(.7,.05,3600,.05);break;
    // A pole, rod or board flicking past the window at speed (trackside-flags.js): a short swell of air
    // falling in pitch, on its side.
    case 'passBy':for(const [delay,duration,gain,filter,side] of [[0,.13,.1,2600,1],[.03,.17,.085,1350,.8],[.07,.2,.055,700,.5]])rack.note({at:t+delay,hz:440,duration,gain:gain*strength,type:'noise',filter,q:.9,pan:pan*side,attack:.04});break;
