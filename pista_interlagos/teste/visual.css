@@ -1,0 +1,73 @@
+/* The Visual screen (look-select.js): the pilot on a turntable in a small studio, drawn by the game's canvas behind this
+   screen's open middle, and the panel of picks beside it (under it on a phone held upright). */
+body.visual-open>:not(#view):not(#visual):not(#rotatePhone):not(dialog){visibility:hidden!important}
+#visual{z-index:30;align-items:stretch;justify-content:center;padding:22px 4vw;overflow:auto;backdrop-filter:none;
+ background:radial-gradient(ellipse at 35% 55%,#20403a 0,#10231f 48%,#060d0c 100%)}
+#visual.live{background:linear-gradient(180deg,#060d0cd9 0,#060d0c66 14%,transparent 26%,transparent 80%,#060d0cb3 100%)}
+.visual-shell{width:min(1240px,100%);display:flex;flex-direction:column;gap:12px;min-height:min(560px,100%)}
+#visualPilot{margin:0;font-size:clamp(15px,1.5vw,20px);color:#fff6dc;font-weight:800;text-shadow:0 1px 6px #000b}
+.visual-body{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,410px);grid-template-rows:minmax(0,1fr);gap:16px;min-height:0}
+/* The stage: the pilot framed in it, dragged to turn. */
+.visual-stage{position:relative;min-height:320px;cursor:grab;touch-action:none;user-select:none}
+.visual-stage.dragging{cursor:grabbing}
+.visual-state{position:absolute;left:0;bottom:0;margin:0;padding:6px 11px;border-radius:14px;background:#0a0d0fc4;border:1px solid #ffffff2e;font-size:11px;font-weight:700;color:#e9efe4;pointer-events:none}
+#visual.look-default .visual-state{color:#f4ce39}
+/* Top right of the stage: Girar (off: the pilot faces the camera; car-still's look, carros.css). */
+.visual-spin{position:absolute;top:0;right:0;z-index:1}
+/* The panel: a section per part, each a row of colour dots or named buttons (radios underneath). */
+.visual-panel{display:flex;flex-direction:column;gap:8px;overflow-y:auto;overflow-x:hidden;min-height:0;padding:2px 6px 2px 2px;max-height:100%;scrollbar-width:thin;scrollbar-color:#f4ce3966 transparent}
+.visual-panel fieldset{margin:0;padding:9px 12px 11px;border:1px solid #ffffff22;border-radius:9px;background:#0a1614d9;transition:border-color .15s,background .15s}
+.visual-panel fieldset.focused{border-color:#f4ce39a6;background:#0d1d1ae8}
+.visual-panel legend{float:left;width:100%;margin:0 0 7px;padding:0;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:#e6cd72}
+.look-options,.look-row{clear:both}
+.look-row{display:grid;grid-template-columns:62px minmax(0,1fr);align-items:center;gap:8px;margin-top:8px}
+.look-row[hidden]{display:none}
+.look-row-title{font-size:11px;font-weight:700;color:#c9d3c4}
+.look-options{display:flex;flex-wrap:wrap;gap:6px}
+.look-options input{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
+.look-swatch,.look-chip{position:relative;cursor:pointer}
+.look-dot{display:block;width:26px;height:26px;border-radius:50%;background:var(--c);border:2px solid #ffffff38;box-shadow:inset 0 -3px 6px #0005,0 1px 3px #0008;transition:transform .12s,border-color .12s}
+.look-swatch:hover .look-dot{transform:scale(1.1);border-color:#ffffff90}
+.look-swatch input:checked+.look-dot{border-color:#f4ce39;box-shadow:0 0 0 2px #0a1614,0 0 0 4px #f4ce39}
+.look-swatch input:focus-visible+.look-dot{outline:2px solid #fff;outline-offset:4px}
+.look-chip span{display:block;padding:6px 11px;border-radius:15px;border:1px solid #ffffff38;background:#13221fe6;font-size:12px;font-weight:700;color:#e6ecdf;white-space:nowrap;transition:background .12s,border-color .12s}
+.look-chip:hover span{border-color:#f4ce39;color:#fff6dc}
+.look-chip input:checked+span{background:#f4ce39;border-color:#f4ce39;color:#171c15}
+.look-chip input:focus-visible+span{outline:2px solid #fff;outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* Under it all: the story's note, back to Stevan's look, and Pronto. */
+.visual-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px}
+.visual-note{margin:0 auto 0 0;font-size:12px;line-height:1.4;color:#d3ddd0;text-shadow:0 1px 4px #000c}
+.visual-foot button{margin:0;width:auto}
+#visualDefault{padding:11px 14px;background:#102823e8;border:1px solid #88978c80;border-radius:7px;color:#e6ecdf;font-size:12px;font-weight:700}
+#visualDefault:disabled{opacity:.45;cursor:default}
+#visual .primary{min-width:150px;padding:13px 22px;border-radius:8px;background:#f4ce39;color:#171c15;font-size:15px;font-weight:900;box-shadow:0 8px 24px #0007}
+#visual .primary:hover{background:#ffe574}
+/* The way in: Visual on the car screen, after its Opala and Fusca tabs (user, 2026-10-20; not in the story, which has no
+   car screen). It stays when a multiplayer room hides the tabs. */
+.car-models-row{display:flex;align-items:stretch;gap:6px;align-self:flex-start}
+.car-visual-tab{margin:0;padding:8px 20px;border-radius:8px;border:1px solid #f4ce3980;background:#0a1824b8;color:#f4ce39;font-size:15px;font-weight:900;letter-spacing:.02em;cursor:pointer;white-space:nowrap}
+.car-visual-tab small{margin-left:4px;font-size:10px;font-weight:700;opacity:.75}
+.car-visual-tab:hover{background:#f4ce39;color:#171c15}
+.car-visual-tab:focus-visible{outline:2px solid #f4ce39;outline-offset:2px}
+.car-visual-tab[hidden]{display:none}
+@media(prefers-reduced-motion:reduce){.look-dot,.look-chip span,.visual-panel fieldset{transition:none}.look-swatch:hover .look-dot{transform:none}}
+/* Phones in landscape: the stage on the left, the panel scrolling on the right, all on one screen. */
+@media(max-height:520px){
+ #visual{padding:8px max(14px,env(safe-area-inset-right)) 8px max(14px,env(safe-area-inset-left))}
+ .visual-shell{gap:6px;min-height:100%}
+ .visual-head .tracks-kicker{display:none}.visual-head h2{font-size:18px}#visualPilot{font-size:12px}
+ .visual-body{grid-template-columns:minmax(0,1fr) minmax(250px,46%);gap:8px}
+ .visual-stage{min-height:0}.visual-state{padding:3px 8px;font-size:9px}.visual-spin{height:30px;padding:0 9px;font-size:10px}
+ .visual-panel{gap:5px}.visual-panel fieldset{padding:6px 9px 8px}.visual-panel legend{margin-bottom:4px;font-size:9px}
+ .look-row{grid-template-columns:52px minmax(0,1fr);margin-top:5px}.look-dot{width:22px;height:22px}.look-chip span{padding:4px 8px;font-size:11px}
+ .visual-note{font-size:9px}#visualDefault{padding:7px 10px;font-size:10px}#visual .primary{min-width:110px;padding:8px 14px;font-size:13px}
+ .car-visual-tab{padding:4px 12px;font-size:11px}.car-visual-tab small{display:none}
+}
+/* Phones held upright: the stage on top, the panel under it. */
+@media(max-width:700px) and (orientation:portrait){
+ .visual-head{grid-template-columns:auto 1fr;gap:6px}#visualPilot{grid-column:1/-1}
+ .visual-body{grid-template-columns:1fr;grid-template-rows:42vh auto}
+ .visual-panel{max-height:none;overflow:visible}
+ .visual-foot{flex-wrap:wrap}.visual-note{flex:1 0 100%}
+}

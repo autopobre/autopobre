@@ -30,9 +30,12 @@ const SHARP=1920,MAX_PIXELS=8.3e6;
 const EYES=new THREE.Vector3(.095,1.648,0),RAISE=.42,LOWER=.3,SMILE=.5,HOLD=.4,TURN=.0025,LIFT=.002;
 // The hand on the hip while he frames (pit-crew.js ARMS.hip: raise, elbow, spread, roll).
 const HIP={raise:-.43,elbow:1.59,spread:.69,roll:1.12};
-// The V's wrist beside his face (hero frame from his eyes, his left hand: the right one mirrors z) and the way the forearm
-// points (up, toward the face).
-const V_WRIST=new THREE.Vector3(.05,-.08,-.08),V_FOREARM=new THREE.Vector3(.25,1,.35).normalize();
+// The V's wrist beside his face as the lens sees it (user, 2026-10-20: it covered the edge of his cheek; held by his own
+// cheek, the phone off to the other side saw it over his face): V_CLEAR m across the view from his eyes, on the hand's
+// side (less in the narrow upright photo), never so far the hand (V_PALM m wide each way) leaves the photo: where the
+// photo has no room beside his face it comes in over his cheek; V_NEAR m toward the lens, V_DROP m under his eyes;
+// the forearm points up, a little toward the face (his left hand: the right one mirrors z).
+const V_CLEAR=Object.freeze({horizontal:.16,vertical:.13}),V_PALM=.05,V_NEAR=.03,V_DROP=.08,V_FOREARM=new THREE.Vector3(.25,1,.18).normalize();
 // The phone's grip never goes past ARM_REACH from its shoulder (the arm .57 m, a little bent); a natural reach to start from.
 const ARM_REACH=.55,GRIP_REST=[1.9,.3,.35,.2],IDENTITY=new THREE.Quaternion();
 // Where his face goes across the photo (-1 its left edge, +1 its right) for each place: left, middle, right.
@@ -238,7 +241,7 @@ export class Selfie {
   // by his face (solved once per pose: it hangs on the head, not the phone); both follow smoothly.
   const hip=[HIP.raise,HIP.spread,HIP.elbow,HIP.roll],mirror=new THREE.Vector3(1,1,hand);
   const sol=solveArm(P,hand,this.arms[hand].angles,grip.clone().applyMatrix4(toTorso),{rest:GRIP_REST,restWeight:.02});this.arms[hand].angles=sol.angles;
-  if(v>0&&!this.vArm)this.vArm=solveArm(rig.limbs[-hand],-hand,[.9,.9,2.2,0],EYES.clone().add(V_WRIST.clone().multiply(mirror)).applyMatrix4(toTorso),{dir:V_FOREARM.clone().multiply(mirror).applyQuaternion(turnTorso),dirWeight:.12,rest:[.9,.9,2.2,0],restWeight:.02,steps:14}).angles;
+  if(v>0&&!this.vArm)this.vArm=solveArm(rig.limbs[-hand],-hand,[.9,.9,2.2,0],this.vWrist(lens,hand,tanAcross).applyMatrix4(toTorso),{dir:V_FOREARM.clone().multiply(mirror).applyQuaternion(turnTorso),dirWeight:.12,rest:[.9,.9,2.2,0],restWeight:.02,steps:14}).angles;
   if(v===0&&this.phase!=='pose')this.vArm=null;
   for(const side of [-1,1]){
    const arm=this.arms[side],i=side>0?1:0,rest=[stand.arm[i],stand.spread[i],stand.elbow[i],0],want=side===hand?sol.angles:this.vArm?hip.map((h,j)=>lerp(h,this.vArm[j],v)):hip;
@@ -269,6 +272,13 @@ export class Selfie {
  handAxes(fingers,palm,side){
   const yAxis=fingers.clone().negate().normalize(),zAxis=palm.clone().multiplyScalar(-side).addScaledVector(yAxis,-palm.dot(yAxis)*-side).normalize(),xAxis=new THREE.Vector3().crossVectors(yAxis,zAxis);
   return [xAxis,yAxis,zAxis];
+ }
+ // Where the V's wrist goes (hero frame): beside his face across the lens's view of it, on the side of the free hand.
+ // tanAcross: the photo's half width (×distance); the V shows on the photo's side `hand` (+1 its right), his face at this.u.
+ vWrist(lens,hand,tanAcross){
+  const toFace=EYES.clone().sub(lens),view=toFace.clone().normalize(),side=new THREE.Vector3(0,0,-hand);side.addScaledVector(view,-side.dot(view)).normalize();
+  const room=(.9-hand*this.u)*tanAcross*(toFace.length()-V_NEAR)-V_PALM,clear=Math.max(.06,Math.min(V_CLEAR[this.orientation],room));
+  const wrist=EYES.clone().addScaledVector(side,clear).addScaledVector(view,-V_NEAR);wrist.y=EYES.y-V_DROP;return wrist;
  }
  // The view from the phone: just off its screen, level, toward his face; the lens across the phone's frame on screen.
  placeCamera(camera){

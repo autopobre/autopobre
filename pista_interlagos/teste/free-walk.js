@@ -20,6 +20,7 @@ import {footState,stepOnFoot,footGround,placeFootCamera,turnFootView,zoomFootVie
 import {OPENINGS,carSpot,SPOT_ROLE,partName} from './car-openings.js';
 import {createPeople,dressPerson,knockOver,applyPose,clonePose,POSES,OUTFITS,STEVAN_OUTFITS} from './pit-crew.js';
 import {outfitOf} from './story-career.js';
+import {lookOutfit} from './pilot-look.js';
 import {guardrailPresent,guardrailClearance} from './physics.js';
 import {Selfie} from './selfie.js';
 
@@ -33,10 +34,12 @@ const KICK_STRIKE=.13,KICK_TIME=.36,KICK_FULL=1,PENDING=.6,wrap=a=>Math.atan2(Ma
 // side, the nose, the tail, and a step further out on either side.
 const EXITS=[[.15,1.6],[.15,-1.6],[3.3,0],[-3.2,0],[.15,2.6],[.15,-2.6]];
 const near=(x,y,ax,ay)=>Math.hypot(x-ax,y-ay);
-// Who gets out: Stevan in the clothes of his story stage, the 99's driver in his red overalls (a cap for the helmet),
-// another car's driver in its team's colour.
-export function pilotOutfit({career=null,entry=null}={}){
+// Who gets out: Stevan in the clothes of his story stage; elsewhere the player's own look (pilot-look.js: the 99 on the
+// back only in the team's Opala), or else the 99's driver in his red overalls (a cap for the helmet), another car's
+// driver in its team's colour.
+export function pilotOutfit({career=null,entry=null,look=null}={}){
  if(career)return STEVAN_OUTFITS[outfitOf(career)];
+ if(look)return lookOutfit(look,{back:!entry});
  return entry?{...OUTFITS.crew,top:entry.color,bottom:entry.color,back:false,hat:'cap',hatColor:0x1b1d20}:OUTFITS.driver;
 }
 // A car's plan (physics.js OPALA_BODY, FUSCA_BODY) round (x, y), on its level: the side of it the point is on

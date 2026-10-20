@@ -4,11 +4,14 @@ import {DriverControls} from './driver-controls.js';
 import {createHelmet} from './driver-helmet.js';
 import {mergeStill} from './car-lod.js';
 import {wrap} from './physics.js';
+import {lookColors,lookKey} from './pilot-look.js';
 
 // Seated model based on geracoes_piloto/v01_omp_oli; +X front, -Z left.
 // Suit UVs use the approved portrait; the helmet uses the new in-car photo.
 // The right hand works the gear lever, the boots work the pedals
 // (choreography in driver-controls.js, body dynamics in driver-rig.js).
+// look(look): the player's own suit, gloves and helmet (pilot-look.js; the suit's quilting kept, its colour and the
+// photo's logos gone); null: Stevan's, as in the photo (Modo História always).
 const THIGH=.371,SHIN=.379;
 // Boot frame: heel contact at the origin, toes along +X, sole on y=0.
 const ANKLE=new THREE.Vector3(.055,.09,0),FLOOR=.312;
@@ -24,14 +27,39 @@ export async function createDriver(cockpit){
  red.map=fabric;red.bumpMap=fabric;red.bumpScale=.0008;red.color.setHex(0xffffff);
  const front=new THREE.MeshStandardMaterial({map:tex,roughness:.91});
  const black=new THREE.MeshStandardMaterial({color:0x15181a,roughness:.95});
+ const gloveMaterial=new THREE.MeshStandardMaterial({color:0x15181a,roughness:.95});
  const sole=new THREE.MeshStandardMaterial({color:0x2a2d30,roughness:.8});
  const silver=new THREE.MeshStandardMaterial({color:0x74797c,metalness:.65,roughness:.42});
  // Modo História: the black overalls Kléber Eletric lends (story-career.js outfitOf 'emprestado') cover the
  // red suit of the photo; 'proprio' (his own) brings it back.
- const own={red:{map:red.map,bumpMap:red.bumpMap,color:red.color.getHex()},front:{map:front.map,color:front.color.getHex()}};let suitKind='proprio';
+ const own={red:{map:red.map,bumpMap:red.bumpMap,color:red.color.getHex()},front:{map:front.map,color:front.color.getHex()}};let suitKind='proprio',helmet=null;
  function suit(kind){
-  const loan=kind==='emprestado';if(loan===(suitKind==='emprestado'))return;suitKind=kind;
+  const loan=kind==='emprestado';if(loan===(suitKind==='emprestado'))return;suitKind=kind;if(!lookShown)dressSuit();
+ }
+ function dressSuit(){
+  const loan=suitKind==='emprestado';
   for(const [m,o] of [[red,own.red],[front,own.front]]){m.map=loan?null:o.map;if('bumpMap' in o)m.bumpMap=loan?null:o.bumpMap;m.color.setHex(loan?0x1d1f22:o.color);m.needsUpdate=true;}
+ }
+ // The suit's quilting without its red: a patch of plain red off the photo's leg (the red map's own patch takes in the
+ // black side panel), its red channel as grey (mean near white, the folds softened), for the parts (as the red map) and, tiled at the same
+ // scale, for the chest (its UVs span the whole photo).
+ let quilt=null;
+ function quilting(){
+  if(quilt)return quilt;const img=tex.image,w=72,h=138,c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');
+  ctx.drawImage(img,img.width*.386,img.height*.651,img.width*.07,img.height*.09,0,0,w,h);
+  const data=ctx.getImageData(0,0,w,h),px=data.data;let sum=0;for(let i=0;i<px.length;i+=4)sum+=px[i];const k=245/(sum/(px.length/4)||245);
+  for(let i=0;i<px.length;i+=4){const v=Math.min(255,245+(px[i]*k-245)*.6);px[i]=px[i+1]=px[i+2]=v;}ctx.putImageData(data,0,0);
+  const parts=new THREE.CanvasTexture(c);parts.colorSpace=THREE.SRGBColorSpace;parts.anisotropy=8;
+  const chest=parts.clone();chest.wrapS=chest.wrapT=THREE.MirroredRepeatWrapping;chest.repeat.set(1/.07,1/.09);chest.needsUpdate=true;
+  return quilt={parts,chest};
+ }
+ let lookShown=null,lookAt='';
+ function look(l){
+  const key=lookKey(l);if(key===lookAt)return;lookAt=key;lookShown=l;helmet?.look(l);
+  if(!l){dressSuit();gloveMaterial.color.setHex(0x15181a);return;}
+  const c=lookColors(l),q=quilting();
+  red.map=red.bumpMap=q.parts;front.map=q.chest;red.color.setHex(c.suit);front.color.setHex(c.suit);red.needsUpdate=front.needsUpdate=true;
+  gloveMaterial.color.setHex(c.gloves);
  }
  function mesh(g,m,p,parent=root){const o=new THREE.Mesh(g,m);o.position.set(...p);parent.add(o);o.castShadow=true;o.receiveShadow=true;return o;}
  const sphere=(p,s,m,parent=root)=>{const o=mesh(new THREE.SphereGeometry(1,20,12),m,p,parent);o.scale.set(...s);return o;};
@@ -85,24 +113,24 @@ export async function createDriver(cockpit){
  const neck=new THREE.Group();neck.position.set(-.03,.46,0);torso.add(neck);
  const head=new THREE.Group();head.position.set(.015,.105,0);neck.add(head);
  neck.rotation.order=head.rotation.order='YZX';
- const helmet=await createHelmet();head.add(helmet.root);
+ helmet=await createHelmet();head.add(helmet.root);helmet.look(lookShown);
  // Gloves are posed from anchors on the rim and levers, so contact never drifts.
  const arms=[];
  for(const side of [-1,1]){
   const anchor=new THREE.Object3D();anchor.position.set(side*.173,0,.008);wheelTurn.add(anchor);
   const glove=new THREE.Group();root.add(glove);
-  sphere([side*.009,0,.024],[.032,.045,.026],black,glove);
+  sphere([side*.009,0,.024],[.032,.045,.026],gloveMaterial,glove);
   for(let finger=0;finger<4;finger++){
    const y=(finger-1.5)*.017;
-   tube([[side*.030,y,.025],[0,y,.040],[-side*.023,y,.024],[-side*.021,y,-.008]],.007,black,glove);
+   tube([[side*.030,y,.025],[0,y,.040],[-side*.023,y,.024],[-side*.021,y,-.008]],.007,gloveMaterial,glove);
   }
-  tube([[side*.03,-side*.025,.02],[side*.022,-side*.047,.025],[-side*.002,-side*.034,.029]],.010,black,glove);
+  tube([[side*.03,-side*.025,.02],[side*.022,-side*.047,.025],[-side*.002,-side*.034,.029]],.010,gloveMaterial,glove);
   const tag=badge('OMP',[side*.012,0,.053],.047,.020,glove);tag.rotation.z=side*.18;
   const upper=segment([0,0,0],[0,1,0],.061,.052,red);
   const lower=segment([0,0,0],[0,1,0],.053,.038,red);
   const elbow=sphere([0,0,0],[.054,.055,.054],red);
   const shoulder=sphere([0,0,0],[.073,.074,.077],red);
-  const cuff=segment([0,0,0],[0,1,0],.037,.039,black);
+  const cuff=segment([0,0,0],[0,1,0],.037,.039,gloveMaterial);
   arms.push({side,anchor,glove,upper,lower,elbow,shoulder,cuff});
  }
  const right=arms[1],rootInverse=new THREE.Matrix4(),scratch=new THREE.Matrix4(),basis=new THREE.Matrix4(),unitScale=new THREE.Vector3();
@@ -185,5 +213,5 @@ export async function createDriver(cockpit){
  function reset(){motion.reset();choreography.reset(1);handState.id=-1;handState.from=null;handState.away=0;}
  // Each glove, boot and the torso's straps move as one: a mesh per material (car-lod.js mergeStill), the head apart.
  for(const a of arms)mergeStill(a.glove);for(const leg of legs)mergeStill(leg.boot);mergeStill(torso,{skip:[neck]});
- return {root,update,reset,suit,info:()=>({reference:'geracoes_piloto/v01_omp_oli',suit:suitKind,...pose,arms:errors,legs:legErrors,controls:{...controlPose},visible:root.visible,helmet:helmet.info(),headHeight:1.105+.161})};
+ return {root,update,reset,suit,look,info:()=>({reference:'geracoes_piloto/v01_omp_oli',suit:suitKind,look:lookAt||null,suitColor:red.color.getHex(),gloves:gloveMaterial.color.getHex(),...pose,arms:errors,legs:legErrors,controls:{...controlPose},visible:root.visible,helmet:helmet.info(),headHeight:1.105+.161})};
 }

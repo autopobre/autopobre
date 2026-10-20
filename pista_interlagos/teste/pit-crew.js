@@ -20,7 +20,7 @@ const merge=parts=>{const g=mergeGeometries(parts,false);parts.forEach(p=>p.disp
 const ball=(r,w=12,h=9)=>new THREE.SphereGeometry(r,w,h),capsule=(r,len)=>new THREE.CapsuleGeometry(r,len,3,10),tube=(a,b,h,s=12)=>new THREE.CylinderGeometry(a,b,h,s),block=(x,y,z)=>new THREE.BoxGeometry(x,y,z);
 const darker=(color,k)=>new THREE.Color(color).multiplyScalar(k);
 
-const BASE={skin:0xc68e6a,hair:0x2b1f17,hairStyle:'short',top:0x5a6a78,bottom:0x2d3a4a,belt:0x1b1d20,shoes:0x1b1d20,hands:null,trim:null,sleeves:'long',hat:null,hatColor:0xc81d25,apron:null,skirt:null,legs:null,glasses:false,mustache:false,beard:false,belly:0,back:false};
+const BASE={skin:0xc68e6a,hair:0x2b1f17,hairStyle:'short',top:0x5a6a78,bottom:0x2d3a4a,belt:0x1b1d20,shoes:0x1b1d20,hands:null,trim:null,sleeves:'long',hat:null,hatColor:0xc81d25,apron:null,skirt:null,legs:null,glasses:false,mustache:false,beard:false,belly:0,back:false,figure:'m'};
 const CREW={top:0xc81d25,bottom:0xc81d25,trim:0xf4f1ea,hands:0x1b1d20,shoes:0x1b1d20,back:true};
 export const OUTFITS={
  crew:CREW,
@@ -43,21 +43,26 @@ export const OUTFITS={
 export const STEVAN_OUTFITS={civil:OUTFITS.stevanCivil,emprestado:OUTFITS.stevanLoan,proprio:OUTFITS.driver};
 
 // Head, centre 0.1 m above the neck joint: face, ears, hair and headwear.
+// A woman (figure 'f', the player's look: pilot-look.js) has a softer jaw, finer brows and fuller lips.
 function headGeometry(o){
- const p=[],skin=o.skin,hair=o.hair;
- p.push(piece(ball(.104,16,12),skin,[0,.1,0],[0,0,0],[1.04,1.17,.93]),piece(ball(.072,12,8),skin,[.028,.035,0],[0,0,0],[1,.95,1.12]),piece(block(.034,.05,.03),darker(skin,.82),[.107,.092,0],[0,0,-.28]));
- for(const z of [-1,1])p.push(piece(ball(.02,8,6),0xf2eee6,[.086,.118,z*.037],[0,0,0],[.6,1,1]),piece(ball(.011,6,5),0x2a1c12,[.099,.118,z*.037]),piece(block(.012,.011,.04),hair,[.1,.148,z*.038],[z*.15,0,0]),piece(ball(.028,8,6),skin,[-.002,.1,z*.1],[0,0,0],[.55,1,.45]));
- p.push(piece(block(.012,.011,.042),0x8a4637,[.1,.042,0]));
+ const p=[],skin=o.skin,hair=o.hair,f=o.figure==='f';
+ p.push(piece(ball(.104,16,12),skin,[0,.1,0],[0,0,0],[1.04,1.17,.93]),piece(ball(.072,12,8),skin,[.028,.035,0],[0,0,0],f?[.94,.88,1.02]:[1,.95,1.12]),piece(block(.034,.05,.03),darker(skin,.82),[.107,.092,0],[0,0,-.28]));
+ for(const z of [-1,1])p.push(piece(ball(.02,8,6),0xf2eee6,[.086,.118,z*.037],[0,0,0],[.6,1,1]),piece(ball(.011,6,5),0x2a1c12,[.099,.118,z*.037]),piece(f?block(.01,.007,.036):block(.012,.011,.04),hair,[.1,.148,z*.038],[z*.15,0,0]),piece(ball(.028,8,6),skin,[-.002,.1,z*.1],[0,0,0],[.55,1,.45]));
+ p.push(f?piece(block(.013,.014,.04),0xa4505a,[.1,.042,0]):piece(block(.012,.011,.042),0x8a4637,[.1,.042,0]));
  if(o.mustache)p.push(piece(block(.02,.016,.07),hair,[.104,.063,0]));
- // A short beard round the chin and along the jaw, under the mouth.
- if(o.beard)p.push(piece(ball(.07,10,8),hair,[.062,0,0],[0,0,0],[.85,.62,1.2]),...[-1,1].map(z=>piece(block(.075,.06,.022),hair,[.05,.065,z*.094])));
- // Skull caps tilt back so hair and caps clear the brow but cover the nape.
+ // A short beard round the chin and along the jaw, under the mouth; the sides flat on the cheeks (boxes stood out of the
+ // face once short hair no longer hid them: user, 2026-10-20).
+ if(o.beard)p.push(piece(ball(.07,10,8),hair,[.062,0,0],[0,0,0],[.85,.62,1.2]),...[-1,1].map(z=>piece(ball(.034,10,8),hair,[.04,.058,z*.073],[0,0,0],[1.15,1.3,.3])));
+ // Skull caps tilt back so hair and caps clear the brow but cover the nape. Hair caps are .117 m or more: smaller, the
+ // forehead of the skull (a rounder low-poly ball) showed through them in patches (user, 2026-10-20).
  const shell=(r,color,cut=.55)=>piece(new THREE.SphereGeometry(r,16,8,0,Math.PI*2,0,Math.PI*cut),color,[-.006,.1,0],[0,0,.6],[1.06,1.2,1]);
- if(o.hairStyle==='bun')p.push(shell(.111,hair),piece(ball(.056,10,8),hair,[-.1,.2,0]));
- else if(o.hairStyle==='curly')p.push(shell(.113,hair),...[0,1,2,3,4,5,6].map(k=>piece(ball(.045,8,6),hair,[-.07+Math.cos(k*.9)*.05,.2+Math.sin(k*1.7)*.02,Math.sin(k*.9)*.07])));
+ if(o.hairStyle==='bun')p.push(shell(.117,hair),piece(ball(.056,10,8),hair,[-.1,.2,0]));
+ else if(o.hairStyle==='curly')p.push(shell(.118,hair),...[0,1,2,3,4,5,6].map(k=>piece(ball(.045,8,6),hair,[-.07+Math.cos(k*.9)*.05,.2+Math.sin(k*1.7)*.02,Math.sin(k*.9)*.07])));
  // Long hair: a fuller cap of hair, the mass down to the nape and a lock over each ear.
  else if(o.hairStyle==='long')p.push(shell(.118,hair,.6),piece(ball(.1,10,8),hair,[-.075,.02,0],[0,0,0],[.7,1.35,1.08]),...[-1,1].map(z=>piece(ball(.05,8,6),hair,[-.025,0,z*.098],[0,0,0],[.85,1.7,.6])));
- else if(o.hairStyle!=='bald')p.push(shell(.111,hair));
+ // Ponytail: the hair pulled back to a tie at the back of the head, the tail down to the nape.
+ else if(o.hairStyle==='ponytail')p.push(shell(.117,hair,.58),piece(ball(.04,10,8),hair,[-.112,.15,0],[0,0,0],[1,1,.9]),piece(capsule(.032,.15),hair,[-.128,.045,0],[0,0,-.12],[1,1,.85]),piece(tube(.03,.03,.016,10),darker(hair,.55),[-.118,.125,0],[0,0,-.4]));
+ else if(o.hairStyle!=='bald')p.push(shell(.117,hair));
  if(o.hat==='cap')p.push(shell(.119,o.hatColor,.5),piece(block(.13,.014,.18),o.hatColor,[.12,.16,0],[0,0,-.18]),piece(ball(.013,6,4),o.hatColor,[-.03,.24,0]));
  if(o.hat==='helmet')p.push(piece(new THREE.SphereGeometry(.14,16,8,0,Math.PI*2,0,Math.PI/2),o.hatColor,[0,.11,0],[0,0,.15],[1.05,1.1,1]),piece(new THREE.SphereGeometry(.14,16,5,Math.PI+.95,Math.PI*2-1.9,Math.PI/2,Math.PI*.2),o.hatColor,[0,.11,0],[0,0,.15],[1.05,1.1,1]),piece(block(.3,.03,.03),0xc81d25,[-.01,.26,0],[0,0,.15]));
  if(o.hat==='headset'){p.push(piece(new THREE.TorusGeometry(.128,.011,6,18,Math.PI),0x1b1d20,[0,.11,0],[0,Math.PI/2,0]));for(const z of [-1,1])p.push(piece(tube(.042,.042,.035,12),0x1b1d20,[0,.1,z*.118],[Math.PI/2,0,0]));p.push(piece(block(.11,.01,.01),0x1b1d20,[.05,.065,-.095],[0,.55,0]),piece(ball(.014,6,5),0x1b1d20,[.1,.05,-.05]));}
@@ -65,17 +70,19 @@ function headGeometry(o){
  return merge(p);
 }
 function torsoGeometry(o){
- const p=[],b=o.belly;
- p.push(piece(tube(.19,.15+.05*b,.52,16),o.top,[0,.27,0],[0,0,0],[.66+.14*b,1,1]),piece(tube(.05,.058,.12,10),o.skin,[0,.57,0]),piece(tube(.066,.074,.05,12),o.top,[0,.535,0]));
- for(const z of [-1,1])p.push(piece(ball(.078,10,8),o.top,[0,.49,z*.18],[0,0,0],[.9,.9,1]));
- if(o.trim)p.push(piece(tube(.192,.184,.055,16),o.trim,[0,.37,0],[0,0,0],[.67+.14*b,1,1.01]),piece(block(.008,.46,.014),darker(o.top,.6),[.126+.03*b,.28,0]),piece(block(.01,.06,.08),0xf4f1ea,[.128+.03*b,.43,.075]));
+ const p=[],b=o.belly,f=o.figure==='f',top=f?.176:.19,waist=(f?.138:.15)+.05*b,depth=(f?.68:.66)+.14*b,front=f?.12:.126;
+ p.push(piece(tube(top,waist,.52,16),o.top,[0,.27,0],[0,0,0],[depth,1,1]),piece(tube(f?.045:.05,f?.052:.058,.12,10),o.skin,[0,.57,0]),piece(tube(.066,.074,.05,12),o.top,[0,.535,0]));
+ for(const z of [-1,1])p.push(piece(ball(f?.072:.078,10,8),o.top,[0,.49,z*(f?.172:.18)],[0,0,0],[.9,.9,1]));
+ if(f)for(const z of [-1,1])p.push(piece(ball(.052,10,8),o.top,[.084,.44,z*.058],[0,0,0],[.72,.82,.95]));
+ if(o.trim)p.push(piece(tube(top+.002,top-.006,.055,16),o.trim,[0,.37,0],[0,0,0],[depth+.01,1,1.01]),piece(block(.008,.46,.014),darker(o.top,.6),[front+.03*b,.28,0]),f?piece(block(.01,.035,.06),0xf4f1ea,[.104,.495,.07],[0,0,-.35]):piece(block(.01,.06,.08),0xf4f1ea,[front+.002+.03*b,.43,.075]));
  if(o.apron)p.push(piece(block(.02,.36,.3),o.apron,[.13+.03*b,.2,0]));
  return merge(p);
 }
 // Eyelids (skin, a shade darker) hang from their bone on the brow line over each eye.
 const lidsGeometry=o=>merge([-1,1].map(z=>piece(ball(.024,10,6),darker(o.skin,.93),[.1,-.024,z*.037],[0,0,0],[.55,1,1.05])));
 function hipsGeometry(o){
- const p=[piece(tube(.155,.15,.2,14),o.bottom,[0,-.03,0],[0,0,0],[.72,1,1.05]),piece(tube(.157,.157,.045,14),o.belt,[0,.06,0],[0,0,0],[.73,1,1.06])];
+ const w=o.figure==='f'?1.1:1.05;
+ const p=[piece(tube(.155,.15,.2,14),o.bottom,[0,-.03,0],[0,0,0],[.72,1,w]),piece(tube(.157,.157,.045,14),o.belt,[0,.06,0],[0,0,0],[.73,1,w+.01])];
  if(o.skirt)p.push(piece(tube(.165,.26,.56,16),o.skirt,[0,-.3,0],[0,0,0],[.82,1,1]));
  if(o.apron)p.push(piece(block(.02,.46,.34),o.apron,[o.skirt?.19:.125,-.2,0],[0,0,o.skirt?-.14:0]));
  return merge(p);
@@ -264,10 +271,11 @@ function skinnedGeometry(bones,parts){
 // Another outfit on a person() (the story's pilot changing clothes): the bones never move with the
 // outfit, so the new body binds to the same skeleton, in whatever pose it holds. The 99 on the back
 // shows only on overalls that carry it (back).
+const backDecalX=o=>-.114-.03*o.belly+(o.figure==='f'?.006:0);
 export function dressPerson(root,outfit){
  const body=root.children.find(c=>c.isSkinnedMesh);if(!body)return false;const o={...BASE,...outfit},{bones,parts,head}=skeletonFor(o);
  body.geometry.dispose();body.geometry=skinnedGeometry(bones,parts);root.userData.head.geometry.dispose();root.userData.head.geometry=head;
- const decal=root.userData.rig.torso.getObjectByName('Macacao_costas_99');if(decal)decal.visible=!!o.back;
+ const decal=root.userData.rig.torso.getObjectByName('Macacao_costas_99');if(decal){decal.visible=!!o.back;decal.position.x=backDecalX(o);}
  root.userData.outfit=outfit;return true;
 }
 function skeletonFor(o){
@@ -305,7 +313,7 @@ export function createPeople(){
   const body=new THREE.SkinnedMesh(geometry,material);body.name='Corpo';body.castShadow=shadows;body.add(rig.hips);root.add(body);body.bind(new THREE.Skeleton(bones));
   const face=new THREE.Mesh(head,material);face.name='Cabeca';face.castShadow=shadows;rig.head.add(face);
   // The 99 on the back sits below the white band round the chest (.34-.40 m).
-  if(o.back){backMaterial??=new THREE.MeshStandardMaterial({name:'Macacao_costas_99',map:crewBack(),transparent:true,roughness:.7,polygonOffset:true,polygonOffsetFactor:-1});const decal=new THREE.Mesh(new THREE.PlaneGeometry(.22,.22),backMaterial);decal.name='Macacao_costas_99';decal.position.set(-.114-.03*o.belly,.215,0);decal.rotation.y=-Math.PI/2;rig.torso.add(decal);}
+  if(o.back){backMaterial??=new THREE.MeshStandardMaterial({name:'Macacao_costas_99',map:crewBack(),transparent:true,roughness:.7,polygonOffset:true,polygonOffsetFactor:-1});const decal=new THREE.Mesh(new THREE.PlaneGeometry(.22,.22),backMaterial);decal.name='Macacao_costas_99';decal.position.set(backDecalX(o),.215,0);decal.rotation.y=-Math.PI/2;rig.torso.add(decal);}
   root.userData={head:face,rig,pose:clonePose(POSES.stand)};applyPose(rig,root.userData.pose);return root;
  }
  // Props carried by the crew, in the same vertex-coloured material.

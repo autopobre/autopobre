@@ -155,6 +155,24 @@ with sync_playwright() as p:
     moved = page.evaluate('([x,z])=>{const h=interlagos.walkInfo().hero;return Math.hypot(h[0]-x,h[2]-z);}', [start[0], start[2]])
     check(f'he walks again ({moved:.1f} m)', moved > 1.5)
     shot(page, '5_guardado')
+    # Escape with the phone out puts it away, back to the walk, and opens no menu (user, 2026-10-20): framing (the mouse
+    # held: Escape only lets it go) and with the photo up (the mouse free: a keydown).
+    page.mouse.click(640, 380)
+    page.keyboard.press('KeyQ')
+    wait_js(page, f"{SELFIE}.phase==='frame'", timeout=5000)
+    check('framing with the mouse held', bool(page.evaluate('document.pointerLockElement')))
+    page.keyboard.press('Escape')
+    wait_js(page, f"{SELFIE}.phase==='off'", timeout=3000)
+    page.wait_for_timeout(300)
+    check('Escape while framing: the phone away, no menu', not page.evaluate('interlagos.state.paused') and page.is_hidden('#menu') and page.evaluate(f'{WALK}.active'))
+    page.keyboard.press('KeyQ')
+    wait_js(page, f"{SELFIE}.phase==='frame'", timeout=5000)
+    page.keyboard.press('Space')
+    wait_js(page, f"{SELFIE}.phase==='review'", timeout=6000)
+    page.keyboard.press('Escape')
+    wait_js(page, f"{SELFIE}.phase==='off'", timeout=3000)
+    page.wait_for_timeout(300)
+    check('Escape with the photo up: the phone away, no menu', not page.evaluate('interlagos.state.paused') and page.is_hidden('#menu') and page.is_visible('#walkHud'))
     context.close()
 
     # Touch screen: the Selfie button, the round shutter, the photo's buttons.

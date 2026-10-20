@@ -84,8 +84,9 @@ export class PitStop {
  // also brings the café seat and sign, walk(position) (floor height, or null where
  // blocked), frameEye(eye,hero), heroHeading, pitView, makeHero() and animate(dt,state).
  // openings (optional): the car's hinged parts (car-openings.js), opened by the crew and the driver.
- constructor({scene,car,carRoot,driver,mode,data,roadSurface,onOpen,onClose,onSettings,layout=null,obstacles=[],openings=null}){
-  Object.assign(this,{car,carRoot,driver,mode,data,roadSurface,onOpen,onClose,onSettings,layout,obstacles,openings});this.groundAt=(x,y)=>car.sample(x,y).z-.055;
+ // outfit (optional): the player's own clothes out of the car outside the story (pilot-look.js), null for Stevan's.
+ constructor({scene,car,carRoot,driver,mode,data,roadSurface,onOpen,onClose,onSettings,layout=null,obstacles=[],openings=null,outfit=()=>null}){
+  Object.assign(this,{car,carRoot,driver,mode,data,roadSurface,onOpen,onClose,onSettings,layout,obstacles,openings,outfit});this.groundAt=(x,y)=>car.sample(x,y).z-.055;
   this.label=layout?.label??'CURVELO · BOX 99';this.title=layout?.title??'Cuida do Opala, uai!';
   this.condition=new CarCondition();car.condition=this.condition;mode.state.condition=this.condition;
   this.setDamage(false);
@@ -151,8 +152,9 @@ export class PitStop {
  get touch(){return document.body.classList.contains('touch-device');}
  // Out of the car: the camera starts behind the driver, looking where he faces.
  visitCafe(){if(!this.opened||this.coffee)return;
-  // In the story he walks out in the overalls of his stage (Kléber's loaned ones until he buys his own).
-  {const kind=this.mode.active?outfitOf(this.mode.state.profile.career):'proprio';if(this.hero.userData.outfit!==STEVAN_OUTFITS[kind])dressPerson(this.hero,STEVAN_OUTFITS[kind]);}
+  // In the story he walks out in the overalls of his stage (Kléber's loaned ones until he buys his own); elsewhere in
+  // the player's own look, when there is one.
+  {const kind=this.mode.active?outfitOf(this.mode.state.profile.career):'proprio',outfit=(!this.mode.active&&this.outfit())||STEVAN_OUTFITS[kind];if(this.hero.userData.outfit!==outfit)dressPerson(this.hero,outfit);}
  this.openings?.hold(OPENINGS.driverDoor,'manual');const yaw=this.layout?.heroHeading??this.station.rotation.y+Math.PI/2;this.coffee=footState(yaw,snackState({elapsed:0,menu:false,repairs:!this.touch,floor:this.heroStart().y}));this.hero.visible=true;this.hero.position.copy(this.heroStart());this.hero.rotation.y=yaw;this.message='Passeio grátis. Chegue perto da Tia para ver o cardápio.';this.onClose?.();this.captureMouse();this.render();}
  captureMouse(){const view=document.getElementById('view');if(this.touch||!view?.requestPointerLock||document.pointerLockElement===view)return;try{view.requestPointerLock()?.catch?.(()=>{});}catch{}}
  releaseMouse(){if(document.pointerLockElement)document.exitPointerLock();}

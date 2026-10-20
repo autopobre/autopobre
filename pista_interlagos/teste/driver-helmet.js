@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {lookColors,lookKey} from './pilot-look.js';
 
 // Full-face shell profile, chin to crown: [height, radius toward the front and back, radius to
 // the sides, forward offset]. Local +X faces forward, +Y up, +/-Z sides; the rivals' helmets
@@ -12,7 +13,27 @@ export function helmetSurface(y,a,lift=0){
  const r=rings[i],b=rings[i+1],t=THREE.MathUtils.clamp((y-r[0])/(b[0]-r[0]),0,1),mix=k=>THREE.MathUtils.lerp(r[k],b[k],t);
  return new THREE.Vector3(mix(3)+(mix(1)+lift)*Math.cos(a),y,(mix(2)+lift)*Math.sin(a));
 }
-// Photo-based full-face helmet.
+// A band of the shell's paint between two heights, from angle a0 to a1 (lifted off the shell by lift).
+function shellBand(y0,y1,a0,a1,cols,lift){
+ const rows=[y0,...HELMET_RINGS.filter(y=>y>y0+1e-4&&y<y1-1e-4),y1],p=[],ix=[];
+ for(const y of rows)for(let j=0;j<=cols;j++)p.push(...helmetSurface(y,a0+(a1-a0)*j/cols,lift).toArray());
+ for(let i=0;i<rows.length-1;i++)for(let j=0;j<cols;j++){const a=i*(cols+1)+j,b=a+cols+1;ix.push(a,b,a+1,a+1,b,b+1);}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setIndex(ix);g.computeVertexNormals();return g;
+}
+// A stripe w wide over the top, from the brow over the crown down to the nape: along the shell's middle line, each
+// side let down by how far the shell curves away there.
+function topStripe(w=.022,lift=.004){
+ const front=Array.from({length:10},(_,i)=>helmetSurface(.099+i*.0062,0)),back=Array.from({length:22},(_,i)=>helmetSurface(.158-i*.0125,Math.PI));
+ const line=[...front,helmetSurface(.161,0),...back],across=[-1,-.5,0,.5,1],p=[],ix=[];
+ for(let i=0;i<line.length;i++){
+  const t=line[Math.min(line.length-1,i+1)].clone().sub(line[Math.max(0,i-1)]).normalize(),n=new THREE.Vector3(t.y,-t.x,0),bend=Math.max(.08,helmetSurface(line[i].y,Math.PI/2).z);
+  for(const k of across)p.push(...line[i].clone().addScaledVector(n,lift-(k*w)**2/(2*bend)).add(new THREE.Vector3(0,0,k*w)).toArray());
+ }
+ const c=across.length;for(let i=0;i<line.length-1;i++)for(let j=0;j<c-1;j++){const a=i*c+j,b=a+c;ix.push(a,b,a+1,a+1,b,b+1);}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setIndex(ix);g.computeVertexNormals();return g;
+}
+// Photo-based full-face helmet. look(look): the player's own (pilot-look.js: paint, detail colour and design, a visor shut
+// in its tint); null: Stevan's, as in the photo.
 export async function createHelmet(){
  const root=new THREE.Group();root.name='Capacete_preto_vermelho_balaclava';
  const paint=new THREE.MeshPhysicalMaterial({color:0x101218,roughness:.23,metalness:.12,clearcoat:1,clearcoatRoughness:.15});
@@ -42,10 +63,9 @@ export async function createHelmet(){
  const shell=new THREE.BufferGeometry();shell.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));shell.setIndex(indices);shell.computeVertexNormals();mesh(shell,paint).name='Casco_integral_com_abertura';
  // Padding and fireproof balaclava surround the visible face; hair and beard are covered.
  sphere([-.003,.015,0],[.098,.123,.097],lining);
- sphere([.008,-.004,0],[.087,.117,.083],white);
- sphere([-.007,-.143,0],[.059,.052,.057],white);
+ const balaclava=[sphere([.008,-.004,0],[.087,.117,.083],white),sphere([-.007,-.143,0],[.059,.052,.057],white)];
  const photo=await new THREE.TextureLoader().loadAsync('./assets/piloto/capacete_publico.jpg');photo.colorSpace=THREE.SRGBColorSpace;photo.anisotropy=8;
- const faceMaterial=new THREE.MeshStandardMaterial({map:photo,roughness:.96});
+ const faceMaterial=new THREE.MeshStandardMaterial({map:photo,roughness:.96}),strokes=[];
  const fv=[],fu=[],fi=[],cols=48,rows=28;
  for(let i=0;i<=rows;i++)for(let j=0;j<=cols;j++){
   const v=i/rows,u=j/cols,y=-.025+v*.125,a=(u-.5)*2.20;
@@ -56,7 +76,7 @@ export async function createHelmet(){
   fu.push((275-u*250)/501,1-(284-v*133)/522);
  }
  for(let i=0;i<rows;i++)for(let j=0;j<cols;j++){const p=i*(cols+1)+j,q=p+cols+1;fi.push(p,q,p+1,p+1,q,q+1);}
- const face=new THREE.BufferGeometry();face.setAttribute('position',new THREE.Float32BufferAttribute(fv,3));face.setAttribute('uv',new THREE.Float32BufferAttribute(fu,2));face.setIndex(fi);face.computeVertexNormals();mesh(face,faceMaterial).name='Olhos_e_balaclava_da_referencia';
+ const face=new THREE.BufferGeometry();face.setAttribute('position',new THREE.Float32BufferAttribute(fv,3));face.setAttribute('uv',new THREE.Float32BufferAttribute(fu,2));face.setIndex(fi);face.computeVertexNormals();const faceMesh=mesh(face,faceMaterial);faceMesh.name='Olhos_e_balaclava_da_referencia';
  for(const y of [-.021,.096])tube(Array.from({length:33},(_,i)=>surface(y,-1.04+i/32*2.08,.002)),.0035,rubber);
  for(const side of [-1,1])tube([-.021,.006,.055,.096].map(y=>surface(y,side*1.03,.002)),.004,rubber);
  tube(Array.from({length:65},(_,i)=>surface(-.132,i/64*Math.PI*2,.001)),.003,rubber);
@@ -69,7 +89,7 @@ export async function createHelmet(){
    if(i<22){const k=i*2;idx.push(k,k+1,k+2,k+2,k+1,k+3);}
   }
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(points,3));g.setIndex(idx);g.computeVertexNormals();
-  const decal=mesh(g,red);decal.material=red;red.side=THREE.DoubleSide;
+  const decal=mesh(g,red);decal.material=red;red.side=THREE.DoubleSide;strokes.push(decal);
  }
  // Pale blank forehead oval in the reference (no invented helmet manufacturer).
  const badgePos=[],badgeIndex=[],radial=8,sectors=64;
@@ -78,7 +98,7 @@ export async function createHelmet(){
   badgePos.push(...surface(.124+Math.sin(t)*.010*f,Math.cos(t)*.49*f,.002).toArray());
   if(r<radial&&i<sectors){const p=r*(sectors+1)+i,q=p+sectors+1;badgeIndex.push(p,q,p+1,p+1,q,q+1);}
  }
- const badgeGeo=new THREE.BufferGeometry();badgeGeo.setAttribute('position',new THREE.Float32BufferAttribute(badgePos,3));badgeGeo.setIndex(badgeIndex);badgeGeo.computeVertexNormals();mesh(badgeGeo,new THREE.MeshStandardMaterial({color:0xd9d8cf,roughness:.5,side:THREE.DoubleSide}));
+ const badgeGeo=new THREE.BufferGeometry();badgeGeo.setAttribute('position',new THREE.Float32BufferAttribute(badgePos,3));badgeGeo.setIndex(badgeIndex);badgeGeo.computeVertexNormals();const oval=mesh(badgeGeo,new THREE.MeshStandardMaterial({color:0xd9d8cf,roughness:.5,side:THREE.DoubleSide}));
  for(const side of [-1,1]){
   const pivot=mesh(new THREE.CylinderGeometry(.012,.012,.006,24),rubber);pivot.rotation.x=Math.PI/2;pivot.position.set(.041,.038,side*.119);
   const screw=mesh(new THREE.CylinderGeometry(.004,.004,.007,16),silver);screw.rotation.x=Math.PI/2;screw.position.copy(pivot.position);screw.position.z+=side*.003;
@@ -88,6 +108,27 @@ export async function createHelmet(){
  const vp=[],vi=[];
  for(let row=0;row<2;row++)for(let i=0;i<=48;i++)vp.push(...surface(row?.143:.098,-1.10+i/48*2.20,.005).toArray());
  for(let i=0;i<48;i++)vi.push(i,i+1,i+49,i+1,i+50,i+49);
- const vg=new THREE.BufferGeometry();vg.setAttribute('position',new THREE.Float32BufferAttribute(vp,3));vg.setIndex(vi);vg.computeVertexNormals();mesh(vg,visorMaterial).name='Viseira_levantada';
- return {root,info:()=>({reference:'carro/piloto_capacete_bala_clava.jpg',visor:'raised',balaclava:true,color:'black_red',height:.356})};
+ const vg=new THREE.BufferGeometry();vg.setAttribute('position',new THREE.Float32BufferAttribute(vp,3));vg.setIndex(vi);vg.computeVertexNormals();const raised=mesh(vg,visorMaterial);raised.name='Viseira_levantada';
+ // The player's helmets (look): the crown and a pin line under it, or a stripe over the top, in the detail colour; the
+ // visor shut over the eye opening, tinted (smoked or mirrored), as the rivals wear theirs (rival-driver.js).
+ const crown=new THREE.Group();crown.name='Capacete_topo';root.add(crown);mesh(shellBand(.101,.161,0,Math.PI*2,80,.0015),red,crown);mesh(shellBand(.084,.093,0,Math.PI*2,80,.0015),red,crown);
+ const stripe=mesh(topStripe(),red);stripe.name='Capacete_listra';
+ const shutMaterial=new THREE.MeshPhysicalMaterial({color:0x14171b,roughness:.06,metalness:.3,clearcoat:1,clearcoatRoughness:.05,envMap:env,envMapIntensity:1});
+ const shut=mesh(shellBand(-.021,.096,-1.04,1.04,40,.004),shutMaterial);shut.name='Viseira_fechada';
+ let current=null,worn=true;
+ // Off the head (in the hand, look-select.js): no balaclava nor face inside, only the dark padding.
+ function wear(on){worn=on;for(const b of balaclava)b.visible=on;faceMesh.visible=on&&!current;}
+ function look(l){
+  const key=lookKey(l);if(key===current)return;current=key;
+  const c=l?lookColors(l):null,design=l?.helmet??'stevan';
+  paint.color.setHex(c?c.helmet:0x101218);red.color.setHex(c?c.detail:0xd41132);
+  for(const s of strokes)s.visible=design==='stevan'||design==='faixas';oval.visible=design==='stevan'||design==='faixas';
+  crown.visible=design==='topo';stripe.visible=design==='listra';
+  // Stevan's photo shows behind his raised visor; a shut one hides the face.
+  raised.visible=!l;faceMesh.visible=!l&&worn;shut.visible=!!l;
+  if(c){shutMaterial.color.setHex(c.visor);shutMaterial.metalness=l.visor==='fume'?.3:.75;}
+ }
+ look(null);
+ return {root,look,wear,info:()=>({reference:'carro/piloto_capacete_bala_clava.jpg',visor:current?'shut':'raised',balaclava:true,color:current?'look':'black_red',look:current||null,
+  design:crown.visible?'topo':stripe.visible?'listra':strokes[0].visible?'faixas':null,paint:paint.color.getHex(),detail:red.color.getHex(),visorTint:current?shutMaterial.color.getHex():null,height:.356})};
 }
