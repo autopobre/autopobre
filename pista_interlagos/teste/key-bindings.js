@@ -21,13 +21,14 @@ export const KEY_ACTIONS=Object.freeze([
  {id:'re',group:'dirigir',name:'Marcha à ré',note:'segure · a pé, a selfie: o piloto tira o celular e vira de frente para você, com a pista atrás (de novo, guarda o celular)',codes:['KeyQ']},
  {id:'subir',group:'dirigir',name:'Subir a marcha',note:'câmbio manual',codes:['KeyX']},
  {id:'descer',group:'dirigir',name:'Descer a marcha',note:'câmbio manual; parado na 1ª, engata a ré',codes:['KeyZ']},
+ {id:'buzina',group:'dirigir',name:'Buzina',note:'segure · o Opala com o par de buzinas dele, grave e aguda; o Fusca com a sua',codes:['KeyH']},
  {id:'camera',group:'visual',name:'Trocar câmera',note:'a pé, agachar',codes:['KeyC']},
  ...['perseguição','próxima','distante','capô','interna','TV','aérea','órbita 360°'].map((view,i)=>({id:'cam'+(i+1),group:'visual',name:`Câmera ${view}`,
   note:i<3?`nas conversas, a resposta ${i+1} · na selfie, você ${['à esquerda','no centro','à direita'][i]} da foto`:'',codes:[`Digit${i+1}`,`Numpad${i+1}`]})),
  {id:'olharTras',group:'visual',name:'Olhar para trás',note:'segure, na câmera interna',codes:['KeyB']},
  {id:'pintura',group:'visual',name:'Trocar a pintura',note:'',codes:['KeyV']},
  {id:'fantasma',group:'visual',name:'Fantasma',note:'o Opala da sua melhor volta na pista, para estudar e tentar bater; liga e desliga',codes:['KeyG']},
- {id:'farois',group:'visual',name:'Faróis de milha',note:'à noite e na chuva, liga e desliga; no Modo História o piloto acende',codes:['KeyH']},
+ {id:'farois',group:'visual',name:'Faróis de milha',note:'à noite e na chuva, liga e desliga; no Modo História o piloto acende',codes:['KeyK']},
  {id:'limpador',group:'visual',name:'Limpador de para-brisa',note:'na garoa e na chuva, liga e desliga; no Modo Corrida já larga ligado',codes:['KeyJ']},
  {id:'horario',group:'visual',name:'Mudar o horário',note:'durante a corrida: dia, fim de tarde, noite',codes:['KeyY']},
  {id:'clima',group:'visual',name:'Mudar o clima',note:'durante a corrida: seco, garoa, chuva forte',codes:['KeyU']},
@@ -146,9 +147,11 @@ export const playerKeys=new KeyBindings();
 export const keyName=code=>playerKeys.name(code);
 // A text with keys in braces ('{KeyE}: conversar') with the player's keys in their place.
 export const keyText=text=>text.replace(/\{((?:Key|Digit|Numpad|Arrow|Shift)\w+|Space|Minus|Equal)\}/g,(_,code)=>keyName(code));
-// The page's key names: <kbd data-key="KeyW">, and titles written as data-keys-title="… ({KeyV})".
+// The page's key names: <kbd data-key="KeyW">, and titles written as data-keys-title="… ({KeyV})". A button's data-key
+// is the key it presses (the touch FREIO DE MÃO, OLHAR TRÁS, BUZINA: their words stay) and a div's is no key at all
+// (the career's morale bars).
 export function applyKeyLabels(root=document){
- for(const el of root.querySelectorAll('[data-key]'))el.textContent=keyName(el.dataset.key);
+ for(const el of root.querySelectorAll('[data-key]:not(button):not(div)'))el.textContent=keyName(el.dataset.key);
  for(const el of root.querySelectorAll('[data-keys-title]'))el.title=keyText(el.dataset.keysTitle);
 }
 const NATIVE_CODE=typeof KeyboardEvent==='undefined'?null:Object.getOwnPropertyDescriptor(KeyboardEvent.prototype,'code');

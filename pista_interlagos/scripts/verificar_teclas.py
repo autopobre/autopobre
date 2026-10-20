@@ -33,7 +33,7 @@ with sync_playwright() as p:
     page.click('#settingsButton')
     page.click('#tab-controls')
     rows = page.evaluate("document.querySelectorAll('#keyBindings .keys-row').length")
-    assert rows == 39, rows
+    assert rows == 40, rows
     assert page.text_content(slot('acelerar')) == 'W' and page.text_content(slot('acelerar', 1)) == '↑'
     step('list', rows)
     if SHOTS:
@@ -56,15 +56,15 @@ with sync_playwright() as p:
     assert page.text_content(slot('freioMao')) == 'Espaço' and note() == 'Nada mudou.', note()
     # M while picking is the key, not the mute.
     page.click(slot('freioMao'))
-    page.keyboard.press('KeyK')
-    assert page.text_content(slot('freioMao')) == 'K', note()
+    page.keyboard.press('KeyO')
+    assert page.text_content(slot('freioMao')) == 'O', note()
     # Backspace empties the second key.
     page.click(slot('acelerar', 1))
     page.keyboard.press('Backspace')
     assert page.text_content(slot('acelerar', 1)) == '+', page.text_content(slot('acelerar', 1))
     step('cancel, refuse, clear', note())
     keys = page.evaluate(saved)
-    assert keys['keys']['acelerar'] == ['KeyI', None] and keys['keys']['partida'] == ['KeyW', None] and keys['keys']['freioMao'] == ['KeyK', None], keys
+    assert keys['keys']['acelerar'] == ['KeyI', None] and keys['keys']['partida'] == ['KeyW', None] and keys['keys']['freioMao'] == ['KeyO', None], keys
     assert page.evaluate("document.querySelector('#keyBindings button[data-id=\"acelerar\"]').closest('.keys-row').classList.contains('changed')")
     step('saved', keys['keys'])
     if SHOTS:
@@ -74,7 +74,7 @@ with sync_playwright() as p:
     open_menu(page, URL)
     page.click('#settingsButton')
     page.click('#tab-controls')
-    assert page.text_content(slot('acelerar')) == 'I' and page.text_content(slot('freioMao')) == 'K'
+    assert page.text_content(slot('acelerar')) == 'I' and page.text_content(slot('freioMao')) == 'O'
     assert page.evaluate("[...document.querySelectorAll('footer [data-key=\"KeyW\"]')].map(k=>k.textContent).join()") == 'I'
     step('after reload', page.text_content('footer div'))
     page.click('#settingsClose')
@@ -92,13 +92,13 @@ with sync_playwright() as p:
     wait_js(page, f"lastInput.throttle===1&&{speed}>10", timeout=20000)
     page.keyboard.up('KeyI')
     step('race', {'kmh': round(page.evaluate(speed), 1)})
-    # The handbrake on K: Space pulls nothing.
+    # The handbrake on O: Space pulls nothing.
     page.keyboard.press('Space')
     page.wait_for_timeout(300)
     assert page.evaluate("lastInput.handbrake") == 0
-    page.keyboard.press('KeyK')
+    page.keyboard.press('KeyO')
     wait_js(page, "lastInput.handbrake===1", timeout=5000)
-    page.keyboard.press('KeyK')
+    page.keyboard.press('KeyO')
     wait_js(page, "lastInput.handbrake===0", timeout=5000)
     step('handbrake', True)
     # A status line names the player's key (the wipers: J, unchanged; the ghost: G).

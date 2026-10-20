@@ -60,16 +60,16 @@ with sync_playwright() as p:
     check('wipers_cut_out_on_pivots', len(pivots) == 2 and all(p['tris'] > 500 for p in pivots), pivots)
     page.add_style_tag(content='body *{visibility:hidden!important} #view{visibility:visible!important}')
     page.screenshot(path=str(SHOTS / 'noite_farois.png'))
-    # H: off, and the cockpit's FAROL switch flips; H again: on.
+    # K: off, and the cockpit's FAROL switch flips; K again: on.
     switch_on = night['farol']
-    page.keyboard.press('KeyH')
+    page.keyboard.press('KeyK')
     page.wait_for_timeout(400)
     off = info(page)
-    check('h_switches_them_off', not off['lamps']['lit'] and off['lamps']['intensity'] == 0 and not off['glow'], off['lamps'])
+    check('k_switches_them_off', not off['lamps']['lit'] and off['lamps']['intensity'] == 0 and not off['glow'], off['lamps'])
     check('farol_switch_follows', switch_on is not None and off['farol'] is not None and abs(off['farol'] - switch_on) > .5, [switch_on, off['farol']])
-    page.keyboard.press('KeyH')
+    page.keyboard.press('KeyK')
     page.wait_for_timeout(400)
-    check('h_switches_them_on', info(page)['lamps']['lit'])
+    check('k_switches_them_on', info(page)['lamps']['lit'])
     # Rain: drops, the wet road and less grip for everyone.
     choose(page, 'rainLevel', 'chuva')
     wait_js(page, '!window.interlagosClima.info().compiling', timeout=90000)

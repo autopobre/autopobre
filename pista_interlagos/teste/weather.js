@@ -153,7 +153,7 @@ export function weatherProfile(time=TIME_DEFAULT,rain=RAIN_DEFAULT){
   // The light on what draws its own colour (smoke, spray, dust, falling leaves: no lights in their shaders).
   ambient:AMBIENT[time]*(wet?1-.3*r.grey:1),
   // The cars light up at night and in the rain; the player's own lamps start on in those (headlights.js), except the
-  // story's, which the pilot switches on (H). Dry dusk is still daylight: no lamps (the team's call, 10-15).
+  // story's, which the pilot switches on (K). Dry dusk is still daylight: no lamps (the team's call, 10-15).
   lights:night||wet,
   // How strong the headlights read against the daylight left (the beams, the glare): full at night.
   lamps:night?1:time==='fim_de_tarde'?.35:.25

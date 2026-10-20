@@ -37,6 +37,9 @@ html,body{width:100%;height:100%;overflow:hidden}#view{position:fixed;inset:0;wi
 #touchReverseLabel{bottom:13px;color:#f08f74}
 #touchReverseLabel[hidden],#touchReverseDigital[hidden]{display:none}#touchPedals .pedal-track{position:absolute;top:22px;bottom:22px;right:18px;width:5px;border-radius:4px;background:linear-gradient(to bottom,#e8ce5880 0% 60%,#eff2c5 60% 70%,#e7886b99 70% 100%)}#pedalThumb{position:absolute;right:7px;top:89.6px;width:27px;height:30px;transform:translateY(-50%);border-radius:10px;background:#e8ce58;border:1px solid #fff1a5;color:#21362b;font-size:10px;line-height:28px;text-align:center;font-weight:900;pointer-events:none;box-shadow:0 2px 8px #0005}#touchPedals.active{border-color:#f5db72;background:#203c3073}#touchPedals.braking #pedalThumb{background:#efb29b;border-color:#ffd4ba}
 
+/* The horn, held, in the bottom left corner: a short reach down for the steering thumb, under the pad's touch margin and
+   left of the bottom bar (which night and rain widen with Faróis and Limpador); not on foot. */
+#touchHorn{display:none}.touch-device #touchHorn{display:block;position:absolute;left:max(12px,env(safe-area-inset-left));bottom:max(14px,env(safe-area-inset-bottom));min-width:64px;padding:6px 10px;font-size:8px;border-radius:15px}.touch-device #touchHorn[hidden]{display:none}
 /* Held look-back above the handbrake, in the cockpit camera only (main.js sets can-look-back). */
 #touchLookBack{display:none}.touch-device.can-look-back #touchLookBack{display:block;position:absolute;right:calc(var(--pedal-right) + 96px);bottom:calc(var(--pedal-bottom) + 160px);width:90px;height:44px;min-height:44px;padding:5px 7px;font-size:8px;border-radius:15px}
 @media(max-width:740px) and (orientation:landscape){.touch-device #settings .settings-tabs button{gap:8px;padding-inline:10px}.touch-device #settings .tab-long{display:none}.touch-device #settings .tab-short{display:inline}}
@@ -71,7 +74,7 @@ html:has(body.touch-device),.touch-device,.touch-device *{touch-action:pan-x pan
 .touch-device #immersivePanel.social-explore .career-bar{grid-template-columns:46px 1fr 30px;margin:2px 0;font-size:9px}.touch-device #immersivePanel.social-explore .career-wallet b{font-size:15px}
 .touch-device #immersivePanel.career-cutscene{z-index:6;left:50%;right:auto;top:auto;bottom:calc(7vh + 50px);transform:translateX(-50%);height:auto;max-height:none;padding:8px 14px 10px;width:min(620px,calc(100vw - 24px))}
 /* Over the scene only the menu stays on the touch toolbar, under the subtitle. */
-.touch-device.story-cutscene #touchCamera,.touch-device.story-cutscene #touchSkin,.touch-device.story-cutscene #touchGhost,.touch-device.story-cutscene #touchLights,.touch-device.story-cutscene #touchWipers,.touch-device.story-cutscene #touchReset,.touch-device.story-cutscene #touchArrange,.touch-device.story-cutscene #touchFullscreen{display:none!important}.touch-device #immersivePanel.career-cutscene p{font-size:14px;margin:3px 0 7px}.touch-device #immersivePanel.career-cutscene .cutscene-buttons button{padding:6px 14px;font-size:12px}
+.touch-device.story-cutscene #touchCamera,.touch-device.story-cutscene #touchSkin,.touch-device.story-cutscene #touchGhost,.touch-device.story-cutscene #touchLights,.touch-device.story-cutscene #touchWipers,.touch-device.story-cutscene #touchHorn,.touch-device.story-cutscene #touchReset,.touch-device.story-cutscene #touchArrange,.touch-device.story-cutscene #touchFullscreen{display:none!important}.touch-device #immersivePanel.career-cutscene p{font-size:14px;margin:3px 0 7px}.touch-device #immersivePanel.career-cutscene .cutscene-buttons button{padding:6px 14px;font-size:12px}
 .touch-device .map-round{padding:5px 8px 7px;font-size:7px}.touch-device .map-round b{font-size:7px;letter-spacing:.6px}
 /* Faróis (headlights.js): only when the weather wants lights (dusk, night, rain: body.lights-weather); lit = active. */
 #touchLights{display:none}.touch-device.lights-weather #touchLights{display:inline-block}#touchLights.active{background:#f3e7a6;color:#13201d}
@@ -91,7 +94,7 @@ html:has(body.touch-device),.touch-device,.touch-device *{touch-action:pan-x pan
 /* Arranging: the race waits, the rest of the screen fades under a veil, each pad shows its reach and moves with the finger; the card at the top says what to do. */
 #touchControls.arranging{pointer-events:auto;background:#060d0b8c}
 .touch-arranging #mapcard,.touch-arranging #telemetry,.touch-arranging #timing,.touch-arranging #fuelGauge,.touch-arranging #immersiveHud,.touch-arranging #status,.touch-arranging #lapBanner,.touch-arranging #raceAction{opacity:.25}
-#touchControls.arranging .touch-toolbar,#touchControls.arranging #touchLookBack,#touchControls.arranging #touchHandbrake,#touchControls.arranging #miniWheel,#touchControls.arranging #miniPedals{opacity:.2;pointer-events:none}
+#touchControls.arranging .touch-toolbar,#touchControls.arranging #touchLookBack,#touchControls.arranging #touchHorn,#touchControls.arranging #touchHandbrake,#touchControls.arranging #miniWheel,#touchControls.arranging #miniPedals{opacity:.2;pointer-events:none}
 #touchControls.arranging .touch-steering:before,#touchControls.arranging .touch-pedals:before{border:2px dashed #f5db72b8;background:#f5db7214}
 #touchControls.arranging .dragging:before{border-style:solid;background:#f5db7226}
 #touchControls.arranging #touchSteering,#touchControls.arranging #touchPedals{border-color:#f5db72;box-shadow:0 0 0 1px #f5db7255,0 4px 18px #0007}

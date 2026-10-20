@@ -7,7 +7,7 @@ import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 // livery) uses the headlamps' places, the Fusca its own headlamps. Car frame: +X forward, +Y up, +Z right.
 //  - every car: a lit lens and a glare that faces the eye (one billboard per lamp, brightest seen from in front);
 //  - the player's car: two real spot lights (one per side pair) on the car's sprung body, so the road, the rails,
-//    the trees and the car ahead light up; H switches them (PlayerHeadlights);
+//    the trees and the car ahead light up; K switches them (PlayerHeadlights);
 //  - the rivals: their lamps light the road, kerbs and ground through ROAD_LAMPS (lampPatch on those materials), a
 //    few dozen lamps for the price of a loop, with no extra light in every other material's program.
 export const LAMP_SETS=Object.freeze({

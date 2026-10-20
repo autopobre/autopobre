@@ -27,8 +27,8 @@ assert.equal(keys.read('KeyI'),'KeyW');assert.equal(keys.read('KeyW'),'KeyI');as
 assert.equal(keys.name('KeyW'),'I');assert.equal(keys.name('KeyI'),'W');
 assert.ok(!keys.isOriginal('acelerar')&&!keys.isOriginal('partida')&&keys.isOriginal('frear'));
 // A free key: the old one reads as nothing.
-r=keys.set('freioMao',0,'KeyK','k');assert.ok(r.ok);assert.equal(r.moved,null);
-assert.equal(keys.read('KeyK'),'Space');assert.equal(keys.read('Space'),'Unidentified');assert.equal(keys.name('Space'),'K');
+r=keys.set('freioMao',0,'Period','.');assert.ok(r.ok);assert.equal(r.moved,null);
+assert.equal(keys.read('Period'),'Space');assert.equal(keys.read('Space'),'Unidentified');assert.equal(keys.name('Space'),'.');
 // The second key: empty, it reads as nothing, and the name falls back to the first.
 keys.clear('acelerar',1);assert.equal(keys.read('ArrowUp'),'Unidentified');assert.equal(keys.name('ArrowUp'),'I');
 // The same key again changes nothing; a second key for a one-key command reads as its key.
@@ -46,12 +46,12 @@ keys.set('direita',0,'Semicolon','ç');assert.equal(keys.name('KeyD'),'Ç');
 const saved=JSON.parse(storage.getItem(KEYS_STORAGE));
 assert.deepEqual(saved.keys.acelerar,['KeyI','Numpad5']);assert.equal(saved.keys.frear,undefined,'only what changed is saved');assert.equal(saved.printed.Semicolon,'ç');
 const again=new KeyBindings(storage);
-for(const code of ['KeyI','KeyW','KeyK','Space','ArrowUp','Numpad5','KeyO','Semicolon','KeyD'])assert.equal(again.read(code),keys.read(code),code);
+for(const code of ['KeyI','KeyW','Period','Space','ArrowUp','Numpad5','KeyO','Semicolon','KeyD'])assert.equal(again.read(code),keys.read(code),code);
 assert.equal(again.name('KeyD'),'Ç');assert.equal(again.changed,true);
 // Restaurar: the original keys, nothing saved.
 again.reset();assert.equal(again.changed,false);assert.equal(storage.getItem(KEYS_STORAGE),null);assert.equal(again.read('KeyI'),'KeyI');assert.equal(new KeyBindings(storage).changed,false);
 // Changes are told (the screen's names, main.js lets go of held keys).
-let told=0;again.onChange(()=>told++);again.set('re',0,'KeyK');again.clear('re',0);again.reset();assert.equal(told,3);
+let told=0;again.onChange(()=>told++);again.set('re',0,'Period');again.clear('re',0);again.reset();assert.equal(told,3);
 
 // --- Bad saves: broken JSON, unknown commands and keys, a key in two places (a saved command wins over the originals).
 const bad=memory();bad.setItem(KEYS_STORAGE,'{oops');assert.equal(new KeyBindings(bad).changed,false);

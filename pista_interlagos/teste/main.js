@@ -424,7 +424,7 @@ let speedFx=null;
 const opalaShell=new THREE.Group();opalaShell.name='Opala_do_jogador';carBody.add(opalaShell);
 const brakeLamps=createBrakeLights();opalaShell.add(brakeLamps);
 // Headlights (headlights.js): the player's two spot lights ride the sprung body; the lit lenses and glare sit on the
-// car shown (the Opala's auxiliary lamps or headlamps, the Fusca's headlamps). H switches them.
+// car shown (the Opala's auxiliary lamps or headlamps, the Fusca's headlamps). K switches them.
 const playerLamps=new PlayerHeadlights(carBody);let playerGlow=null,playerGlowKey='',farolSwitch=null,limpSwitch=null;
 // The rain on the Opala's windscreen and its wipers (windscreen-rain.js): J or the LIMP switch.
 const windscreen=new WindscreenRain();
@@ -637,7 +637,7 @@ function applyWeather(){
  floodLevel=0;headlightsHud();
 }
 // The player's lamps as a race starts: on whenever the weather wants them in Modo Corrida; in the story the pilot
-// switches them on (H), as the IGN and PART before.
+// switches them on (K), as the IGN and PART before.
 function startLights(){playerLamps.on(weather.lights&&!preferences.values.immersive);setWipers(weather.wet&&!preferences.values.immersive);headlightsHud();}
 // Both cars' wipers together (the Opala's and the Fusca's: only the one raced shows).
 function setWipers(on){fuscaScreen.setWipers(on);return windscreen.setWipers(on);}
@@ -647,11 +647,11 @@ function toggleWipers(){
  const on=setWipers(!windscreen.wiping),text=`Limpador ${on?'ligado':'desligado'} · ${keyName('KeyJ')} ${on?'desliga':'liga'}`;
  status(text);setTimeout(()=>{if($('status').textContent===text)status('');},2500);headlightsHud();
 }
-// H (the controller's L3, the touch button, a learnt wheel button): the player's headlights on or off.
+// K (the controller's L3, the touch button, a learnt wheel button): the player's headlights on or off. No status line:
+// the light itself shows it at once (the user's call, 10-20).
 function toggleHeadlights(){
  if(!ready||!sessionStarted||immersive?.onFoot())return;
- const on=playerLamps.toggle(),text=`Faróis ${on?'acesos':'apagados'} · ${keyName('KeyH')} ${on?'apaga':'acende'}`;
- status(text);setTimeout(()=>{if($('status').textContent===text)status('');},2500);headlightsHud();
+ playerLamps.toggle();headlightsHud();
 }
 // Y and U on the track: the next time of day (dia, fim de tarde, noite) or rain (seco, garoa, chuva) after the one
 // raced, as if picked in the Corrida tab (saved, both selects follow; Aleatório gives way to it). A room race keeps
@@ -1502,6 +1502,8 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  const rivalSound=heard!==car?immersive.rivalSound(heard):null;
  const braking=driveCommand.engineOff?0:driveCommand.brake;if(touchDevice)mobile.showPedals(driveCommand.throttle??0,Math.max(driveCommand.brake??0,driveCommand.reverse??0));brakeLamps.userData.set(model?.visible?braking:0,!!model?.visible&&playerLamps.lit);fuscaBody.brake(braking,playerLamps.lit);
  carAudio.update(heard,rivalSound?.command??driveCommand,rivalSound?.skid??skid,paused||frozen,mode);
+ // H (the controller's X / □, a learnt wheel button, the touch Buzina): the horn, while held, at the wheel of one's own car.
+ carAudio.honk(pressed('KeyH')&&!paused&&!frozen&&!intro.active&&heard===car&&!pitstop?.opened&&!immersive?.onFoot()&&!walker?.active,car.mechanics?.name==='fusca'?'fusca':'opala',mode);
  carAudio.updateScene({...immersive?.audioScene(heard),speed:Math.hypot(heard.vx,heard.vy),onRoad:heard.surface.onRoad,rain:weather.drops,wet:weather.wetness,...speedFx?.sound(heard===car?car:null),camera:mode},immersive?.state.takeSounds()??[],dt);
  if(futebol){futebol.view.ahead=renderAhead();futebol.view.shown=sessionStarted&&!paused&&!intro.active&&raceResults.root.hidden;}
  sky.update(paused?0:dt);landscape?.update(paused?0:dt,camera);for(const far of farMerges)far.update(camera);arenaMode?.frame(paused?0:dt);for(const extra of circuitExtras)extra.update?.(paused?0:dt,camera);
@@ -1949,7 +1951,7 @@ document.addEventListener('keydown',e=>{
  if(e.code==='KeyV')cycleLivery();
  // The controller's ↑ (a synthetic G) answers 2 on foot: there it leaves the ghost alone.
  if(e.code==='KeyG'&&(e.isTrusted||!immersive.onFoot()))toggleGhost();
-if(e.code==='KeyH')toggleHeadlights();
+if(e.code==='KeyK')toggleHeadlights();
 if(e.code==='KeyJ')toggleWipers();
  if(e.code==='KeyY')cycleWeather('time');
  if(e.code==='KeyU')cycleWeather('rain');

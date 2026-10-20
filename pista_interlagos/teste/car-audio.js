@@ -3,6 +3,7 @@ import {GameMusic} from './game-music.js';
 import {RecordedMusic} from './recorded-music.js';
 import {LoopEngine,engineLevel,firstGearRevs,gearRevs,SHIFT_UP} from './engine-loops.js';
 import {TyreSounds} from './tyre-sounds.js';
+import {CarHorn} from './car-horn.js';
 import {readSoundSettings,soundDefaults} from './sound-tuning.js';
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 // Physics' gears in rpm per km/h (OPALA_MECHANICS) when the car does not bring its own.
@@ -73,7 +74,7 @@ export class CarAudio {
   this.effects=new SoundEffects(ctx,this.master,this.uiBus,buffer);this.music=new GameMusic(ctx,this.musicBus,buffer);
   // Recorded engines: voice 0 is the car heard, 1 and 2 the nearest rivals (sound-effects.js routes those).
   this.wireEngine();
-  this.tyres=new TyreSounds(ctx,this.master);
+  this.tyres=new TyreSounds(ctx,this.master);this.horn=new CarHorn(ctx,this.master);
   this.applyTuning();
  }
  async unlock(){
@@ -246,6 +247,8 @@ export class CarAudio {
   this.lifted=true;if(Math.random()>=k.popChance)return;
   for(let i=0,n=1+Math.floor(Math.random()*(rpm>5600?k.popsMax:Math.ceil(k.popsMax/2))),delay=.04;i<n;i++,delay+=.06+Math.random()*.16)this.tyres.pop((.35+.4*Math.random())*rpm/7000*k.pops,delay);
  }
+ // The player's horn (car-horn.js), held while `on`: the Opala's pair or the Fusca's ('opala', 'fusca'). Not heard paused.
+ honk(on,kind,mode){this.horn?.update(on&&!this.paused,kind,mode);}
  // The team's sound whatever this browser's bench sets say (a build without the sound bench).
  useDefaultSound(){this.tunings={opala:soundDefaults(),fusca:soundDefaults()};this.tuningSource='padrão';this.retune();}
  // The current car's settings again (after the sound bench changed them, or the car changed).
@@ -261,6 +264,6 @@ export class CarAudio {
  }
  info(){
   let rms=0;if(this.analyser){this.analyser.getFloatTimeDomainData(this.meter);rms=Math.sqrt(this.meter.reduce((s,x)=>s+x*x,0)/this.meter.length);}
-  return {...this.state,volume:this.volume,musicVolume:this.musicVolume,effectsVolume:this.effectsVolume,muted:this.muted,musicMuted:!!this.musicMuted,effectsMuted:!!this.effectsMuted,focused:this.focused,paused:this.paused,context:this.context?.state??'locked',shifts:this.shifts,rms,worldGain:this.master?.gain.value??0,music:this.music?.info(),recordings:this.recordings?.info(),effects:this.effects?.info(),synthEngine:!!this.synthEngine,tuning:{source:this.tuningSource,car:this.kind},engine:this.recorded?.info()??null,tyres:this.tyres?.info()??null,error:this.error};
+  return {...this.state,volume:this.volume,musicVolume:this.musicVolume,effectsVolume:this.effectsVolume,muted:this.muted,musicMuted:!!this.musicMuted,effectsMuted:!!this.effectsMuted,focused:this.focused,paused:this.paused,context:this.context?.state??'locked',shifts:this.shifts,rms,worldGain:this.master?.gain.value??0,music:this.music?.info(),recordings:this.recordings?.info(),effects:this.effects?.info(),synthEngine:!!this.synthEngine,tuning:{source:this.tuningSource,car:this.kind},engine:this.recorded?.info()??null,tyres:this.tyres?.info()??null,horn:this.horn?.info()??null,error:this.error};
  }
 }
