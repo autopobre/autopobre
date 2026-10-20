@@ -1,11 +1,14 @@
 // Where the thumbs rest (the ✥ beside ⚙, mobile.css --steer-*/--pedal-*): the steering's distance from the
 // screen's left and bottom edges, the pedals' from its right and bottom; null for the game's place. digital: the
-// pedal as two buttons, ACELERAR and FREAR, all or nothing as the keyboard's (the steering stays the slider).
+// pedal as two buttons, ACELERAR and FREAR, all or nothing as the keyboard's; steerDigital: the steering as two
+// buttons, left and right, full lock or none as the arrow keys (user, 2026-10-20).
 const LAYOUT_KEY='opala99-toque-v1';
 const readLayout=()=>{
  const at=v=>v&&Number.isFinite(v.x)&&Number.isFinite(v.y)?{x:v.x,y:v.y}:null;
- try{const v=JSON.parse(localStorage.getItem(LAYOUT_KEY));return {steer:at(v?.steer),pedals:at(v?.pedals),digital:v?.digital===true};}catch{return {steer:null,pedals:null,digital:false};}
+ try{const v=JSON.parse(localStorage.getItem(LAYOUT_KEY));return {steer:at(v?.steer),pedals:at(v?.pedals),digital:v?.digital===true,steerDigital:v?.steerDigital===true};}catch{return {steer:null,pedals:null,digital:false,steerDigital:false};}
 };
+// Digital steering: past STEER_GAP px either side of the middle a button turns (the gap between them does neither).
+const STEER_GAP=4;
 export class MobileControls {
  constructor({enabled,onMenu,onCamera,onSkin,onReset,onUnlock,onArrange=()=>{}}){
   this.enabled=enabled;this.onArrange=onArrange;this.arranging=false;this.drags=new Map();this.layout=readLayout();this.pressed=new Set();this.pointers=new Map();this.phase='';this.handbrake=false;this.steering=0;this.steeringPosition=0;this.steerPointer=null;
@@ -55,9 +58,10 @@ export class MobileControls {
   tapped('touchArrange',()=>{if(enabled)this.arrange(true);});
   this.arrangePanel=document.getElementById('touchArrangePanel');
   tapped('touchArrangeReset',()=>{this.layout={...this.layout,steer:null,pedals:null};this.applyLayout();});
-  // The pedal's kind, chosen there too (Redefinir keeps it).
+  // The pedal's kind and the steering's, chosen there too (Redefinir keeps them).
   this.pedalModes=[['touchPedalAnalog',false],['touchPedalDigital',true]].map(([id,digital])=>{tapped(id,()=>{this.layout={...this.layout,digital};this.applyPedalMode();});return [document.getElementById(id),digital];});
-  this.applyPedalMode();
+  this.steerModes=[['touchSteerAnalog',false],['touchSteerDigital',true]].map(([id,steerDigital])=>{tapped(id,()=>{this.layout={...this.layout,steerDigital};this.applySteerMode();});return [document.getElementById(id),steerDigital];});
+  this.applyPedalMode();this.applySteerMode();
   tapped('touchArrangeCancel',()=>this.arrange(false));tapped('touchArrangeDone',()=>this.arrange(false,true));
   this.applyLayout();window.addEventListener('resize',()=>this.applyLayout());
   document.getElementById('touchMenu').onclick=onMenu;document.getElementById('touchCamera').onclick=onCamera;document.getElementById('touchSkin').onclick=onSkin;document.getElementById('touchReset').onclick=onReset;
@@ -86,8 +90,12 @@ export class MobileControls {
  applyPedalMode(){
   const digital=!!this.layout.digital;this.pedalPad.classList.toggle('digital',digital);
   for(const [button,kind] of this.pedalModes)button.setAttribute('aria-checked',String(kind===digital));
-  document.getElementById('touchPedalHint').textContent=digital?'Digital: dois botões, tudo ou nada, como no teclado.':'Analógico: deslize; quanto mais longe, mais forte.';
   this.releasePedals();
+ }
+ applySteerMode(){
+  const digital=!!this.layout.steerDigital;this.steerPad.classList.toggle('digital',digital);
+  for(const [button,kind] of this.steerModes)button.setAttribute('aria-checked',String(kind===digital));
+  this.releaseSteering();
  }
  releaseButton(pointerId){const item=this.pointers.get(pointerId);if(!item)return;this.pointers.delete(pointerId);if(![...this.pointers.values()].some(x=>x.key===item.key)){this.pressed.delete(item.key);item.button.classList.remove('held');if(item.key==='Space')this.setHandbrake(false);}}
  // The Arena de Drift's handbrake button (main.js): pulled only while a finger is on it, as a drifter's lever; elsewhere
@@ -117,7 +125,7 @@ export class MobileControls {
   if(on)this.before={...this.layout};
   else{if(keep){try{localStorage.setItem(LAYOUT_KEY,JSON.stringify(this.layout));}catch{}}else this.layout=this.before;this.drags.clear();this.steerZone.classList.remove('dragging');this.pedalZone.classList.remove('dragging');}
   this.arranging=on;this.root.classList.toggle('arranging',on);document.body.classList.toggle('touch-arranging',on);this.arrangePanel.hidden=!on;
-  this.clear();this.applyLayout();this.applyPedalMode();
+  this.clear();this.applyLayout();this.applyPedalMode();this.applySteerMode();
   if(!quiet)this.onArrange(on);
  }
  // A place kept on the screen (clear of its edges); positions from the edges the pad is anchored to.
@@ -154,6 +162,16 @@ export class MobileControls {
  setHandbrake(value){this.handbrake=value;if(value)this.pressed.add('Space');else this.pressed.delete('Space');const button=document.getElementById('touchHandbrake');button.classList.toggle('held',value);button.setAttribute('aria-pressed',String(value));button.textContent=value?'SOLTAR FREIO DE MÃO':'FREIO DE MÃO';}
  setSteering(value){
   this.steeringPosition=Math.max(-1,Math.min(1,value));
+  if(this.layout.steerDigital){
+   // Digital: the left button turns left, the right one right, all the way (as the arrow keys); the finger may slide
+   // from one to the other.
+   const gap=STEER_GAP/Math.max(1,(this.steerPad.clientWidth||210)/2-22),p=this.steeringPosition;
+   this.steering=p<-gap?-1:p>gap?1:0;
+   this.steerPad.setAttribute('aria-valuenow',String(this.steering*100));this.steerPad.setAttribute('aria-valuetext',this.steering<0?'Esquerda':this.steering>0?'Direita':'Reto');
+   this.steerPad.classList.toggle('left-held',this.steering<0);this.steerPad.classList.toggle('right-held',this.steering>0);
+   return;
+  }
+  this.steerPad.classList.remove('left-held','right-held');this.steerPad.removeAttribute('aria-valuetext');
   // Keep the thumb under the finger; soften the steering response near the center.
   const amount=Math.max(0,(Math.abs(this.steeringPosition)-.10)/.90);
   this.steering=Math.sign(this.steeringPosition)*amount**2.2;

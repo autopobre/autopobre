@@ -6,7 +6,8 @@
 3. The ✥ beside ⚙ on the toolbar (by the steering it would be tapped by mistake) arranges the pads: the race waits with the pads up and the rest faded, a finger
    drags each pad, Cancelar puts them back, Confirmar keeps them (also after a reload), Redefinir
    brings the game's places back; a pad never leaves the screen. There the pedal may be Digital: ACELERAR
-   and FREAR, two buttons, all or nothing (the finger may slide between them).
+   and FREAR, two buttons, all or nothing (the finger may slide between them); the steering too (user,
+   2026-10-20): left and right, full lock or none, as the arrow keys. The panel keeps clear of the pads.
 6. On the slider FREAR sits where the red stretch starts and RÉ at the very bottom (held there, the brake
    backs up).
 4. The mini steering wheel by the map turns with the car's wheel (left counter-clockwise), its yellow
@@ -57,6 +58,10 @@ def engine_sources(page): return page.evaluate('interlagos.audioInfo().engine?.s
 TOOLBAR_CLEAR = '''()=>{const r=s=>document.querySelector(s).getBoundingClientRect(),grow=(b,v,h)=>({left:b.left-h,right:b.right+h,top:b.top-v,bottom:b.bottom+v}),apart=(a,b)=>a.right<=b.left||b.right<=a.left||a.bottom<=b.top||b.bottom<=a.top;
  const bar=r('.touch-toolbar'),steer=grow(r('.touch-steering'),34,30),pedals=grow(r('.touch-pedals'),26,30);
  return apart(bar,steer)&&apart(bar,pedals)&&[...document.querySelectorAll('.touch-toolbar button')].filter(b=>b.getClientRects().length).every(b=>{const range=document.createRange();range.selectNodeContents(b);return range.getClientRects().length===1})}'''
+# The arranging's panel (two kinds now: the pedal's and the steering's) leaves both pads free to drag, its kinds'
+# labels on one line.
+PANEL_CLEAR = '''()=>{const r=s=>document.querySelector(s).getBoundingClientRect(),apart=(a,b)=>a.right<=b.left||b.right<=a.left||a.bottom<=b.top||b.bottom<=a.top,panel=r('#touchArrangePanel');
+ return panel.height>0&&apart(panel,r('#touchSteering'))&&apart(panel,r('#touchPedals'))&&[...document.querySelectorAll('#touchArrangePanel .arrange-mode span')].every(s=>s.getClientRects().length===1)}'''
 
 
 with sync_playwright() as p:
@@ -154,7 +159,7 @@ with sync_playwright() as p:
         page.tap('#touchArrange'); page.tap('#touchArrangeReset'); page.wait_for_timeout(150)
         check('reset_brings_game_places', abs(rect(page, '#touchSteering')['left'] - steer['left']) < 1 and abs(rect(page, '#touchPedals')['top'] - pedals['top']) < 1)
         page.tap('#touchArrangeDone'); page.wait_for_timeout(150)
-        check('reset_saved', page.evaluate("JSON.parse(localStorage.getItem('opala99-toque-v1'))") == {'steer': None, 'pedals': None, 'digital': False})
+        check('reset_saved', page.evaluate("JSON.parse(localStorage.getItem('opala99-toque-v1'))") == {'steer': None, 'pedals': None, 'digital': False, 'steerDigital': False})
         # The menu while arranging (a controller's Menu button) cancels it.
         page.tap('#touchArrange'); drag(cdp, centre(steer), 40, 0); report['beforeMenu'] = page.evaluate("[document.body.classList.contains('touch-arranging'),document.querySelector('#touchSteering').getBoundingClientRect().left]")
         page.evaluate("document.querySelector('#touchMenu').click()")
@@ -183,6 +188,29 @@ with sync_playwright() as p:
         check('cancel_restores_digital', page.evaluate("document.querySelector('#touchPedals').classList.contains('digital')"))
         page.tap('#touchArrange'); page.tap('#touchPedalAnalog'); page.tap('#touchArrangeDone'); page.wait_for_timeout(120)
         check('analog_back', page.evaluate("!document.querySelector('#touchPedals').classList.contains('digital')&&JSON.parse(localStorage.getItem('opala99-toque-v1')).digital===false"))
+        # The Digital steering (user, 2026-10-20): two buttons in the steering's place, left and right, full lock or
+        # none as the arrow keys (the finger may slide between them); the pedal keeps its own kind.
+        page.tap('#touchArrange'); page.tap('#touchSteerDigital'); page.wait_for_timeout(100)
+        check('steer_digital_shows_two_buttons', page.evaluate("()=>{const p=document.querySelector('#touchSteering'),b=[...p.querySelectorAll('.steer-digital b')].map(x=>x.getBoundingClientRect());return p.classList.contains('digital')&&document.querySelector('#touchSteerDigital').getAttribute('aria-checked')==='true'&&b.length===2&&b[0].width>60&&b[0].height>50&&b[0].right<b[1].left&&getComputedStyle(document.querySelector('#steeringThumb')).display==='none'&&!document.querySelector('#touchPedals').classList.contains('digital')}"))
+        check('arrange_panel_clear_of_pads', page.evaluate(PANEL_CLEAR))
+        page.screenshot(path=str(ROOT / 'renders' / 'toque_volante_digital_ajuste.png'))
+        page.tap('#touchArrangeDone'); page.wait_for_timeout(150)
+        check('steer_digital_saved', page.evaluate("JSON.parse(localStorage.getItem('opala99-toque-v1')).steerDigital===true"))
+        left_b, right_b = page.evaluate("[...document.querySelectorAll('#touchSteering .steer-digital b')].map(b=>b.getBoundingClientRect().toJSON())")
+        touches(cdp, 'touchStart', [(1, centre(left_b))]); page.wait_for_timeout(120)
+        check('steer_digital_left_full', info(page)['steering'] == -1)
+        touches(cdp, 'touchMove', [(1, centre(right_b))]); page.wait_for_timeout(450)
+        check('steer_digital_slides_right_full', info(page)['steering'] == 1 and page.evaluate("document.querySelector('#touchSteering').classList.contains('right-held')"))
+        page.screenshot(path=str(ROOT / 'renders' / 'toque_volante_digital.png'))
+        check('steer_digital_turns_the_car_right', page.evaluate('interlagos.car.steer') < -.05)
+        touches(cdp, 'touchMove', [(1, {'x': (left_b['right'] + right_b['left']) / 2, 'y': centre(left_b)['y']})]); page.wait_for_timeout(120)
+        check('steer_digital_gap_does_neither', info(page)['steering'] == 0)
+        touches(cdp, 'touchEnd', []); page.wait_for_timeout(120)
+        check('steer_digital_release_centres', info(page)['steering'] == 0)
+        touches(cdp, 'touchStart', [(2, {'x': left_b['left'] - 16, 'y': left_b['top'] - 14})]); page.wait_for_timeout(120)
+        check('steer_digital_margin', info(page)['steering'] == -1); touches(cdp, 'touchEnd', []); page.wait_for_timeout(120)
+        page.tap('#touchArrange'); page.tap('#touchSteerAnalog'); page.tap('#touchArrangeDone'); page.wait_for_timeout(120)
+        check('steer_analog_back', page.evaluate("!document.querySelector('#touchSteering').classList.contains('digital')&&getComputedStyle(document.querySelector('#steeringThumb')).display!=='none'&&JSON.parse(localStorage.getItem('opala99-toque-v1')).steerDigital===false"))
         # 5. Driving: a handful of loops, not all of them (59 ran before): up to some 7 for the car heard and as many
         # for each of the two nearest rivals, counting the ones still fading out.
         touches(cdp, 'touchStart', [(1, {'x': centre(pedals)['x'], 'y': pedals['top'] + 18})]); page.wait_for_timeout(2500)
@@ -195,6 +223,10 @@ with sync_playwright() as p:
         open_menu(page, URL); enter_track(page, tap=True); wait_js(page, "!document.querySelector('#touchControls').classList.contains('hidden')"); page.wait_for_timeout(300)
         report['toolbar667'] = page.evaluate("()=>['.touch-toolbar','.touch-steering','.touch-pedals'].map(s=>{const b=document.querySelector(s).getBoundingClientRect();return [s,Math.round(b.left),Math.round(b.top),Math.round(b.right),Math.round(b.bottom)]})")
         check('toolbar_clear_of_pads_667', page.evaluate(TOOLBAR_CLEAR)); page.screenshot(path=str(ROOT / 'renders' / 'toque_667.png'))
+        page.tap('#touchArrange'); page.wait_for_timeout(150)
+        report['panel667'] = page.evaluate("document.querySelector('#touchArrangePanel').getBoundingClientRect().toJSON()")
+        check('arrange_panel_clear_of_pads_667', page.evaluate(PANEL_CLEAR)); page.screenshot(path=str(ROOT / 'renders' / 'toque_667_ajuste.png'))
+        page.tap('#touchArrangeCancel')
         context.close()
         # The story's meters sit right of the mini wheel; a narrow phone keeps the mini wheel on its own.
         context = browser.new_context(viewport={'width': 844, 'height': 390}, has_touch=True, is_mobile=True, device_scale_factor=1)

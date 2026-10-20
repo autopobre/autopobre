@@ -118,10 +118,16 @@ const outAt=(data,car,walk)=>walk.side(walk.hero.position.x,-walk.hero.position.
  walk.hero.position.copy(walk.carPoint(.15,1.3));assert.equal(walk.actionLabel(),'fechar a porta');
  walk.handleKey('KeyE');assert.ok(walk.active&&!door(),'E at the door shuts it');assert.equal(walk.actionLabel(),'abrir a porta');
  walk.handleKey('KeyE');assert.ok(walk.active&&door(),'E again opens it');
+ // The passenger's door from outside (user, 2026-10-20): E by it opens it, and it stays open as he gets in.
+ const passenger=()=>openings.held(OPENINGS.passengerDoor,'manual');
+ walk.hero.position.copy(walk.carPoint(.15,-1.3));assert.equal(walk.spot(),'porta_carona');assert.equal(walk.actionLabel(),'abrir a porta do carona');
+ walk.handleKey('KeyE');assert.ok(walk.active&&passenger()&&door(),'E by the passenger door opens it');assert.equal(walk.actionLabel(),'fechar a porta do carona');
+ walk.hero.position.copy(walk.carPoint(.15,1.3));
  walk.handleKey('KeyF');assert.ok(!walk.active,'F at the door gets in');assert.ok(!door()&&openings.held(OPENINGS.driverDoor,'passagem'),'the door swings shut behind him');
+ assert.ok(passenger(),'the passenger door is left as he left it');
  for(let t=0;t<3;t+=FRAME)openings.update(FRAME);
- assert.ok(!openings.isOpen(OPENINGS.driverDoor)&&openings.isOpen(OPENINGS.hood),'door shut, hood still up');
- openings.toggle(OPENINGS.hood);for(let t=0;t<3;t+=FRAME)openings.update(FRAME);
+ assert.ok(!openings.isOpen(OPENINGS.driverDoor)&&openings.isOpen(OPENINGS.hood)&&openings.isOpen(OPENINGS.passengerDoor),'driver door shut, hood and passenger door still open');
+ openings.toggle(OPENINGS.hood);openings.toggle(OPENINGS.passengerDoor);for(let t=0;t<3;t+=FRAME)openings.update(FRAME);
 
  // 7. F again while it brakes stays in; reset puts him back at once.
  car.vx=Math.cos(car.heading)*20;car.vy=Math.sin(car.heading)*20;walk.request();walk.request();assert.equal(walk.stopping,false,'changed his mind');

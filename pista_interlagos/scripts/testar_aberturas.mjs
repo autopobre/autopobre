@@ -72,7 +72,9 @@ for(const livery of ['seiva_danilo','assinaturas_omp']){
 // driver's side -z). The pit works it out from the car's heading.
 {const spot=(x,z)=>carSpot({x,z});
  assert.equal(spot(2.8,0),'capo');assert.equal(spot(2.2,-1.1),'capo');assert.equal(spot(-2.8,.4),'porta_malas');assert.equal(spot(.2,-1.6),'porta');
- for(const [x,z] of [[0,1.6],[5,0],[-4,0],[0,-3],[1.6,-1.6],[0,0]])assert.equal(spot(x,z),null,`nothing at ${x},${z}`);
+ // The passenger's door from outside (user, 2026-10-20).
+ assert.equal(spot(.2,1.6),'porta_carona');assert.equal(spot(-.8,2.2),'porta_carona');
+ for(const [x,z] of [[0,2.6],[5,0],[-4,0],[0,-3],[1.6,-1.6],[1.6,1.6],[0,0]])assert.equal(spot(x,z),null,`nothing at ${x},${z}`);
  const car=carFrom(glbNodes('opala99_seiva_danilo.glb')),o=new CarOpenings().attach(car),pit=Object.create(PitStop.prototype),hero=new THREE.Vector3();
  Object.assign(pit,{opened:true,openings:o,coffee:{},hero:{position:hero},service:{jobs:[]},cafeSeat:new THREE.Vector3(99,0,99),render(){},
   car:{x:10,y:-4,heading:Math.PI/2,surface:{z:0}}});
@@ -85,6 +87,12 @@ for(const livery of ['seiva_danilo','assinaturas_omp']){
  pit.handleKey('KeyE');assert(!o.held(OPENINGS.driverDoor,'manual'),'E again shuts it');assert.equal(pit.coffee.held.length,0);
  assert.equal(pit.openingLabel('capo'),'Fechar o capô');pit.service.jobs=[{id:'motor'}];assert.match(pit.openingLabel('capo'),/equipe/);
  pit.service.jobs=[];assert.equal(pit.openingLabel('porta_malas'),'Abrir o porta-malas');
+ // By the passenger's door E opens and shuts that one (no crew job behind it, even while they refuel).
+ hero.set(10+1.6,0,4);assert.equal(pit.interaction(),'porta_carona');assert.equal(o.jobAt('porta_carona'),null);
+ pit.service.jobs=[{id:'tanque'}];assert.equal(pit.openingLabel('porta_carona'),'Abrir a porta do carona');pit.service.jobs=[];
+ pit.handleKey('KeyE');assert(o.held(OPENINGS.passengerDoor,'manual')&&!o.held(OPENINGS.driverDoor,'manual'),'E by the passenger door opens it');
+ assert.equal(pit.openingLabel('porta_carona'),'Fechar a porta do carona');pit.handleKey('KeyE');assert(!o.held(OPENINGS.passengerDoor,'manual'),'E again shuts it');
+ assert.equal(partName(OPENINGS.passengerDoor),'a porta do carona');assert.equal(partName(OPENINGS.driverDoor),'a porta');
  // The Opala's parts by role: the engine under the hood, the fuel cell in the trunk, the caps for refuelling.
  assert.deepEqual([o.part('front'),o.part('rear'),o.part('engine'),o.part('tank'),o.part('fuel')],[OPENINGS.hood,OPENINGS.trunk,OPENINGS.hood,OPENINGS.trunk,OPENINGS.fuelCaps]);}
 

@@ -2,9 +2,10 @@
 // F (the controller's Y, the touch button) brakes the car to a stop and the pilot gets out by the driver's door, as at
 // the pit stop (pitstop.js) and in the story's paddock, and walks the same way (on-foot.js): W/A/S/D along the camera,
 // Shift runs, Space jumps, C crouches, the mouse turns the camera and the wheel zooms; the driver's door stays open
-// behind him and E at it shuts or opens it, E at the nose or the tail lifts or shuts the hood or the trunk lid
-// (car-openings.js; they stay as he leaves them, on the move too); F near the car walks him to the driver's door and
-// in, and the door shuts behind him (user, 2026-10-15). The race goes on:
+// behind him and E at it shuts or opens it, E at the nose or the tail lifts or shuts the hood or the trunk lid, E by
+// the passenger's door opens or shuts it (car-openings.js; they stay as he leaves them, on the move too: user,
+// 2026-10-20); F near the car walks him to the driver's door and in, and that door alone shuts behind him (user,
+// 2026-10-15). The race goes on:
 // the car waits on its brakes with the engine idling and the rivals race past; one that hits him throws him like the
 // marshals (pit-crew.js knockOver), and he gets up where he lands. Guardrails are jumped over (as the low pit walls), a
 // street circuit's walls are not; in a city zone open to roam (meta.roam) its edges and what stands in it stop him, and
@@ -107,7 +108,7 @@ export class FreeWalk {
  // The driver's door, where he gets in: its distance from him (metres, on the ground).
  doorDistance(){const d=this.carPoint(.15,1.25),p=this.hero.position;return near(p.x,p.z,d.x,d.z);}
  carDistance(){const c=this.car,p=this.hero.position;return near(p.x,-p.z,c.x,c.y);}
- // Where he stands by the car (car-openings.js carSpot): 'capo', 'porta_malas', 'porta' or null.
+ // Where he stands by the car (car-openings.js carSpot): 'capo', 'porta_malas', 'porta', 'porta_carona' or null.
  spot(){const c=this.car,h=c.heading,dx=this.hero.position.x-c.x,dz=this.hero.position.z+c.y;return carSpot({x:dx*Math.cos(h)-dz*Math.sin(h),z:dx*Math.sin(h)+dz*Math.cos(h)});}
  // F on foot: at the door he gets in; a few metres off he walks there first; farther, a word of where the car is.
  getIn(){
@@ -122,8 +123,8 @@ export class FreeWalk {
  reset(){this.leave();}
  say(text,seconds=3.5){this.message=text;this.messageTime=seconds;}
  // E on foot: the driver's door at the door (a car without hinges: in), the front lid at the nose, the rear one at the
- // tail (the Opala's trunk lid, the Fusca's engine lid: car-openings.js part); away from them, a shot at the ball at
- // his feet (held: harder).
+ // tail (the Opala's trunk lid, the Fusca's engine lid: car-openings.js part), the passenger's door at that side; away
+ // from them, a shot at the ball at his feet (held: harder).
  opening(spot){return spot==='porta'?OPENINGS.driverDoor:SPOT_ROLE[spot]&&this.openings?this.openings.part(SPOT_ROLE[spot]):null;}
  action(){
   const spot=this.spot(),part=this.opening(spot);

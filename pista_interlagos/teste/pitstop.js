@@ -139,8 +139,9 @@ export class PitStop {
  // Hinged parts (car-openings.js): the crew opens what it works on (the Opala's hood for the engine,
  // its trunk lid for the fuel cell, the filler caps while refuelling; the Fusca's engine lid, and its front
  // lid for the tank and its filler); on foot, the action key at the nose or the tail lifts the lid there
- // for a look (left open, they stay open as the car goes); the driver's door stays open while he is out
- // (E at it shuts or opens it) and shuts behind him as he gets back in (user, 2026-10-15).
+ // for a look, by the passenger's door opens that one (left open, they stay open as the car goes; user,
+ // 2026-10-20); the driver's door stays open while he is out (E at it shuts or opens it) and shuts behind
+ // him as he gets back in (user, 2026-10-15).
  syncOpenings(){const o=this.openings;if(!o)return;const at=id=>this.opened&&this.service.jobs.some(job=>job.id===id),open=new Set();
   const jobs=[['engine','motor'],['tank','tanque'],['fuel','fuel']];
   for(const [role,job] of jobs)if(at(job))for(const name of [o.part(role)].flat())open.add(name);
@@ -174,7 +175,8 @@ export class PitStop {
  }
  heroStart(){const c=this.car;return new THREE.Vector3(c.x-Math.sin(c.heading)*1.6,c.surface.z,-c.y-Math.cos(c.heading)*1.6);}
  // What the action key (E, or the context button) does where the pilot stands: at the Opala's nose
- // it lifts the hood, at its tail the trunk lid, by the driver's door it gets in; at the café, the menu.
+ // it lifts the hood, at its tail the trunk lid, by the passenger's door it opens that one, by the driver's
+ // door it gets in; at the café, the menu.
  interaction(){if(!this.coffee)return null;const spot=this.standingSpot();if(SPOT_ROLE[spot])return spot;if(this.hero.position.distanceTo(this.heroStart())<2)return 'car';if(this.hero.position.distanceTo(this.cafeSeat)<2.6)return 'cafe';return null;}
  standingSpot(){if(!this.openings?.has(OPENINGS.hood))return null;const c=this.car,h=c.heading,dx=this.hero.position.x-c.x,dz=this.hero.position.z+c.y;return carSpot({x:dx*Math.cos(h)-dz*Math.sin(h),z:dx*Math.sin(h)+dz*Math.cos(h)});}
  // The lid at a place by the car (the job under it: the Opala's engine at the nose, the Fusca's at the tail).

@@ -1,6 +1,7 @@
 """Out of the car anywhere (teste/free-walk.js): F in a race at Interlagos brakes the Opala to a stop and the pilot gets
 out by the driver's door; on foot W walks, Shift runs, the mouse turns the camera; Escape opens the menu and the race comes
-back with him still on foot; F near the car walks him to the door and in, and the camera he chose comes back. On a touch
+back with him still on foot; E by the passenger's door opens it and it stays open (he gets in and drives off with it
+open); F near the car walks him to the door and in, and the camera he chose comes back. On a touch
 screen the toolbar's 'Sair do carro' does the same and the pads walk.
 
 Usage, from the repo root, with the local server running (INTERLAGOS_URL for another port):
@@ -84,6 +85,18 @@ with sync_playwright() as p:
     enter_track(page)
     check('still on foot after the menu', page.evaluate(WALK)['active'])
 
+    # By the passenger's door E opens it (user, 2026-10-20); it stays open after he gets in, on the move too.
+    page.evaluate("()=>{const w=interlagos.walker(),p=w.carPoint(.15,-1.35);w.hero.position.copy(p);w.foot.floor=p.y;w.foot.yaw=interlagos.car.heading+Math.PI;}")
+    page.wait_for_timeout(300)
+    check('by the passenger door', page.evaluate(WALK)['spot'] == 'porta_carona')
+    check('the panel offers to open it', 'porta do carona' in page.inner_text('#walkAction') and 'Abrir' in page.inner_text('#walkAction'))
+    page.keyboard.press('KeyE')
+    page.wait_for_timeout(1200)
+    passenger = "(()=>{const d=interlagos.openingsInfo().Porta_Passageiro_DOBRADICA;return d&&d.reasons.includes('manual')&&d.open>.99})()"
+    check('E opens the passenger door', page.evaluate(passenger))
+    check('the panel offers to shut it', 'Fechar' in page.inner_text('#walkAction'))
+    shot(page, '2b_porta_do_carona')
+
     # F near the car: he walks to the door and gets in; the chosen camera comes back and the car drives again.
     info = page.evaluate(WALK)
     check(f'near the car ({info["car"]:.1f} m)', info['car'] < 6)
@@ -96,6 +109,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(2000)
     page.keyboard.up('KeyW')
     check(f'drives off again ({page.evaluate(SPEED):.1f} m/s)', page.evaluate(SPEED) > 5)
+    check('the passenger door still open on the move, the driver door shut', page.evaluate(passenger) and page.evaluate("interlagos.openingsInfo().Porta_Motorista_DOBRADICA.open")==0)
     shot(page, '3_de_volta')
 
     # F rolling into Box 99: the stop is the pit's; once it opens he walks out to the Tia's café (pitstop.js).

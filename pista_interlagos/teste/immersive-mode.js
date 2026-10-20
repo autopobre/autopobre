@@ -20,7 +20,7 @@ const touchScreen=()=>document.body.classList.contains('touch-device');
 export const freeBurn=(data,laps)=>{const fixed=CIRCUITS[circuitId(data.meta.id)].laps;return fixed?3*CIRCUITS.interlagos.length/(laps*data.meta.reconstructed_xy_m):3/laps;};
 const capital=text=>text[0].toUpperCase()+text.slice(1);
 // What the action key does by the Opala in the paddock (car-openings.js carSpot); open: already open.
-const CAR_ACTIONS=Object.freeze({capo:open=>open?'Fechar o capô':'Abrir o capô · ver o motor',porta_malas:open=>open?'Fechar o porta-malas':'Abrir o porta-malas',porta:()=>'Entrar no Opala 99'});
+const CAR_ACTIONS=Object.freeze({capo:open=>open?'Fechar o capô':'Abrir o capô · ver o motor',porta_malas:open=>open?'Fechar o porta-malas':'Abrir o porta-malas',porta_carona:open=>open?'Fechar a porta do carona':'Abrir a porta do carona',porta:()=>'Entrar no Opala 99'});
 // Reais as on a price tag: R$ 1.000,00.
 const money=n=>`R$ ${n.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+,)/g,'.')}`;
 const percent=(value,goal)=>Math.max(0,Math.min(100,Math.floor(value/goal*100)));

@@ -594,7 +594,8 @@ export class ImmersiveVisuals {
  // coordinates and heading) for the real car to take its place.
  nearCar(){return !!this.own&&this.hero.position.distanceTo(this.own.position)<3.4;}
  // What the action key does by the Opala in Box 99, from where the pilot stands (car-openings.js):
- // 'capo' ahead of the nose, 'porta_malas' behind the tail (engine, fuel cell), 'porta' to get in.
+ // 'capo' ahead of the nose, 'porta_malas' behind the tail (engine, fuel cell), 'porta_carona' by the passenger's door,
+ // 'porta' to get in.
  carAction(){if(!this.own||this.inCar)return null;this.own.updateMatrixWorld();return carSpot(this.own.worldToLocal(this.hero.getWorldPosition(new THREE.Vector3())));}
  toggleOwnOpening(spot){return !!this.ownOpenings&&!!SPOT_ROLE[spot]&&this.carAction()===spot&&this.ownOpenings.toggle(this.ownOpenings.part(SPOT_ROLE[spot]));}
  ownOpen(spot){return !!SPOT_ROLE[spot]&&!!this.ownOpenings?.held(this.ownOpenings.part(SPOT_ROLE[spot]),'manual');}

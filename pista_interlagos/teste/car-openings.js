@@ -10,10 +10,11 @@ export const OPENINGS=Object.freeze({hood:'Capo_DOBRADICA',trunk:'Tampa_porta_ma
 // Full swings per second: a door is flung, the hood and lids are lifted.
 const SWING={porta:1.4,capo:.7,porta_malas:.8,tampa_motor:.8,tampa_combustivel:3};
 // The action key's places by the car (carSpot) and the part each opens (CarOpenings.part): the nose the front lid,
-// the tail the rear one.
-export const SPOT_ROLE=Object.freeze({capo:'front',porta_malas:'rear'});
+// the tail the rear one, the passenger's side its door (user, 2026-10-20: opened from outside, it stays open until he
+// shuts it; only the driver's shuts behind him).
+export const SPOT_ROLE=Object.freeze({capo:'front',porta_malas:'rear',porta_carona:'passengerDoor'});
 // A part as the HUD names it, with its article ("abrir o capô", "fechar a tampa do motor").
-export function partName(name){return name===OPENINGS.engineLid?'a tampa do motor':name===OPENINGS.trunk?'o porta-malas':name===OPENINGS.hood?'o capô':'a porta';}
+export function partName(name){return name===OPENINGS.engineLid?'a tampa do motor':name===OPENINGS.trunk?'o porta-malas':name===OPENINGS.hood?'o capô':name===OPENINGS.passengerDoor?'a porta do carona':'a porta';}
 const ease=t=>t*t*(3-2*t),turn=new THREE.Quaternion();
 const hinged=o=>Array.isArray(o.userData?.eixo_gltf)&&!!o.userData.angulo_gltf_graus;
 
@@ -43,8 +44,8 @@ export class CarOpenings {
   }
   return OPENINGS[role]??null;
  }
- // The crew's job behind the part at a place by the car ('capo', 'porta_malas'): 'motor' or 'tanque'.
- jobAt(spot){return this.part(SPOT_ROLE[spot])===this.part('engine')?'motor':'tanque';}
+ // The crew's job behind the part at a place by the car ('capo', 'porta_malas'): 'motor' or 'tanque'; none behind a door.
+ jobAt(spot){const role=SPOT_ROLE[spot];return role!=='front'&&role!=='rear'?null:this.part(role)===this.part('engine')?'motor':'tanque';}
  held(name,reason){return !!this.parts.get(name)?.reasons.has(reason);}
  hold(names,reason,on=true){for(const name of [names].flat()){const p=this.parts.get(name);if(!p)continue;if(on)p.reasons.add(reason);else{p.reasons.delete(reason);p.timers.delete(reason);}}}
  // Open for a moment (the driver getting in or out), then shut again.
@@ -66,13 +67,14 @@ export class CarOpenings {
  info(){return Object.fromEntries([...this.parts].map(([name,p])=>[name,{kind:p.kind,open:Math.round(p.open*1000)/1000,reasons:[...p.reasons]}]));}
 }
 // The action key by the car, GTA style: ahead of the nose it lifts the hood, behind the tail the
-// trunk lid, beside the driver's door it gets in. local: the pilot on foot in the car's frame
-// (GLB frame: +x forward, driver's side -z). Returns 'capo', 'porta_malas', 'porta' or null.
+// trunk lid, beside the driver's door it gets in, beside the passenger's it opens or shuts that one. local: the pilot
+// on foot in the car's frame (GLB frame: +x forward, driver's side -z). Returns 'capo', 'porta_malas', 'porta',
+// 'porta_carona' or null.
 export function carSpot(local){
  const x=local.x,z=local.z;
  if(Math.abs(z)<1.3&&x>1.85&&x<3.8)return 'capo';
  if(Math.abs(z)<1.3&&x<-1.85&&x>-3.6)return 'porta_malas';
- if(z<-.75&&z>-2.4&&x>-1&&x<1.4)return 'porta';
+ if(Math.abs(z)>.75&&Math.abs(z)<2.4&&x>-1&&x<1.4)return z<0?'porta':'porta_carona';
  return null;
 }
 // Of the model under root, only the part named (and what rides it) left shown: the rear-view mirror's own picture

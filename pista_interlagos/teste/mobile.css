@@ -95,17 +95,17 @@ html:has(body.touch-device),.touch-device,.touch-device *{touch-action:pan-x pan
 #touchControls.arranging .touch-steering:before,#touchControls.arranging .touch-pedals:before{border:2px dashed #f5db72b8;background:#f5db7214}
 #touchControls.arranging .dragging:before{border-style:solid;background:#f5db7226}
 #touchControls.arranging #touchSteering,#touchControls.arranging #touchPedals{border-color:#f5db72;box-shadow:0 0 0 1px #f5db7255,0 4px 18px #0007}
-#touchArrangePanel{position:absolute;left:50%;top:max(12px,env(safe-area-inset-top));transform:translateX(-50%);width:min(400px,calc(100vw - 300px));min-width:250px;pointer-events:auto;padding:11px 14px 12px;border:1px solid #f5db7290;border-radius:14px;background:#10231ef0;box-shadow:0 8px 30px #0008;text-align:center;color:#f2f3df}
+#touchArrangePanel{position:absolute;left:50%;top:max(8px,env(safe-area-inset-top));transform:translateX(-50%);width:min(400px,calc(100vw - 300px));min-width:250px;pointer-events:auto;padding:9px 14px 10px;border:1px solid #f5db7290;border-radius:14px;background:#10231ef0;box-shadow:0 8px 30px #0008;text-align:center;color:#f2f3df}
 #touchArrangePanel[hidden]{display:none}
 #touchArrangePanel b{display:block;font-size:14px;letter-spacing:.3px;color:#f5db72}
-#touchArrangePanel p{margin:5px 0 8px;font-size:11px;line-height:1.4;color:#dfe5cf}
+#touchArrangePanel p{margin:3px 0 6px;font-size:11px;line-height:1.4;color:#dfe5cf}
 #touchArrangePanel div{display:flex;gap:8px;justify-content:center}
-#touchControls #touchArrangePanel button{flex:1;min-height:36px;padding:7px 8px;font-size:11px;border-radius:11px}
-#touchArrangePanel .arrange-mode{align-items:center;gap:6px;margin-bottom:3px}
-#touchArrangePanel .arrange-mode span{font-size:11px;color:#dfe5cf;margin-right:2px}
-#touchControls #touchArrangePanel .arrange-mode button{flex:0 0 auto;min-height:30px;padding:5px 12px;border-radius:15px}
+#touchControls #touchArrangePanel button{flex:1;min-height:34px;padding:6px 8px;font-size:11px;border-radius:11px}
+#touchArrangePanel .arrange-mode{align-items:center;gap:6px;margin-bottom:4px}
+#touchArrangePanel .arrange-mode span{font-size:11px;color:#dfe5cf;margin-right:2px;min-width:8.9em;text-align:right;white-space:nowrap}
+#touchControls #touchArrangePanel .arrange-mode button{flex:0 0 auto;min-height:28px;padding:4px 12px;border-radius:14px}
 #touchControls #touchArrangePanel .arrange-mode button[aria-checked=true]{background:#f5db72;color:#182820;border-color:#f9e68c;font-weight:800}
-#touchArrangePanel small{display:block;margin:0 0 9px;font-size:10px;color:#b9c6b4}
+#touchArrangePanel small{display:block;margin:2px 0 8px;font-size:10px;color:#b9c6b4}
 #touchControls #touchArrangePanel #touchArrangeDone{background:#e8ce58;color:#182820;border-color:#f9e68c;font-weight:800}
 
 /* The mini steering wheel by the map (players' request): the car's wheel as turned, the yellow mark at the top when it is straight, the small notch above for the middle. */
@@ -141,3 +141,13 @@ html:has(body.touch-device),.touch-device,.touch-device *{touch-action:pan-x pan
 #touchPedals.gas-held .pedal-digital b:first-child{background:#e8ce58dd;border-color:#f9e68c;color:#182820;text-shadow:none}
 #touchPedals.brake-held .pedal-digital b:last-child{background:#efb29bdd;border-color:#ffd4ba;color:#2a1610;text-shadow:none}
 #touchControls.arranging #touchPedals.digital .pedal-digital b{border-color:#f5db72}
+
+/* Digital steering (chosen in the arranging; the user, 2026-10-20): two buttons in the steering's place, left and right, all or nothing as the keyboard's arrows; the pad's own frame steps aside. */
+#touchSteering .steer-digital{display:none}
+#touchSteering.digital,#touchSteering.digital.active{background:transparent;border-color:transparent;box-shadow:none}
+#touchSteering.digital .steer-track,#touchSteering.digital #steeringThumb{display:none}
+#touchSteering.digital .steer-digital{display:flex;gap:8px;height:100%}
+#touchSteering .steer-digital b{flex:1;display:grid;place-items:center;border:1px solid #d0dca380;border-radius:35px;background:#1428224d;box-shadow:0 2px 8px #0003;color:#f1dc78;pointer-events:none}
+#touchSteering .steer-digital svg{display:block;width:24px;height:24px;filter:drop-shadow(0 1px 2px #000c)}
+#touchSteering.left-held .steer-digital b:first-child,#touchSteering.right-held .steer-digital b:last-child{background:#e8ce58dd;border-color:#f9e68c;color:#182820}
+#touchControls.arranging #touchSteering.digital .steer-digital b{border-color:#f5db72}
