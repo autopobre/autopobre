@@ -70,7 +70,10 @@ export class CarAudio {
   this.squeal=ctx.createOscillator();this.squeal.type='triangle';this.squeal.frequency.value=1100;
   this.squealGain=ctx.createGain();this.squealGain.gain.value=0;this.squeal.connect(this.squealGain);this.squealGain.connect(this.master);this.squeal.start();this.noise.start();
   this.uiBus=ctx.createGain();this.musicBus=ctx.createGain();this.uiBus.gain.value=this.musicBus.gain.value=0;
-  this.uiBus.connect(this.compressor);this.musicBus.connect(this.compressor);
+  // The music reaches the mix through a cut in the voice's band and a duck, both at rest (duckMusic: a narrator).
+  this.voiceCut=ctx.createBiquadFilter();this.voiceCut.type='peaking';this.voiceCut.frequency.value=1500;this.voiceCut.Q.value=.6;this.voiceCut.gain.value=0;
+  this.musicDuck=ctx.createGain();this.musicDuck.gain.value=1;this.ducked=0;
+  this.uiBus.connect(this.compressor);this.musicBus.connect(this.voiceCut);this.voiceCut.connect(this.musicDuck);this.musicDuck.connect(this.compressor);
   this.effects=new SoundEffects(ctx,this.master,this.uiBus,buffer);this.music=new GameMusic(ctx,this.musicBus,buffer);
   // Recorded engines: voice 0 is the car heard, 1 and 2 the nearest rivals (sound-effects.js routes those).
   this.wireEngine();
@@ -110,6 +113,14 @@ export class CarAudio {
   }
  }
  applyVolume(){if(!this.context)return;const t=this.context.currentTime,v=this.muted||!this.focused?0:this.volume;this.master.gain.setTargetAtTime(this.paused?0:v*this.effectsLevel,t,.025);this.uiBus.gain.setTargetAtTime(v*this.effectsLevel,t,.025);this.musicBus.gain.setTargetAtTime(v*this.musicLevel,t,.08);if(!v||!this.musicLevel)this.recordings?.suspend();if(!v){this.effects.stopWorld();this.effects.ui.stop();this.music.update(this.music.theme,false);}}
+ // A narrator over the music (track-history.js; amount 0..1): while he speaks the music steps down about 8 dB and
+ // gives way 10 dB in the voice's band (a wide cut round 1.5 kHz), so both are heard; it comes back up slowly when he
+ // stops (a pause for a picture, the end of a line).
+ duckMusic(amount){
+  if(!this.context)return;const a=clamp(amount,0,1);if(Math.abs(a-this.ducked)<.01)return;
+  const t=this.context.currentTime,rate=a>this.ducked?.06:.45;this.ducked=a;
+  this.musicDuck.gain.setTargetAtTime(1-.6*a,t,rate);this.voiceCut.gain.setTargetAtTime(-10*a,t,rate);
+ }
  setPaused(value){if(value&&!this.paused){this.effects?.stopWorld();this.recorded?.set(0,950,0,0);this.recorded?.flush();this.tyres?.silence();}this.paused=value;this.applyVolume();}
  setFocused(value){this.focused=value;this.applyVolume();}
  effect(name,options={}){if(!this.paused&&!this.muted&&this.focused&&this.volume>0&&this.effectsLevel>0&&this.context?.state==='running')this.effects.play(name,options);}
@@ -123,6 +134,10 @@ export class CarAudio {
   const enabled=this.focused&&!this.muted&&this.volume>0&&this.context.state==='running';
   if(!this.paused)this.hasDriven=true;
   if(enabled&&this.paused&&!this.hasDriven)this.openingTime+=dt;
+  // A track's story (track-history.js) picks its own music, or none ('none').
+  if(this.themeOverride){const quiet=this.themeOverride==='none',on=enabled&&this.musicLevel>0&&!quiet,theme=quiet?'menu':this.themeOverride;
+   const recorded=this.recordings?.update(theme,on);this.music.update(theme,on&&!recorded);
+   this.effects.update(scene,enabled&&!this.paused&&this.effectsLevel>0);this.recorded?.flush();for(const event of events)this.effect(event.name,event.options);return;}
   let theme=scene.phase==='free-finish'?(scene.won?'victory':'defeat'):this.paused?(!this.hasDriven&&(this.recordings?.has('opening')?!this.recordings.ended:this.openingTime<18)?'opening':'menu'):
    ['broken','tow','snag','disqualified'].includes(scene.phase)?'defeat':['podium','complete'].includes(scene.phase)?(scene.won?'victory':'defeat'):
    scene.driving||scene.phase==='grid'?'race':scene.phase==='crowd'?'sponsor':'menu';

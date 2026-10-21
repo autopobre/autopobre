@@ -1,0 +1,166 @@
+/* História do autódromo (track-history.js): the track's story played like a video over the 3D. While it plays only
+   the canvas and the player show; the old eras tint the picture sepia. */
+body.history-on>:not(#view):not(#historyPlayer):not(#menu):not(dialog){visibility:hidden!important;pointer-events:none!important}
+#view{transition:filter 1.6s ease}
+body.history-era-antigo #view{filter:sepia(.4) saturate(.86) contrast(1.04) brightness(1.02)}
+#historyPlayer{position:fixed;inset:0;z-index:45;color:#fff;font-family:Inter,"Segoe UI",Arial,sans-serif;user-select:none;-webkit-user-select:none}
+#historyPlayer svg{width:24px;height:24px;fill:currentColor;stroke:currentColor;stroke-width:0}
+#historyPlayer svg [fill=none]{fill:none;stroke-width:2}
+#historyPlayer button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+#historyPlayer.idle{cursor:none}
+.hp-click{position:absolute;inset:0}
+/* Top: back to the tracks, the title and the chapter; the "i" of the cards. */
+.hp-top{position:absolute;left:0;right:0;top:0;display:flex;align-items:center;gap:14px;padding:14px max(18px,env(safe-area-inset-left)) 40px;background:linear-gradient(#000a,#0000);transition:opacity .3s}
+.hp-exit{display:flex;align-items:center;gap:4px;padding:6px 10px 6px 4px!important;border-radius:18px;font-weight:700!important;font-size:14px!important;background:#0006!important}
+.hp-exit:hover{background:#fff2!important}
+.hp-heading{display:flex;flex-direction:column;min-width:0;text-shadow:0 1px 6px #000a}
+.hp-heading b{font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hp-heading-chapter{font-size:13px;opacity:.82}
+.hp-info{margin-left:auto;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#0006!important}
+/* The chapter's card: lower left, big. */
+.hp-title{position:absolute;left:max(5vw,24px);bottom:calc(120px + 7vh);max-width:min(62vw,820px);opacity:0;transform:translateY(12px);transition:opacity .45s,transform .6s;pointer-events:none;text-shadow:0 2px 18px #0009}
+.hp-title.show{opacity:1;transform:none}
+/* Stevan stands lower left while he presents: the chapter's card goes up, above his head. */
+#historyPlayer.presenting .hp-title{bottom:auto;top:76px;max-width:29vw}
+#historyPlayer.presenting .hp-title h2{font-size:clamp(20px,2.6vw,38px)}
+.hp-title-eyebrow{display:block;font-size:clamp(11px,1.15vw,15px);letter-spacing:.32em;font-weight:700;color:#f4ce39;margin-bottom:.5em}
+.hp-title h2{margin:0;font-size:clamp(28px,4.6vw,64px);line-height:1;font-weight:850;letter-spacing:.02em;text-transform:uppercase}
+.hp-title p{margin:.6em 0 0;font-size:clamp(13px,1.4vw,19px);opacity:.92}
+/* A picture in all the free space (user, 10-21): right of Stevan (he stands in the left third), under the top bar and
+   the "saiba mais" card, above the captions; track-history.js fitImage sizes the picture inside it. */
+.hp-image{position:absolute;left:33vw;right:max(2.5vw,14px);top:122px;bottom:168px;margin:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity .5s}
+.hp-image[hidden]{display:none}
+.hp-image.in{opacity:1}
+.hp-image-frame{position:relative;pointer-events:auto;border-radius:10px;overflow:hidden;background:#050706;box-shadow:0 18px 50px #000a,0 0 0 1px #ffffff1c;transform:scale(.96);transition:transform .7s cubic-bezier(.2,.8,.2,1)}
+.hp-image.in .hp-image-frame{transform:none}
+.hp-image-open{display:block;cursor:zoom-in!important}
+.hp-image img{display:block;max-width:100%}
+.hp-image figcaption{position:absolute;left:0;right:0;bottom:0;padding:34px 14px 10px;display:flex;flex-direction:column;gap:3px;background:linear-gradient(#0000,#000000c8 42%);pointer-events:none}
+.hp-image figcaption b{font-size:16px;text-shadow:0 1px 4px #000}
+.hp-image-text{font-size:13px;opacity:.92;line-height:1.4}
+.hp-credit{font-size:11px;opacity:.7}
+.hp-lightbox{position:absolute;inset:0;z-index:3;background:#000e;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:30px}
+.hp-lightbox[hidden]{display:none}
+.hp-lightbox img{max-width:94vw;max-height:84vh;object-fit:contain}
+.hp-lightbox p{margin:0;font-size:13px;opacity:.8;text-align:center}
+.hp-lightbox button{position:absolute;right:18px;top:12px;font-size:34px!important;line-height:1}
+/* "Saiba mais": a YouTube-like card, top right, for a few seconds. */
+.hp-card{position:absolute;right:max(18px,env(safe-area-inset-right));top:64px;display:flex;align-items:center;gap:10px;max-width:min(360px,60vw);padding:9px 14px 9px 10px;border-radius:8px;background:#0b0f0ee6;color:#fff;text-decoration:none;box-shadow:0 6px 20px #0008;opacity:0;transform:translateX(16px);transition:opacity .4s,transform .5s}
+.hp-card.in{opacity:1;transform:none}
+.hp-card[hidden],.hp-info[hidden]{display:none}
+.hp-card:hover{background:#1b2420f0}
+.hp-card i{flex:none;display:grid;place-items:center;color:#f4ce39}
+.hp-card span{display:flex;flex-direction:column;min-width:0}
+.hp-card small{font-size:11px;opacity:.72;text-transform:uppercase;letter-spacing:.08em}
+.hp-card b{font-size:14px;line-height:1.3}
+/* Captions, YouTube style. */
+.hp-caption{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);width:min(86vw,1000px);text-align:center;pointer-events:none;transition:bottom .3s}
+.hp-caption span{display:inline;padding:.12em .45em;font-size:clamp(15px,1.75vw,24px);line-height:1.55;background:#080808c4;box-decoration-break:clone;-webkit-box-decoration-break:clone;border-radius:3px}
+.hp-caption span:empty{display:none}
+#historyPlayer.captions-off .hp-caption:not(.note){display:none}
+#historyPlayer.idle .hp-caption{bottom:34px}
+.hp-center{position:absolute;left:50%;top:50%;width:72px;height:72px;margin:-36px 0 0 -36px;border-radius:50%;background:#0009;display:grid;place-items:center;opacity:0;pointer-events:none}
+.hp-center svg{width:38px!important;height:38px!important}
+.hp-center.go{animation:hp-pop .7s ease-out}
+@keyframes hp-pop{0%{opacity:.9;transform:scale(.8)}100%{opacity:0;transform:scale(1.35)}}
+.hp-ended{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#000a}
+.hp-ended[hidden]{display:none}
+.hp-ended p{margin:0 0 8px;font-size:clamp(22px,3vw,36px);font-weight:800}
+.hp-ended button{min-width:220px;padding:12px 20px!important;border-radius:22px;font-weight:800!important;background:#f4ce39!important;color:#14211d!important}
+.hp-ended .hp-leave{background:#ffffff1f!important;color:#fff!important}
+/* Bottom: the bar with the chapters, then the controls. */
+.hp-bottom{position:absolute;left:0;right:0;bottom:0;padding:40px max(14px,env(safe-area-inset-left)) max(6px,env(safe-area-inset-bottom));background:linear-gradient(#0000,#000c);transition:opacity .3s}
+#historyPlayer.idle .hp-bottom,#historyPlayer.idle .hp-top{opacity:0;pointer-events:none}
+.hp-bar{position:relative;height:18px;margin:0 2px;cursor:pointer;touch-action:none;outline:none}
+.hp-seg{position:absolute;top:7px;height:4px;padding-right:3px;box-sizing:border-box;transition:top .15s,height .15s}
+.hp-seg::before{content:"";position:absolute;inset:0 3px 0 0;background:#ffffff40}
+.hp-seg-fill,.hp-seg-hover{position:absolute;inset:0 3px 0 0;transform-origin:left;transform:scaleX(0)}
+.hp-seg-fill{background:#ff2a3d;z-index:1}
+.hp-seg.hover .hp-seg-hover{transform:none;background:#ffffff38}
+.hp-bar:hover .hp-seg{top:5.5px;height:7px}
+.hp-scrub{position:absolute;top:3px;width:13px;height:13px;margin-left:-6.5px;border-radius:50%;background:#ff2a3d;transform:scale(0);transition:transform .15s;z-index:2}
+.hp-bar:hover .hp-scrub,#historyPlayer.paused .hp-scrub{transform:none}
+.hp-tip{position:absolute;bottom:26px;transform:translateX(-50%);padding:6px 10px;border-radius:6px;background:#111d;text-align:center;white-space:nowrap;pointer-events:none}
+.hp-tip b{display:block;font-size:13px}.hp-tip span{font-size:12px;opacity:.85}
+.hp-controls{display:flex;align-items:center;gap:6px;height:44px}
+.hp-controls button{width:40px;height:40px;display:grid;place-items:center;border-radius:50%;opacity:.92}
+.hp-controls button:hover{opacity:1;background:#ffffff1a}
+.hp-play svg{width:30px!important;height:30px!important}
+.hp-voice:not(.on) .wave,.hp-voice.missing{opacity:.45}
+.hp-voice:not(.on){position:relative}
+.hp-voice:not(.on)::after{content:"";position:absolute;width:24px;height:2px;background:#fff;transform:rotate(-45deg)}
+.hp-cc{position:relative}
+.hp-cc.on::after{content:"";position:absolute;left:10px;right:10px;bottom:6px;height:3px;border-radius:2px;background:#ff2a3d}
+.hp-time{font-size:13.5px;font-variant-numeric:tabular-nums;white-space:nowrap;margin:0 6px 0 4px;opacity:.95}
+.hp-chapter{width:auto!important;height:auto!important;border-radius:6px!important;padding:5px 8px!important;font-size:13.5px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw;opacity:.9}
+.hp-spacer{flex:1}
+/* Chapters and their links. */
+.hp-panel{position:absolute;right:12px;bottom:78px;top:70px;width:min(400px,calc(100vw - 24px));display:flex;flex-direction:column;background:#0e1311f2;border-radius:12px;box-shadow:0 14px 40px #000b;overflow:hidden;z-index:2}
+.hp-panel[hidden]{display:none}
+.hp-panel header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #ffffff1a;font-size:16px}
+.hp-panel header button{font-size:26px!important;line-height:1;width:32px;height:32px}
+.hp-panel ol{list-style:none;margin:0;padding:6px 0;overflow:auto}
+.hp-panel li{padding:4px 10px}
+.hp-panel-go{display:flex;gap:12px;align-items:flex-start;width:100%;padding:8px 8px!important;border-radius:8px;text-align:left}
+.hp-panel-go:hover{background:#ffffff14!important}
+.hp-panel-go time{flex:none;min-width:42px;font-size:12px;color:#7fb4ff;font-weight:700;padding-top:2px;font-variant-numeric:tabular-nums}
+.hp-panel-go span{display:flex;flex-direction:column;gap:2px}
+.hp-panel-go b{font-size:14px}.hp-panel-go small{font-size:12px;opacity:.65}
+.hp-link{display:block;margin:2px 8px 4px 62px;padding:6px 10px;border-radius:6px;background:#ffffff0d;color:#f4ce39;font-size:13px;text-decoration:none;line-height:1.35}
+.hp-link:hover{background:#ffffff1c}
+.hp-link small{display:block;color:#fff;opacity:.55;font-size:11px}
+/* ⚙: speed, the narrator's voice, the music and its duck under the voice. */
+.hp-settings{position:absolute;right:12px;bottom:78px;width:min(380px,calc(100vw - 24px));display:flex;flex-direction:column;gap:12px;padding:14px 16px;background:#0e1311f2;border-radius:12px;box-shadow:0 14px 40px #000b;z-index:2;font-size:14px}
+.hp-settings[hidden]{display:none}
+.hp-set-row{display:flex;flex-direction:column;gap:6px}
+.hp-set-row>span:first-child{font-size:12px;letter-spacing:.06em;text-transform:uppercase;opacity:.7}
+.hp-set-line{display:flex;gap:8px}
+.hp-speeds{display:flex;flex-wrap:wrap;gap:5px}
+.hp-speeds button{padding:5px 9px!important;border-radius:14px;background:#ffffff14!important;font-size:13px!important}
+.hp-speeds button[aria-pressed=true]{background:#f4ce39!important;color:#14211d!important;font-weight:800!important}
+.hp-settings select{flex:1;min-width:0;padding:6px 8px;border-radius:6px;border:1px solid #ffffff2e;background:#1a211e;color:#fff;font:inherit}
+.hp-hear{flex:none;padding:6px 10px!important;border-radius:6px;background:#ffffff1c!important;font-size:13px!important}
+.hp-hear:disabled{opacity:.4}
+.hp-settings input[type=range]{width:100%;accent-color:#ff2a3d}
+.hp-set-check{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer}
+.hp-set-check input{accent-color:#ff2a3d;width:16px;height:16px}
+.hp-toast{position:absolute;left:50%;top:22%;transform:translateX(-50%);padding:8px 16px;border-radius:18px;background:#000b;font-size:15px;font-weight:700;pointer-events:none}
+.hp-toast[hidden]{display:none}
+/* História das Corridas (the opening's button): one card per story, the aerial view of today's Interlagos behind. */
+#historias{z-index:30;align-items:stretch;justify-content:center;padding:26px 4vw;overflow:auto;backdrop-filter:none;
+ background-color:#0b1716;background-image:linear-gradient(90deg,#081211f7 0,#081211ec 55%,#081211c4 100%),url('./assets/historia/historia_aerea_2.jpg');background-size:cover;background-position:center}
+#historias.hidden{display:none!important}
+.historias-shell{width:min(1100px,100%);display:flex;flex-direction:column;gap:16px;margin:auto 0}
+.historias-intro{margin:0;max-width:760px;color:#dfe6d8;font-size:15px;line-height:1.5}
+.historias-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));gap:16px}
+.historia-card{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.2fr);background:#0d1e1be6;border:1px solid #d9b93c66;border-radius:10px;overflow:hidden;box-shadow:0 12px 30px #0008}
+.historia-card img{display:block;width:100%;height:100%;min-height:220px;object-fit:contain;background:#f4f2ea}
+.historia-card-body{display:flex;flex-direction:column;gap:8px;padding:16px 18px}
+.historia-card h3{margin:0;font-size:24px;line-height:1.1;color:#fff6d8}
+.historia-card p{margin:0;font-size:14px;line-height:1.5;color:#dfe6d8}
+.historia-card small{font-size:12px;color:#e6cd72}
+.historia-card button{margin:auto 0 0;align-self:flex-start;width:auto;padding:11px 20px;border:0;border-radius:8px;background:#f4ce39;color:#171c15;font-weight:900;font-size:15px;cursor:pointer}
+.historia-card button:hover:not(:disabled){background:#ffe574}
+.historia-card button:disabled{opacity:.7;cursor:progress}
+.historias-soon{margin:0;font-size:13px;color:#c7d0c2;opacity:.85}
+.historias-lang{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.historias-lang span{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#e6cd72;margin-right:4px}
+.historias-lang button{width:auto;margin:0;padding:6px 12px;border-radius:14px;border:1px solid #d9b93c66;background:#102823e8;color:#e6ecdf;font-size:13px;cursor:pointer}
+.historias-lang button[aria-pressed=true]{background:#f4ce39;color:#171c15;border-color:#f4ce39;font-weight:800}
+@media (max-width:760px),(max-height:520px){
+ #historias{padding:12px max(14px,env(safe-area-inset-left))}.historias-shell{gap:10px}.historias-intro{font-size:12px}
+ .historia-card{grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr)}.historia-card img{min-height:0}.historia-card-body{padding:10px 12px;gap:5px}
+ .historia-card h3{font-size:17px}.historia-card p{font-size:11.5px;line-height:1.4}.historia-card button{padding:8px 14px;font-size:13px}
+}
+/* The track screen's button. */
+.history-start{display:flex;align-items:center;gap:8px;margin-top:10px;padding:9px 13px;border-radius:8px;border:1px solid #f4ce3999;background:#1b1a0fe6;color:#f4ce39;font-weight:900;font-size:14px;cursor:pointer}
+.history-start:hover:not(:disabled){background:#2b2812f0;color:#ffe574}
+.history-start[hidden]{display:none}
+.history-start small{font-weight:600;color:#e9e3c8;opacity:.8}
+@media (max-height:520px),(max-width:760px){
+ .hp-top{padding-top:8px;padding-bottom:24px}.hp-heading b{font-size:14px}.hp-heading-chapter{display:none}
+ .hp-image{left:36vw;right:10px;top:54px;bottom:112px}.hp-image figcaption{padding:18px 8px 6px}.hp-image figcaption b{font-size:12px}.hp-image-text{display:none}
+ .hp-title{bottom:96px}.hp-caption{bottom:74px}.hp-caption span{font-size:14px}
+ .hp-controls{height:38px;gap:2px}.hp-controls button{width:36px;height:36px}.hp-prevch,.hp-full{display:none!important}.hp-chapter{max-width:26vw}
+ .hp-card{top:50px;max-width:46vw}.hp-panel{top:50px;bottom:64px}
+}

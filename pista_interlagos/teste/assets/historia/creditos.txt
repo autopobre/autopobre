@@ -1,0 +1,128 @@
+Imagens de "A história de Interlagos" — créditos e licenças
+Todas conferidas na página do arquivo no Wikimedia Commons em 21/10/2026.
+Alterações feitas aqui: redução para no máximo 1600 px no lado maior, JPEG qualidade 85, metadados removidos
+(EXIF/XMP/IPTC/comentários); fundo transparente do mapa de 1940 trocado por branco; planta de 1936 recortada.
+Os arquivos em CC BY-SA continuam sob a mesma licença CC BY-SA.
+
+historia_planta1936_1.jpg
+  Título: Planta do Circuito do "Grande Premio Cidade de S. Paulo" (Avenida Brasil, Jardim América), 1936
+  Autor: desconhecido — Acervo Museu Paulista da USP, Coleção João Baptista de Campos Aguirra
+  (reprodução fotográfica: José Rosael / Hélio Nobre)
+  Licença: Domínio público — obra anônima publicada em 1936 (Lei 9.610/98, art. 43); Commons: {{Museu Paulista license|Gov}}
+  Atribuição pedida pelo Museu: "Domínio público / Acervo Museu Paulista (USP)"
+  Fonte: https://commons.wikimedia.org/wiki/File:Planta_do_Circuito_do_Grande_Premio_Cidade_de_S._Paulo_-_Avenida_Brasil,_Acervo_do_Museu_Paulista_da_USP.jpg
+  Alteração: recortada (sem a cartela de cores e a etiqueta do museu)
+
+historia_hellenice_1.jpg
+  Título: Hellé Nice antes da largada do 1º Grande Prêmio Cidade de São Paulo (12/07/1936)
+  Autor: desconhecido — revista O Malho, ed. 164, 23/07/1936, p. 23 (Hemeroteca Digital, Biblioteca Nacional)
+  Licença: Domínio público — foto publicada no Brasil em 1936, 70 anos da publicação (Lei 9.610/98, art. 44); Commons: {{PD-Brazil-media}}
+  Fonte: https://commons.wikimedia.org/wiki/File:Hell%C3%A9_Nice_1936_july_12_S%C3%A3o_Paulo,_Brazil.png
+
+historia_pilotos1936_1.jpg
+  Título: Fotomontagem com Manuel de Teffé, Hellé Nice e Carlo Pintacuda (GP Cidade de São Paulo, 1936)
+  Autor: desconhecido — jornal A Tribuna, julho de 1936
+  Licença: Domínio público — foto publicada no Brasil em 1936 (Lei 9.610/98, art. 44); Commons: {{PD-Brazil-media}}
+  Fonte: https://commons.wikimedia.org/wiki/File:A_Tribuna_Pintacuda_Hell%C3%A9_Nice_and_Manuel_de_Teff%C3%A9_1936.png
+
+historia_hellenice_2.jpg
+  Título: Hellé Nice perseguida por Manuel de Teffé no Grande Prêmio Cidade de São Paulo (12/07/1936)
+  Autor: jornal Correio de São Paulo, julho de 1936 (Hemeroteca Digital, Biblioteca Nacional)
+  Licença: Domínio público — foto publicada no Brasil em 1936 (Lei 9.610/98, art. 44); Commons: {{PD-Brazil-media}}
+  Fonte: https://commons.wikimedia.org/wiki/File:Hell%C3%A9_Nice_e_Manuel_de_Teff%C3%A9,_Grande_Pr%C3%AAmio_Cidade_de_S%C3%A3o_Paulo_1936.png
+
+historia_nascimento_1.jpg
+  Título: Arthur Nascimento Júnior no GP Cidade do Rio de Janeiro, 1936
+  Autor: desconhecido — revista O Malho, ed. 157, junho de 1936, p. 25
+  Licença: Domínio público — foto publicada no Brasil em 1936 (Lei 9.610/98, art. 44); Commons: {{PD-Brazil-media}}
+  Fonte: https://commons.wikimedia.org/wiki/File:Nascimento_J%C3%BAnior_1936.png
+
+historia_mapa_1.jpg
+  Título: Interlagos - Autódromo José Carlos Pace 1940-1989
+  Autor: MotorOilStains (Wikimedia Commons)
+  Licença: CC BY-SA 3.0 — https://creativecommons.org/licenses/by-sa/3.0/
+  Fonte: https://commons.wikimedia.org/wiki/File:Interlagos-autodromo-jose-carlos-pace-1940-1989.png
+  Alteração: fundo transparente trocado por branco; convertido para JPEG
+
+historia_mapa_2.jpg
+  Título: Interlagosoverlay (traçado de 1973 com o traçado atual sobreposto)
+  Autor: DonTirri, sobre mapa de Jiří Žemlička (Wikimedia Commons)
+  Licença: CC BY-SA 3.0 — https://creativecommons.org/licenses/by-sa/3.0/
+  Fonte: https://commons.wikimedia.org/wiki/File:Interlagosoverlay.jpg
+
+historia_emerson_1.jpg
+  Título: Emerson Fittipaldi no Copersucar em Interlagos, 1976
+  Autor: Paulo Carmona Sanches Neto
+  Licença: CC BY-SA 3.0 — https://creativecommons.org/licenses/by-sa/3.0/ (também GFDL)
+  Fonte: https://commons.wikimedia.org/wiki/File:Copersucar_pic01.jpg
+
+historia_brabham1977_1.jpg
+  Título: Brabham BT45B 1977 Interlagos ("Martini Racing F1 (interlagos)", negativo escaneado)
+  Autor: Ndecam (Flickr)
+  Licença: CC BY 2.0 — https://creativecommons.org/licenses/by/2.0/ (conferida pelo Flickr upload bot / revisor Typ932)
+  Fonte: https://commons.wikimedia.org/wiki/File:Brabham_BT45B_1977_Interlagos.jpg
+  Original: https://www.flickr.com/photos/37035967@N07/6950699251
+
+historia_pace_1.jpg
+  Título: Carlos Pace no GP da Alemanha de 1973 (Nürburgring)
+  Autor: Raimund Kommer
+  Licença: CC BY-SA 3.0 — https://creativecommons.org/licenses/by-sa/3.0/ (permissão VRT/OTRS nº 2011051910006563)
+  Fonte: https://commons.wikimedia.org/wiki/File:Carlos_Pace_1973.jpg
+
+historia_pace_2.jpg
+  Título: Busto de José Carlos Pace no Autódromo José Carlos Pace (2006)
+  Autor: Morio
+  Licença: CC BY-SA 3.0 — https://creativecommons.org/licenses/by-sa/3.0/ (também GFDL)
+  Fonte: https://commons.wikimedia.org/wiki/File:Jose_Carlos_Pace_bust_in_Interlagos.jpg
+  Obs.: escultura em lugar público (Lei 9.610/98, art. 48)
+
+historia_opala_1.jpg
+  Título: Stock Car Brasil 1988, Chevrolet Opala de Ingo Hoffmann (acervo do Museu do Automobilismo Brasileiro)
+  Autor: Morio
+  Licença: CC BY-SA 3.0 — https://creativecommons.org/licenses/by-sa/3.0/ (também GFDL)
+  Fonte: https://commons.wikimedia.org/wiki/File:Stock_Car_Brasil_1988_Chevrolet_Opala_Ingo_Hoffman.jpg
+
+historia_erundina_1.jpg
+  Título: Portrait # Luiza Erundina (2010)
+  Autor: Henrique Yasuda (Flickr)
+  Licença: CC BY 2.0 — https://creativecommons.org/licenses/by/2.0/ (FlickreviewR, 2017)
+  Fonte: https://commons.wikimedia.org/wiki/File:Luiza_Erundina_S%C3%A9ria.jpg
+  Original: https://www.flickr.com/photos/henriquetyds/4683751871/
+
+historia_senna_1.jpg
+  Título: Ayrton Senna Interlagos (vitória no GP do Brasil de 1993)
+  Autor: Instituto Ayrton Senna (Flickr); a foto traz a marca "Norio Koike ©ASE"
+  Licença: CC BY 2.0 — https://creativecommons.org/licenses/by/2.0/ (FlickreviewR, 2013)
+  Fonte: https://commons.wikimedia.org/wiki/File:Ayrton_Senna_at_Interlagos_1993.jpg
+  Original: https://www.flickr.com/photos/institutoayrtonsenna/4563612815/
+
+historia_ssenna_1.jpg
+  Título: Autódromo José Carlos Pace: 'S' do Senna (2006)
+  Autor: Morio
+  Licença: CC BY-SA 3.0 — https://creativecommons.org/licenses/by-sa/3.0/ (também GFDL)
+  Fonte: https://commons.wikimedia.org/wiki/File:Autodromo_Jose_Carlos_Pace_S_do_Senna.jpg
+
+historia_aerea_1.jpg
+  Título: Autódromo José Carlos Pace, July 3, 2018 SkySat (cropped)
+  Autor: Planet Labs, Inc.
+  Licença: CC BY-SA 4.0 — https://creativecommons.org/licenses/by-sa/4.0/ (revisão de licença no Commons: Chiyako92, 04/03/2019)
+  Fonte: https://commons.wikimedia.org/wiki/File:Aut%C3%B3dromo_Jos%C3%A9_Carlos_Pace,_July_3,_2018_SkySat_(cropped).jpg
+
+historia_aerea_2.jpg
+  Título: Vista aérea del Autódromo José Carlos Pace 02 (drone, 01/12/2025)
+  Autor: ProtoplasmaKid
+  Licença: CC BY-SA 4.0 — https://creativecommons.org/licenses/by-sa/4.0/
+  Fonte: https://commons.wikimedia.org/wiki/File:Vista_a%C3%A9rea_del_Aut%C3%B3dromo_Jos%C3%A9_Carlos_Pace_02.jpg
+
+historia_hamilton_1.jpg
+  Título: Hamilton Brazil 2008 celebrations ("why so orange ? ...")
+  Autor: Diogo Dubiella (Flickr)
+  Licença: CC BY-SA 2.0 — https://creativecommons.org/licenses/by-sa/2.0/ (FlickreviewR, 2010)
+  Fonte: https://commons.wikimedia.org/wiki/File:Hamilton_Brazil_2008_celebrations.jpg
+  Original: https://www.flickr.com/photos/84161862@N00/2998811620/
+
+historia_reta_1.jpg
+  Título: Autódromo José Carlos Pace: main straight and control tower (2006)
+  Autor: Morio
+  Licença: CC BY-SA 3.0 — https://creativecommons.org/licenses/by-sa/3.0/ (também GFDL)
+  Fonte: https://commons.wikimedia.org/wiki/File:Autodromo_Jose_Carlos_Pace_main_straight_and_controle_tower.jpg

@@ -102,6 +102,8 @@ import {createCityRace} from './city-race.js';
 import {Explosions} from './explosion.js';
 import {trackPoint as podiumPoint} from './immersive-visuals.js';
 import {CinematicIntro} from './intro-cinematic.js';
+import {TrackHistory} from './track-history.js';
+import {HISTORIAS} from './historias.js';
 import {resolveGraphics,resolutionFloor,ResolutionPace,gpuTier,autoLevel,autoReason,lowerLevel,FrameWatch,FrameLimiter,DisplayCadence,adaptivePixelRatio,SHADOW_LEVELS,VIEW_DISTANCES,VALLEY_VIEW,SCENERY_LEVELS,MIRROR_SIZES,CAR_DETAIL,PEOPLE_REACH,GRAPHICS_LEVEL_NAMES,GRAPHICS_OPTIONS,DEBUG_OVERLAY_MODES,DEBUG_OVERLAY_CORNERS} from './graphics-settings.js';
 import {GraphicsPanel} from './graphics-panel.js';
 import {DebugOverlay} from './debug-overlay.js';
@@ -138,6 +140,10 @@ preferences.update({circuit:circuit.id});
 // track screen, where the player picks the circuit and a single race or the championship of
 // that mode. Finishing or leaving a race comes back to the track screen.
 let screen='opening',menuMode=preferences.values.immersive?'historia':'corrida';
+// História do autódromo (track-history.js): the circuits whose story can be watched (historias.js), from the track
+// screen and from the opening's História das Corridas; loaded only when asked for (the script brings the old layout
+// and the pictures with it).
+const HISTORIES=Object.fromEntries(HISTORIAS.map(h=>[h.circuit,h.load]));
 function showCircuitSelection(){
  document.title=`${circuit.name} · Auto-Pobre Racing`;
  document.querySelector('.wordmark').firstChild.textContent=$('mapTitle').textContent=circuit.name.toUpperCase();
@@ -145,6 +151,7 @@ function showCircuitSelection(){
  document.querySelector('.maplabel').firstChild.textContent=circuit.label;
  $('circuitDescription').textContent=circuit.description;$('circuitIntro').textContent=circuit.intro;
  $('circuitSource').textContent=circuit.source+' Reconstrução para jogo; física e instalações simplificadas.';
+ $('historyStart').hidden=!HISTORIES[circuit.id];
  document.querySelector('#menu article>p').textContent=circuit.intro;
  for(const button of document.querySelectorAll('[data-circuit]'))button.setAttribute('aria-pressed',String(button.dataset.circuit===circuit.id));
 }
@@ -268,6 +275,7 @@ let sky,landscape,landscapeField,terrainTextures,lakeContact=null,treeField=null
 let flags=null;
 // Film-style opening shots before the free race's 3-2-1 and when the story begins.
 const intro=new CinematicIntro();let introHidden=null;
+const trackHistory=new TrackHistory();
 let renderer;
 // What the cars' paint, glass and chrome reflect (car-reflections.js; the Gráficos tab's Reflexos dos carros).
 // Its captures leave out the player's car, the ghost and the sprites sized for the screen.
@@ -1468,7 +1476,7 @@ function frame(now=performance.now()){requestAnimationFrame(frame);
  if(frameCap.skip(now,displayCadence.measured?displayCadence.hz:0))return;if(graphicsCompiling){clock.update().getDelta();return;}debugOverlay.begin(now);try{runFrame();}finally{debugOverlay.end();}}
 // One frame of the game: controls, physics steps, people, cameras and the picture.
 function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().getDelta(),dt=Math.min(rawDt,.08);gamepad.suspended=wheel.learning;gamepad.poll(dt);wheel.poll(dt);if($('settings').open)wheelPanel.frame();multiplayer?.frame(dt);mobile?.update(paused,pitstop?.coffee||walker?.active?'crowd':immersive?.active?immersive.state.phase:'race');if(touchDevice)document.body.classList.toggle('can-look-back',lookBackAllowed());updateCountdown();if(!ready||!sessionStarted){action.update(0,{active:false});actionNotice.update(0,null,false);carAudio.updateScene({},[],dt);const onCars=renderer&&!sessionStarted&&!$('cars').classList.contains('hidden'),onLook=renderer&&!sessionStarted&&!$('visual').classList.contains('hidden');studioDensity(onCars||onLook,rawDt);if(onCars)carSelect.render(renderer,dt);else if(onLook)lookSelect.render(renderer,dt);return;}studioDensity(false);
- renderedFrame++;if(!paused&&!document.hidden){adaptResolution(rawDt);if(!intro.active&&!navigator.webdriver)watchFrames(rawDt);}
+ renderedFrame++;if(!paused&&!document.hidden){adaptResolution(rawDt);if(!intro.active&&!trackHistory.active&&!navigator.webdriver)watchFrames(rawDt);}
  if(intro.active&&automatic)intro.stop();
  if(intro.active&&!immersive.active&&immersive.freeCountdown>0){immersive.freeCountdown=3;$('raceCountdown').hidden=true;}
  // In a multiplayer race the result waits while other humans still race (multiplayer.js holdResults),
@@ -1499,7 +1507,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  // The same command drives the engine sound and the driver's hands and feet.
  // Out of the car (free-walk.js) it idles, fainter the farther he walks; braking to let him out, the brake lights and the engine say so.
  const walkCommand=walker?.active?{throttle:0,brake:0,left:0,right:0,listen:clamp(7/Math.max(7,walker.carDistance()),.06,1)}:walker?.stopping?{...input(),throttle:0,brake:1,reverse:0}:null;
- const driveCommand=pitstop?.opened?{throttle:0,brake:1,engineOff:true}:walkCommand??immersive?.audioCommand(automatic?pilot():arenaMode?.demo?arenaMode.demo.last():input())??input();
+ const driveCommand=pitstop?.opened||trackHistory.active?{throttle:0,brake:1,engineOff:true}:walkCommand??immersive?.audioCommand(automatic?pilot():arenaMode?.demo?arenaMode.demo.last():input())??input();
  const rivalSound=heard!==car?immersive.rivalSound(heard):null;
  const braking=driveCommand.engineOff?0:driveCommand.brake;if(touchDevice)mobile.showPedals(driveCommand.throttle??0,Math.max(driveCommand.brake??0,driveCommand.reverse??0));brakeLamps.userData.set(model?.visible?braking:0,!!model?.visible&&playerLamps.lit);fuscaBody.brake(braking,playerLamps.lit);
  carAudio.update(heard,rivalSound?.command??driveCommand,rivalSound?.skid??skid,paused||frozen,mode);
@@ -1542,6 +1550,8 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
   if(!introHidden){introHidden=[];scene.traverse(o=>{if(o.isSprite&&o.visible)introHidden.push(o);});}
   for(const o of introHidden)o.visible=false;
  }
+ // História do autódromo: its camera; the sun's shadows round what it looks at; the parked car out of sight.
+ if(trackHistory.update(paused?0:dt,camera)){carRoot.visible=false;placeSun(trackHistory.focus,null,dt);}
  // Over a plateau's rim: someone at the lip watches the car go down (cliff-fall.js).
  fallView.update(paused?0:dt,camera,car,{slowMotion:!multiplayer});
  // The results sheet is opaque; avoid spending mobile GPU time behind it.
@@ -1602,11 +1612,11 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  // redraws its next faces round the player's car; in the story's paddock the grid's picture would lie.
  carReflections.update(scene,probeAt.copy(carRoot.position).setY(carRoot.position.y+1),{onTrack:!(immersive?.active&&immersive.state.phase==='crowd'),hide:reflectionHide(),rivals:immersive?.visual?.rivals,data});
  // Long lenses (broadcast camera, opening shots) get depth of field focused on their subject.
- const subject=watchedCar?.car??car,dof=intro.active?intro.dof:mode==='tv'?{focus:camera.position.distanceTo(watchedCar?.obj.position??carRoot.position),amount:.35}:null;
+ const subject=watchedCar?.car??car,dof=intro.active?intro.dof:trackHistory.active?trackHistory.dof:mode==='tv'?{focus:camera.position.distanceTo(watchedCar?.obj.position??carRoot.position),amount:.35}:null;
  // The speed smear rides on the camera's own motion, only while it drives with a car (not the opening shots, the
  // grid, the café, on foot, the podium or a cockpit photo); the cars riding along stay sharp. Phones (the lite film
  // look) with the full smear off get the light road smear of their Sensação de velocidade instead.
- const smearMode=intro.active||gridPreview()||pitstop?.opened||immersive?.onFoot()||walker?.active||(immersive?.active&&['crowd','podium'].includes(immersive.state.phase)&&!immersive.inCar)||(mode==='cockpit'&&cockpitView&&!watchedCar)?'still':mode;
+ const smearMode=intro.active||trackHistory.active||gridPreview()||pitstop?.opened||immersive?.onFoot()||walker?.active||(immersive?.active&&['crowd','podium'].includes(immersive.state.phase)&&!immersive.inCar)||(mode==='cockpit'&&cockpitView&&!watchedCar)?'still':mode;
  // The phones' road smear only behind the car: in the bonnet and cockpit views the own car's box is the whole screen,
  // every tap would be thrown away and the pass would cost its time for nothing.
  const behindCar=smearMode==='chase'||smearMode==='close'||smearMode==='far';
@@ -1650,7 +1660,7 @@ function updateMenuLabels(){
  document.querySelector('#menu .eyebrow').textContent=finished?'BANDEIRADA / RESULTADO FINAL':`${immersive?.active?'MODO HISTÓRIA':'MODO CORRIDA'} · ${championshipRace?`${championshipRace.championship.info.label} · ETAPA ${championshipRace.round+1}/${championshipRace.championship.total}`:freeRaceTitle()} / PAUSA`;
  // Opening: Modo Corrida or Modo História. Paused: back to the track, restart, change track.
  // A finished single race can be run again; a scored championship round goes on from the result sheet.
- $('start').hidden=$('storyStart').hidden=$('driftStart').hidden=sessionStarted;$('carsVisual').hidden=menuMode==='historia';if(!$('start').disabled)$('start').textContent='Modo Corrida →';
+ $('start').hidden=$('storyStart').hidden=$('driftStart').hidden=$('historiasStart').hidden=sessionStarted;$('carsVisual').hidden=menuMode==='historia';if(!$('start').disabled)$('start').textContent='Modo Corrida →';
  $('resume').hidden=!resume;$('leaveRace').hidden=!sessionStarted;$('leaveRace').textContent=circuit.arena?'Sair da arena':'Trocar de pista';
  $('restartRace').hidden=!(resume||finished&&!scored&&!multiplayer?.guest());$('restartRace').textContent=finished?'Correr novamente →':immersive?.practice?'Recomeçar treino':'Recomeçar corrida';
  // The track screen races in the mode chosen at the opening.
@@ -1703,6 +1713,8 @@ function takeWheel(){automatic=false;if(watched){watched=0;followInitialized=fal
 // The recon lap (automatic) is never paused by the window losing focus: it may be a demonstration.
 // Nor is a multiplayer race: the others race on (two windows side by side share one focus).
 function hold(on){
+ // The track's story pauses as a video does (the window left, the tab hidden), without the race's pause badge.
+ if(trackHistory.active){if(on)trackHistory.pause();return;}
  if(!ready||on===held||on&&paused||on&&roomWanted)return;
  held=on;paused=on;carAudio.setPaused(on);if(!on)carAudio.unlock();if(on)takeDrop();
  if(on&&document.pointerLockElement===$('view'))document.exitPointerLock();
@@ -1714,9 +1726,10 @@ $('pauseBadge').onclick=()=>hold(false);
 function arrangePause(on){held=false;$('pauseBadge').hidden=true;paused=on;carAudio.setPaused(on);if(!on)carAudio.unlock();if(on&&document.pointerLockElement===$('view'))document.exitPointerLock();keys.clear();cameraReturn.reset(performance.now());updateScreens();}
 function menu(show){mobile?.arrange(false,false,true);if(!show)sceneryToast();held=false;$('pauseBadge').hidden=true;if(!show&&!immersive?.active&&immersive?.freeResultReady)show=true;paused=show;if(show)takeDrop();updateMenuLabels();carAudio.setPaused(show);if(!show)carAudio.unlock();if(show&&document.pointerLockElement===$('view'))document.exitPointerLock();cameraReturn.reset(performance.now());updateScreens();keys.clear();mobile?.clear();status('');}
 function updateScreens(){
- const free=paused&&!sessionStarted,tracks=free&&screen==='tracks',cars=free&&screen==='cars',visual=free&&screen==='visual';
+ const free=paused&&!sessionStarted,tracks=free&&screen==='tracks',cars=free&&screen==='cars',visual=free&&screen==='visual',histories=free&&screen==='historias';
+ $('historias').classList.toggle('hidden',!histories);
  // The arena's panel and editor pause the car without the menu (drift-arena-mode.js).
- $('menu').classList.toggle('hidden',!paused||tracks||cars||visual||!!(arenaMode?.editing||arenaMode?.panelOpen||mobile?.arranging));$('tracks').classList.toggle('hidden',!tracks);$('cars').classList.toggle('hidden',!cars);$('visual').classList.toggle('hidden',!visual);
+ $('menu').classList.toggle('hidden',!paused||tracks||cars||visual||histories||!!(arenaMode?.editing||arenaMode?.panelOpen||mobile?.arranging));$('tracks').classList.toggle('hidden',!tracks);$('cars').classList.toggle('hidden',!cars);$('visual').classList.toggle('hidden',!visual);
  // The Visual screen too: only the canvas (its studio) and the screen (visual.css).
  document.body.classList.toggle('visual-open',visual);
  // The car screen is the canvas's window: the race's HUD steps aside (carros.css).
@@ -1724,7 +1737,7 @@ function updateScreens(){
  if(tracks)renderTracks();if(cars)openCarScreen();
 }
 // A multiplayer guest back at the opening no longer waits for the host's race (multiplayer.js wait).
-function showScreen(name){screen=name;if(name==='opening')multiplayer?.wait(false);updateScreens();updateMenuLabels();if(name==='tracks')$('singleRace').focus({preventScroll:true});if(name==='cars')$('carsNext').focus({preventScroll:true});if(name==='visual')openVisualScreen();}
+function showScreen(name){screen=name;if(name==='opening')multiplayer?.wait(false);if(name==='historias')renderHistorias();updateScreens();updateMenuLabels();if(name==='tracks')$('singleRace').focus({preventScroll:true});if(name==='cars')$('carsNext').focus({preventScroll:true});if(name==='visual')openVisualScreen();}
 // Who races, as the track and car screens show it: the pilot and, in Modo Corrida, the car.
 const pilotLine=()=>[pilotPicker.profiles.selected&&`Piloto: ${pilotPicker.profiles.selected}`,menuMode==='corrida'&&`${MODEL_NAMES[menuModel()]} #${menuCar()}`].filter(Boolean).join(' · ');
 // Modo Corrida's car screen (car-select.js): the studio needs the renderer and the car's model, both
@@ -1917,6 +1930,8 @@ function padStatus(pad){
 document.addEventListener('keydown',e=>{
  // F3 cycles the performance overlay (off, FPS, full) anywhere, menus and dialogs included.
  if(e.code==='F3'){e.preventDefault();if(!e.repeat)setDebugOverlay({debugOverlay:{off:'fps',fps:'full',full:'off'}[preferences.values.debugOverlay]});return;}
+ // The track's story playing (track-history.js) has every key: play, pause, jumps, Escape out; none drives.
+ if(trackHistory.active&&!$('settings').open){if(trackHistory.handleKey(e))e.preventDefault();return;}
  if(lapRecords.dialog.open||championshipDialog.dialog.open)return;
  if(pitstop?.opened&&!$('settings').open){if(e.code==='Escape')openSettings();else if(e.code==='KeyP')hold(!held);else if(!paused){if(pitstop.coffee&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){e.preventDefault();keys.add(e.code);}if(!e.repeat&&pitstop.handleKey(e.code))e.preventDefault();}return;}
  if($('settings').open){if(e.code==='KeyM'){carAudio.toggleMute();audioControls();}return;}
@@ -2010,13 +2025,59 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  if(preferences.values.immersive){immersive.start();}
  else{if(immersive.active)immersive.disable();reset();setCameraMode(preferences.values.camera);updateCar(1);updateCamera(1);}
  paintCar();
- if(!immersive.active&&!tour&&!circuit.arena)immersive.beginCountdown();
+ if(!immersive.active&&!tour&&!circuit.arena&&!historyPending)immersive.beginCountdown();
  startLights();
  sessionStarted=true;automatic=tour&&!immersive.active;menu(false);
 }
+// História do autódromo: the circuit loads as a solo practice without the 3-2-1 and the story takes the camera;
+// leaving it (Pistas, Escape, the end) lands back on the track screen.
+// from: 'tracks' (the track screen's button) or 'historias' (História das Corridas, where leaving comes back to).
+let historyPending=false,historyFrom=null,circuitBeforeHistory=null;
+const historyButtons=()=>[$('historyStart'),...document.querySelectorAll('[data-historia]')];
+async function beginHistory(from='tracks'){
+ const load=HISTORIES[circuit.id];if(!load||sessionStarted||loading||historyPending)return;
+ historyPending=true;historyFrom=from;for(const b of historyButtons())b.disabled=true;
+ const label=document.querySelector(`[data-historia="${circuit.id}"]`);if(label)label.textContent='Carregando a pista…';
+ try{
+  championshipRace=null;pendingMode='solo';
+  const [story]=await Promise.all([load(),beginRace(false,false,false)]);
+  // The music under the story: its theme, its volume (the Áudio tab's) and the duck under the narrator's voice.
+  const audio={duck:a=>carAudio.duckMusic(a),theme:t=>{carAudio.themeOverride=t;},musicVolume:()=>carAudio.musicVolume,setMusicVolume:v=>{carAudio.setMusicMuted(false);carAudio.setMusicVolume(v);}};
+  if(sessionStarted&&ready)trackHistory.play(story.HISTORY,{data,oldLayout:story.OLD_LAYOUT,media:story.MEDIA,scene,ghostCar,renderer,camera,audio});
+ }catch(err){console.error(err);status('Não foi possível abrir a história desta pista.');}
+ finally{historyPending=false;for(const b of historyButtons())b.disabled=false;if(label)label.textContent='▶ Assistir';if(!sessionStarted)leftHistory();}
+}
+// História das Corridas: the story's circuit for the while; leaving brings back the screen and the circuit chosen before.
+function watchHistory(id){if(sessionStarted||loading||historyPending||!HISTORIES[id])return;circuitBeforeHistory=circuit.id;if(circuit.id!==id)selectCircuit(id);beginHistory('historias');}
+function leftHistory(){
+ if(historyFrom!=='historias'){historyFrom=null;return;}historyFrom=null;
+ if(circuitBeforeHistory&&circuitBeforeHistory!==circuit.id)selectCircuit(circuitBeforeHistory);circuitBeforeHistory=null;showScreen('historias');
+}
+function renderHistorias(){
+ $('historiasPilot').textContent=pilotPicker.profiles.selected?`Piloto: ${pilotPicker.profiles.selected}`:'';
+ // The stories' language (track-history.js keeps it): the cards speak it; the player and its voice start in it.
+ const en=trackHistory.lang==='en';for(const b of document.querySelectorAll('[data-hlang]'))b.setAttribute('aria-pressed',String(b.dataset.hlang===trackHistory.lang));
+ $('historiasList').replaceChildren(...HISTORIAS.map(h=>{
+  const card=document.createElement('article'),words=en&&h.en?{...h,...h.en}:h;card.className='historia-card';card.lang=en?'en':'pt-BR';
+  card.innerHTML=`<img src="${h.picture}" alt="" loading="lazy"><div class="historia-card-body"><span class="tracks-kicker"></span><h3></h3><p></p><small>${en?`${h.chapters} chapters · ${words.minutes} min · narrated, with photos and links`:`${h.chapters} capítulos · ${h.minutes} min · narrada, com fotos e links`}</small><button type="button" class="primary" data-historia="${h.circuit}">${en?'▶ Watch':'▶ Assistir'}</button></div>`;
+  card.querySelector('.tracks-kicker').textContent=`${words.place} · ${h.years}`.toUpperCase();card.querySelector('h3').textContent=words.title;card.querySelector('p').textContent=words.summary;
+  card.querySelector('button').onclick=()=>watchHistory(h.circuit);return card;
+ }));
+}
+trackHistory.onExit=()=>{carRoot.visible=true;ghostCar.setOpacity(0);camera.up.set(0,1,0);camera.fov=baseFov(mode,camera.aspect);camera.updateProjectionMatrix();followInitialized=false;returnToMainMenu();leftHistory();};
+$('historyStart').onclick=()=>beginHistory('tracks');
+$('historiasStart').onclick=()=>{if(sessionStarted||loading||!pilotPicker.commit())return;showScreen('historias');$('historiasList').querySelector('button')?.focus({preventScroll:true});};
+$('historiasBack').onclick=()=>showScreen('opening');
+for(const b of document.querySelectorAll('[data-hlang]'))b.onclick=()=>{trackHistory.setLang(b.dataset.hlang);renderHistorias();};
+// For checks: the story's state, a jump, play or pause, and starting it as the button does.
+window.interlagosAutodromo={info:()=>trackHistory.info(),seek:t=>{trackHistory.seek(t);return trackHistory.info();},play:(on=true)=>{trackHistory.setPlaying(on);return trackHistory.info();},
+ start:()=>{beginHistory();return true;},stop:()=>{trackHistory.stop();return true;},layers:()=>trackHistory.layerInfo(),screen:()=>screen,
+ audio:()=>({theme:carAudio.themeOverride??null,ducked:carAudio.ducked??0,duckGain:carAudio.musicDuck?.gain.value??null,voiceCut:carAudio.voiceCut?.gain.value??null,music:carAudio.info().musicVolume}),shown:()=>({car:carRoot.visible,ghost:ghostCar.opacity,camera:camera.position.toArray(),fov:camera.fov})};
 // Leaving a race (the result sheet, the pause menu, settings) lands on the track screen; a
 // championship round left unfinished is raced again next time.
 function returnToMainMenu(){
+ // Leaving a story by the settings' way out: back where it was started (História das Corridas or the tracks).
+ if(trackHistory.active){trackHistory.stop(false);carRoot.visible=true;queueMicrotask(leftHistory);}
  if(weatherOverride){weatherOverride=null;applyWeather();}
  $('settings').close();lapRecords.dialog.close();championshipDialog.close();
  if(!sessionStarted){updateMenuLabels();return;}
