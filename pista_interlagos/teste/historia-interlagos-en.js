@@ -1,7 +1,7 @@
 // A história de Interlagos in English (historia-interlagos.js has the Portuguese, the shots and the layers): the same
 // chapters and lines in the same order (scripts/testar_historia.mjs checks it). Corner names stay in Portuguese, with
 // their meaning the first time they are told, as a guide would do; `say` is what the voice reads when the caption
-// carries quotes or ellipses.
+// carries quotes or ellipses; `legend` is a line's colour key, item by item.
 export const EN={
  title:'The story of Interlagos',
  chapters:{
@@ -28,17 +28,25 @@ export const EN={
   ]},
   'oito-km':{title:'The eight-kilometre circuit',years:'1940 – 1989',lines:[
    {text:'The 1940 circuit was almost eight kilometres long, always run anticlockwise, inside a natural bowl. From the grandstand you could see nearly the whole track.'},
+   {text:'This is a map from the time, with the corners numbered: from Turn 1, at the end of the straight, to the Arquibancadas, the Grandstands. Now, let us take a lap of it.'},
    {text:'The lap began on the same straight as today. But at its end, drivers did not brake for an S: they carried on into Turn 1, a wide, fast left-hander.'},
    {text:"Turns 1 and 2 were almost a single curve. In 1973, Emerson Fittipaldi's Lotus went through there at over 290 kilometres per hour."},
    {text:'Then came the Retão, the big straight, downhill and the fastest part of the circuit: 318 kilometres per hour at its end.'},
    {text:'At the end of the Retão, Turn 3: tight, with the perimeter wall right behind it. Make a mistake there, and you hit the wall.'},
-   {text:'Then the track entered the infield: Turn 4, a long straight that came almost back to the pits, and the Ferradura, the Horseshoe, a left-hander of more than half a turn.'},
-   {text:'From the Horseshoe, the track went down to the lake and climbed through the Lake Corner. The Reta Oposta was run uphill, next to the Retão and in the opposite direction.'},
+   {text:'Then the track entered the miolo. Miolo is the soft inside of a loaf of bread: the middle part, right in the centre of the racetrack.',
+    legend:['The miolo','The 1940 layout']},
+   {text:'First Turn 4, then a long straight that came almost back to the pits, and the Ferradura, the Horseshoe, a left-hander of more than half a turn.'},
+   {text:'From the Horseshoe, the track went down to the lake and climbed through the Lake Corner. See how close the lake is to it.'},
+   {text:'The Reta Oposta was run uphill, next to the Retão and in the opposite direction.'},
    {text:'At the top, the Curva do Sol, the Sun Corner, to the right. Late in the afternoon, drivers came out of it with the setting sun right in their eyes.'},
    {text:"A long descent led to the Curva do Sargento, the Sergeant's Corner. Legend says it was named after a sergeant who was run over there, but no record of it has ever been found."},
-   {text:'Then the Laranja, a small S, the Pinheirinho, the Cotovelo and the Mergulho: a tight infield you still drive today, almost unchanged.'},
-   {text:'The Junção, the Junction, was where the infield met the outer ring. Then came the Café, the climb and the straight. Almost eight kilometres in a single lap.'},
-   {text:'There was also a short version, using only the outer ring: about three point two kilometres of pure speed.'},
+   {text:'Then the Laranja, a small S, the Pinheirinho, the Cotovelo and the Mergulho: a tight, twisty stretch you still drive today, almost unchanged.'},
+   {text:'The Junção, the Junction, was where that twisty stretch rejoined the outer ring. Then came the Café, the climb and the straight. Almost eight kilometres in a single lap.',
+    legend:['The 1940 layout',"The Junção's short straight"]},
+   {text:'There was also a short version, using only the outer ring: about three point two kilometres of pure speed.',
+    legend:['The fast lap, 3.2 km']},
+   {text:'And look at this short straight leaving Turn 4: this is the famous Junção, the Junction. It joins the ends and closes the fast ring.',
+    legend:['The fast lap',"The Junção's short straight"]},
   ]},
   'mil-milhas-f1':{title:'The Mil Milhas and Formula 1',years:'1956 – 1980',lines:[
    {text:"In 1956 the Mil Milhas Brasileiras, the Brazilian Thousand Miles, was born, created by Wilson Fittipaldi, known as the Baron, Emerson's father, and by Eloy Gogliano. A race that ran through the night."},
@@ -56,10 +64,11 @@ export const EN={
    {text:'But the FIA wanted a shorter, safer track. In just over ninety days, the almost eight kilometres became four point three.'},
    {text:'The track manager, Chico Rosa, wanted to keep Turns 1 and 2. Bernie Ecclestone, the boss of Formula 1, wanted them gone.'},
    {text:'Turns 1 and 2, the Retão, Turns 3 and 4 and the Sargento were cut. The Retão still exists: it became the auxiliary track, used for drag racing.'},
-   {text:'In their place, only three new pieces: the S, a short link between the Ferradura and the Laranjinha, and a Junção rebuilt a little before the old one.'},
+   {text:'In their place, only three new pieces: the S, the corner leading from the Ferradura to the Laranjinha, and a Junção rebuilt a little before the old one.'},
   ]},
   's-do-senna':{title:"Senna's S",years:'1990',lines:[
-   {text:'Without Turn 1, two loose straights were left: the pit straight, up high, and the Reta Oposta, about twenty metres lower and pointing the other way.'},
+   {text:'Without Turn 1, two loose straights were left: the pit straight, up high, and the Reta Oposta, about twenty metres lower and pointing the other way.',
+    legend:['The old track, 1940','The two straights left']},
    {text:'The idea came from Ayrton Senna: a downhill S, linking the end of the pit straight to the Sun Corner.'},
    {text:'Look closely: the entry of the Sun Corner sits off to the side. To reach it, the car turns left, then right, and drops about fourteen metres. An S joins two straights that do not line up.'},
    {text:'Senna did not like what was built: "I wanted a high-speed S… in fourth gear… Not arriving here and stopping."',
@@ -74,18 +83,25 @@ export const EN={
    {text:'The Reta Oposta used to climb; today it goes downhill. And the old Lake Climb became the Descida do Lago, the Lake Descent.'},
    {text:'And look at the name: Reta Oposta means "opposite straight". It ran next to the Retão, in the opposite direction. The Retão is gone, and today it runs exactly the way the Retão ran. Only the name remains.',
     say:'And look at the name: Reta Oposta means opposite straight. It ran next to the Retão, in the opposite direction. The Retão is gone, and today it runs exactly the way the Retão ran. Only the name remains.'},
-   {text:"Adding it all up, by our count: more than a third of today's lap is the 1940 track driven backwards."},
-   {text:'About half of it is 1940 asphalt driven the same way. And only an eighth of the lap was built in 1990.'},
+   {text:"Adding it all up, by our count: more than a third of today's lap is the 1940 track driven backwards.",
+    legend:['1940, now in reverse','The 1940 layout']},
+   {text:'About half of it is 1940 asphalt driven the same way. And only an eighth of the lap was built in 1990.',
+    legend:['1940, the same way','1940, now in reverse','1990, newly built']},
   ]},
   nomes:{title:'The names of the corners',years:'FROM THE LAKE TO THE STRAIGHT',lines:[
    {text:'Descida do Lago, the Lake Descent: the lake is real. It lies inside the racetrack, is fed by two springs, and its water washes the track on Grand Prix day.'},
-   {text:"Ferradura, the Horseshoe, is named for its shape. Today's corner keeps only the tip of the old one, driven in reverse; the rest of the loop is still there, on the auxiliary track."},
+   {text:"Ferradura, the Horseshoe: look from above and you see the U of a horseshoe. Today's corner keeps only the tip of the old one, driven in reverse; the rest of the loop is still there, on the auxiliary track."},
    {text:'Laranjinha, the Little Orange, comes from "Curva do Laranja". "Laranja", orange, was slang for a driver who did not dare take the corner flat out. There was never an orange tree there.',
     say:'Laranjinha, the Little Orange, comes from Curva do Laranja. Laranja, orange, was slang for a driver who did not dare take the corner flat out. There was never an orange tree there.'},
+   {text:'On the old track, it was a blind right-hander at the top of the climb from the Sargento. That is where the "orange" lifted off. That corner disappeared in 1990.',
+    say:'On the old track, it was a blind right-hander at the top of the climb from the Sargento. That is where the orange lifted off. That corner disappeared in 1990.'},
+   {text:'On a 1990 map of the track, the Laranjinha sits right at the exit of the Ferradura, and the tight corner after it is called the Esse. Today, many people call that tight corner the Laranjinha.'},
    {text:'At the Pinheirinho, the Little Pine, there really was a pair of pine trees.'},
-   {text:"The Bico de Pato, the Duck's Beak, used to be called the Cotovelo, the Elbow. It got its new name from its shape, and it is the slowest corner on the track."},
+   {text:"The Bico de Pato, the Duck's Beak, used to be called the Cotovelo, the Elbow. Look from above and use your imagination: the track draws a duck's head, and this whole corner is its beak. It is also the slowest corner on the track."},
    {text:'At the Mergulho, the Dive, the car plunges downhill, pointing at the lake hidden ahead.'},
-   {text:"The Junção, the Junction, no longer joins anything. It was where the infield met the outer ring, which no longer exists. Today's corner was rebuilt in 1990, a little before the old one."},
+   {text:'And if a driver misses the corner and goes straight on... the dive ends in the lake!'},
+   {text:"The Junção, the Junction, no longer joins anything. It was where the twisty stretch rejoined the outer ring, which no longer exists. Today's corner was rebuilt in 1990, a little before the old one.",
+    legend:["Today's track",'The 1940 layout',"The Junção's short straight"]},
    {text:'Then comes the Subida dos Boxes, the climb to the pits, a ramp of about ten per cent up to the straight.'},
    {text:'And the Café, the Coffee Corner? There is no official explanation. The most common story is that, with an eight-kilometre lap, photographers had time for a coffee before the cars came back.'},
    {text:'It is also a dangerous corner. Rafael Sperafico, in 2007, and Gustavo Sondermann, in 2011, died here. After that, it got a bigger run-off area.'},
@@ -101,7 +117,7 @@ export const EN={
   ]},
  },
  // The names over the track (labels): generic ones in English, proper names as they are.
- labels:{'Curva 1':'Turn 1','Curva 2':'Turn 2','Curva 3':'Turn 3','Curva 4':'Turn 4','Reta dos boxes':'Pit straight','Reta dos Boxes':'Pit straight','Curva do Lago':'Lake Corner'},
+ labels:{'Curva 1':'Turn 1','Curva 2':'Turn 2','Curva 3':'Turn 3','Curva 4':'Turn 4','Reta dos boxes':'Pit straight','Reta dos Boxes':'Pit straight','Curva do Lago':'Lake Corner','Lago':'Lake'},
  images:{
   planta1936:{title:'The 1936 circuit plan',caption:'The plan of the 1st São Paulo City Grand Prix shows the track laid out in the streets of Jardim América, with Avenida Brasil and Praça América.'},
   hellenice1936:{title:'Hellé Nice before the start',caption:'The French driver Hellé Nice in her car before the start of the 1st São Paulo City Grand Prix, on July 12, 1936.'},

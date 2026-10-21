@@ -35,9 +35,9 @@ assert(OLD_LAYOUT.length_m>7700&&OLD_LAYOUT.length_m<8100,`old lap length ${OLD_
 for(const status of ['cortado','invertido','mantido'])assert(OLD_LAYOUT.segments.some(g=>g.status===status),`old layout has ${status} stretches`);
 
 // Todo lugar citado (câmeras, carro, rótulos, camadas) existe no seu traçado.
-const oldPoints=Object.fromEntries(OLD_LAYOUT.points.map(p=>[p.name,p.s??p.s_from]));
+const oldPoints={...Object.fromEntries(OLD_LAYOUT.points.map(p=>[p.name,p.s??p.s_from])),...HISTORY.places.old};
 assert.deepEqual(missingPlaces(HISTORY,oldPoints),[],'every place named exists');
-for(const [name,s] of Object.entries(HISTORY.places.new))assert(s>=0&&s<data.meta.reconstructed_xy_m,`${name} on today's lap`);
+for(const [name,s] of Object.entries(HISTORY.places.new))assert(typeof s==='object'?Number.isFinite(s.x)&&Number.isFinite(s.y):s>=0&&s<data.meta.reconstructed_xy_m,`${name} on today's lap`);
 for(const id of new Set(timeline.lines.flatMap(l=>[...l.showNow,...(l.reveal?[l.reveal]:[])])))assert(HISTORY.layers[id],`layer ${id} defined`);
 
 // A câmera: em toda a história, acima do chão, olhando para algum lugar.
