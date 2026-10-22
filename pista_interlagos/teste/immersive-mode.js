@@ -353,7 +353,7 @@ export class ImmersiveMode {
   const s=this.state;
   if(action==='mainMenu'){this.onMainMenu?.();return;}
   if(action==='talk'&&this.near>=0){this.selectedJoke=null;s.talk(this.near);}
-  if(action.startsWith('joke:')&&s.phase==='crowd'&&s.fan!==null){const fan=s.fan,cash=s.cash;s.joke(Number(action.split(':')[1]));if(s.cash>cash){this.visual.showDonation(fan);s.fan=null;s.feedback='';this.walkToFan=null;s.touch();}}
+  if(action.startsWith('joke:')&&s.phase==='crowd'&&s.fan!==null){const fan=s.fan,cash=s.cash;s.joke(Number(action.split(':')[1]));if(s.cash>cash){this.visual.showDonation(fan,s.cash-cash);s.fan=null;s.feedback='';this.walkToFan=null;s.touch();}}
   if(action==='close'){s.fan=null;s.feedback='';s.touch();}
   // The fuel starts at the pilot's last choice (6 L at first), lowered to what the kitty pays for.
   if(action==='desk'&&s.fan===null&&!this.inCar&&s.openDesk()){this.walkToFan=this.walkToDesk=this.walkToCafe=null;this.visual.faceDesk();this.prepLitres=clamp(Math.min(this.fuelChoice,Math.floor((s.cash+s.profile.fund-s.entry-(this.prepFilm?COSTS.film:0))/COSTS.litre)),2,12);}

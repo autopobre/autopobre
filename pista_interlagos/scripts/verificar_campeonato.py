@@ -184,12 +184,12 @@ with sync_playwright() as p:
     wait_js(page, "!document.querySelector('#tracks').classList.contains('hidden')")
     assert page.get_attribute('#tracks', 'data-mode') == 'historia'
     calendar = page.inner_text('#championshipCalendar')
-    assert 'DSQ' in calendar and 'AB' in calendar and page.inner_text('#championshipStart') == 'Correr a etapa 3 →', calendar
+    assert 'DSQ' in calendar and 'DNF' in calendar and page.inner_text('#championshipStart') == 'Correr a etapa 3 →', calendar
     page.screenshot(path=str(ROOT / 'renders/campeonato_historia_calendario.png'))
     page.click('#championshipTableButton')
     wait_js(page, "document.querySelector('#championshipDialog').open")
     player_row = page.inner_text('#championshipDialog tbody tr.player')
-    assert 'DSQ' in player_row and 'AB' in player_row and 'MODO HISTÓRIA' in page.inner_text('#championshipDialogMode'), player_row
+    assert 'DSQ' in player_row and 'DNF' in player_row and 'MODO HISTÓRIA' in page.inner_text('#championshipDialogMode'), player_row
     page.screenshot(path=str(ROOT / 'renders/campeonato_historia_classificacao.png'))
     page.click('#championshipClose')
     # The race championship is untouched.

@@ -3,7 +3,7 @@
 Level: Fácil by default; picking Impossível in the settings is saved and the next start races the
 harder field (every rival drives clean, rated by the pilots' table, and the grid list shows the table).
 Breakdowns: on by default; the free race draws one to four. One is forced a few seconds in: the car
-pulls off onto the grass, stops, smokes (motor) and, at the flag, the result sheet classifies it AB
+pulls off onto the grass, stops, smokes (motor) and, at the flag, the result sheet classifies it DNF
 ("ABANDONOU · motor"). A recon lap then watches a broken car (key N, chase camera) for the picture.
 Honours INTERLAGOS_URL (default: the 8799 server)."""
 import json
@@ -68,13 +68,13 @@ with sync_playwright() as p:
     report['smokeWhileBroken'] = smoke
     assert parked['kind'] == 'motor' and not parked['onRoad'] and 1.5 < parked['off'] < 8 and not parked['finished'], parked
     assert smoke > 0 and parked['smokeLeft'] > 0, 'a blown engine smokes'
-    # The flag: the sheet puts the broken car at the bottom, AB, with what broke.
+    # The flag: the sheet puts the broken car at the bottom, DNF, with what broke.
     page.evaluate('()=>{const m=fixtureMode;m.freeFinished=true;m.freePosition=1+m.rivals.filter(r=>r.finished).length;m.beginFinish(m.freePosition);}')
     wait_js(page, "!document.querySelector('#raceResults').hidden", timeout=60000)
     rows = page.eval_on_selector_all('#raceResults tbody tr', 'rs=>rs.map(r=>[...r.children].map(c=>c.textContent))')
     report['sheet'] = rows[-3:]
     mine = [r for r in rows if r[1] == number]
-    assert mine and mine[0][0] == 'AB' and mine[0][4] == 'ABANDONOU · motor', mine
+    assert mine and mine[0][0] == 'DNF' and mine[0][4] == 'ABANDONOU · motor', mine
     assert rows.index(mine[0]) >= len(rows) - field['breakdowns'] - 1, 'retirements are classified last'
     page.screenshot(path=str(SHOTS / 'abandonos_resultado.png'))
     page.close()
@@ -102,4 +102,4 @@ with sync_playwright() as p:
     browser.close()
 print(json.dumps(report, indent=1, ensure_ascii=False), flush=True)
 assert not report['errors'], report['errors']
-print('level menu, Impossível field, breakdown parked on the grass with smoke, AB on the sheet: verified')
+print('level menu, Impossível field, breakdown parked on the grass with smoke, DNF on the sheet: verified')

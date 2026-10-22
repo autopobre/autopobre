@@ -47,9 +47,9 @@ export class RaceResults {
   this.root.querySelector('.results-table').classList.toggle('results-has-dnf',rows.some(r=>!r.finished&&r.dnf&&r.breakdown));
   const body=this.root.querySelector('tbody');body.replaceChildren();
   for(const row of rows){const tr=document.createElement('tr');if(row.player)tr.classList.add('results-player');
-   // A retirement (race-field.js breakdowns, or the story's tow) is classified AB, with what broke.
+   // A retirement (race-field.js breakdowns, or the story's tow) is classified DNF, with what broke.
    // Still on the track at the flag: the estimated time to the line (race-field.js classification).
-   const values=[row.dnf?'AB':`${row.position}º`,row.number,row.name+(row.player?' · VOCÊ':''),formatTime(row.bestLap),row.finished?formatTime(row.totalTime):row.dnf?`ABANDONOU${row.breakdown?' · '+row.breakdown:''}`:row.estimated?`≈ ${formatTime(row.totalTime)}`:'NA PISTA'];
+   const values=[row.dnf?'DNF':`${row.position}º`,row.number,row.name+(row.player?' · VOCÊ':''),formatTime(row.bestLap),row.finished?formatTime(row.totalTime):row.dnf?`ABANDONOU${row.breakdown?' · '+row.breakdown:''}`:row.estimated?`≈ ${formatTime(row.totalTime)}`:'NA PISTA'];
    if(points)values.push(`+${points.get(String(row.number))??0}`);
    values.forEach((value,i)=>{const cell=document.createElement(i===2?'th':'td');if(i===2)cell.scope='row';cell.textContent=value;if(i===3&&best&&row.number===best.number)cell.className='results-best';if(i===4&&!row.finished&&row.dnf)cell.className='results-dnf';if(i===4&&row.estimated){cell.className='results-estimated';cell.title='Estimado: o que faltava da prova, no ritmo que vinha fazendo';}if(i===5)cell.className='results-points';tr.append(cell);});body.append(tr);
   }

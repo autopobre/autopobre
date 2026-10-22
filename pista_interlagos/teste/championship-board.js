@@ -14,7 +14,7 @@ const ordinal=n=>`${n}º`;
 const roundLaps=championship=>{const n=championship.roundLaps();return `${n} volta${n>1?'s':''}`;};
 const MODE_NAME={corrida:'MODO CORRIDA',historia:'MODO HISTÓRIA'};
 // A round's place: retirements and disqualifications score nothing.
-const placeText=r=>r.dsq?'DSQ':r.dnf?'AB':ordinal(r.position);
+const placeText=r=>r.dsq?'DSQ':r.dnf?'DNF':ordinal(r.position);
 
 export function renderChampionshipPanel(root,championship){
  const $=id=>root.querySelector('#'+id),state=championship.state,round=championship.round,info=championship.info;
@@ -63,7 +63,7 @@ export function renderChampionshipPanel(root,championship){
 export class ChampionshipDialog {
  constructor(){
   this.dialog=el('dialog',{id:'championshipDialog'});this.dialog.setAttribute('aria-labelledby','championshipDialogTitle');
-  this.dialog.innerHTML=`<div class="champ-head"><div><span id="championshipDialogMode">CAMPEONATO OLD STOCK · AUTO-POBRE RACING</span><h2 id="championshipDialogTitle">CLASSIFICAÇÃO GERAL</h2></div><button id="championshipClose" type="button" aria-label="Fechar classificação">✕</button></div><p id="championshipBanner"></p><div class="champ-scroll"><table><thead></thead><tbody></tbody></table></div><p class="champ-note">Pontos por posição de chegada: ${CHAMPIONSHIP_POINTS.map((p,i)=>`${i+1}º ${p}`).join(' · ')}. AB abandono e DSQ desclassificado: 0. Empate: vitórias, pódios e melhor chegada.</p>`;
+  this.dialog.innerHTML=`<div class="champ-head"><div><span id="championshipDialogMode">CAMPEONATO OLD STOCK · AUTO-POBRE RACING</span><h2 id="championshipDialogTitle">CLASSIFICAÇÃO GERAL</h2></div><button id="championshipClose" type="button" aria-label="Fechar classificação">✕</button></div><p id="championshipBanner"></p><div class="champ-scroll"><table><thead></thead><tbody></tbody></table></div><p class="champ-note">Pontos por posição de chegada: ${CHAMPIONSHIP_POINTS.map((p,i)=>`${i+1}º ${p}`).join(' · ')}. DNF abandono e DSQ desclassificado: 0. Empate: vitórias, pódios e melhor chegada.</p>`;
   document.body.append(this.dialog);
   this.dialog.querySelector('#championshipClose').onclick=()=>this.dialog.close();
   this.dialog.addEventListener('cancel',e=>{e.preventDefault();this.dialog.close();});

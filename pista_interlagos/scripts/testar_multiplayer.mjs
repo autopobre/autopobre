@@ -687,7 +687,7 @@ for(let trial=0;trial<6;trial++){
   // The host's snapshot of its car: AB, past the flag with nobody at the wheel: it stays without its pilot.
   m.cut.mine={state:{retired:true,progress:L*3+lead},at:m.cut.seatedAt+1};m.checkCut();
   assert.equal(m.cut.over,true);assert.deepEqual(resumed,[]);m.checkCut();assert.equal(m.cut.over,true,'for good');
-  assert.match(m.trouble(),/passou a bandeirada sem piloto: abandono \(AB\)/);
+  assert.match(m.trouble(),/passou a bandeirada sem piloto: abandono \(DNF\)/);
   // Out to the menu, it still waits for the host's next race (its race is over, not left).
   const waits=[];m.wait=on=>waits.push(on);m.leaving();assert.deepEqual(waits,[]);m.cut.over=false;m.leaving();assert.deepEqual(waits,[false]);
   // Back before the flag: the car where the host has it, this window's again.

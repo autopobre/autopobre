@@ -448,7 +448,7 @@ export class Multiplayer {
   const mine=this.cut.mine;this.cut.seatedAt??=now;
   if(!mine||mine.at<=this.cut.seatedAt)return;
   const goal=immersive.data.meta.reconstructed_xy_m*immersive.freeTotalLaps+immersive.field.gridLeadIn;
-  if(mine.state.retired&&mine.state.progress>=goal-.01){this.cut.over=true;room.note('bandeirada sem piloto: AB');return;}
+  if(mine.state.retired&&mine.state.progress>=goal-.01){this.cut.over=true;room.note('bandeirada sem piloto: DNF');return;}
   // A finish during missing states may never have reached the host's flag. The checked handover
   // restores the unfinished car too, so it can complete the remaining distance normally.
   if(immersive.freeFinished&&!mine.state.finished){immersive.freeFinished=false;immersive.finishElapsed=null;immersive.finishTime=null;immersive.finishBest=null;immersive.freeOrder=null;this.finishedAt=null;}
@@ -656,7 +656,7 @@ export class Multiplayer {
  // come back; null when all is well.
  trouble(){
   const room=this.room,me=this.myNumber(),secs=r=>Math.floor(r.age),quiet=r=>r&&r.seq>=0&&r.age>=QUIET;
-  if(this.cut)return this.cut.over?'Seu carro passou a bandeirada sem piloto: abandono (AB) · você corre a próxima.':'Conexão de volta · retomando seu carro onde ele está…';
+  if(this.cut)return this.cut.over?'Seu carro passou a bandeirada sem piloto: abandono (DNF) · você corre a próxima.':'Conexão de volta · retomando seu carro onde ele está…';
   const yellow=this.yellowText();if(yellow)return yellow;
   if(room.role==='guest'){if(room.lineQuiet())return 'Sem sinal da sala · conferindo sua conexão…';}
   else{

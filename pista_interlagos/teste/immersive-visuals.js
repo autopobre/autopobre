@@ -21,6 +21,8 @@ import {trunkInside,showTrunkInside,liveryPlates,liveryMaterial,sharedLivery,LIV
 // V06 parts a rival never shows on track (engine and fuel cell stay under shut panels); the
 // exporter also flags every other hidden mesh (bay, trunk, hinges) with the extra "interno".
 const HIDDEN_ON_RIVALS=['Motor_CONJUNTO','Tanque_combustivel_CONJUNTO','Interior_do_jogo'];
+// The plate over a supporter who laughed (size and colours): showDonation writes on it the gift that came in.
+const REACTION=[2.4,.45,'#203823','#c7ed9c'];
 // The 99's livery (by material): sponsors, logos, drivers' names (Branco: with the tail's 99), its numbers, the
 // hood, roof and trunk lid decals and the window stickers. The other cars carry none of it, only their own number.
 export const LIVERY_99=/^(Adesivo|Decal_|Pilotos_99_parabrisa|Invent_parabrisa|Jesus_|Logo_frontal|Stickers_vigia_|Branco$)/;
@@ -163,7 +165,7 @@ export class ImmersiveVisuals {
   this.fans=FANS.map((fan,i)=>{
    const [x,dd,turn,idle]=spots[i],pos=L.point(x,L.spotD+dd),person=this.people.person(outfits[i]);person.position.copy(pos);person.rotation.y=L.heading+Math.PI+(dd>0?.5:-.5)+turn;setPose(person,POSES[idle]);this.crowd.add(person);
    const label=this.tag(this.crowd,fan.name,[pos.x,pos.y+2.1,pos.z],1.8,.30),dollar=this.tag(this.crowd,'$',[pos.x,pos.y+2.65,pos.z],.43,.56,'#ffe380','#19452b');
-   const reaction=this.tag(this.crowd,'HAHA! + R$ '+fan.gift,[pos.x,pos.y+3.15,pos.z],2.4,.45,'#203823','#c7ed9c');reaction.visible=false;
+   const reaction=this.tag(this.crowd,'HAHA!',[pos.x,pos.y+3.15,pos.z],...REACTION);reaction.visible=false;
    // Waiting for the pilot they idle: phone, chatting, arms crossed (pit-crew.js).
    const idler=new Idler(person,'fan',{props:{phone:this.people.carry('phone',person.userData.rig.limbs[1].hand)},seed:.2+i*.17});
    return {pos,person,label,dollar,reaction,cheerUntil:0,idle,idler};
@@ -632,7 +634,8 @@ export class ImmersiveVisuals {
  }
  leoRoute(){return this.leo?this.routeTo(this.leo.pos):null;}
  nearestFan(){let best=-1,d=2.5;this.fans.forEach((f,i)=>{const distance=this.hero.position.distanceTo(f.pos);if(distance<d){best=i;d=distance;}});this.nearSocial=best;return best;}
- showDonation(index){const f=this.fans[index];if(f){f.cheerUntil=this.time+2.3;f.dollar.visible=false;f.reaction.visible=true;}}
+ // gift: what went into the kitty (the fan's own gift scaled by the supporters' morale, immersive-state.js gift).
+ showDonation(index,gift){const f=this.fans[index];if(f){f.cheerUntil=this.time+2.3;f.dollar.visible=false;f.reaction.visible=true;const m=f.reaction.material;m.map.dispose();m.map=this.labelTexture('HAHA! + R$ '+gift,...REACTION);}}
  drawCracks(value){
   if(value===this.lastGlass)return;this.lastGlass=value;const ctx=this.crackCanvas.getContext('2d');ctx.clearRect(0,0,1024,512);
   let seed=99;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
