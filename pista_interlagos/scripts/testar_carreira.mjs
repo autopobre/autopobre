@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {ImmersiveState,FANS,JOKES,COSTS} from '../teste/immersive-state.js';
-import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,MISSED,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,SNAG_COST,outfitOf,repairBill} from '../teste/story-career.js';
+import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,MISSED,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,SNAG_COST,outfitOf,repairBill,divorceStep,patienceOf,DIVORCE_LINES,PENSION,PENSION_MONTHS,GAME_OVER} from '../teste/story-career.js';
 const checks={},check=(name,value)=>{checks[name]=!!value;assert(value,name);};
 const profileOf=(career={},fund=0)=>({fund,career:{...newCareer(),intro:true,...career}});
 const story=(career,fund)=>{const s=new ImmersiveState(profileOf(career,fund));s.start();return s;};
@@ -90,13 +90,48 @@ check('deadline_missed',slow.scene.cards.some(c=>c.type==='missed')&&slow.profil
 const knock=k=>{const s=story({morale:{esposa:50,equipe:k,torcida:50}});s.scene=null;s.phase='race';s.hitCar(1);return 1-s.health;};
 check('team_morale_scales_damage',Math.abs(knock(0)-knock(50)*1.5)<1e-9&&Math.abs(knock(100)-knock(50)*.5)<1e-9);
 
-// The end: a bar at zero, or not even every supporter pays the registration.
-const sad=story({races:6,morale:{esposa:15,equipe:50,torcida:50}});race(sad,null);
-check('game_over_at_zero',sad.profile.career.over==='esposa'&&types(sad)==='morale,morale,morale,repair,over');readAll(sad);check('game_over_waits',sad.sceneCard().type==='over'&&!sad.advanceScene());
+// The end: the team's or the supporters' bar at zero (the wife's no longer: she divorces him), or not even every
+// supporter pays the registration: bankrupt, in Stevan's words.
+const sad=story({races:6,since:6,morale:{esposa:80,equipe:5,torcida:50}});race(sad,null);
+check('game_over_at_zero',sad.profile.career.over==='equipe'&&types(sad)==='morale,morale,morale,repair,over');readAll(sad);check('game_over_waits',sad.sceneCard().type==='over'&&!sad.advanceScene());
 const ended=new ImmersiveState(JSON.parse(JSON.stringify(sad.profile)));ended.start();check('game_over_survives_reload',ended.scene?.kind==='over');
 ended.restartCareer();ended.start();check('new_story_after_the_end',!ended.profile.career.over&&ended.profile.fund===0&&ended.scene?.kind==='intro');
-const broke=new ImmersiveState(profileOf({morale:{esposa:50,equipe:50,torcida:10}},0));broke.entry=150;broke.start();check('no_money_no_story',broke.profile.career.over==='dinheiro'&&broke.scene?.kind==='over');
+const broke=new ImmersiveState(profileOf({morale:{esposa:50,equipe:50,torcida:10}},0));broke.entry=150;broke.start();check('no_money_no_story',broke.profile.career.over==='dinheiro'&&broke.scene?.kind==='over'&&GAME_OVER.dinheiro==='A carreira de piloto te levou à falência e você está fora do automobilismo.');
 const home=new ImmersiveState(profileOf({morale:{esposa:50,equipe:50,torcida:10}},0));home.start();check('home_entry_still_reachable',!home.profile.career.over&&!home.scene);
+
+// The divorce (Central #15). The clock by bands of the wife's morale after each race (Stevan's table), her patience
+// the fewer or the more races of each band; under 10% at once; above 50% it waits, more than 4 races there forgive.
+const until=(m,patience)=>{const c={...newCareer(),morale:{esposa:m,equipe:50,torcida:50}};for(let n=1;n<=20;n++)if(divorceStep(c,()=>patience))return n;return null;};
+check('divorce_deadlines_by_band',[[50,4,5],[40,4,5],[39,3,4],[30,3,4],[29,2,3],[20,2,3],[19,1,2],[10,1,2]].every(([m,few,more])=>until(m,.2)===few&&until(m,.8)===more)&&[9,5,0].every(m=>until(m,.5)===1)&&until(51,.2)===null&&until(100,.2)===null);
+{const c=newCareer();const steps=[45,45,25].map(m=>{c.morale.esposa=m;return divorceStep(c,()=>.2);});check('moving_bands_average',steps.join()==='false,false,true');}
+{const c=newCareer();c.morale.esposa=45;divorceStep(c,()=>.2);divorceStep(c,()=>.2);c.morale.esposa=60;for(let i=0;i<4;i++)divorceStep(c);
+ const waited=c.clock.progress===.5&&c.clock.calm===4&&patienceOf(c.clock).chance===1;c.morale.esposa=45;const back=divorceStep(c,()=>.9)===false&&c.clock.progress===.75&&c.clock.calm===0;
+ c.morale.esposa=60;for(let i=0;i<5;i++)divorceStep(c);check('above_half_waits_then_forgives',waited&&back&&c.clock.progress===0&&c.clock.patience===null&&patienceOf(c.clock)===null);}
+check('patience_by_thirds',patienceOf({progress:.25,calm:0}).stage===0&&patienceOf({progress:.5,calm:0}).stage===1&&patienceOf({progress:.75,calm:0}).stage===2&&patienceOf({progress:0,calm:0})===null);
+// A late tow with the wife at 15%: she drops to 0 and divorces him at once. The report: her card (the divorce on it),
+// the team's and the supporters', the repair bill, the lawyer at the Box 99, DIVÓRCIO; she took half of the wallet.
+const wed=story({races:6,since:6,morale:{esposa:15,equipe:60,torcida:60}},1000);race(wed,null);
+check('wife_at_zero_divorces',!wed.profile.career.over&&wed.profile.career.divorced?.taken===500&&wed.profile.fund===500&&types(wed)===['morale','morale','morale','repair',...DIVORCE_LINES.map(()=>'line'),'divorce','challenge'].join()&&wed.scene.cards[0].divorced);
+const scene15=wed.scene.cards.filter(c=>c.type==='line');
+check('lawyer_scene_lines',scene15.length===6&&scene15.every((c,i)=>c.act==='divorce'&&c.index===i&&c.outfit==='emprestado')&&scene15.slice(0,3).every(c=>c.who==='lawyer')&&scene15[2].text==='Assine estes papéis.'&&wed.scene.cards.find(c=>c.type==='divorce').taken===500);
+// Before each vaquinha from then on: the pension of the round's months, out of what the wallet holds (never a debt).
+readAll(wed);wed.round=0;wed.start();
+check('pension_before_the_vaquinha',wed.scene?.kind==='pension'&&wed.sceneCard().amount===PENSION*3&&wed.sceneCard().charged===500&&wed.sceneCard().before===500&&wed.sceneCard().fund===0&&wed.sceneCard().months.join()==='janeiro,fevereiro,março'&&wed.profile.fund===0);
+wed.scene=null;wed.start();check('pension_once_a_race',wed.scene?.kind!=='pension'&&wed.profile.fund===0);
+race(wed,1);check('wife_card_gone_after',types(wed).startsWith('morale,morale,repair')&&!wed.scene.cards.some(c=>c.key==='esposa'));
+readAll(wed);const owed=wed.profile.fund;wed.round=3;wed.start();check('pension_two_months_in_july',wed.sceneCard().amount===600&&wed.sceneCard().months.join()==='junho,julho'&&wed.profile.fund===owed-600);
+wed.scene=null;wed.round=null;race(wed,2);readAll(wed);wed.start();check('pension_one_month_outside_the_calendar',wed.sceneCard().amount===PENSION&&wed.sceneCard().months===null);
+check('stevans_pension_year',PENSION_MONTHS.reduce((n,m)=>n+m.length,0)===12&&PENSION_MONTHS.map(m=>m.length*PENSION).join()==='900,300,300,600,300,300,300,600');
+// No more requests from her: with the money there, the overalls are bought at once.
+const free=story({races:6,since:6,morale:{esposa:15,equipe:60,torcida:60}},3000);race(free,12);
+check('no_wife_request_after_divorce',free.profile.career.divorced&&!free.scene.cards.some(c=>c.type==='expense')&&free.scene.cards.some(c=>c.type==='done')&&free.profile.fund===3000/2-1000);
+// Reloaded before the report (the next race's paddock): the divorce and its scene come back, then that race's pension.
+const kept=story({races:6,since:6,morale:{esposa:15,equipe:60,torcida:60}},1000);kept.scene=null;kept.phase='race';kept.finish(12);
+const reread15=new ImmersiveState(JSON.parse(JSON.stringify(kept.profile)));reread15.start();
+check('divorce_survives_reload',reread15.profile.career.divorced?.taken===kept.profile.career.divorced?.taken&&reread15.scene?.kind==='report'&&reread15.scene.cards.some(c=>c.type==='divorce')&&reread15.scene.cards.at(-1).type==='pension'&&reread15.scene.cards.filter(c=>c.type==='pension').length===1);
+// Taken to the box before the judge: towed in after all, her drop can divorce him then.
+const boxed=story({races:6,since:6,morale:{esposa:25,equipe:60,torcida:60}},400);boxed.scene=null;boxed.phase='race';boxed.finish(2);const wedBefore=boxed.profile.career.divorced;boxed.leavePodium();boxed.goToBox();
+check('late_disqualification_can_divorce',!wedBefore&&boxed.profile.career.divorced?.taken===200&&boxed.profile.fund===200);
 
 // What Stevan wears (story-scene.js, pit-crew.js STEVAN_OUTFITS): street clothes until the welcome, Kléber's loan, his own.
 check('outfit_by_stage',outfitOf(newCareer())==='civil'&&outfitOf({...newCareer(),intro:true})==='emprestado'&&outfitOf({...newCareer(),intro:true,gear:['macacao']})==='proprio');

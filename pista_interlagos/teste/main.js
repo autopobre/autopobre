@@ -45,7 +45,7 @@ import {SkidMarks} from './skid-marks.js?v=20260923-capotagem';
 import {TyreSmoke} from './tyre-smoke.js?v=20261005-poeira-folhas';
 import {ImmersiveMode} from './immersive-mode.js';
 import {ImmersiveState} from './immersive-state.js';
-import {CHALLENGES,MORALE,MORALE_NAMES,GAME_OVER,BLAZER_GOAL,STORY_PROFILE_KEY} from './story-career.js';
+import {CHALLENGES,MORALE,MORALE_NAMES,GAME_OVER,BLAZER_GOAL,STORY_PROFILE_KEY,PENSION} from './story-career.js';
 import {MobileControls} from './mobile-controls.js';
 import {GamepadControls} from './gamepad-controls.js';
 import {WheelControls} from './wheel-controls.js';
@@ -1809,7 +1809,8 @@ function renderStoryCareer(){
   :challenge?`<p>Desafio ${challenge.number}: ${challenge.title.toLowerCase()} · ${money(Math.min(p.fund,challenge.goal))} de ${money(challenge.goal)} · prazo: ${left} corrida${left===1?'':'s'}</p>`
   :`<p>${p.released?'A Blazer saiu da oficina!':`Sonho final: tirar a Blazer da oficina · ${money(Math.min(p.fund,BLAZER_GOAL))} de ${money(BLAZER_GOAL)}`}</p>`;
  box.innerHTML=`<span class="tracks-kicker">SUA CARREIRA · ${c.races} corrida${c.races===1?'':'s'}</span><div class="career-wallet"><span>Carteira</span><b>${money(p.fund)}</b></div>`
-  +MORALE.map(k=>`<div class="career-bar" data-key="${k}" data-low="${c.morale[k]<=20}"><span>${MORALE_NAMES[k]}</span><i><b style="width:${c.morale[k]}%"></b></i><em>${c.morale[k]}%</em></div>`).join('')+goal;
+  +MORALE.map(k=>k==='esposa'&&c.divorced?`<div class="career-bar career-divorced" data-key="${k}"><span>${MORALE_NAMES[k]}</span><em>divorciado · pensão ${money(PENSION)}/mês</em></div>`
+   :`<div class="career-bar" data-key="${k}" data-low="${c.morale[k]<=20}"><span>${MORALE_NAMES[k]}</span><i><b style="width:${c.morale[k]}%"></b></i><em>${c.morale[k]}%</em></div>`).join('')+goal;
 }
 // The Gráficos tab's pixel sizes follow the window: refreshed whenever the settings open.
 const openSettings=setupSettings(()=>{menu(true);showRoster();graphicsPanel.show(preferences.values.graphics);sceneryNotice();},returnToMainMenu);
@@ -2039,7 +2040,8 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  pitstop?.reset();walker?.reset();automatic=false;watched=0;
  // Each new race (a restart, a championship round) lets the circuit's extras draw anew (pampulha-fauna.js: another bank).
  for(const extra of circuitExtras)extra.newRace?.();
- if(preferences.values.immersive){immersive.start();}
+ // The story's round (Old Stock 2026) tells the pension which months it pays (story-career.js PENSION_MONTHS).
+ if(preferences.values.immersive){immersive.storyRound=championshipRace?.championship.mode==='historia'?championshipRace.round:null;immersive.start();}
  else{if(immersive.active)immersive.disable();reset();setCameraMode(preferences.values.camera);updateCar(1);updateCamera(1);}
  paintCar();
  if(!immersive.active&&!tour&&!circuit.arena&&!historyPending)immersive.beginCountdown();

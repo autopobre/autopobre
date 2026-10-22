@@ -97,10 +97,58 @@ export const GAME_OVER=Object.freeze({
  esposa:'Sua esposa deu o ultimato: ou ela, ou as corridas. Você pendurou o capacete.',
  equipe:'A equipe 99 cansou de consertar o carro e foi atrás de outro piloto.',
  torcida:'A torcida virou as costas. Sem vaquinha, não tem corrida.',
- dinheiro:'Nem com a torcida toda dá para pagar a inscrição. Fim da linha.'
+ dinheiro:'A carreira de piloto te levou à falência e você está fora do automobilismo.'
 });
+// The wife's patience (Central #15). With her morale at 50% or less after a race the divorce clock runs, the faster
+// the lower she is: [the band's lowest morale, fewest races, most races] (Stevan's table); under 10%, at once. Each
+// race adds 1/N of the way, N the band's races for this wife (her patience, drawn when the clock starts: the fewer
+// or the more), so a morale moving between bands takes the average of their deadlines. Above 50% the clock waits;
+// more than FORGIVE_AFTER races in a row above it and it starts again from zero, her patience drawn anew.
+export const DIVORCE_BANDS=Object.freeze([[40,4,5],[30,3,4],[20,2,3],[10,1,2]]);
+export const DIVORCE_LINE=50,FORGIVE_AFTER=4;
+export const newClock=()=>({progress:0,calm:0,patience:null});
+export function divorceStep(career,random=Math.random){
+ if(career.divorced)return false;const m=career.morale.esposa,c=career.clock;
+ if(m>DIVORCE_LINE){if(c.progress>0&&++c.calm>FORGIVE_AFTER)Object.assign(c,newClock());return false;}
+ c.calm=0;if(m<DIVORCE_BANDS.at(-1)[0]){c.progress=1;return true;}
+ if(c.patience===null)c.patience=random();
+ const [,few,more]=DIVORCE_BANDS.find(([low])=>m>=low);c.progress=Math.min(1,c.progress+1/(c.patience<.5?few:more));
+ return c.progress>=1-1e-9;
+}
+// How the wife's card tells her patience: running out by thirds, or another chance above 50%.
+export const patienceOf=clock=>!clock||clock.progress<=0?null:clock.calm>0?{chance:FORGIVE_AFTER+1-clock.calm}:{stage:clock.progress<1/3?0:clock.progress<2/3?1:2};
+// The divorce: she takes half of the wallet (the division of property); her bar and her requests end, and a
+// pension of PENSION a month leaves the wallet before each vaquinha from the next race on (pensionCards).
+export const PENSION=300;
+export function divorce(career,wallet){
+ const taken=Math.round(Math.max(0,wallet.fund)*50)/100;wallet.fund-=taken;career.divorced={race:career.races,taken};career.pensionFor=null;
+ if(career.report){career.report.divorce={taken};career.report.divorceDue=false;}return taken;
+}
+// The months a round's pension pays (Stevan's table over the Old Stock 2026 calendar: January to March at its first
+// round, June and July at Cascavel in July, November and December at the last); a race outside it, one month.
+export const PENSION_MONTHS=Object.freeze([['janeiro','fevereiro','março'],['abril'],['maio'],['junho','julho'],['agosto'],['setembro'],['outubro'],['novembro','dezembro']]);
+// Before the vaquinha of each race after the divorce (once a race): the months owed, out of the wallet as far as it
+// goes (never a debt: the pilot can still get back on his feet). round: the championship round, or null.
+export function pensionCards(career,wallet,round=null){
+ if(!career.divorced||career.pensionFor===career.races)return [];
+ const months=PENSION_MONTHS[round]??null,amount=PENSION*(months?.length??1),before=wallet.fund,charged=Math.min(amount,Math.max(0,before));
+ wallet.fund=before-charged;career.pensionFor=career.races;
+ return [{type:'pension',months,amount,charged,before,fund:wallet.fund}];
+}
+// The lawyer at the Box 99 (story-scene.js stages it): his three lines, Stevan signing and left alone, then
+// getting up again. [who, line, how it is said]; a line without words shows only what happens.
+export const DIVORCE_LINES=Object.freeze([
+ ['lawyer','Eu sou advogado e estou aqui representando a sua esposa.'],
+ ['lawyer','Ela se cansou de tantos prejuízos com corridas e decidiu pedir o divórcio.'],
+ ['lawyer','Assine estes papéis.','entrega os papéis'],
+ ['pilot','','assina os papéis com tristeza'],
+ ['pilot','','o advogado vai embora; sozinho no box, cabisbaixo'],
+ ['pilot','Ainda tenho a pista e a torcida. Bora pra próxima.','respira fundo']
+]);
+// The divorce's cards in the report it came with: the scene (in what the pilot wears), then what she took.
+export const divorceCards=(career,wallet)=>career.report?.divorce?[...DIVORCE_LINES.map((line,i)=>({...lineCard(line,'divorce','divorce',i),outfit:outfitOf(career)})),{type:'divorce',taken:career.report.divorce.taken,fund:wallet.fund,race:career.report.race}]:[];
 
-export const newCareer=()=>({version:1,morale:Object.fromEntries(MORALE.map(k=>[k,MORALE_START])),races:0,challenge:0,since:0,expense:false,gear:[],intro:false,report:null,over:null});
+export const newCareer=()=>({version:1,morale:Object.fromEntries(MORALE.map(k=>[k,MORALE_START])),races:0,challenge:0,since:0,expense:false,gear:[],intro:false,report:null,over:null,clock:newClock(),divorced:null,pensionFor:null});
 // A saved career, checked field by field; anything unknown starts a new one.
 export function loadCareer(raw){
  const c=newCareer();if(!raw||typeof raw!=='object'||raw.version!==1)return c;
@@ -112,38 +160,52 @@ export function loadCareer(raw){
   c.report={race:count(raw.report.race),outcome:raw.report.outcome,before:Object.fromEntries(MORALE.map(k=>[k,clamp(Math.round(raw.report.before[k]),0,100)])),awaiting:raw.report.awaiting==='expense'?'expense':null,
    ...(['damage','bill','charged'].every(k=>Number.isInteger(raw.report.repair?.[k])&&raw.report.repair[k]>=0)?{repair:{damage:raw.report.repair.damage,bill:raw.report.repair.bill,charged:raw.report.repair.charged}}:{})};
  c.over=Object.hasOwn(GAME_OVER,raw.over)?raw.over:null;
+ // The divorce (Central #15): the clock, the divorce itself and the race whose pension is paid.
+ const share=v=>Number.isFinite(v)&&v>=0&&v<=1,clockOf=k=>k&&share(k.progress)?{progress:k.progress,calm:Math.min(count(k.calm),FORGIVE_AFTER),patience:share(k.patience)?k.patience:null}:null;
+ c.clock=clockOf(raw.clock)??newClock();
+ if(raw.divorced&&Number.isInteger(raw.divorced.race)&&Number.isFinite(raw.divorced.taken)&&raw.divorced.taken>=0)c.divorced={race:Math.min(count(raw.divorced.race),c.races),taken:raw.divorced.taken};
+ c.pensionFor=Number.isInteger(raw.pensionFor)&&raw.pensionFor>=0&&raw.pensionFor<=c.races?raw.pensionFor:null;
+ if(c.report){const r=raw.report;for(const k of ['clock','clockBefore']){const v=clockOf(r[k]);if(v)c.report[k]=v;}
+  if(c.divorced&&Number.isFinite(r.divorce?.taken))c.report.divorce={taken:r.divorce.taken};c.report.divorceDue=r.divorceDue===true&&!c.divorced;}
  return c;
 }
 const shift=(career,changes)=>{for(const [k,d] of Object.entries(changes))career.morale[k]=clamp(career.morale[k]+d,0,100);};
 // The morale cards of a report: what each bar went through, from where it was before the race.
+// After a divorce the wife's card is gone (her bar stays where it was); hers carries her patience (patienceOf).
 export function moraleCards(career){
  const r=career.report;if(!r)return [];
- const table=MORALE_CARDS[r.race<=EARLY_RACES?'early':'late'][r.outcome];
- return MORALE.map((key,i)=>({type:'morale',key,text:table[i][0],delta:table[i][1],before:r.before[key],value:clamp(r.before[key]+table[i][1],0,100),outcome:r.outcome,race:r.race}));
+ const table=MORALE_CARDS[r.race<=EARLY_RACES?'early':'late'][r.outcome],gone=career.divorced&&career.divorced.race<r.race;
+ return MORALE.map((key,i)=>({type:'morale',key,text:table[i][0],delta:table[i][1],before:r.before[key],value:clamp(r.before[key]+table[i][1],0,100),outcome:r.outcome,race:r.race,
+  ...(key==='esposa'?{patience:patienceOf(r.clock),divorced:!!r.divorce}:{})})).filter(card=>!(gone&&card.key==='esposa'));
 }
 // The repair bill's card, after the supporters' morale card (none on a report from before the bill).
 export const repairCards=(report,wallet)=>report?.repair?[{type:'repair',...report.repair,fund:wallet.fund}]:[];
 // The race is paid: one more race in the career, the morale moved by its outcome, and a report
 // waiting to be shown (openReport). The challenge is looked at when the report is shown.
 // repair: the team's bill already taken from the wallet (repairBill).
-export function applyRace(career,result,repair=null){
+// The wife's clock steps with her new morale (divorceDue: the state takes half of the wallet, divorce()).
+export function applyRace(career,result,repair=null,random=Math.random){
  career.races++;const outcome=outcomeOf(result),before={...career.morale};
- career.report={race:career.races,outcome,before,awaiting:null,...(repair?{repair}:{})};
+ career.report={race:career.races,outcome,before,awaiting:null,...(repair?{repair}:{}),clockBefore:{...career.clock}};
  for(const card of moraleCards(career))career.morale[card.key]=card.value;
+ career.report.divorceDue=divorceStep(career,random);career.report.clock={...career.clock};
  return career.report;
 }
 // The judge disqualified a car already paid (taken to the box before the inspection): the report not
 // yet shown counts as towed in.
 export function reviseRace(career,result){
  const r=career.report;if(!r||r.awaiting)return false;
- career.morale={...r.before};r.outcome=outcomeOf(result);for(const card of moraleCards(career))career.morale[card.key]=card.value;return true;
+ career.morale={...r.before};r.outcome=outcomeOf(result);for(const card of moraleCards(career))career.morale[card.key]=card.value;
+ // The wife's clock steps again from where it was before the race, her patience as drawn.
+ if(!career.divorced&&r.clockBefore){const patience=career.clock.patience;career.clock={...r.clockBefore};r.divorceDue=divorceStep(career,()=>patience??Math.random());r.clock={...career.clock};}
+ return true;
 }
 // The challenge after a race (or after the wife's expense was answered), applied at once:
 // wallet: the profile with fund (the wallet) and released (the Blazer). Returns its cards.
 export function challengeCards(career,wallet){
  const c=CHALLENGES[career.challenge];
  if(!c)return [{type:'dream',goal:BLAZER_GOAL,fund:wallet.fund,released:!!wallet.released}];
- if(wallet.fund>=c.goal&&!career.expense){if(career.report)career.report.awaiting='expense';return [{type:'expense',challenge:c.id,value:expenseFor(c,career),fund:wallet.fund}];}
+ if(wallet.fund>=c.goal&&!career.expense&&!career.divorced){if(career.report)career.report.awaiting='expense';return [{type:'expense',challenge:c.id,value:expenseFor(c,career),fund:wallet.fund}];}
  if(wallet.fund>=c.goal){
   wallet.fund-=c.goal;career.gear.push(c.id);career.challenge++;career.since=career.races;career.expense=false;
   const next=CHALLENGES[career.challenge];
@@ -169,5 +231,5 @@ export function answerExpense(career,wallet,pay){
  career.expense=true;career.report.awaiting=null;
  return [{type:'answer',challenge:c.id,paid:!!pay,value,fund:wallet.fund,morale:career.morale.esposa},...challengeCards(career,wallet)];
 }
-// The first bar to reach zero ends the story.
-export const overReason=career=>MORALE.find(k=>career.morale[k]<=0)??null;
+// The first bar to reach zero ends the story; the wife's no longer does (Central #15: under 10% she divorces him).
+export const overReason=career=>MORALE.find(k=>k!=='esposa'&&career.morale[k]<=0)??null;

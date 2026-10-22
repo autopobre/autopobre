@@ -20,7 +20,7 @@ const merge=parts=>{const g=mergeGeometries(parts,false);parts.forEach(p=>p.disp
 const ball=(r,w=12,h=9)=>new THREE.SphereGeometry(r,w,h),capsule=(r,len)=>new THREE.CapsuleGeometry(r,len,3,10),tube=(a,b,h,s=12)=>new THREE.CylinderGeometry(a,b,h,s),block=(x,y,z)=>new THREE.BoxGeometry(x,y,z);
 const darker=(color,k)=>new THREE.Color(color).multiplyScalar(k);
 
-const BASE={skin:0xc68e6a,hair:0x2b1f17,hairStyle:'short',top:0x5a6a78,bottom:0x2d3a4a,belt:0x1b1d20,shoes:0x1b1d20,hands:null,trim:null,sleeves:'long',hat:null,hatColor:0xc81d25,apron:null,skirt:null,legs:null,glasses:false,mustache:false,beard:false,belly:0,back:false,figure:'m'};
+const BASE={skin:0xc68e6a,hair:0x2b1f17,hairStyle:'short',top:0x5a6a78,bottom:0x2d3a4a,belt:0x1b1d20,shoes:0x1b1d20,hands:null,trim:null,sleeves:'long',hat:null,hatColor:0xc81d25,apron:null,skirt:null,legs:null,glasses:false,mustache:false,beard:false,belly:0,back:false,figure:'m',tie:null,shirt:0xf2f0ea};
 const CREW={top:0xc81d25,bottom:0xc81d25,trim:0xf4f1ea,hands:0x1b1d20,shoes:0x1b1d20,back:true};
 export const OUTFITS={
  crew:CREW,
@@ -38,6 +38,8 @@ export const OUTFITS={
  // overalls, and as the businessman of his brand in its black T-shirt (photo 4, the user's pick for his look).
  kleber:{...CREW,top:0x17191c,bottom:0x17191c,trim:0xf2c418,back:false,hands:null,skin:0xb47b5a,hair:0x16120f,hat:'cap',hatColor:0x121315,belly:.25},
  kleberBusiness:{top:0x17191c,sleeves:'short',bottom:0x2b3240,belt:0x1b1d20,shoes:0x1b1d20,skin:0xb47b5a,hair:0x16120f,hat:'cap',hatColor:0x121315,belly:.25},
+ // The wife's lawyer (Central #15, story-scene.js): charcoal suit, white shirt, burgundy tie, glasses, greying hair.
+ lawyer:{top:0x2b2f37,bottom:0x2b2f37,belt:0x141518,shoes:0x141518,tie:0x7a1f2b,skin:0xd6a47f,hair:0x7a736c,glasses:true,belly:.35},
 };
 // The pilot's outfit for each stage of the story (story-career.js outfitOf).
 export const STEVAN_OUTFITS={civil:OUTFITS.stevanCivil,emprestado:OUTFITS.stevanLoan,proprio:OUTFITS.driver};
@@ -76,6 +78,8 @@ function torsoGeometry(o){
  if(f)for(const z of [-1,1])p.push(piece(ball(.052,10,8),o.top,[.084,.44,z*.058],[0,0,0],[.72,.82,.95]));
  if(o.trim)p.push(piece(tube(top+.002,top-.006,.055,16),o.trim,[0,.37,0],[0,0,0],[depth+.01,1,1.01]),piece(block(.008,.46,.014),darker(o.top,.6),[front+.03*b,.28,0]),f?piece(block(.01,.035,.06),0xf4f1ea,[.104,.495,.07],[0,0,-.35]):piece(block(.01,.06,.08),0xf4f1ea,[front+.002+.03*b,.43,.075]));
  if(o.apron)p.push(piece(block(.02,.36,.3),o.apron,[.13+.03*b,.2,0]));
+ // A suit (tie: its colour): the shirt in the jacket's opening and the tie down it (the wife's lawyer, story-scene.js).
+ if(o.tie)p.push(piece(block(.016,.15,.085),o.shirt,[front+.004+.02*b,.45,0]),piece(block(.018,.22,.032),o.tie,[front+.01+.02*b,.39,0]),piece(block(.02,.032,.042),o.tie,[front+.012+.02*b,.5,0]));
  return merge(p);
 }
 // Eyelids (skin, a shade darker) hang from their bone on the brow line over each eye.

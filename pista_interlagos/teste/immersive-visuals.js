@@ -205,7 +205,10 @@ export class ImmersiveVisuals {
    if(!at){const front=pit?.box99?.front??L.spotD+3;at=(a,o)=>L.point(-16+a,front-o).add(this.crowd.position);}
    const logo=new THREE.MeshStandardMaterial({name:'Marca_Eletric',map:new THREE.TextureLoader().load('./assets/branding/patrocinio_eletric_v1.webp',t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;}),transparent:true,roughness:.55,polygonOffset:true,polygonOffsetFactor:-1});
    const car=entry?this.rivalCar(rivalTemplate,entry.color,entry.number,entry.shortName,{stripe:entry.stripe,finish:entry.finish,dirt:true}):null;
-   this.storyScene=new StoryScene({people:this.people,parent:this.root,at,car,groundAt:(x,y)=>this.groundAt?.(x,y),logo});}
+   // The divorce (Central #15) inside the Box 99: `out` toward its door, from a point 9 m in (the lawyer walks in
+   // from the lane, the cameras look at the back wall with the crew behind them, at the door).
+   const boxAt=pit?.box99?(a,o)=>L.point(a,pit.box99.front+Math.min(9,pit.box99.depth*.6)-o).add(this.crowd.position):null;
+   this.storyScene=new StoryScene({people:this.people,parent:this.root,at,boxAt,car,groundAt:(x,y)=>this.groundAt?.(x,y),logo});}
   this.banner(this.crowd,'PADDOCK · VAQUINHA ANTES DA LARGADA',L.point(12,L.bounds.d1-.1,6.3),L.heading,9,.55,'#f5d279','#1a292b');
   this.truck=this.truckModel();this.root.add(this.truck);
   this.strap=this.strapMesh();this.root.add(this.strap);

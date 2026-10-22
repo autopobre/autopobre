@@ -106,6 +106,9 @@ def desktop(browser):
     page.click('[data-action="scene:next"]'); frames(page)
     check('third_card_supporters', 'QUADRO 3 DE 3' in panel(page) and '+10%' in panel(page))
     page.keyboard.press('Space'); frames(page)
+    # Central #14: the team's repair bill comes after the supporters' card.
+    check('repair_bill_card', card(page) == 'repair' and 'Custos de reparo do carro' in panel(page))
+    page.keyboard.press('Space'); frames(page)
     fund = page.evaluate('fixtureMode.state.profile.fund')
     check('challenge_progress', card(page) == 'challenge' and 'DESAFIO EM ANDAMENTO' in panel(page) and 'faltam 2 corridas' in panel(page) and f'{int(fund // 10)}%' in panel(page))
     shot(page, '09_desafio_andamento')
