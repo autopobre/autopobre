@@ -24,7 +24,9 @@
 .settings-tabs .tab-short{display:none}
 @media(max-width:700px){.settings-tabs button{font-size:0;gap:0;flex:1 1 auto;padding-inline:4px}.settings-tabs b{font-size:12px}.settings-tabs .tab-long{display:none}.settings-tabs .tab-short{display:inline}}
 /* 03 Controles: the Xbox / PlayStation controller (gamepad-controls.js), shown on touch screens too. */
-.pad-guide{margin-top:34px;padding-top:24px;border-top:1px solid #ffffff18}.pad-guide h4{margin:0 0 6px;font-size:17px;color:#f2f3ea}.settings-content .pad-status{margin:0;color:#c9a96a}.settings-content .pad-status.connected{color:#a6c88d}.pad-guide .choices{margin:14px 0}.touch-device #settings-controls .key-guide.pad-keys{display:block}.pad-keys kbd{white-space:nowrap}.pad-keys dd kbd{padding:1px 4px;font-size:10px}
+.pad-guide{margin-top:34px;padding-top:24px;border-top:1px solid #ffffff18}.pad-guide h4{margin:0 0 6px;font-size:17px;color:#f2f3ea}.settings-content .pad-status{margin:0;color:#c9a96a}.settings-content .pad-status.connected{color:#a6c88d}.pad-guide .choices{margin:14px 0}
+/* O controle do seu jeito (pad-panel.js): the keyboard's list and buttons (.keys-*), at the wheel and on foot. */
+.pad-setup{margin-top:18px}.pad-setup .keys-slots kbd{white-space:nowrap}
 /* 03 Controles: Câmbio (manual-gearbox.js) and the racing wheel, pedals and lever (wheel-controls.js, wheel-panel.js). */
 .settings-content .gearbox-choice{margin:20px 0 0}.settings-content .gearbox-note{margin-top:12px}.gearbox-note kbd{padding:1px 4px;font-size:10px}
 .wheel-meters{display:grid;gap:9px;margin:16px 0 6px}.wheel-meters[hidden],.wheel-actions[hidden]{display:none}.wheel-meter{display:grid;grid-template-columns:92px 1fr 64px;align-items:center;gap:10px;font-size:11px;color:#a3b5a6}.wheel-meter[hidden]{display:none}.wheel-meter b{font-weight:500;color:#f2f3ea;text-align:right;font-variant-numeric:tabular-nums}.wheel-meter .wheel-gear{grid-column:2/4;text-align:left;font-size:15px;color:#e2fb57}
@@ -55,7 +57,7 @@
 .keys-row.fixed .keys-slots{padding-right:64px}.keys-slots kbd{opacity:.7}
 .keys-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:6px;padding:14px 0 4px;background:linear-gradient(#10201d00,#10201d 14px)}
 .settings-content .keys-note{flex:1 1 220px;min-height:1.6em;margin:0;font-size:11px;line-height:1.5;color:#e7d491}
-#keysReset{padding:10px 14px;font-size:12px}#keysReset.keys-changed{border-color:#e2fb57;color:#e2fb57}
+#keysReset,#padReset,#padClear{padding:10px 14px;font-size:12px}#keysReset.keys-changed,#padReset.keys-changed{border-color:#e2fb57;color:#e2fb57}#padClear[hidden]{display:none}
 .touch-device .keys-setup{display:none}
 @media(prefers-reduced-motion:reduce){.key-slot.waiting{animation:none}}
 @media(max-width:700px){.key-slot,.keys-slots kbd{min-width:48px;padding:7px 6px}.keys-row.fixed .keys-slots{padding-right:54px}}

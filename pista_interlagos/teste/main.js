@@ -51,7 +51,8 @@ import {WheelControls} from './wheel-controls.js';
 import {WheelPanel} from './wheel-panel.js';
 import {playerKeys,installKeyBindings,applyKeyLabels,keyName} from './key-bindings.js';
 import {KeysPanel} from './keys-panel.js';
-import {ManualGearbox} from './manual-gearbox.js';
+import {PadPanel} from './pad-panel.js';
+import {ManualGearbox,AutoShift} from './manual-gearbox.js';
 import {BrakeReverse} from './brake-reverse.js';
 import {setupSettings} from './settings.js';
 import {CarAudio} from './car-audio.js?v=20260913-immersive';
@@ -883,7 +884,7 @@ function updateOpenings(dt){openings.update(dt);showTrunkInside(trunkInterior,op
 // The hinged parts the crew and the pilot on foot work: the car the player drives, the Opala or the Fusca shown in its place.
 function attachOpenings(){openings.attach(fuscaBody.active?fuscaBody.car:model);}
 // nearest (R key): only the player's car goes back on track; rivals, laps and fuel carry on.
-function reset(nearest=false){walker?.reset();car.fall=null;if(fallMode){setCameraMode(fallMode);fallMode=null;}fallView.stop(camera);if(!nearest)explosions?.reset();action.reset();mobile?.setHandbrake(false);openings.closeAll(true);if(nearest&&arenaMode)arenaMode.spawn(car);else if(nearest)car.recover();else{ghostRecorder.reset();car.resetGrid(playerGridSlot(immersive?.lineup?.length));arenaMode?.spawn(car);if(immersive&&!immersive.active)immersive.resetField();cockpit.resetPhone();}driver?.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();automatic=false;followInitialized=false;cameraReturn.reset(performance.now());headLook.yaw=headLook.pitch=0;lookBack.reset();updateCar(1);updateCamera(1);}
+function reset(nearest=false){walker?.reset();autoShift.cancel();car.fall=null;if(fallMode){setCameraMode(fallMode);fallMode=null;}fallView.stop(camera);if(!nearest)explosions?.reset();action.reset();mobile?.setHandbrake(false);openings.closeAll(true);if(nearest&&arenaMode)arenaMode.spawn(car);else if(nearest)car.recover();else{ghostRecorder.reset();car.resetGrid(playerGridSlot(immersive?.lineup?.length));arenaMode?.spawn(car);if(immersive&&!immersive.active)immersive.resetField();cockpit.resetPhone();}driver?.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();automatic=false;followInitialized=false;cameraReturn.reset(performance.now());headLook.yaw=headLook.pitch=0;lookBack.reset();updateCar(1);updateCamera(1);}
 const names=[[0,'Reta dos boxes'],[280,'S do Senna · T1–T2'],[490,'Curva do Sol · T3'],[700,'Reta Oposta'],[1500,'Descida do Lago · T4–T5'],[1810,'Subida para a Ferradura'],[1990,'Ferradura · T6–T7'],[2230,'Laranjinha · T8'],[2430,'Pinheirinho · T9'],[2660,'Bico de Pato · T10'],[2840,'Mergulho · T11'],[3120,'Junção · T12'],[3250,'Subida dos boxes · T13'],[3570,'Café · T14'],[3960,'T15 · Reta dos boxes']];
 function location(s){const sections=data.meta.sections||names;let name=sections[0][1];for(const [d,n] of sections)if(s>=d)name=n;return name;}
 const fmt=t=>{if(t===null)return '—';const m=Math.floor(t/60),s=t%60;return `${String(m).padStart(2,'0')}:${s.toFixed(3).padStart(6,'0')}`;};
@@ -1310,7 +1311,7 @@ const pressed=code=>keys.has(code)||mobile?.pressed.has(code)||code!=='Space'&&(
 // Keys that hold the handbrake only while held (the drifter's way): N; on the arena Shift and Space too (Space enters
 // keys there only). Many keyboards drop a third key held with W and A or D (ghosting, user 10-12: W + D + N); Space and
 // Shift are the ones they keep; with the arrows ↑ + ← + N was dropped and ↑ + → + N kept, so B too (the user's pick; it
-// looks back elsewhere). Shift and B only on the arena: a controller's L3 (the headlights) sends a Shift, R3 a B.
+// looks back elsewhere). Shift and B only on the arena: a controller's R3 (looking back) sends a B.
 // The arena's own keys while driving: T its panel, 9 / 0 the throttle's map and − / = the wheel's (drift-arena-mode.js).
 const ARENA_KEYS=Object.freeze(['KeyT','Digit9','Digit0','Numpad9','Numpad0','Minus','Equal','NumpadSubtract','NumpadAdd']);
 const HANDBRAKE_HOLD=Object.freeze(['KeyN']),ARENA_HANDBRAKE=Object.freeze(['KeyN','KeyB','ShiftLeft','ShiftRight','Space']);
@@ -1321,8 +1322,12 @@ function input(step=0){
  const command={ignition:pressed('KeyI')?1:0,throttle:Math.max(pressed('KeyW')||pressed('ArrowUp')?1:0,mobile?.throttle??0,gamepad.throttle,wheel.throttle,walk),brake:Math.max(pressed('KeyS')||pressed('ArrowDown')?1:0,mobile?.brake??0,gamepad.brake,wheel.brake,-walk),left:Math.max(pressed('KeyA')||pressed('ArrowLeft')?1:0,-(mobile?.steering??0),-gamepad.steering,-steer),right:Math.max(pressed('KeyD')||pressed('ArrowRight')?1:0,mobile?.steering??0,gamepad.steering,steer),reverse:pressed('KeyQ')?1:0,handbrake:pressed('Space')||!automatic&&!afoot&&(arenaMode?ARENA_HANDBRAKE:HANDBRAKE_HOLD).some(code=>keys.has(code))?1:0};
  // The wheel alone steering: physics turns the road wheels where it is, with no smoothing.
  if(!afoot&&wheel.steers&&command.left+command.right===Math.abs(steer))command.wheel=true;
- // Câmbio manual: the gear the player put in, and a wheel's clutch pedal (the keyboard has none).
- if(manualGearbox()&&!afoot){ownGearbox();gearbox.setLever(wheel.lever);command.gear=gearbox.gear;command.clutch=wheel.clutch;}
+ // Câmbio manual: the gear the player put in, and a wheel's clutch pedal (the keyboard has none). (A gear the automatic
+ // was holding for the player hands the car over as the automatic's.)
+ if(manualGearbox()&&!afoot){if(autoShift.cancel())car.manualGear=false;ownGearbox();gearbox.setLever(wheel.lever);command.gear=gearbox.gear;command.clutch=wheel.clutch;}
+ // Câmbio automático: a gear the player asked for, held a few seconds (manual-gearbox.js AutoShift).
+ // Backing up (Q, or the brake held nearly stopped) lets it go.
+ else if(!afoot&&autoShift.holding){const gear=step?autoShift.hold(car,step,command.reverse||command.brake>.3&&Math.hypot(car.vx,car.vy)<1):autoShift.gear;if(gear!==undefined)command.gear=gear;}
  return brakeReverse.apply(command,car,{allowed:!afoot&&command.gear===undefined&&!outOfFuel(),dt:step});
 }
 // The recon lap races the Opala 99 with the rivals' racecraft (RaceField.heroInput). Each physics
@@ -1878,20 +1883,25 @@ function padMenu(){
  if(!sessionStarted||lapRecords.dialog.open||championshipDialog.dialog.open)return;
  if($('settings').open)resumeRace();else gamepad.press(paused?'KeyP':'Escape');
 }
-// Câmbio manual (manual-gearbox.js): X / Z, the controller's D-pad → ←, a wheel's paddles or levers.
-const gearbox=new ManualGearbox(),manualGearbox=()=>preferences.values.gearbox==='manual';
+// Câmbio manual (manual-gearbox.js): X / Z, the controller's X and A, a wheel's paddles or levers. With the automatic
+// the same shifts put a gear in for a few seconds (autoShift).
+const gearbox=new ManualGearbox(),autoShift=new AutoShift(),manualGearbox=()=>preferences.values.gearbox==='manual';
 // The player takes the gearbox over from the automatic (a race start, the recon lap's autopilot, the
 // cool-down after the flag): it starts in the car's gear, or the H lever's.
 function ownGearbox(){if(!car.manualGear){gearbox.sync(car,wheel.lever);car.manualGear=true;}}
 // With the automatic the brake held at rest backs up (brake-reverse.js).
 const brakeReverse=new BrakeReverse();
 function shiftGear(step){
- if(!manualGearbox()||!ready||!sessionStarted||paused||automatic||immersive?.onFoot()||walker?.active||pitstop?.opened)return;
+ if(!ready||!sessionStarted||paused||automatic||immersive?.onFoot()||walker?.active||pitstop?.opened)return;
+ if(!manualGearbox()){autoShift.ask(car,step);return;}
  ownGearbox();if(step>0)gearbox.up();else gearbox.down(car);
 }
-let wheelPanel=null;
+let wheelPanel=null,padPanel=null;
 const wheel=new WheelControls({onMenu:padMenu,onShift:shiftGear,onChange:wheelStatus});
-const gamepad=new GamepadControls({onLook:padLook,onLookEnd:padLookEnd,onChange:padStatus,onMenu:padMenu,onShift:shiftGear,ignore:pad=>wheel.uses(pad.id)});
+// The controller's buttons do as on foot (pad-bindings.js) walking, at the box's café, in the story's paddock and on its
+// podium and results; anywhere else, as at the wheel.
+const padPlace=()=>pitstop?.coffee||immersive?.onFoot()||walker?.active||immersive?.active&&['podium','complete'].includes(immersive.state.phase)?'foot':'car';
+const gamepad=new GamepadControls({onLook:padLook,onLookEnd:padLookEnd,onChange:padStatus,onMenu:padMenu,place:padPlace,ignore:pad=>wheel.uses(pad.id)});
 $('padSteering').value=preferences.values.padSteering;gamepad.setSteering(preferences.values.padSteering);
 $('padSteering').onchange=()=>{preferences.update({padSteering:$('padSteering').value});gamepad.setSteering(preferences.values.padSteering);};
 $('padRumble').checked=gamepad.rumble=preferences.values.padRumble;
@@ -1907,6 +1917,8 @@ $('settings').addEventListener('close',()=>wheelPanel.cancel());
 // Teclado do seu jeito: a key moved lets go of whatever was held (it would read as another key on release), and the
 // screen's key names follow.
 new KeysPanel();
+// O controle do seu jeito: its buttons for each command, at the wheel and on foot.
+padPanel=new PadPanel({gamepad});
 const keyLabels=()=>{applyKeyLabels(document);audioControls();if(activeLivery)skinLabel();};
 playerKeys.onChange(()=>{keys.clear();keyLabels();});keyLabels();
 $('settings').addEventListener('close',()=>{sceneryToastDue=sceneryNotice();});
@@ -1923,6 +1935,7 @@ function wheelStatus(){
 // The controls tab names the controller; a race in progress says so for a moment too.
 // A device that is no standard pad (a wheel, pedals) is named, and why it does nothing.
 function padStatus(pad){
+ padPanel?.refresh();
  const odd=pad.unsupported,text=pad.connected?`Controle conectado: ${pad.name}`:odd?`${odd}: não é um controle Xbox ou PlayStation. Se for volante ou pedaleira, configure em Volante, pedais e câmbio, logo abaixo`:'Nenhum controle conectado';
  $('padStatus').textContent=pad.connected||odd?text:`${text}. Ligue o controle e aperte um botão.`;$('padStatus').classList.toggle('connected',pad.connected);
  if(!sessionStarted||$('settings').open)return;const shown=pad.connected?`${text} · RT acelera, LT freia`:odd?text:'Controle desconectado';status(shown);setTimeout(()=>{if($('status').textContent===shown)status('');},4000);
@@ -1952,7 +1965,7 @@ document.addEventListener('keydown',e=>{
  if(!paused&&immersive?.handleKey(e.code)){e.preventDefault();return;}
  // F gets out of the car anywhere in a race (free-walk.js); the car stops first.
  if(e.code==='KeyF'&&!paused)toggleWalk();
- // Câmbio manual: X shifts up, Z down.
+ // X shifts up, Z down (the controller's X and A): in the manual, and for a few seconds in the automatic.
  if(e.code==='KeyX'||e.code==='KeyZ')shiftGear(e.code==='KeyX'?1:-1);
  // The controller's D-pad sends 1 2 3 too (synthetic), and on foot the numbers answer: only the
  // keyboard's numbers, in the car, pick a view.
@@ -1965,7 +1978,7 @@ document.addEventListener('keydown',e=>{
  if(e.code==='KeyR'&&!immersive.finishing)reset(true);
  if(e.code==='KeyM'){carAudio.toggleMute();audioControls();}
  if(e.code==='KeyV')cycleLivery();
- // The controller's ↑ (a synthetic G) answers 2 on foot: there it leaves the ghost alone.
+ // On foot only the keyboard's G turns the ghost.
  if(e.code==='KeyG'&&(e.isTrusted||!immersive.onFoot()))toggleGhost();
 if(e.code==='KeyK')toggleHeadlights();
 if(e.code==='KeyJ')toggleWipers();
@@ -2460,7 +2473,7 @@ async function loadCircuit(){
  ready=true;loadedCircuit=circuit.id;sceneryBuilt=sceneryLevel;mirrorPrograms=null;setCameraMode(preferences.values.camera);$('skinButton').disabled=false;updateCar(1);cockpit.update(car,0);driver.update(car,0);updateCamera(1);cameraHint();hud();$('start').disabled=false;
  window.interlagos={ready:true,circuit:circuit.id,car,explosionInfo:()=>explosions?.info()??null,fallInfo:()=>({timeScale:fallView.timeScale,active:fallView.active,shot:!!fallView.shot,sight:fallInSight(fallView,car,camera)}),renderAhead,telemetry:()=>car.telemetry(),setLivery,reset:()=>reset(),reposition:index=>{car.reset(index);driver.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();cockpit.resetPhone();updateCar(1);updateCamera(1);},setTour:value=>{if(immersive.active)return;automatic=value;menu(false);},
   immersiveInfo:()=>immersive.info(),pitInfo:()=>pitstop?.info()??null,walkInfo:()=>walker?.info()??null,walker:()=>walker,futebolInfo:()=>futebol?.info()??null,futebol:()=>futebol,
-  audioInfo:()=>carAudio.info(),mobileInfo:()=>({enabled:touchDevice,steering:mobile?.steering??0,throttle:mobile?.throttle??0,brake:mobile?.brake??0,pressed:[...(mobile?.pressed??[])],pixelRatio:renderer.getPixelRatio()}),gamepadInfo:()=>({connected:gamepad.connected,name:gamepad.connected?gamepad.name:'',steering:gamepad.steering,throttle:gamepad.throttle,brake:gamepad.brake,held:[...gamepad.held],rumble:gamepad.rumble,curve:gamepad.curve}),
+  audioInfo:()=>carAudio.info(),mobileInfo:()=>({enabled:touchDevice,steering:mobile?.steering??0,throttle:mobile?.throttle??0,brake:mobile?.brake??0,pressed:[...(mobile?.pressed??[])],pixelRatio:renderer.getPixelRatio()}),gamepadInfo:()=>({connected:gamepad.connected,name:gamepad.connected?gamepad.name:'',steering:gamepad.steering,throttle:gamepad.throttle,brake:gamepad.brake,held:[...gamepad.held.keys()],pressing:[...gamepad.held.values()],place:padPlace(),rumble:gamepad.rumble,curve:gamepad.curve,gear:car?.gear??null,autoHold:autoShift.gear}),
   cinematicInfo:()=>({...cinematic.info(),adaptation:cinematic.adaptation()}),tvInfo:()=>tvCamera.info(),tvCamera:()=>tvCamera,introInfo:()=>intro.info(),skipIntro:()=>intro.stop(),setCinematic:level=>cinematic.setLevel(level),cinematicLook:patch=>Object.assign(cinematic.look,patch||{}),
   skidInfo:()=>skidMarks.info(),smokeInfo:()=>tyreSmoke.info(),sceneryInfo:()=>({...landscape.stats,sky:sky.info()}),waterInfo:()=>landscape.waterInfo(),lakeInfo:()=>lakeContact?.info()??null,treeInfo:()=>treeField?.info()??null,tumbleInfo,waterAt:(x,y)=>landscape.water.at(x,y),
   structureInfo:()=>({revision:'v04_fechamentos',parts:carStructure.children.length,visible:carStructure.visible}),

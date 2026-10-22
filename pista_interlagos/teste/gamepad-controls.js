@@ -1,24 +1,12 @@
+import {MENU_BUTTON,PAD_BUTTONS,playerPad} from './pad-bindings.js';
 // Xbox and PlayStation controllers (Gamepad API, standard mapping only: a wheel or pedals, or a pad a
 // browser does not map, has its buttons and axes elsewhere, and is left out). As in F1 and the other racing
 // games, RT (R2) accelerates and LT (L2) brakes, both analog, and the left stick steers. The other
-// buttons press the keyboard's keys (BUTTON_KEYS), so every place that answers a key answers the
-// controller too; the right stick looks around like the captured mouse (onLook, in mouse pixels), and
-// let go it says so (onLookEnd: the view turns back to the front).
-export const BUTTON_KEYS=Object.freeze({
- 0:['Space'],          // A / ✕: handbrake (on foot a jump, on the podium Continuar)
- 1:['KeyQ'],           // B / ○: reverse, held
- 2:['KeyE','KeyH'],   // X / □: the action key (talk, hood, trunk); at the wheel, the horn, held
- 3:['KeyL','KeyF'],    // Y / △: IGN at the start; on foot, out of the Opala or back in
- 4:['KeyI'],           // LB / L1: the starter, held
- 5:['KeyC'],           // RB / R1: next camera (on foot: crouch)
- 8:['KeyR'],           // View / Share: reposition, or call the tow
- 10:['ShiftLeft','KeyK'], // LS / L3: run on foot, held; in the car the headlights
- 11:['KeyB'],          // RS / R3: look back, held
- 12:['Digit2','KeyG'],13:['KeyN'],14:['Digit1'],15:['Digit3'] // D-pad: answers 1 2 3 on foot; ↑ in the car the ghost lap; ↓ the next driver in the recon lap
-});
-export const MENU_BUTTON=9; // Menu / Options: the pause menu, and back to the race
-// Câmbio manual (manual-gearbox.js): the D-pad's → shifts up and ← down (onShift), besides their keys.
-export const SHIFT_BUTTONS=Object.freeze({15:1,14:-1});
+// buttons press the keyboard's keys, the player's choice for where the pilot is (pad-bindings.js: at the
+// wheel or on foot), so every place that answers a key answers the controller too; Menu (Options) opens
+// the pause menu and goes back to the race (onMenu). The right stick looks around like the captured mouse
+// (onLook, in mouse pixels), and let go it says so (onLookEnd: the view turns back to the front).
+export {MENU_BUTTON};
 export const STEERING_CURVES=Object.freeze({suave:2.2,normal:1.6,direta:1});
 // A trigger's travel counts from where it rests: the lowest it has read up to TRIGGER_REST (a worn
 // trigger never goes back to 0; one pressed further when first read rests at 0 until let go). The
@@ -38,9 +26,11 @@ const padName=pad=>pad?.id.replace(/\s*\(.*\)\s*$/,'').trim()||'Controle';
 export class GamepadControls {
  // ignore(pad): a device another reader drives (a racing wheel set up in wheel-controls.js, which
  // may even call itself a standard pad). suspended: reads nothing (the wheel's setup is listening).
- constructor({target=document,onMenu,onLook,onLookEnd,onChange,onShift,ignore}={}){
-  this.target=target;this.onMenu=onMenu;this.onLook=onLook;this.onLookEnd=onLookEnd;this.onChange=onChange;this.onShift=onShift;this.ignore=ignore;this.suspended=false;
-  this.steering=this.throttle=this.brake=this.walk=0;this.held=new Set();this.menuHeld=false;this.looking=false;this.pad=null;this.other=null;
+ // bindings: the buttons' keys (pad-bindings.js); place(): where the pilot is now, 'car' or 'foot'.
+ constructor({target=document,onMenu,onLook,onLookEnd,onChange,ignore,bindings=playerPad,place=()=>'car'}={}){
+  this.target=target;this.onMenu=onMenu;this.onLook=onLook;this.onLookEnd=onLookEnd;this.onChange=onChange;this.ignore=ignore;this.suspended=false;
+  this.bindings=bindings;this.place=place;this.listener=null;
+  this.steering=this.throttle=this.brake=this.walk=0;this.held=new Map();this.down=new Set();this.looking=false;this.pad=null;this.other=null;
   this.curve=STEERING_CURVES.normal;this.rumble=true;this.touching=new Map();this.rests=new Map();
   addEventListener('gamepadconnected',()=>this.poll(0));addEventListener('gamepaddisconnected',()=>this.poll(0));
  }
@@ -56,7 +46,10 @@ export class GamepadControls {
  setSteering(name){this.curve=STEERING_CURVES[name]??STEERING_CURVES.normal;}
  // main.js: whether a held button presses that key now (a key the game let go of meanwhile, its menu
  // or a pause, is still held while the button is).
- holds(code){for(const index of this.held)if(BUTTON_KEYS[index].includes(code))return true;return false;}
+ holds(code){for(const held of this.held.values())if(held===code)return true;return false;}
+ // The settings learning a button (pad-panel.js): each button pressed from now on goes to fn (its index,
+ // Menu and the triggers too) and presses nothing; null ends it. What was held lets go.
+ listen(fn){this.releaseAll();this.listener=fn??null;}
  // The standard pad the player last took up: one whose button or stick has just been pressed takes
  // over, one held all along (a trigger that rests above zero) never does; else the same one as before.
  pick(){
@@ -74,7 +67,7 @@ export class GamepadControls {
  poll(dt){
   const seen=c=>[c.pad?.id,c.pad?.index,c.unsupported].join('|'),before=seen(this);
   this.pad=document.hidden||this.suspended?null:this.pick();const pad=this.pad;if(seen(this)!==before)this.onChange?.(this);
-  if(!pad){this.steering=this.throttle=this.brake=this.walk=0;this.releaseAll();this.menuHeld=false;this.lookAt(false);return;}
+  if(!pad){this.steering=this.throttle=this.brake=this.walk=0;this.releaseAll();this.down.clear();this.lookAt(false);return;}
   const button=i=>pad.buttons[i],axis=i=>pad.axes[i]??0;
   // (LT and RT, each from where it rests on this pad: a worn one gives no brake or throttle at rest)
   const key=pad.index+' '+pad.id,rest=this.rests.get(key)??[null,null];this.rests.set(key,rest);
@@ -83,14 +76,18 @@ export class GamepadControls {
   this.steering=stickValue(axis(0),this.curve);
   // Pushed up or down, the left stick walks forward or back (main.js uses it on foot only).
   this.walk=-stickValue(axis(1),1)||0;
-  for(const [index,codes] of Object.entries(BUTTON_KEYS)){
-   const down=!!button(index)?.pressed,was=this.held.has(index);
-   if(down===was)continue;
-   if(down)this.held.add(index);else this.held.delete(index);
-   for(const code of codes)this.key(down?'keydown':'keyup',code);
-   if(down&&SHIFT_BUTTONS[index])this.onShift?.(SHIFT_BUTTONS[index]);
+  // Buttons: a press sends the key its command has where the pilot is now, and its release lets go of that
+  // same key (the pilot may have got out meanwhile); Menu, once per press. Learning, a press only names
+  // its button.
+  const down=new Set();pad.buttons.forEach((b,i)=>{if(b?.pressed)down.add(i);});
+  const pressed=[...down].filter(i=>!this.down.has(i));this.down=down;
+  for(const [index,code] of this.held)if(!down.has(index)){this.held.delete(index);this.key('keyup',code);}
+  for(const index of pressed){
+   if(this.listener){this.listener(index);continue;}
+   if(index===MENU_BUTTON){this.onMenu?.();continue;}
+   const code=PAD_BUTTONS.includes(index)?this.bindings.code(this.place(),index):null;
+   if(code){this.held.set(index,code);this.key('keydown',code);}
   }
-  const menu=!!button(MENU_BUTTON)?.pressed;if(menu&&!this.menuHeld)this.onMenu?.();this.menuHeld=menu;
   const lookX=stickValue(axis(2),1.4,LOOK_DEADZONE),lookY=stickValue(axis(3),1.4,LOOK_DEADZONE);
   if((lookX||lookY)&&dt>0)this.onLook?.(lookX*LOOK_SPEED*dt,lookY*LOOK_SPEED*.6*dt);
   this.lookAt(!!(lookX||lookY));
@@ -99,7 +96,7 @@ export class GamepadControls {
  lookAt(looking){if(this.looking&&!looking)this.onLookEnd?.();this.looking=looking;}
  key(type,code){this.target.dispatchEvent(new KeyboardEvent(type,{code,key:keyName(code),bubbles:true,cancelable:true}));}
  press(code){this.key('keydown',code);this.key('keyup',code);}
- releaseAll(){for(const index of this.held)for(const code of BUTTON_KEYS[index])this.key('keyup',code);this.held.clear();}
+ releaseAll(){for(const code of this.held.values())this.key('keyup',code);this.held.clear();}
  // A knock on the car (impact in m/s of lost speed): a short shake, stronger for harder hits.
  bump(impact){
   const actuator=this.pad?.vibrationActuator;if(!this.rumble||!actuator?.playEffect||impact<4)return;

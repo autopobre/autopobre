@@ -9,7 +9,7 @@ globalThis.KeyboardEvent=class{constructor(type,init){this.type=type;Object.assi
 let pads=[];
 Object.defineProperty(globalThis,'navigator',{value:{getGamepads:()=>pads},configurable:true});
 const {WheelControls,ControlLearner,ROLES,GUIDED,REQUIRED,H_ROLES,WHEEL_KEY,WHEEL_LOCK_DEFAULT,normalizeWheelMap,pedalValue,steeringDegrees,steeringCommand,wheelRange,deviceName}=await import('../teste/wheel-controls.js');
-const {ManualGearbox}=await import('../teste/manual-gearbox.js');
+const {ManualGearbox,AutoShift,AUTO_HOLD}=await import('../teste/manual-gearbox.js');
 const {GamepadControls}=await import('../teste/gamepad-controls.js');
 const {TestCar,REDLINE_RPM,IDLE_RPM}=await import('../teste/physics.js');
 const {CarAudio}=await import('../teste/car-audio.js');
@@ -164,13 +164,13 @@ again.forget();assert.deepEqual(new WheelControls({target,storage}).map,{});
  assert.deepEqual(learnt,{id:G29,axis:0,center:0,per90:.2});assert.equal(w.learning,false);
 }
 // The Xbox controller leaves a device the wheel uses alone (a wheel may call itself a standard pad);
-// its D-pad shifts (→ up, ← down) besides sending 1 and 3.
+// at the wheel its X and A press the keyboard's X and Z (main.js shifts up and down).
 {
- const padShifts=[];const pad=new GamepadControls({target:{dispatchEvent(){}},onShift:s=>padShifts.push(s),ignore:p=>p.id===G29});
+ const sent=[];const pad=new GamepadControls({target:{dispatchEvent(e){if(e.type==='keydown')sent.push(e.code);}},ignore:p=>p.id===G29});
  pads=[device({mapping:'standard',buttons:{7:1}})];pad.poll(1/60);assert.equal(pad.connected,false);assert.equal(pad.unsupported,null);
- pads=[device({id:'Xbox 360 Controller (XInput STANDARD GAMEPAD)',mapping:'standard',buttons:{15:1}})];pad.poll(1/60);pad.poll(1/60);
- pads=[device({id:'Xbox 360 Controller (XInput STANDARD GAMEPAD)',mapping:'standard',buttons:{14:1}})];pad.poll(1/60);
- assert.deepEqual(padShifts,[1,-1]);
+ pads=[device({id:'Xbox 360 Controller (XInput STANDARD GAMEPAD)',mapping:'standard',buttons:{2:1}})];pad.poll(1/60);pad.poll(1/60);
+ pads=[device({id:'Xbox 360 Controller (XInput STANDARD GAMEPAD)',mapping:'standard',buttons:{0:1}})];pad.poll(1/60);
+ assert.deepEqual(sent,['KeyX','KeyZ']);
  pad.suspended=true;pad.poll(1/60);assert.equal(pad.connected,false);
 }
 
@@ -231,6 +231,28 @@ const run=(c,command,seconds)=>{for(let i=0;i<Math.round(seconds*120);i++)c.step
  // A racing wheel turns the road wheels at once; the keyboard's input is smoothed as before.
  const w=flatCar(50),k=flatCar(50);w.step({...idle,right:.4,wheel:true},1/120);k.step({...idle,right:.4},1/120);
  assert.equal(w.steerInput,-.4);assert.ok(k.steerInput>-.1&&k.steerInput<0);
+}
+// Câmbio automático with the player's say (AutoShift, the team's pedido of 10-22): a gear up goes in and stays (alone
+// the automatic would drop it at once), the automatic carries on after AUTO_HOLD; held, it still shifts up at its own
+// point, never to the limiter; down never over-revs, never below 1st; Q lets go.
+{
+ const drive=(c,shift,command,seconds)=>{for(let i=0;i<Math.round(seconds*120);i++){const gear=shift.hold(c,1/120,command.reverse);c.step({...idle,...command,...(gear===undefined?{}:{gear})},1/120);}};
+ const c=flatCar(60),shift=new AutoShift();c.gear=2;
+ assert.equal(shift.ask(c,1),3);assert.equal(shift.ask(c,1),4,'two presses, two gears');
+ drive(c,shift,{throttle:.2},1);assert.equal(c.gear,4,'held in 4th');assert.equal(shift.holding,true);
+ const alone=flatCar(60);alone.gear=4;run(alone,{throttle:.2},.5);assert.ok(alone.gear<4,`alone the automatic drops back: ${alone.gear}`);
+ drive(c,shift,{throttle:.2},AUTO_HOLD);assert.equal(shift.holding,false);assert.equal(c.manualGear,false);assert.ok(c.gear<4,`then the automatic carries on: ${c.gear}`);
+ // Down at 90 km/h in 3rd: 2nd, then floored it goes back up at the automatic's point, short of the limiter.
+ const d=flatCar(90),down=new AutoShift();d.gear=3;
+ assert.equal(down.ask(d,-1),2);let top=0;
+ for(let i=0;i<240;i++){const gear=down.hold(d,1/120,0);d.step({...idle,throttle:1,gear},1/120);top=Math.max(top,d.rpm);}
+ assert.equal(d.gear,3,'up again while held');assert.ok(top<REDLINE_RPM,`never to the limiter: ${top}`);
+ // Refused: down where the engine would over-rev, down from 1st, up from 5th; Q lets go at once.
+ const fast=flatCar(100);fast.gear=3;assert.equal(new AutoShift().ask(fast,-1),null,'100 km/h in 2nd would over-rev');
+ const first=flatCar(20);first.gear=1;assert.equal(new AutoShift().ask(first,-1),null);
+ const fifth=flatCar(200);fifth.gear=5;assert.equal(new AutoShift().ask(fifth,1),null);
+ const q=new AutoShift();q.ask(c,1);assert.equal(q.hold(c,1/120,1),undefined);assert.equal(q.holding,false);
+ const reset=new AutoShift();reset.ask(c,1);assert.equal(reset.cancel(),true);assert.equal(reset.cancel(),false);
 }
 // The engine sound and the gauge: neutral is N, a gear put in shows at a standstill, R is R.
 {

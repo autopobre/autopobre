@@ -1,9 +1,11 @@
 """The Xbox / PlayStation controller in a real race, with a fake Gamepad API in the page.
 
-RT/LT reach the car as analog throttle and brake, the left stick steers, RB changes the camera,
-A pulls and releases the handbrake, the right stick orbits the camera, Menu pauses and resumes,
-the controls tab names the controller and the rumble option shakes it. In the story paddock the
-left stick walks (up/down), which it never does in the car. Usage:
+RT/LT reach the car as analog throttle and brake, X and A shift the automatic (a gear held a few
+seconds), the left stick steers, RB changes the camera, Y pulls and releases the handbrake, the
+right stick orbits the camera, ↓ gets out and on foot Y gets back in, Menu pauses and resumes,
+the controls tab names the controller, gives a button to a command (swapping, Menu cancelling,
+Restaurar) and the rumble option shakes it. In the story paddock the left stick walks (up/down),
+which it never does in the car. Usage:
   verificar_controle.py [port]   (default 8799; INTERLAGOS_URL overrides the whole address)
 """
 import json, os, sys
@@ -49,6 +51,18 @@ with sync_playwright() as p:
     wait_js(page, "window.lastInput&&lastInput.throttle>.5&&lastInput.throttle<.6")
     wait_js(page, f"{speed}>25", timeout=20000)
     step('RT accelerates', page.evaluate(f"({{throttle:lastInput.throttle,kmh:{speed}}})"))
+    # X and A with the automatic gearbox: a gear up, held for a few seconds, then one down (coasting).
+    pad("fakePad.buttons[7]=0")
+    gear = page.evaluate("interlagos.car.gear")
+    pad("fakePad.buttons[2]=1")
+    wait_js(page, f"interlagos.gamepadInfo().autoHold==={gear + 1}&&interlagos.car.gear==={gear + 1}&&lastInput.gear==={gear + 1}")
+    pad("fakePad.buttons[2]=0")
+    page.wait_for_timeout(100)
+    pad("fakePad.buttons[0]=1")
+    wait_js(page, f"interlagos.gamepadInfo().autoHold==={gear}&&interlagos.car.gear==={gear}")
+    pad("fakePad.buttons[0]=0")
+    wait_js(page, "interlagos.gamepadInfo().autoHold===null&&lastInput.gear===undefined", timeout=8000)
+    step('X and A shift the automatic, which then carries on', gear)
     # Left stick, both ways.
     pad("fakePad.buttons[7]=.4;fakePad.axes[0]=-1")
     wait_js(page, "lastInput.left===1&&lastInput.right===0")
@@ -68,25 +82,35 @@ with sync_playwright() as p:
     wait_js(page, f"{speed}<{before}-10", timeout=10000)
     pad("fakePad.buttons[6]=0")
     step('LT brakes', page.evaluate(speed))
-    # RB: next camera. A: handbrake on, then off.
+    # RB: next camera. Y: handbrake on, then off.
     mode = page.evaluate("interlagos.state.mode")
     pad("fakePad.buttons[5]=1")
     wait_js(page, f"interlagos.state.mode!=={mode!r}")
     pad("fakePad.buttons[5]=0")
     step('RB camera', [mode, page.evaluate("interlagos.state.mode")])
-    pad("fakePad.buttons[0]=1")
+    pad("fakePad.buttons[3]=1")
     wait_js(page, "lastInput.handbrake===1")
-    pad("fakePad.buttons[0]=0")
+    pad("fakePad.buttons[3]=0")
     page.wait_for_timeout(100)
-    pad("fakePad.buttons[0]=1")
+    pad("fakePad.buttons[3]=1")
     wait_js(page, "lastInput.handbrake===0")
-    pad("fakePad.buttons[0]=0")
-    step('A handbrake toggles')
+    pad("fakePad.buttons[3]=0")
+    step('Y handbrake toggles')
     # Right stick: from a follow camera it orbits round the car (and comes back after 3 s, as the mouse).
     pad("fakePad.axes[2]=1")
     wait_js(page, "interlagos.state.mode==='orbit'")
     pad("fakePad.axes[2]=0")
     step('right stick looks around')
+    # ↓ gets out (the car stops first); on foot the buttons are the walk's, and Y gets back in.
+    pad("fakePad.buttons[13]=1")
+    wait_js(page, "interlagos.walkInfo().active&&interlagos.gamepadInfo().place==='foot'", timeout=20000)
+    pad("fakePad.buttons[13]=0")
+    page.wait_for_timeout(300)
+    pad("fakePad.buttons[3]=1")
+    page.wait_for_timeout(150)
+    pad("fakePad.buttons[3]=0")
+    wait_js(page, "!interlagos.walkInfo().active&&interlagos.gamepadInfo().place==='car'", timeout=20000)
+    step('↓ out of the car, Y back in')
     # Menu pauses on the menu, Menu again goes back to the race.
     pad("fakePad.buttons[9]=1")
     wait_js(page, "interlagos.state.paused&&!document.querySelector('#menu').classList.contains('hidden')")
@@ -109,6 +133,28 @@ with sync_playwright() as p:
     page.check('#padRumble')
     wait_js(page, "fakePad.effects.length===1&&fakePad.effects[0].type==='dual-rumble'")
     page.select_option('#padSteering', 'normal')
+    # A button for a command: Y given to the horn swaps with the handbrake (L3); Menu while one is awaited gives up
+    # and leaves the settings open; Restaurar brings the original buttons back.
+    slot = lambda id, n=0: f'#padBindings button[data-id="{id}"][data-slot="{n}"]'
+    page.click(slot('buzina'))
+    assert 'Aperte' in page.text_content('#padNote'), page.text_content('#padNote')
+    pad("fakePad.buttons[3]=1")
+    wait_js(page, f"document.querySelector('{slot('buzina')}').textContent==='Y'")
+    pad("fakePad.buttons[3]=0")
+    assert page.text_content(slot('freioMao')) == 'L3', page.text_content(slot('freioMao'))
+    saved = json.loads(page.evaluate("localStorage.getItem('opala99-controle-v1')"))
+    assert saved['buttons'] == {'freioMao': [10, None], 'buzina': [3, None]}, saved
+    page.click(slot('sair', 1))
+    page.wait_for_timeout(100)
+    pad("fakePad.buttons[9]=1")
+    wait_js(page, "document.querySelector('#padNote').textContent==='Nada mudou.'")
+    pad("fakePad.buttons[9]=0")
+    page.wait_for_timeout(200)
+    assert page.evaluate("document.querySelector('#settings').open"), 'Menu while a button is awaited must not close the settings'
+    page.click('#padReset')
+    wait_js(page, "localStorage.getItem('opala99-controle-v1')===null")
+    assert page.text_content(slot('freioMao')) == 'Y'
+    step('settings: Y to the horn swaps with the handbrake, Menu cancels, Restaurar', page.text_content('#padNote'))
     pad("fakePad.buttons[9]=1")
     wait_js(page, "!document.querySelector('#settings').open&&!interlagos.state.paused")
     pad("fakePad.buttons[9]=0")
