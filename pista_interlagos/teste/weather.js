@@ -6,6 +6,7 @@
 // Directions are in the scene's frame: x east, y up, z south (main.js draws the track's north as -z).
 // The light on what draws its own colour (smoke, spray, dust, falling leaves, splashes: no lights in their shaders),
 // one uniform shared by all of them; main.js applyWeather sets it from weatherProfile().ambient (1 by day).
+import {RAIN_CLIMATE} from './rain-climate.js';
 export const EFFECT_LIGHT={value:1};
 // The grandstands' lamps after dark (user, 2026-10-15: "o pessoal das arquibancadas fica no escuro total"): the fixtures
 // under their roofs glow and light the stands and the fans (interlagos-stands.js, landscape.js createCrowd). One uniform
@@ -23,10 +24,29 @@ export const TIME_CHOICES=Object.freeze([...TIMES_OF_DAY,[RANDOM_WEATHER,'Aleat�
 export const RAIN_CHOICES=Object.freeze([...RAIN_LEVELS,[RANDOM_WEATHER,'Aleatório']]);
 export const timeChoice=value=>value===RANDOM_WEATHER?value:timeOfDay(value);
 export const rainChoice=value=>value===RANDOM_WEATHER?value:rainLevel(value);
-// A draw: every time of day and every rain level as likely, the two drawn apart.
-export function drawWeather(random=Math.random){
- const pick=list=>list[Math.min(list.length-1,Math.floor(random()*list.length))][0];
- return {time:pick(TIMES_OF_DAY),rain:pick(RAIN_LEVELS)};
+// The rain's odds where and when the race is (Central #10): the circuit's city in the month of a championship round
+// that has a date, the year's average without one (rain-climate.js, INMET normals: days with rain, the heavy ones);
+// a place with no data, Stevan's first ask: 70% dry, the rest drizzle or heavy rain alike.
+export const PLAIN_RAIN_ODDS=Object.freeze({seco:.7,garoa:.15,chuva:.15});
+const MONTH_DAYS=[31,28.25,31,30,31,30,31,31,30,31,30,31];
+export function rainOdds(circuit,month=null){
+ const c=RAIN_CLIMATE[circuit];if(!c)return PLAIN_RAIN_ODDS;
+ const dated=Number.isInteger(month)&&month>=0&&month<12,sum=list=>list.reduce((a,b)=>a+b,0);
+ const wet=Math.min(1,dated?c.rainDays[month]/MONTH_DAYS[month]:sum(c.rainDays)/365.25),heavy=dated?c.heavyDays[month]/c.rainDays[month]:sum(c.heavyDays)/sum(c.rainDays);
+ const share=Number.isFinite(heavy)?Math.min(1,heavy):0;
+ return {seco:1-wet,garoa:wet*(1-share),chuva:wet*share};
+}
+// The month a championship round is raced, from its calendar date (championship.js: "21 e 22 MAR", "31 OUT e 01 NOV":
+// the Sunday's); null without one.
+const MONTHS=['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+export function raceMonth(date){const named=String(date??'').toUpperCase().match(/[A-Z]{3}/g)?.filter(w=>MONTHS.includes(w));return named?.length?MONTHS.indexOf(named.at(-1)):null;}
+// The rain level a draw's roll (0 to 1) gives at those odds: dry first, then drizzle, then heavy rain.
+export function rainFor(roll,odds=PLAIN_RAIN_ODDS){let edge=0;for(const [level] of RAIN_LEVELS){edge+=odds[level]??0;if(roll<edge)return level;}return RAIN_LEVELS.at(-1)[0];}
+// A draw: every time of day as likely; the rain by the odds (rainOdds), its roll kept so the race takes the draw
+// the menu made at the odds of the circuit and month it is raced (main.js beginRace).
+export function drawWeather(random=Math.random,odds=PLAIN_RAIN_ODDS){
+ const time=TIMES_OF_DAY[Math.min(TIMES_OF_DAY.length-1,Math.floor(random()*TIMES_OF_DAY.length))][0],roll=random();
+ return {time,rain:rainFor(roll,odds),roll};
 }
 // The weather the chosen time and rain race: the draw where they say Aleatório.
 export function chosenWeather(time,rain,draw){

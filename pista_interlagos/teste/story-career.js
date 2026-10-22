@@ -18,6 +18,14 @@ export const ENTRY=Object.freeze({home:100,away:150});
 export const entryFor=circuit=>circuit==='interlagos'?ENTRY.home:ENTRY.away;
 // Each time the tow strap gets under a wheel, untangling it is paid from the wallet.
 export const SNAG_COST=25;
+// The team's repair bill after a race (Central #14): R$ 10 for each point the CARRO bar lost, as the
+// HUD shows it; the windscreen is not on it, nor what the Box 99 fixed (and charged) during the race.
+// A wallet short of it pays what it has: the team lets the rest go (charged, below bill).
+export const REPAIR_PER_POINT=10;
+export function repairBill(health,fund){
+ const damage=100-Math.ceil(clamp(Number.isFinite(health)?health:1,0,1)*100),bill=damage*REPAIR_PER_POINT;
+ return {damage,bill,charged:Math.min(bill,Math.max(0,fund))};
+}
 // The wife's expenses cost 1.5x the standard at 0% and 0.5x at 100%; a knock damages the car on
 // the same scale with the team; the supporters' gifts go the other way round.
 export const expenseScale=morale=>1.5-clamp(morale,0,100)/100;
@@ -101,7 +109,8 @@ export function loadCareer(raw){
  c.races=count(raw.races);c.challenge=Math.min(count(raw.challenge),CHALLENGES.length);c.since=Math.min(count(raw.since),c.races);c.expense=raw.expense===true;c.intro=raw.intro===true;
  c.gear=Array.isArray(raw.gear)?CHALLENGES.slice(0,c.challenge).map(ch=>ch.id):[];
  if(raw.report&&typeof raw.report==='object'&&Object.hasOwn(OUTCOME_TITLES,raw.report.outcome)&&MORALE.every(k=>Number.isFinite(raw.report.before?.[k])))
-  c.report={race:count(raw.report.race),outcome:raw.report.outcome,before:Object.fromEntries(MORALE.map(k=>[k,clamp(Math.round(raw.report.before[k]),0,100)])),awaiting:raw.report.awaiting==='expense'?'expense':null};
+  c.report={race:count(raw.report.race),outcome:raw.report.outcome,before:Object.fromEntries(MORALE.map(k=>[k,clamp(Math.round(raw.report.before[k]),0,100)])),awaiting:raw.report.awaiting==='expense'?'expense':null,
+   ...(['damage','bill','charged'].every(k=>Number.isInteger(raw.report.repair?.[k])&&raw.report.repair[k]>=0)?{repair:{damage:raw.report.repair.damage,bill:raw.report.repair.bill,charged:raw.report.repair.charged}}:{})};
  c.over=Object.hasOwn(GAME_OVER,raw.over)?raw.over:null;
  return c;
 }
@@ -112,11 +121,14 @@ export function moraleCards(career){
  const table=MORALE_CARDS[r.race<=EARLY_RACES?'early':'late'][r.outcome];
  return MORALE.map((key,i)=>({type:'morale',key,text:table[i][0],delta:table[i][1],before:r.before[key],value:clamp(r.before[key]+table[i][1],0,100),outcome:r.outcome,race:r.race}));
 }
+// The repair bill's card, after the supporters' morale card (none on a report from before the bill).
+export const repairCards=(report,wallet)=>report?.repair?[{type:'repair',...report.repair,fund:wallet.fund}]:[];
 // The race is paid: one more race in the career, the morale moved by its outcome, and a report
 // waiting to be shown (openReport). The challenge is looked at when the report is shown.
-export function applyRace(career,result){
+// repair: the team's bill already taken from the wallet (repairBill).
+export function applyRace(career,result,repair=null){
  career.races++;const outcome=outcomeOf(result),before={...career.morale};
- career.report={race:career.races,outcome,before,awaiting:null};
+ career.report={race:career.races,outcome,before,awaiting:null,...(repair?{repair}:{})};
  for(const card of moraleCards(career))career.morale[card.key]=card.value;
  return career.report;
 }

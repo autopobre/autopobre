@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
-import {weatherProfile,weatherCaption,timeOfDay,rainLevel,TIMES_OF_DAY,RAIN_LEVELS,TIME_PROFILES,skyDirection,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,timeChoice,rainChoice,drawWeather,chosenWeather,nextTimeOfDay,nextRainLevel,weatherName} from '../teste/weather.js';
+import {weatherProfile,weatherCaption,timeOfDay,rainLevel,TIMES_OF_DAY,RAIN_LEVELS,TIME_PROFILES,skyDirection,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,timeChoice,rainChoice,drawWeather,chosenWeather,rainOdds,rainFor,raceMonth,PLAIN_RAIN_ODDS,nextTimeOfDay,nextRainLevel,weatherName} from '../teste/weather.js';
 import {SUN_DIRECTION} from '../teste/sky.js';
+import {RAIN_CLIMATE} from '../teste/rain-climate.js';
+import {CIRCUITS} from '../teste/circuits.js';
 import {LOOK} from '../teste/cinematic.js';
 import {beamShape,BEAM_LOW,BEAM_HIGH,LAMP_SETS,ROAD_LAMPS,ROAD_LAMPS_MAX,updateRoadLamps,lampPatch,PlayerHeadlights} from '../teste/headlights.js';
 import {Rain,RAIN_DROPS,SPLASH} from '../teste/rain.js';
@@ -54,10 +56,26 @@ assert.deepEqual(TIME_CHOICES.map(([v])=>v),['dia','fim_de_tarde','noite',RANDOM
 assert.deepEqual(RAIN_CHOICES.map(([v])=>v),['seco','garoa','chuva',RANDOM_WEATHER]);
 assert.deepEqual([timeChoice(RANDOM_WEATHER),rainChoice(RANDOM_WEATHER),timeChoice('madrugada'),rainChoice('neve')],[RANDOM_WEATHER,RANDOM_WEATHER,'dia','seco']);
 assert.deepEqual([timeOfDay(RANDOM_WEATHER),weatherProfile(RANDOM_WEATHER,RANDOM_WEATHER).time,weatherProfile(RANDOM_WEATHER,RANDOM_WEATHER).rain],['dia','dia','seco']);
-{const sequence=[0,.99,.5,.4,.999999,0];let i=0;const random=()=>sequence[i++];
- assert.deepEqual([drawWeather(random),drawWeather(random),drawWeather(random)],[{time:'dia',rain:'chuva'},{time:'fim_de_tarde',rain:'garoa'},{time:'noite',rain:'seco'}]);}
-{const counts={};for(let n=0;n<9000;n++){const {time,rain}=drawWeather();counts[`${time}/${rain}`]=(counts[`${time}/${rain}`]??0)+1;}
- assert.equal(Object.keys(counts).length,9,'every pair comes');assert.ok(Object.values(counts).every(c=>c>800&&c<1200),JSON.stringify(counts));}
+{const sequence=[0,.99,.5,.8,.999999,0];let i=0;const random=()=>sequence[i++];
+ assert.deepEqual([drawWeather(random),drawWeather(random),drawWeather(random)].map(({time,rain})=>({time,rain})),[{time:'dia',rain:'chuva'},{time:'fim_de_tarde',rain:'garoa'},{time:'noite',rain:'seco'}]);}
+// Central #10: the times as likely; the rain at the odds given (a place without climate data: Stevan's 70% dry, the
+// rest drizzle or heavy rain alike), its roll kept to be read again at the race's own odds.
+{const counts={},n=12000;for(let k=0;k<n;k++){const {time,rain}=drawWeather();counts[time]=(counts[time]??0)+1;counts[rain]=(counts[rain]??0)+1;}
+ assert.ok(['dia','fim_de_tarde','noite'].every(t=>Math.abs(counts[t]/n-1/3)<.03)&&Math.abs(counts.seco/n-.7)<.03&&Math.abs(counts.garoa/n-.15)<.02&&Math.abs(counts.chuva/n-.15)<.02,JSON.stringify(counts));}
+assert.deepEqual(rainOdds('nenhum_lugar'),PLAIN_RAIN_ODDS);
+assert.deepEqual([0,.69,.7,.84,.86,.99].map(r=>rainFor(r)),['seco','seco','garoa','garoa','chuva','chuva']);
+assert.deepEqual([rainFor(.5,{seco:.4,garoa:.3,chuva:.3}),rainFor(.5,{seco:1,garoa:0,chuva:0}),rainFor(.01,{seco:0,garoa:0,chuva:1})],['garoa','seco','chuva']);
+assert.deepEqual(['21 e 22 MAR','31 OUT e 01 NOV','19 e 20 DEZ','',null,undefined].map(raceMonth),[2,10,11,null,null,null]);
+// The circuits' cities (rain-climate.js, INMET normals): every circuit has its year; the odds add up; a dated round
+// takes its month (Brasília's dry July never rains, its March does half the days), the year its average.
+{const near=(a,b,e=1e-9)=>Math.abs(a-b)<e,sum=o=>o.seco+o.garoa+o.chuva;
+ assert.ok(Object.keys(CIRCUITS).every(id=>RAIN_CLIMATE[id]?.rainDays.length===12&&RAIN_CLIMATE[id].heavyDays.length===12&&RAIN_CLIMATE[id].heavyDays.every((h,m)=>h<=RAIN_CLIMATE[id].rainDays[m])));
+ assert.ok(Object.keys(CIRCUITS).every(id=>[null,...Array.from({length:12},(_,m)=>m)].every(m=>near(sum(rainOdds(id,m)),1)&&Object.values(rainOdds(id,m)).every(p=>p>=0))));
+ assert.deepEqual(rainOdds('brasilia',6),{seco:1,garoa:0,chuva:0});
+ const march=rainOdds('brasilia',2);assert.ok(near(1-march.seco,15/31)&&near(march.chuva,15/31*7/15),JSON.stringify(march));
+ const sp=rainOdds('interlagos');assert.ok(near(1-sp.seco,110/365.25)&&near(sp.chuva/(1-sp.seco),53/110),JSON.stringify(sp));
+ assert.ok(rainOdds('interlagos',0).seco<rainOdds('interlagos',7).seco&&rainOdds('floripa').seco<rainOdds('curvelo').seco,'summer and the coast rain more');
+ assert.equal(drawWeather(()=>.99,rainOdds('brasilia',6)).rain,'seco');assert.deepEqual([.5,.6,.9].map(r=>drawWeather(()=>r,rainOdds('brasilia',2)).rain),['seco','garoa','chuva']);}
 assert.deepEqual(chosenWeather(RANDOM_WEATHER,'garoa',{time:'noite',rain:'chuva'}),{time:'noite',rain:'garoa'});
 // Y and U on the track: the next time and rain round the list, from the one raced (never Aleatório), named as the selects.
 assert.deepEqual(['dia','fim_de_tarde','noite',RANDOM_WEATHER].map(nextTimeOfDay),['fim_de_tarde','noite','dia','fim_de_tarde']);

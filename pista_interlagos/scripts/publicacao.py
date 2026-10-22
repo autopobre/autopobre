@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 GAME = 'pista_interlagos/teste/'
 MODULES = (
     'pilot-profile.js', 'ai-records.js', 'ai-record-references.js',
-    'car-condition.js', 'pit-lane.js', 'interlagos-pit.js', 'pit-building.js', 'pit-box99.js', 'pit-crew.js', 'pit-textures.js', 'on-foot.js', 'free-walk.js', 'selfie.js', 'selfie.css', 'pitstop.js', 'pitstop.css',
+    'car-condition.js', 'fuel.js', 'pit-lane.js', 'interlagos-pit.js', 'pit-building.js', 'pit-box99.js', 'pit-crew.js', 'pit-textures.js', 'on-foot.js', 'free-walk.js', 'selfie.js', 'selfie.css', 'pitstop.js', 'pitstop.css',
     'circuits.js', 'curvelo-data.js', 'curvelo-scene.js', 'open-circuit.js', 'track-clearance.js', 'interlagos-stands.js',
     'cliff-edge.js', 'cliff-fall.js', 'cliff-scenery.js', 'far-terrain.js', 'explosion.js',
     'drift-arena.js', 'drift-arena-world.js', 'drift-score.js', 'drift-physics.js', 'drift-arena-ai.js', 'drift-arena-props.js', 'drift-arena-mode.js', 'drift-arena-scene.js', 'drift-arena-stadium.js', 'arena.css',
@@ -25,7 +25,7 @@ MODULES = (
     'track-history.js', 'historia.css', 'historias.js', 'historia-interlagos.js', 'historia-interlagos-en.js','interlagos-1940.js', 'historia-midia.js',
     'sun-light.js', 'car-shadow.js',
     'contact-shadows.js', 'car-wheels.js',
-    'race-action.js', 'verge-vegetation.js', 'skid-marks.js', 'track-surface.js', 'tyre-smoke.js', 'speed-particles.js', 'kerb-contact.js', 'side-mirrors.js', 'brake-lights.js', 'sky.js', 'weather.js', 'headlights.js', 'rain.js', 'windscreen-rain.js', 'floodlights.js', 'cinematic.js', 'sponsors.js', 'trackside.js', 'trackside-flags.js', 'tv-camera.js', 'intro-cinematic.js', 'landscape.js', 'lake-contact.js', 'lake-waves.js', 'tree-contact.js',
+    'race-action.js', 'verge-vegetation.js', 'skid-marks.js', 'track-surface.js', 'tyre-smoke.js', 'speed-particles.js', 'kerb-contact.js', 'side-mirrors.js', 'brake-lights.js', 'sky.js', 'weather.js', 'rain-climate.js', 'headlights.js', 'rain.js', 'windscreen-rain.js', 'floodlights.js', 'cinematic.js', 'sponsors.js', 'trackside.js', 'trackside-flags.js', 'tv-camera.js', 'intro-cinematic.js', 'landscape.js', 'lake-contact.js', 'lake-waves.js', 'tree-contact.js',
     'style.css', 'immersive.css', 'abertura.css', 'index.html', 'sobre.html',
     'favicon.svg', 'favicon.ico', 'apple-touch-icon.png',
 )

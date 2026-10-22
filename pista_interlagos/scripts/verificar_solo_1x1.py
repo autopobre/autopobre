@@ -72,7 +72,7 @@ with sync_playwright() as p:
  moved=page.evaluate("interlagos.immersiveInfo();Math.hypot(fixture.car.vx,fixture.car.vy)")
  assert moved>5,moved
  page.evaluate("interlagos.immersiveInfo();fixture.car.laps=25;true");page.wait_for_timeout(600)
- assert page.inner_text('#lap')=='26' and page.evaluate("interlagos.immersiveInfo();!fixture.freeFinished&&!fixture.finishing&&fixture.freeFuel===12")
+ assert page.inner_text('#lap')=='26' and page.evaluate("interlagos.immersiveInfo();!fixture.freeFinished&&!fixture.finishing&&fixture.freeFuel===10")  # practice burns none: Interlagos' 8-lap litres (fuel.js, Central #11)
  page.screenshot(path=str(RENDERS/'treino_solo.png'))
  page.keyboard.press('Escape');wait_js(page,"!document.querySelector('#menu').classList.contains('hidden')")
  eyebrow=page.inner_text('#menu .eyebrow');assert 'TREINO SOLO' in eyebrow,eyebrow

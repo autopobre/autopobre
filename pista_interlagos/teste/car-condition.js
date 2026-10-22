@@ -1,3 +1,4 @@
+import {TANKS} from './fuel.js';
 const clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,Number.isFinite(v)?v:a));
 export const CAR_PARTS=Object.freeze([
  {id:'motor',name:'Motor',effect:'Potência e aceleração',price:180,point:[1.35,.95,0]},
@@ -56,12 +57,12 @@ const placeOf=id=>SERVICE_PLACES[id]??{zones:[id],crew:1};
 // Charged once; partial work stays installed and unused money is refunded. `jobs` are
 // at work together, `queue` waits for its place or a free mechanic.
 export class PitService {
- constructor({condition,getFuel,setFuel,pay,refund}){Object.assign(this,{condition,getFuel,setFuel,pay,refund});this.jobs=[];this.queue=[];}
+ constructor({condition,getFuel,setFuel,pay,refund,getTank=()=>TANKS.opala}){Object.assign(this,{condition,getFuel,setFuel,pay,refund,getTank});this.jobs=[];this.queue=[];}
  // The first job at work, for a single readout.
  get job(){return this.jobs[0]??null;}
  has(id){return this.jobs.some(job=>job.id===id)||this.queue.some(job=>job.id===id);}
  startRepair(id,kind){return this.start(this.condition.quote(id,kind));}
- startFuel(litres){const amount=Math.min(Math.max(0,Number(litres)||0),12-this.getFuel());if(amount<.05)return false;return this.start({id:'fuel',from:this.getFuel(),to:this.getFuel()+amount,cost:Math.ceil(amount*6.5),seconds:2+amount*1.5});}
+ startFuel(litres){const amount=Math.min(Math.max(0,Number(litres)||0),this.getTank()-this.getFuel());if(amount<.05)return false;return this.start({id:'fuel',from:this.getFuel(),to:this.getFuel()+amount,cost:Math.ceil(amount*6.5),seconds:2+amount*1.5});}
  start(quote){if(!quote||this.has(quote.id))return false;const payment=this.pay(quote.cost);if(!payment)return false;this.queue.push({...quote,payment,elapsed:0,progress:0});this.schedule();return true;}
  // Why a queued job waits: a job at work in the same place ({job, zone}) or not enough
  // free mechanics ({crew: true}); null when it can start.

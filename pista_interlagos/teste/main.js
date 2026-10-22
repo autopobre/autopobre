@@ -4,6 +4,7 @@ import {pitLane} from './pit-lane.js';
 import {createInterlagosPit} from './interlagos-pit.js';
 import {createCurveloPit} from './pit-building.js';
 import {CIRCUITS,selectedCircuit,mapProjection,fixedLaps,raceLaps} from './circuits.js';
+import {tankFor} from './fuel.js';
 import {createCurveloData} from './curvelo-data.js';
 import {createCurveloScene} from './curvelo-scene.js';
 import {createOpenCircuit} from './open-circuit.js';
@@ -58,7 +59,7 @@ import {setupSettings} from './settings.js';
 import {CarAudio} from './car-audio.js?v=20260913-immersive';
 import {PlayerPreferences,CAMERA_MODES,LAPS} from './player-preferences.js';
 import {createSky,SUN_DIRECTION} from './sky.js';
-import {weatherProfile,weatherCaption,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,drawWeather,chosenWeather,EFFECT_LIGHT,STAND_LIGHTS,TIMES_OF_DAY,RAIN_LEVELS,nextTimeOfDay,nextRainLevel,weatherName} from './weather.js';
+import {weatherProfile,weatherCaption,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,drawWeather,chosenWeather,rainOdds,raceMonth,rainFor,EFFECT_LIGHT,STAND_LIGHTS,TIMES_OF_DAY,RAIN_LEVELS,nextTimeOfDay,nextRainLevel,weatherName} from './weather.js';
 import {createCinematic,SMEAR_CARS,compileInSlices} from './cinematic.js';
 import {SunPlacement} from './sun-light.js';import {CarShadow} from './car-shadow.js';import {steeringWheelAngle} from './driver-rig.js';
 import {createLandscape,loadTerrainTextures,buildTrackField,readOrtho,looseGround,terrainMaterial,structureMaterial,createCrowd,SKYLINE_FAR} from './landscape.js';
@@ -363,8 +364,11 @@ const sunPlacement=new SunPlacement(SUN_DIRECTION),sunView=new THREE.Vector3(),c
 // races (weather.js drawWeather); weatherDrawRaced: a race took it, so the next one (or a restart) draws again.
 let weather=weatherProfile(),weatherOverride=null,weatherDraw=drawWeather(),weatherDrawRaced=false;const sunDirection=SUN_DIRECTION.clone();
 function playerWeather(){return chosenWeather(preferences.values.timeOfDay,preferences.values.rain,weatherDraw);}
+// Aleatório's rain odds for the race at hand (weather.js rainOdds, Central #10): its circuit's city in the month of a
+// championship round with a date, the year's average otherwise.
+const raceRainOdds=()=>rainOdds(circuit?.id,raceMonth(championshipRace?.championship.schedule[championshipRace.round]?.date));
 // Aleatório just picked: that part drawn afresh, raced by the race under way, or else by the next one.
-function redrawWeather(part){weatherDraw={...weatherDraw,[part]:drawWeather()[part]};weatherDrawRaced=sessionStarted;}
+function redrawWeather(part){const fresh=drawWeather(Math.random,raceRainOdds());weatherDraw=part==='rain'?{...weatherDraw,rain:fresh.rain,roll:fresh.roll}:{...weatherDraw,time:fresh.time};weatherDrawRaced=sessionStarted;}
 // The opening's weather line (weather.js weatherCaption), naming what Aleatório drew (a room's weather is the host's).
 function weatherLine(){
  const drawn=weatherOverride?null:{time:preferences.values.timeOfDay===RANDOM_WEATHER,rain:preferences.values.rain===RANDOM_WEATHER};
@@ -1522,7 +1526,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  if(futebol){futebol.view.ahead=renderAhead();futebol.view.shown=sessionStarted&&!paused&&!intro.active&&raceResults.root.hidden;}
  sky.update(paused?0:dt);landscape?.update(paused?0:dt,camera);for(const far of farMerges)far.update(camera);arenaMode?.frame(paused?0:dt);for(const extra of circuitExtras)extra.update?.(paused?0:dt,camera);
  // A watched rival is posed by immersive.update below: its camera follows after that.
- updateOpenings(paused?0:dt);updateCar(dt);if(!watchedRival())updateCamera(dt);const dash=cockpit.update(car,paused?0:dt,heard===car?carAudio.state:null),phoneArrived=dash.phoneArrived;if(phoneArrived)carAudio.notifyPhone();fuscaBody.update(dash.speed,dash.rpm,(immersive?.active?immersive.state.fuel:immersive?.freeFuel??12)/12);driver.look(pilotLook());driver.update(car,paused?0:dt,{command:driveCommand,impact:frameImpact,phoneArrived});gamepad.bump(actionImpact);frameImpact=0;lapBanner(paused?0:dt);lastHud+=dt;if(lastHud>.07){hud();lastHud=0;}
+ updateOpenings(paused?0:dt);updateCar(dt);if(!watchedRival())updateCamera(dt);const dash=cockpit.update(car,paused?0:dt,heard===car?carAudio.state:null),phoneArrived=dash.phoneArrived;if(phoneArrived)carAudio.notifyPhone();fuscaBody.update(dash.speed,dash.rpm,(immersive?.active?immersive.state.fuel:immersive?.freeFuel??12)/(immersive?.tank??12));driver.look(pilotLook());driver.update(car,paused?0:dt,{command:driveCommand,impact:frameImpact,phoneArrived});gamepad.bump(actionImpact);frameImpact=0;lapBanner(paused?0:dt);lastHud+=dt;if(lastHud>.07){hud();lastHud=0;}
  if(immersive?.visual)immersive.visual.renderAhead=renderAhead();immersive?.update(paused?0:dt,camera);if(watchedRival())updateCamera(dt);
  syncDamage();pitstop?.update(paused?0:dt,camera,sessionStarted&&!paused);updateGhost(dt);
  // Out of the car anywhere (free-walk.js): F at the box hands the stop to the pit (out to its café there); the race leaving
@@ -1841,7 +1845,7 @@ window.interlagosLuz={
 // The weather for checks and photos (weather.js): what is in force, set({time, rain}) as the selects do (saved),
 // settle() lets the eye adapt at once (a held frame has no time to adapt).
 window.interlagosClima={
- info:()=>({time:weather.time,rain:weather.rain,choice:{time:preferences.values.timeOfDay,rain:preferences.values.rain},draw:{...weatherDraw},caption:circuit?weatherLine():null,floods:floods?.info()??null,falling:rain?.info()??null,wipers:windscreen.info(),fuscaWipers:fuscaScreen.info(),limp:limpSwitch?+limpSwitch.rotation.x.toFixed(3):null,compiling:!!graphicsCompiling,lamps:playerLamps.info(),farol:farolSwitch?+farolSwitch.rotation.x.toFixed(3):null,glow:!!playerGlow?.visible,rivalGlow:!!immersive?.visual?.rivals?.some(o=>o.userData.headlights?.visible),tail:TAIL_LIGHTS.on,roadLamps:ROAD_LAMPS.roadLampCount.value,wetness:roadSurface?.stats.wetness??0,grip:car?.weatherGrip??null,fieldGrip:immersive?.field.weatherGrip??null,rivalGrip:immersive?.rivals?.[0]?.car.weatherGrip??null,sun:{intensity:sun.intensity,color:'#'+sun.color.getHexString(),direction:sunDirection.toArray()},fog:scene.fog?[scene.fog.near,scene.fog.far]:null,sky:sky?.info()??null,exposure:renderer?.toneMappingExposure??null,look:cinematic?{exposure:cinematic.look.exposure,adaptRange:cinematic.look.adaptRange,hazeDensity:cinematic.look.hazeDensity}:null}),
+ info:()=>({time:weather.time,rain:weather.rain,choice:{time:preferences.values.timeOfDay,rain:preferences.values.rain},draw:{time:weatherDraw.time,rain:weatherDraw.rain},roll:weatherDraw.roll,odds:raceRainOdds(),caption:circuit?weatherLine():null,floods:floods?.info()??null,falling:rain?.info()??null,wipers:windscreen.info(),fuscaWipers:fuscaScreen.info(),limp:limpSwitch?+limpSwitch.rotation.x.toFixed(3):null,compiling:!!graphicsCompiling,lamps:playerLamps.info(),farol:farolSwitch?+farolSwitch.rotation.x.toFixed(3):null,glow:!!playerGlow?.visible,rivalGlow:!!immersive?.visual?.rivals?.some(o=>o.userData.headlights?.visible),tail:TAIL_LIGHTS.on,roadLamps:ROAD_LAMPS.roadLampCount.value,wetness:roadSurface?.stats.wetness??0,grip:car?.weatherGrip??null,fieldGrip:immersive?.field.weatherGrip??null,rivalGrip:immersive?.rivals?.[0]?.car.weatherGrip??null,sun:{intensity:sun.intensity,color:'#'+sun.color.getHexString(),direction:sunDirection.toArray()},fog:scene.fog?[scene.fog.near,scene.fog.far]:null,sky:sky?.info()??null,exposure:renderer?.toneMappingExposure??null,look:cinematic?{exposure:cinematic.look.exposure,adaptRange:cinematic.look.adaptRange,hazeDensity:cinematic.look.hazeDensity}:null}),
  set:({time,rain}={})=>{const patch={};if(time)patch.timeOfDay=time;if(rain)patch.rain=rain;preferences.update(patch);for(const [part,value] of [['time',time],['rain',rain]])if(value===RANDOM_WEATHER)redrawWeather(part);for(const [id,key] of [['timeOfDay','timeOfDay'],['tracksTime','timeOfDay'],['rainLevel','rain'],['tracksRain','rain']])$(id).value=preferences.values[key];applyWeather();return window.interlagosClima.info();},
  settle:()=>{cinematic?.resetAdaptation();return true;},
  // The follow cameras placed afresh round the car where it stands now (a photo after moving it by hand).
@@ -2008,8 +2012,8 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  const continuing=sessionStarted&&!restart&&!tour&&story===immersive.active&&!(!immersive.active&&immersive.freeResultReady);
  const pilot=continuing?immersive.pilotName:pilotPicker.commit();if(!pilot)return;
  // Aleatório (weather.js): a new race or a restart races a new draw; the first race after the choice takes the
- // one the menu showed. loadCircuit puts it on the world.
- if(!continuing){if(weatherDrawRaced)weatherDraw=drawWeather();weatherDrawRaced=true;}
+ // one the menu showed, its rain at the odds of this circuit and month (raceRainOdds). loadCircuit puts it on the world.
+ if(!continuing){const odds=raceRainOdds();weatherDraw=weatherDrawRaced?drawWeather(Math.random,odds):{...weatherDraw,rain:rainFor(weatherDraw.roll,odds)};weatherDrawRaced=true;}
  // Automático's step down (or its end after good races) is taken here, before the circuit loads, never mid-race.
  if(!continuing){countGoodRace();takeDrop();}
  if(story!==preferences.values.immersive)chooseImmersive(story);
@@ -2162,6 +2166,8 @@ function arenaPause(on){
 function seatCar(){
  carLivery.clear();showFusca(null);const entry=raceCar==='99'&&raceModel!=='fusca'?null:carEntry(raceCar,raceModel),grid=raceGrid=multiplayer?.gridCar()??raceCar;
  const body=raceModel==='fusca'?FUSCA_BODY:OPALA_BODY;car.setBody(body);immersive.field.body=body;
+ // The car's tank (fuel.js): the Fusca's is half the Opala's; the HUD's bar and the Fusca's gauge read against it.
+ immersive.tank=tankFor(raceModel);$('fuelBar').max=$('fuelBar').optimum=immersive.tank;$('fuelTank').textContent=immersive.tank+' L';
  immersive.field.roster=fieldRoster(grid,raceModel);immersive.visual.seatOpala99(model,grid,raceModel==='fusca'?fuscaTemplate:null);
  immersive.playerEntry=entry?{...entry,name:immersive.pilotName,shortName:immersive.pilotName}:undefined;
 }

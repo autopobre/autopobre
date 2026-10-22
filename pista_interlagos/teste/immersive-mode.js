@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import {CIRCUITS,circuitId} from './circuits.js';
+import {circuitId} from './circuits.js';
+import {TANKS,burnRate,fuelScale,recommendedFuel} from './fuel.js';
 import {RIVAL_ROSTER,GRID_SIZE} from './race-roster.js';
 import {RaceField,lapTravel} from './race-field.js';
 import {recognitionInput,sameLevel} from './physics.js';
@@ -14,10 +15,9 @@ import {entryFor,CHALLENGES,MORALE,MORALE_NAMES,MORALE_LABELS,OUTCOME_TITLES,GAM
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const idle={throttle:0,brake:1,left:0,right:0,handbrake:0,reverse:0},still={throttle:0,brake:0,left:0,right:0};
 const touchScreen=()=>document.body.classList.contains('touch-device');
-// The free race's 12 L last the race: the burn scales with the laps (3/laps: three laps burn what one lap's pace would).
-// A circuit that fixes its race length (circuits.js laps: Pampulha's single 20 km lap, ten minutes at racing pace) burns
-// for its distance, as three laps of Interlagos would: some 8 L, as the usual race (three times one lap ran it dry by 7 km).
-export const freeBurn=(data,laps)=>{const fixed=CIRCUITS[circuitId(data.meta.id)].laps;return fixed?3*CIRCUITS.interlagos.length/(laps*data.meta.reconstructed_xy_m):3/laps;};
+// Modo Corrida's fuel (fuel.js, Central #11): the race starts with what it needs (the circuit's 8-lap litres,
+// more for a longer race) and burns at the circuit's scale; practice (endless laps) burns none.
+export const freeBurn=(data,laps)=>Number.isFinite(laps)?fuelScale(circuitId(data.meta.id),data.meta.reconstructed_xy_m):0;
 const capital=text=>text[0].toUpperCase()+text.slice(1);
 // What the action key does by the Opala in the paddock (car-openings.js carSpot); open: already open.
 const CAR_ACTIONS=Object.freeze({capo:open=>open?'Fechar o capô':'Abrir o capô · ver o motor',porta_malas:open=>open?'Fechar o porta-malas':'Abrir o porta-malas',porta_carona:open=>open?'Fechar a porta do carona':'Abrir a porta do carona',porta:()=>'Entrar no Opala 99'});
@@ -44,7 +44,7 @@ export class ImmersiveMode {
  // onGo: the start is given (free countdown or story grid), the car must be ready to go.
  constructor({scene,carRoot,car,data,driver,rivalTemplate,skidMarks,resetVehicle,releaseMouse,onNormal,onGo=null,layout=null,obstacles=[],setView=null,getView=null,playerView=null}){
   Object.assign(this,{carRoot,car,data,resetVehicle,releaseMouse,onNormal,onGo,setView,getView,playerView});let profile={};try{profile=JSON.parse(localStorage.getItem(STORY_PROFILE_KEY))||{};}catch{}
-  this.freeCountdown=0;this.goTime=0;this.freeFuel=12;this.freeBurn=1;this.laps=3;this.lineup=null;this.freeLineup=null;this.freeTotalLaps=3;this.storyLaps=3;this.freeFinished=false;this.freePosition=GRID_SIZE;this.freePlayerProgress=0;this.rivalTrails=RIVAL_ROSTER.map(()=>skidMarks?.createTrail());this.field=new RaceField(data,{onStep:(r,i,input,dt)=>{r.input=input;this.rivalTrails[i]?.update(r.car,input,dt);},onReset:()=>this.rivalTrails.forEach(t=>t?.breakTrails())});this.parts=new CrashParts(scene);this.state=new ImmersiveState(profile);this.visual=new ImmersiveVisuals(scene,carRoot,data,driver,car,rivalTemplate);this.lastPhase='off';this.lastUI='';this.near=-1;this.rivals=this.field.rivals;this.projectile=null;this.towOrigin=0;this.prepLitres=this.fuelChoice=6;this.prepFilm=false;
+  this.freeCountdown=0;this.goTime=0;this.tank=TANKS.opala;this.freeFuel=recommendedFuel(circuitId(data.meta.id),3);this.freeBurn=1;this.laps=3;this.lineup=null;this.freeLineup=null;this.freeTotalLaps=3;this.storyLaps=3;this.freeFinished=false;this.freePosition=GRID_SIZE;this.freePlayerProgress=0;this.rivalTrails=RIVAL_ROSTER.map(()=>skidMarks?.createTrail());this.field=new RaceField(data,{onStep:(r,i,input,dt)=>{r.input=input;this.rivalTrails[i]?.update(r.car,input,dt);},onReset:()=>this.rivalTrails.forEach(t=>t?.breakTrails())});this.parts=new CrashParts(scene);this.state=new ImmersiveState(profile);this.visual=new ImmersiveVisuals(scene,carRoot,data,driver,car,rivalTemplate);this.lastPhase='off';this.lastUI='';this.near=-1;this.rivals=this.field.rivals;this.projectile=null;this.towOrigin=0;this.prepLitres=this.fuelChoice=6;this.prepFilm=false;
   this.brand=document.querySelector('.wordmark');this.baseBrand=this.brand.innerHTML;this.baseTitle=document.title;
   this.controls=document.querySelector('footer>div');this.baseControls=this.controls.innerHTML;
   this.panel=document.createElement('section');this.panel.id='immersivePanel';this.panel.className='hidden';this.panel.setAttribute('aria-label','Auto-Pobre Racing');document.body.append(this.panel);
@@ -189,15 +189,16 @@ export class ImmersiveMode {
  // windscreen film chosen right here; paying goes straight to the engine start. Back to the
  // supporters for more otherwise. updateDeskCosts follows the slider and the box.
  deskPanel(){
-  const s=this.state,cash=s.cash,total=cash+s.profile.fund,ready=total>=s.minimum,litres=Math.min(12,Math.floor((total-s.entry)/COSTS.litre)),least=COSTS.leastLitres,away=s.entry>COSTS.entry;
+  const s=this.state,cash=s.cash,total=cash+s.profile.fund,ready=total>=s.minimum,litres=Math.min(TANKS.opala,Math.floor((total-s.entry)/COSTS.litre)),least=COSTS.leastLitres,away=s.entry>COSTS.entry;
   const line=s.feedback||(ready?`Fechou! Com ${money(total)} dá a inscrição e até ${litres} litros de gasolina. Quanto vai no tanque?`:`Com ${money(total)} ainda não dá: é ${money(s.entry)} da inscrição e pelo menos ${least} litros de gasolina. Volta lá e pede mais um dindin pra torcida!`);
   const row=(label,value,id)=>`<dt${id?` id="${id}Label"`:''}>${label}</dt><dd${id?` id="${id}"`:''}>${value}</dd>`;
   return `<div class="social-person"><span class="social-avatar">99</span><div><span>CONVERSANDO COM</span><h2>Equipe 99 · computadores</h2></div><b>◆</b></div><div class="speech-bubble fan-speech" role="status">“${line}”</div>`
    +`<dl class="imm-budget"><dt class="imm-budget-cash">Na vaquinha</dt><dd class="imm-budget-cash">${money(cash)}</dd><dt class="imm-budget-cash">Na carteira</dt><dd class="imm-budget-cash">${money(s.profile.fund)}</dd>${row(away?'Inscrição · fora de Interlagos':'Inscrição',money(s.entry))}${row(`Gasolina · ${money(COSTS.litre)}/L`,'','deskFuel')}`
-   +`<dd class="imm-budget-wide"><input id="immLitres" type="range" min="2" max="12" value="${this.prepLitres}" aria-label="Litros de gasolina"></dd>`
+   +`<dd class="imm-budget-wide"><input id="immLitres" type="range" min="2" max="${TANKS.opala}" value="${this.prepLitres}" aria-label="Litros de gasolina"></dd>`
+   +`<dd class="imm-budget-wide desk-fuel-recommended">Recomendado para este circuito: <b>${recommendedFuel(circuitId(this.data.meta.id),this.storyLaps)} litros</b>.</dd>`
    +`<dt><label class="imm-budget-check"><input id="immFilm" type="checkbox" ${this.prepFilm?'checked':''}> Proteção do para-brisa <small>opcional</small></label></dt><dd id="deskFilm"></dd>`
    +`<dt class="imm-budget-total">Total</dt><dd class="imm-budget-total" id="deskTotal"></dd>${row('','','deskLeft')}</dl>`
-   +`<p class="desk-fuel-hint">${CIRCUITS[circuitId(this.data.meta.id)].fuel} Burnout e vazamentos gastam mais.${away?' Fora de Interlagos a inscrição inclui a cegonha, as passagens e o hotel da equipe.':''} A vaquinha paga primeiro; o resto sai da carteira.</p>`
+   +`<p class="desk-fuel-hint">Burnout e vazamentos gastam mais.${away?' Fora de Interlagos a inscrição inclui a cegonha, as passagens e o hotel da equipe.':''} A vaquinha paga primeiro; o resto sai da carteira.</p>`
    +`<div class="desk-choices">${this.button('buy',touchScreen()?'Pagar e ir →':'Pagar e ir pra partida → (Enter)',true,!ready)}${this.button('leaveDesk',touchScreen()?'Pedir mais dindin':'Voltar e pedir mais dindin ({KeyE})')}</div>`;
  }
  updateDeskCosts(){
@@ -237,6 +238,8 @@ export class ImmersiveMode {
    const n=scene.cards.slice(0,scene.at+1).filter(x=>x.type==='morale').length,d=card.delta;
    return `<div class="imm-eyebrow">DEPOIS DA ${card.race}ª CORRIDA · ${OUTCOME_TITLES[card.outcome].toUpperCase()} · QUADRO ${n} DE 3</div>${person(MORALE_ICONS[card.key],card.key,MORALE_LABELS[card.key].toUpperCase(),MORALE_NAMES[card.key])}<p class="career-text">${card.text}</p><div class="career-delta" data-sign="${Math.sign(d)}">${MORALE_LABELS[card.key]}: ${d>0?'+':''}${d}%</div>${this.moraleBar(card.key,card.value)}<small>Antes: ${card.before}% · agora: ${card.value}%</small>${next()}`;
   }
+  // The team's repair bill (story-career.js repairBill), Stevan's words; a short wallet and what the team let go.
+  if(card.type==='repair')return `<div class="imm-eyebrow">DEPOIS DA CORRIDA · DANOS NO CARRO: ${card.damage}%</div><h2 class="career-title">Custos de reparo do carro</h2><p class="career-text">Sua equipe cobrou ${money(card.charged)} para reparar os danos causados ao carro na última corrida.${card.charged<card.bill?` A conta era de ${money(card.bill)}: a carteira não tinha tudo e a equipe perdoou o resto.`:''}</p><p class="career-progress">Valor disponível na carteira: <b>${money(card.fund)}</b></p>${next()}`;
   if(card.type==='challenge')return `<div class="imm-eyebrow">${card.fresh?'NOVO DESAFIO':'DESAFIO EM ANDAMENTO'}</div><h2 class="career-title">DESAFIO ${challenge.number}: ${challenge.title.toUpperCase()}</h2><p class="career-deadline">${card.fresh?`PRAZO: ${card.left} CORRIDAS`:`Prazo: falta${card.left>1?'m':''} ${card.left} corrida${card.left>1?'s':''}`}</p><progress max="${challenge.goal}" value="${Math.min(card.fund,challenge.goal)}"></progress><p class="career-progress"><b>${percent(card.fund,challenge.goal)}%</b> de ${money(challenge.goal)} · na carteira: ${money(card.fund)}</p>`
    +(card.fresh?`<p>Você corre com ${challenge.loan}.${scene.kind==='intro'?' Conte piadas para a torcida para pagar a inscrição e a gasolina; os prêmios das corridas vão para a carteira.':''}</p>`:'')+next(scene.at===scene.cards.length-1?'Continuar →':'Avançar →');
   if(card.type==='expense')return `<div class="imm-eyebrow">DESAFIO ${challenge.number} · UM IMPREVISTO EM CASA</div>${person('♥','esposa','SUA ESPOSA',`Precisa de ${money(card.value)}`)}<div class="speech-bubble fan-speech">“${challenge.expense.ask}”</div><p>Na carteira: <b>${money(card.fund)}</b> · ${challenge.own}: ${money(challenge.goal)}</p><div class="social-prompt">Sua decisão</div><div class="social-choices">`
@@ -316,9 +319,9 @@ export class ImmersiveMode {
  }
  save(){try{localStorage.setItem(STORY_PROFILE_KEY,JSON.stringify(this.state.profile));}catch{}}
  // laps (the player's setting, main.js) is taken at each start: storyLaps for the story,
- // freeTotalLaps (resetField) for the free race. The story's tank still buys what one lap
- // burnt (state.fuelScale), the free race's 12 L still last the race.
- start(){this.freeCountdown=0;this.goTime=0;this.car.condition?.reset();this.finishElapsed=null;this.finishTime=null;this.freeOrder=null;this.recordAssisted=false;this.resetVehicle();this.inCar=this.visual.inCar=false;this.storyLaps=this.laps;this.state.entry=entryFor(circuitId(this.data.meta.id));this.state.start();this.state.fuelScale=1/this.storyLaps;this.visual.reset();this.near=-1;this.walkToFan=this.walkToDesk=this.walkToCafe=null;this.walkToLeo=false;this.cafe=snackState();this.leoAsked=false;this.deskInside=false;this.projectile=null;this.raceProgress=0;this.previousS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:true});this.parts.reset();this.rivals=this.field.rivals;this.debrisTimer=6;this.contactCooldown=0;this.sync();this.save();}
+ // freeTotalLaps (resetField) for the free race. Both burn at the circuit's scale (fuel.js): the
+ // story's tank holds what the pilot bought at the desk, the free race starts with what it needs.
+ start(){this.freeCountdown=0;this.goTime=0;this.car.condition?.reset();this.finishElapsed=null;this.finishTime=null;this.freeOrder=null;this.recordAssisted=false;this.resetVehicle();this.inCar=this.visual.inCar=false;this.storyLaps=this.laps;this.state.entry=entryFor(circuitId(this.data.meta.id));this.state.start();this.state.fuelScale=fuelScale(circuitId(this.data.meta.id),this.data.meta.reconstructed_xy_m);this.visual.reset();this.near=-1;this.walkToFan=this.walkToDesk=this.walkToCafe=null;this.walkToLeo=false;this.cafe=snackState();this.leoAsked=false;this.deskInside=false;this.projectile=null;this.raceProgress=0;this.previousS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:true});this.parts.reset();this.rivals=this.field.rivals;this.debrisTimer=6;this.contactCooldown=0;this.sync();this.save();}
  disable(){if(this.lastPhase==='starting'){this.restoreStartView();this.startSwitches(1,true);}document.body.classList.remove('start-scene');this.finishElapsed=null;this.state.disable();this.visual.restoreCamera();this.visual.root.visible=this.visual.damage.visible=false;this.carRoot.visible=true;this.panel.classList.add('hidden');this.hud.classList.add('hidden');document.getElementById('dqScreen').classList.add('hidden');document.body.classList.remove('disqualified-scene','podium-scene','tow-scene','story-cutscene','story-paddock');document.body.classList.remove('immersive-mode','immersive-stage');this.brand.innerHTML=this.baseBrand;this.controls.innerHTML=this.baseControls;document.title=this.baseTitle;this.lastPhase='off';}
  sync(){
   const s=this.state;if(s.phase===this.lastPhase)return;const previous=this.lastPhase;this.lastPhase=s.phase;this.lastUI='';
@@ -356,7 +359,7 @@ export class ImmersiveMode {
   if(action.startsWith('joke:')&&s.phase==='crowd'&&s.fan!==null){const fan=s.fan,cash=s.cash;s.joke(Number(action.split(':')[1]));if(s.cash>cash){this.visual.showDonation(fan,s.cash-cash);s.fan=null;s.feedback='';this.walkToFan=null;s.touch();}}
   if(action==='close'){s.fan=null;s.feedback='';s.touch();}
   // The fuel starts at the pilot's last choice (6 L at first), lowered to what the kitty pays for.
-  if(action==='desk'&&s.fan===null&&!this.inCar&&s.openDesk()){this.walkToFan=this.walkToDesk=this.walkToCafe=null;this.visual.faceDesk();this.prepLitres=clamp(Math.min(this.fuelChoice,Math.floor((s.cash+s.profile.fund-s.entry-(this.prepFilm?COSTS.film:0))/COSTS.litre)),2,12);}
+  if(action==='desk'&&s.fan===null&&!this.inCar&&s.openDesk()){this.walkToFan=this.walkToDesk=this.walkToCafe=null;this.visual.faceDesk();this.prepLitres=clamp(Math.min(this.fuelChoice,Math.floor((s.cash+s.profile.fund-s.entry-(this.prepFilm?COSTS.film:0))/COSTS.litre)),2,TANKS.opala);}
   if(action==='leaveDesk')s.closeDesk();
   // Leonardo's coffee: asked when the pilot walks up (step) or with the action key by him.
   if(action==='leo'&&!this.inCar&&s.offerCoffee()){this.walkToFan=this.walkToDesk=this.walkToCafe=null;this.walkToLeo=false;this.leoAsked=true;}
@@ -509,8 +512,10 @@ export class ImmersiveMode {
  }
  // lineup: the rivals of the next free race, taken here like laps (null: the whole field; [] a solo
  // practice, which has no flag and burns no fuel; [number] a 1x1). freeLineup: the race under way's.
- resetField(){this.freeCountdown=0;this.goTime=0;this.recordAssisted=false;this.finishElapsed=null;this.finishTime=null;this.finishBest=null;this.freeOrder=null;this.freeLineup=this.lineup;this.freeTotalLaps=this.practice?Infinity:this.laps;this.freeFuel=12;this.freeBurn=freeBurn(this.data,this.freeTotalLaps);this.freeFinished=false;this.freePlayerProgress=0;this.freeLastS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:!!this.car.awaitingStart,entrants:this.freeLineup});this.rivals=this.field.rivals;this.freePosition=this.fieldSize;this.parts.reset();}
+ resetField(){this.freeCountdown=0;this.goTime=0;this.recordAssisted=false;this.finishElapsed=null;this.finishTime=null;this.finishBest=null;this.freeOrder=null;this.freeLineup=this.lineup;this.freeTotalLaps=this.practice?Infinity:this.laps;this.freeFuel=Math.min(this.tank,recommendedFuel(circuitId(this.data.meta.id),this.freeTotalLaps));this.freeBurn=freeBurn(this.data,this.freeTotalLaps);this.freeFinished=false;this.freePlayerProgress=0;this.freeLastS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:!!this.car.awaitingStart,entrants:this.freeLineup});this.rivals=this.field.rivals;this.freePosition=this.fieldSize;this.parts.reset();}
  get practice(){return !this.active&&this.freeLineup?.length===0;}
+ // What the race under way needs in the tank (fuel.js); the Box 99's Completar fills back to it.
+ get fuelTarget(){return Math.min(this.tank,recommendedFuel(circuitId(this.data.meta.id),this.active?this.storyLaps:this.freeTotalLaps));}
  // Cars racing: the whole grid in the story; the free race's may be short (practice, 1x1).
  get fieldSize(){return this.rivals.length+1;}
  // Race times reach the record boards only from the whole grid: a practice or a 1x1 starts at the front.
@@ -520,7 +525,7 @@ export class ImmersiveMode {
  // controller's rumble, in the story's race as in Modo Corrida.
  takeKnock(){const knock=this.knock??0;this.knock=0;return knock;}
  contacts(hits){for(const hit of hits){if(hit.player){this.damageAt(hit.speed,hit.point);this.knock=Math.max(this.knock??0,hit.speed);}this.parts.burst(hit,this.car);if(hit.player&&this.active)this.state.hitCar(Math.min(1.5,hit.speed/10));else{const dx=hit.point[0]-this.car.x,dy=hit.point[1]-this.car.y,d=Math.hypot(dx,dy);if(d<65)this.state.emitSound('collision',{strength:Math.min(1.5,hit.speed/10)*(1-d/65),pan:clamp((-dx*Math.sin(this.car.heading)+dy*Math.cos(this.car.heading))/Math.max(1,d),-1,1)});}}}
- stepFree(dt,input={}){if(this.freeFinished)return;const previous=this.freeFuel;this.freeFuel=Math.max(0,this.freeFuel-dt*((.002+Math.hypot(this.car.vx,this.car.vy)*.00045+(input.throttle||0)*.005+(this.car.rearSlipSpeed||0)*.0023)*this.freeBurn+(this.car.condition?.factors.leak??0)));if(previous>=1&&this.freeFuel<1)this.state.emitSound('reserve');if(previous>0&&this.freeFuel===0)this.state.emitSound('fuelEmpty');this.contacts(this.field.step(this.car,dt,this.freeTotalLaps));
+ stepFree(dt,input={}){if(this.freeFinished)return;const previous=this.freeFuel;this.freeFuel=Math.max(0,this.freeFuel-dt*(burnRate(Math.hypot(this.car.vx,this.car.vy),input.throttle||0,this.car.rearSlipSpeed||0)*this.freeBurn+(this.car.condition?.factors.leak??0)));if(previous>=1&&this.freeFuel<1)this.state.emitSound('reserve');if(previous>0&&this.freeFuel===0)this.state.emitSound('fuelEmpty');this.contacts(this.field.step(this.car,dt,this.freeTotalLaps));
   const L=this.data.meta.reconstructed_xy_m;this.freePlayerProgress+=lapTravel(this.freeLastS??0,this.car.surface.s,L);this.freeLastS=this.car.surface.s;
   const progress=Math.min(this.freePlayerProgress,this.car.laps*L+this.car.surface.s+this.field.gridLeadIn);
   this.freePosition=1+this.rivals.filter(r=>r.progress>progress).length;
@@ -555,7 +560,7 @@ export class ImmersiveMode {
    if(s.phase==='tow')body='<div class="imm-eyebrow">REBOQUE</div><h2>Olho na fita!</h2><p>A fita tem 5 m e não recolhe sozinha. Quando o caminhão diminuir, freie com <b>{KeyS}</b>.</p><meter id="immTowGap" min="0" max="5" low="2.2" optimum="5"></meter><p id="immTowText"></p>';
    if(s.phase==='snag')body=`<div class="imm-eyebrow">A FITA ENTROU NA RODA</div><h2>Mais R$ 25 na conta.</h2><p>O carro avançou sobre a fita frouxa e ela enroscou na dianteira. O socorrista vai soltar; no próximo trecho, controle o freio com <b>{KeyS}</b>.</p>${this.button('untangle','Desenroscar e continuar',true)}`;
    if(s.phase==='inspection')body=`<div class="imm-eyebrow">${s.result?.position===1?'VENCEU NA PISTA!':'FIM DA PARTICIPAÇÃO'}</div><h2>Depois da foto.</h2><p>O movimento continua no paddock. O juiz está por perto e o pessoal já espera nos boxes.</p>${s.judging?'<progress id="immInspection" max="8" value="0"></progress><p>O juiz está conferindo o carro…</p>':this.button('inspect','Parar e aguardar a vistoria',true)+this.button('box','Levar o carro ao box')}`;
-   if(['podium','complete'].includes(s.phase))body=`<div class="imm-eyebrow">AUTO-POBRE RACING · PÓDIO OFICIAL DA ZOEIRA</div><h2>Sexto. Sempre sexto.</h2><p>Na pista: <b>${s.result?.position?s.result.position+'º lugar':s.result?.status}</b><br>Situação: ${s.result?.status}${s.inspected?' · vistoriado':''}<br>Na foto do pódio: <b>6º lugar</b></p><p>${s.reason||'A corrida acabou. Os boletos continuam.'}</p><p>Prêmio: <b>${money(s.prize)}</b>${s.snagCost?` · fita do guincho: −${money(s.snagCost)}`:''}</p><p>Sobra da vaquinha guardada: <b>${money(s.savedCash)}</b><br>Carteira: <b>${money(s.profile.fund)}</b></p>${this.goalBlock()}${s.phase==='complete'&&this.blazerDue()?this.button('blazer','Pagar o mecânico e buscar a Blazer',true,s.profile.fund<BLAZER_COST):''}${s.phase==='podium'?this.button('afterPodium','Continuar →',true):this.button('again','Próxima etapa, nova vaquinha →',true)+this.button('normal','Voltar à sessão livre')}`;
+   if(['podium','complete'].includes(s.phase))body=`<div class="imm-eyebrow">AUTO-POBRE RACING · PÓDIO OFICIAL DA ZOEIRA</div><h2>Sexto. Sempre sexto.</h2><p>Na pista: <b>${s.result?.position?s.result.position+'º lugar':s.result?.status}</b><br>Situação: ${s.result?.status}${s.inspected?' · vistoriado':''}<br>Na foto do pódio: <b>6º lugar</b></p><p>${s.reason||'A corrida acabou. Os boletos continuam.'}</p><p>Prêmio: <b>${money(s.prize)}</b>${s.snagCost?` · fita do guincho: −${money(s.snagCost)}`:''}${s.repair?.charged?` · conserto do carro: −${money(s.repair.charged)}`:''}</p><p>Sobra da vaquinha guardada: <b>${money(s.savedCash)}</b><br>Carteira: <b>${money(s.profile.fund)}</b></p>${this.goalBlock()}${s.phase==='complete'&&this.blazerDue()?this.button('blazer','Pagar o mecânico e buscar a Blazer',true,s.profile.fund<BLAZER_COST):''}${s.phase==='podium'?this.button('afterPodium','Continuar →',true):this.button('again','Próxima etapa, nova vaquinha →',true)+this.button('normal','Voltar à sessão livre')}`;
    if(['podium','complete'].includes(s.phase))body+=this.button('mainMenu','Voltar ao menu principal');
    // The career's cards cover the paddock's panel and the summary after the race.
    if(s.scene&&['crowd','complete'].includes(s.phase))body=this.scenePanel();

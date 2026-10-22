@@ -1,5 +1,6 @@
 import {GRID_SIZE} from './race-roster.js';
-import {loadCareer,newCareer,applyRace,reviseRace,moraleCards,challengeCards,answerExpense,overReason,lineCard,prizeFor,giftScale,expenseScale,SNAG_COST,INTRO_LINES,CHALLENGES,BLAZER_GOAL} from './story-career.js';
+import {TANKS,burnRate} from './fuel.js';
+import {loadCareer,newCareer,applyRace,reviseRace,moraleCards,repairBill,repairCards,challengeCards,answerExpense,overReason,lineCard,prizeFor,giftScale,expenseScale,SNAG_COST,INTRO_LINES,CHALLENGES,BLAZER_GOAL} from './story-career.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const FANS=[
  {name:'Dona Cida',taste:'família',hint:'Vim com os netos. Adoro uma história de família.',gift:42},
@@ -37,7 +38,7 @@ export class ImmersiveState {
  start(){
   this.sounds=[];this.emitSound('crowdWelcome');
   Object.assign(this,{active:true,phase:'crowd',cash:0,donors:[],fan:null,desk:false,leo:null,coffee:false,cafe:false,feedback:'',fuel:0,tankDetached:false,tankWear:0,health:1,glass:0,film:false,
-   pressure:0,crank:0,flood:0,battery:1,ignitionGood:0,starter:false,ignOn:false,raceTime:0,position:GRID_SIZE,result:null,reason:'',towSnags:0,snagCost:0,inspection:0,judging:false,inspected:false,paid:false,prize:0,savedCash:0,podiumPlace:null,disqualifiedTime:0,alert:'',alertTime:0,scene:null});
+   pressure:0,crank:0,flood:0,battery:1,ignitionGood:0,starter:false,ignOn:false,raceTime:0,position:GRID_SIZE,result:null,reason:'',towSnags:0,snagCost:0,repair:null,inspection:0,judging:false,inspected:false,paid:false,prize:0,savedCash:0,podiumPlace:null,disqualifiedTime:0,alert:'',alertTime:0,scene:null});
   // Before the paddock: the last race's report not seen yet, Kléber's welcome, or the end of the story.
   const cards=this.careerCards();if(cards)this.openScene(cards.kind,cards.cards);else this.checkMoney();this.touch();
  }
@@ -60,7 +61,7 @@ export class ImmersiveState {
  // The report's cards (a report waiting for the wife's answer shows just her request again); the
  // challenge is applied here, then the end of the story if a bar reached zero.
  reportCards(){
-  const c=this.profile.career,r=c.report,cards=r.awaiting?[]:moraleCards(c);let over=overReason(c);
+  const c=this.profile.career,r=c.report,cards=r.awaiting?[]:[...moraleCards(c),...repairCards(r,this.profile)];let over=overReason(c);
   if(!over){r.awaiting=null;cards.push(...challengeCards(c,this.profile));over=r.awaiting?null:overReason(c);}
   if(!r.awaiting)c.report=null;if(over){c.over=over;cards.push({type:'over',reason:over});}
   return cards;
@@ -123,7 +124,7 @@ export class ImmersiveState {
  // registration's minimum up).
  buy(litres,film){
   if(this.phase!=='crowd'||!this.desk)return false;
-  litres=clamp(Math.round(Number(litres)||0),2,12);const cost=startCost(litres,film,this.entry),money=this.cash+this.profile.fund;
+  litres=clamp(Math.round(Number(litres)||0),2,TANKS.opala);const cost=startCost(litres,film,this.entry),money=this.cash+this.profile.fund;
   if(money<this.minimum||cost>money){this.emitSound('denied');this.feedback=money<this.minimum?'Ainda não fecha a inscrição: volta lá e pede mais um dindin!':'Não cabe tudo isso no dinheiro: tira uns litros ou a proteção.';this.touch();return false;}
   const cash=Math.min(this.cash,cost);this.emitSound('paper');this.cash-=cash;this.profile.fund=Math.max(0,this.profile.fund-(cost-cash));this.fuel=litres;this.film=!!film;this.desk=false;this.feedback='';this.phase='starting';this.emitSound('fuelFill');this.touch();return true;
  }
@@ -152,8 +153,8 @@ export class ImmersiveState {
  raceStep(sensor,dt){
   if(this.phase!=='race')return;
   this.raceTime+=dt;this.alertTime=Math.max(0,this.alertTime-dt);
-  // fuelScale (ImmersiveMode.start): driving burns the tank over the whole race as it did over one lap.
-  const previousFuel=this.fuel;this.fuel=Math.max(0,this.fuel-dt*((.002+sensor.speed*.00045+sensor.throttle*.005+(sensor.wheelspin||0)*.0023)*(this.fuelScale??1)+(this.tankDetached?.35:0)+(this.condition?.factors.leak??0)));
+  // fuelScale (ImmersiveMode.start, fuel.js): the circuit's lap burns what the 8-lap table gives it.
+  const previousFuel=this.fuel;this.fuel=Math.max(0,this.fuel-dt*(burnRate(sensor.speed,sensor.throttle,sensor.wheelspin||0)*(this.fuelScale??1)+(this.tankDetached?.35:0)+(this.condition?.factors.leak??0)));
   if(previousFuel>=1&&this.fuel<1&&this.fuel>0)this.emitSound('reserve');
   const depth=Math.max(0,sensor.offTrack||0);
   if(depth>2.5&&sensor.speed>7)this.tankWear+=dt*(depth-2.5)*.24;
@@ -189,9 +190,11 @@ export class ImmersiveState {
  podium(){
   if(this.paid)return;this.scene=null;
   // The prize by position (story-career.js), what is left in the kitty and the strap untangled: into
-  // the wallet. The race moves the career's morale; its report shows after the inspection.
+  // the wallet; then the team's repair bill out of it. The race moves the career's morale; its report
+  // (the bill's card included) shows after the inspection.
   this.prize=this.result?.status==='Desclassificado'?0:prizeFor(this.result?.position);this.snagCost=this.towSnags*SNAG_COST;this.savedCash=Math.max(0,Number.isFinite(this.cash)?this.cash:0);
-  this.profile.fund=Math.max(0,this.profile.fund+this.prize+this.savedCash-this.snagCost);this.cash=0;this.profile.races++;applyRace(this.profile.career,this.result);this.emitSound(this.result?.position===1&&this.result?.status!=='Desclassificado'?'podiumWin':'podiumLoss');this.paid=true;this.phase='podium';this.podiumPlace=6;this.touch();
+  this.profile.fund=Math.max(0,this.profile.fund+this.prize+this.savedCash-this.snagCost);this.repair=repairBill(this.health,this.profile.fund);this.profile.fund-=this.repair.charged;
+  this.cash=0;this.profile.races++;applyRace(this.profile.career,this.result,this.repair);this.emitSound(this.result?.position===1&&this.result?.status!=='Desclassificado'?'podiumWin':'podiumLoss');this.paid=true;this.phase='podium';this.podiumPlace=6;this.touch();
  }
  releaseBlazer(){if(this.phase==='complete'&&!this.scene&&!this.profile.released&&this.profile.career.challenge>=CHALLENGES.length&&this.profile.fund>=BLAZER_COST){this.emitSound('blazer');this.profile.fund-=BLAZER_COST;this.profile.released=true;this.touch();return true;}return false;}
  info(){return {active:this.active,phase:this.phase,cash:this.cash,desk:!!this.desk,fuel:this.fuel,health:this.health,glass:this.glass,tankDetached:this.tankDetached,pressure:this.pressure,ignOn:!!this.ignOn,flood:this.flood,battery:this.battery,

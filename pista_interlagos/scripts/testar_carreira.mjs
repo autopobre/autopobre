@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {ImmersiveState,FANS,JOKES,COSTS} from '../teste/immersive-state.js';
-import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,MISSED,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,SNAG_COST,outfitOf} from '../teste/story-career.js';
+import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,MISSED,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,SNAG_COST,outfitOf,repairBill} from '../teste/story-career.js';
 const checks={},check=(name,value)=>{checks[name]=!!value;assert(value,name);};
 const profileOf=(career={},fund=0)=>({fund,career:{...newCareer(),intro:true,...career}});
 const story=(career,fund)=>{const s=new ImmersiveState(profileOf(career,fund));s.start();return s;};
@@ -45,11 +45,12 @@ const paid=story();paid.cash=30;race(paid,3);check('prize_and_kitty_into_wallet'
 const towed=story({},100);towed.scene=null;towed.phase='race';towed.fail('Carro quebrou');towed.beginTow();for(let i=0;i<3000&&towed.phase==='tow';i++)towed.towStep({brake:0},1/120);towed.untangle();while(towed.phase==='tow')towed.towStep({brake:1},.05);
 check('snag_paid_from_wallet',towed.towSnags===1&&towed.prize===0&&towed.snagCost===SNAG_COST&&towed.profile.fund===100-SNAG_COST);
 
-// After the race: three morale cards (races 1-5 and from the 6th, by outcome), then the challenge.
+// After the race: three morale cards (races 1-5 and from the 6th, by outcome), the repair bill, then the challenge.
 check('outcomes',[[{status:'Terminou',position:1},'vitoria'],[{status:'Terminou',position:6},'podio'],[{status:'Terminou',position:7},'pontos'],[{status:'Terminou',position:10},'pontos'],[{status:'Terminou',position:11},'fundo'],[{status:'Não terminou',position:null},'guincho'],[{status:'Desclassificado',position:1},'guincho']].every(([r,o])=>outcomeOf(r)===o));
-const won=race(story(),1);check('win_report_cards',types(won)==='morale,morale,morale,challenge'&&won.scene.kind==='report'&&won.sceneCard().key==='esposa'&&won.phase==='complete');
+const won=race(story(),1);check('win_report_cards',types(won)==='morale,morale,morale,repair,challenge'&&won.scene.kind==='report'&&won.sceneCard().key==='esposa'&&won.phase==='complete');
 check('early_win_morale',won.profile.career.morale.esposa===60&&won.profile.career.morale.equipe===70&&won.profile.career.morale.torcida===70&&won.profile.career.races===1);
-check('challenge_progress_card',won.scene.cards[3].challenge==='macacao'&&won.scene.cards[3].left===2&&won.scene.cards[3].fund===800);
+check('challenge_progress_card',won.scene.cards[4].challenge==='macacao'&&won.scene.cards[4].left===2&&won.scene.cards[4].fund===800);
+check('clean_car_bill_is_zero',won.scene.cards[3].type==='repair'&&won.scene.cards[3].damage===0&&won.scene.cards[3].charged===0&&won.scene.cards[3].fund===800);
 readAll(won);check('report_read_through',!won.scene&&won.profile.career.report===null);
 const late=story({races:5,since:5});race(late,null);check('late_tow_morale',late.profile.career.morale.esposa===30&&late.profile.career.morale.equipe===40&&late.profile.career.morale.torcida===40&&late.scene.cards[0].delta===MORALE_CARDS.late.guincho[0][1]);
 const early=story({races:4,since:4});race(early,12);check('fifth_race_is_early',early.profile.career.races===5&&early.profile.career.morale.equipe===55);
@@ -57,6 +58,16 @@ const early=story({races:4,since:4});race(early,12);check('fifth_race_is_early',
 const dq=story();dq.scene=null;dq.phase='race';dq.finish(2);dq.leavePodium();dq.goToBox();
 check('disqualified_counts_as_tow',dq.phase==='disqualified'&&dq.profile.career.morale.esposa===40&&dq.profile.career.morale.equipe===52&&dq.profile.fund===0);
 check('report_after_the_photo',dq.afterDisqualified()&&dq.phase==='complete'&&dq.scene.kind==='report'&&dq.scene.cards[0].outcome==='guincho');
+// The team's repair bill (Central #14): R$ 10 a point of the CARRO bar lost (as the HUD rounds it),
+// out of the wallet after the prize, shown after the supporters' card; the windscreen is not on it.
+check('repair_bill_rule',[[1,0],[.75,250],[.57,430],[0,1000]].every(([h,bill])=>repairBill(h,5000).bill===bill)&&repairBill(.5,120).charged===120);
+const dented=story();dented.health=.75;dented.glass=.6;race(dented,2);const bill=dented.scene.cards[3];
+check('repair_bill_after_supporters',types(dented)==='morale,morale,morale,repair,challenge'&&dented.scene.cards[2].key==='torcida'&&bill.damage===25&&bill.bill===250&&bill.charged===250&&bill.fund===600-250&&dented.profile.fund===350);
+const skint=story();skint.health=.5;race(skint,8);const cut=skint.scene.cards[3];
+check('short_wallet_pays_what_it_has',cut.bill===500&&cut.charged===100&&cut.fund===0&&skint.profile.fund===0);
+const billed=story();billed.health=.75;billed.scene=null;billed.phase='race';billed.finish(2);const reread=new ImmersiveState(JSON.parse(JSON.stringify(billed.profile)));reread.start();
+check('repair_bill_survives_reload',reread.scene?.kind==='report'&&reread.scene.cards.find(c=>c.type==='repair')?.charged===250&&reread.profile.fund===350);
+check('old_report_has_no_bill',loadCareer({...newCareer(),report:{race:1,outcome:'pontos',before:{esposa:50,equipe:50,torcida:50}}}).report&&!loadCareer({...newCareer(),report:{race:1,outcome:'pontos',before:{esposa:50,equipe:50,torcida:50}}}).report.repair);
 
 // The money is there: first the wife's expense (300 at 50%, 1.5x at 0%, 0.5x at 100%).
 check('expense_scales_with_wife',[0,50,100].map(m=>expenseFor(CHALLENGES[0],{morale:{esposa:m}})).join()==='450,300,150');
@@ -81,7 +92,7 @@ check('team_morale_scales_damage',Math.abs(knock(0)-knock(50)*1.5)<1e-9&&Math.ab
 
 // The end: a bar at zero, or not even every supporter pays the registration.
 const sad=story({races:6,morale:{esposa:15,equipe:50,torcida:50}});race(sad,null);
-check('game_over_at_zero',sad.profile.career.over==='esposa'&&types(sad)==='morale,morale,morale,over');readAll(sad);check('game_over_waits',sad.sceneCard().type==='over'&&!sad.advanceScene());
+check('game_over_at_zero',sad.profile.career.over==='esposa'&&types(sad)==='morale,morale,morale,repair,over');readAll(sad);check('game_over_waits',sad.sceneCard().type==='over'&&!sad.advanceScene());
 const ended=new ImmersiveState(JSON.parse(JSON.stringify(sad.profile)));ended.start();check('game_over_survives_reload',ended.scene?.kind==='over');
 ended.restartCareer();ended.start();check('new_story_after_the_end',!ended.profile.career.over&&ended.profile.fund===0&&ended.scene?.kind==='intro');
 const broke=new ImmersiveState(profileOf({morale:{esposa:50,equipe:50,torcida:10}},0));broke.entry=150;broke.start();check('no_money_no_story',broke.profile.career.over==='dinheiro'&&broke.scene?.kind==='over');

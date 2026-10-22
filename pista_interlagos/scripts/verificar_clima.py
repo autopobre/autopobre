@@ -179,14 +179,16 @@ with sync_playwright() as p:
     check('j_parks_the_fusca_wipers', info(page)['fuscaWipers']['angles'] == [0, 0], info(page)['fuscaWipers'])
     page.close()
     # Aleatório (pedido #7): kept in both selects; the first race races the draw the menu showed, every restart a
-    # new one (a real time and rain, the world as they have it), and the opening's line names the draw.
+    # new one (a real time and rain, the world as they have it), and the opening's line names the draw. Its rain
+    # (Central #10) is the menu's roll read at the race's odds: Interlagos' city over the year (no championship date).
     page = browser.new_page(viewport={'width': 1280, 'height': 720})
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.add_init_script("""(p=>{try{const k='opala99-preferences-v1',v=JSON.parse(localStorage.getItem(k)||'{}');Object.assign(v,p);localStorage.setItem(k,JSON.stringify(v));}catch(e){}})(%s)""" % json.dumps({'timeOfDay': 'aleatorio', 'rain': 'aleatorio', 'carModel': 'opala'}))
     open_menu(page, URL + ('&' if '?' in URL else '?') + 'circuito=interlagos')
     shown = page.evaluate("['timeOfDay','tracksTime','rainLevel','tracksRain'].map(id=>document.getElementById(id).value)")
     check('random_kept_in_both_places', shown == ['aleatorio'] * 4, shown)
-    menu_draw = info(page)['draw']
+    menu = info(page)
+    menu_draw = menu['draw']
     race_options(page, camera='chase')
     enter_track(page, 'Piloto sorteio')
     wait_race_start(page)
@@ -201,7 +203,15 @@ with sync_playwright() as p:
         page.wait_for_timeout(300)
         races.append(info(page))
     first = races[0]
-    check('first_race_takes_the_menu_draw', {'time': first['time'], 'rain': first['rain']} == menu_draw, [menu_draw, first['time'], first['rain']])
+    def rain_at(roll, odds):
+        edge = 0
+        for level in ('seco', 'garoa', 'chuva'):
+            edge += odds[level]
+            if roll < edge:
+                return level
+        return 'chuva'
+    check('first_race_takes_the_menu_draw', first['time'] == menu_draw['time'] and first['roll'] == menu['roll'] and first['rain'] == rain_at(first['roll'], first['odds']), [menu, first['time'], first['rain'], first['roll'], first['odds']])
+    check('rain_odds_of_sao_paulo', abs(first['odds']['seco'] - (1 - 110 / 365.25)) < 1e-9 and abs(first['odds']['chuva'] - 53 / 365.25) < 1e-9 and all(r['rain'] == rain_at(r['roll'], r['odds']) for r in races), [first['odds'], [(r['roll'], r['rain']) for r in races]])
     real = all(r['choice'] == {'time': 'aleatorio', 'rain': 'aleatorio'} and r['time'] in ('dia', 'fim_de_tarde', 'noite') and r['rain'] in ('seco', 'garoa', 'chuva')
                and r['draw'] == {'time': r['time'], 'rain': r['rain']} and r['sky']['weather'] == f"{r['time']}/{r['rain']}" for r in races)
     check('every_race_a_real_weather', real, [(r['choice'], r['time'], r['rain'], r['draw'], r['sky']['weather']) for r in races])
