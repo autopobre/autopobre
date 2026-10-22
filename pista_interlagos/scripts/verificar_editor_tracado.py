@@ -92,6 +92,28 @@ with sync_playwright() as p:
         page.mouse.up()
         check('Mover pushes the line', abs(info()['comprimento'] - antes) > .5, (antes, info()['comprimento']))
 
+        # Few points (user 10-22: the pit lane painted with the brush had a point every 2 m and Mover took dozens): a
+        # straight brush stroke keeps little more than its ends, and Simplificar pontos thins a line keeping its shape.
+        page.click('#camadas button[data-camada="pit"]')
+        page.click('#ferramentas button[data-ferr="pincel"]')
+        cx, cy = box['x'] + box['width'] / 2, box['y'] + box['height'] * .8
+        page.mouse.move(cx - 200, cy)
+        page.mouse.down()
+        for k in range(1, 41):
+            page.mouse.move(cx - 200 + k * 10, cy + (k % 2) * .4)
+        page.mouse.up()
+        npit = info()['pit']
+        page.click('#camadas button[data-camada="eixo"]')
+        antes_n, antes_c = info()['eixo'], info()['comprimento']
+        page.click('#bSimplificar')
+        depois_n, depois_c = info()['eixo'], info()['comprimento']
+        check('a straight brush stroke keeps few points; Simplificar pontos thins the lap without changing its shape',
+              2 <= npit <= 3 and depois_n < antes_n / 3 and abs(depois_c - antes_c) < antes_c * .005, (npit, antes_n, depois_n, antes_c, depois_c))
+        page.keyboard.press('Control+z')
+        page.keyboard.press('Control+z')
+        check('Ctrl+Z gives back the points and the empty pit lane', info()['eixo'] == antes_n and info()['pit'] == 0, (info()['eixo'], info()['pit']))
+        page.click('#ferramentas button[data-ferr="mover"]')
+
         # A lap drawn with few points (a 400 m square): Mover in the middle of a side, where there is no point, adds one
         # point on the line under its centre and pulls it; the finish line clicked mid-side stays there.
         quadrado = shots / 'quadrado_cascavel.json'
@@ -116,35 +138,73 @@ with sync_playwright() as p:
         page.keyboard.press('Control+z')
         page.keyboard.press('Control+z')
 
-        # Largura: a point on the line mid-side (no vertex there) widens the track around it, smoothly, within its reach.
+        # Largura (user 10-22): the width lives in the track's own points and goes in a straight line to the previous and
+        # the next point. A click on the line mid-side (no point there) makes a point; the corners are points already.
         page.click('#ferramentas button[data-ferr="largura"]')
         padrao = float(page.input_value('#largura'))
-        meio = page.evaluate(f"window.editorTracado.paraTela({o[0]},{o[1] - 200})")
-        page.mouse.click(box['x'] + meio[0], box['y'] + meio[1] + 3)
-        page.evaluate("() => { for (const [id, v] of [['larguraPonto', 22], ['alcancePonto', 60]]) { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('input', {bubbles: true})); } return true; }")
-        lp = json.loads(page.evaluate('window.editorTracado.exportar()'))['larguras_pontos']
-        no = page.evaluate(f"[window.editorTracado.larguraEm([{o[0]},{o[1] - 200}]), window.editorTracado.larguraEm([{o[0] + 30},{o[1] - 200}]), window.editorTracado.larguraEm([{o[0] + 120},{o[1] - 200}])]")
-        check('Largura: a point mid-side sets the width there, fades within its reach, default beyond',
-              len(lp) == 1 and abs(lp[0][0] - o[0]) < 2 and abs(lp[0][1] - (o[1] - 200)) < .01 and lp[0][2:] == [22, 60]
-              and abs(no[0] - 22) < .6 and padrao < no[1] < 22 and abs(no[2] - padrao) < 1e-6, (lp, no, padrao))
-        # Done editing (user 10-22: the selected point stayed highlighted, forgotten): Esc lets it go, a click on its
-        # diamond takes it again, and changing tool lets it go too.
+        def largura_no(x, y, w):
+            q = page.evaluate(f'window.editorTracado.paraTela({x},{y})')
+            page.mouse.click(box['x'] + q[0], box['y'] + q[1] + 2)
+            page.evaluate("(w) => { const e = document.getElementById('larguraPonto'); e.value = w; e.dispatchEvent(new Event('input', {bubbles: true})); return true; }", w)
+        largura_no(o[0], o[1] - 200, 10)
+        largura_no(o[0] + 200, o[1] - 200, 15)
+        largura_no(o[0] - 200, o[1] - 200, 8)
+        em = lambda x, y: page.evaluate(f'window.editorTracado.larguraEm([{x},{y}])')
+        no = [round(em(o[0] + dx, o[1] - 200), 2) for dx in (-200, -100, 0, 100, 200)] + [round(em(o[0] + 200, o[1]), 2)]
+        lm = json.loads(page.evaluate('window.editorTracado.exportar()'))['largura_m']
+        check('Largura: each point has its width and the border goes straight to the previous and the next point',
+              no == [8, 9, 10, 12.5, 15, (15 + padrao) / 2] and lm == [8, 10, 15, padrao, padrao], (no, lm, padrao))
+        # Done editing (user 10-22: the selected point stayed highlighted, forgotten): Esc lets it go, a click on the
+        # point takes it again, and changing tool lets it go too.
         page.keyboard.press('Escape')
         solto = info()['larguraSel']
+        meio = page.evaluate(f'window.editorTracado.paraTela({o[0]},{o[1] - 200})')
         page.mouse.click(box['x'] + meio[0], box['y'] + meio[1])
         de_novo = info()['larguraSel']
-        check('Esc lets the width point go, a click on its diamond selects it again',
-              solto is None and de_novo == 0 and page.is_hidden('#painelLargura') is False, (solto, de_novo))
+        check('Esc lets the point go, a click on it selects it again',
+              solto is None and de_novo == 1 and page.is_hidden('#painelLargura') is False, (solto, de_novo))
         page.keyboard.press('Delete')
         sem = info()['larguras']
         page.keyboard.press('Control+z')
-        check('Delete removes the width point and Ctrl+Z brings it back', sem == [] and len(info()['larguras']) == 1, (sem, info()['larguras']))
+        check('Delete takes the point back to the default width and Ctrl+Z undoes it',
+              [1, 10] not in sem and [1, 10] in info()['larguras'], (sem, info()['larguras']))
         page.click('#ferramentas button[data-ferr="mover"]')
-        check('changing tool lets the width point go (no diamonds outside the Largura tool)', info()['larguraSel'] is None, info()['larguraSel'])
-        page.click('#ferramentas button[data-ferr="largura"]')
-        page.keyboard.press('Control+z')
-        page.keyboard.press('Control+z')
-        page.keyboard.press('Control+z')
+        check('changing tool lets the point go (no diamonds outside the Largura tool)', info()['larguraSel'] is None, info()['larguraSel'])
+        for _ in range(3):
+            page.keyboard.press('Control+z')
+        check('undoing the widths gives back the four-cornered lap', info()['eixo'] == 4 and info()['larguras'] == [], info()['larguras'])
+
+        # Hover (user 10-22): before the click, every tool shows what it would take. Corner (o+200, o-200) is a point;
+        # mid-side has none.
+        def sobre(x, y):
+            q = page.evaluate(f'window.editorTracado.paraTela({x},{y})')
+            page.mouse.move(box['x'] + q[0], box['y'] + q[1])
+            page.wait_for_timeout(60)
+            return info()
+        def ferramenta(f):
+            page.click(f'#ferramentas button[data-ferr="{f}"]')
+        ferramenta('largura')
+        canto, meio_lado, longe = sobre(o[0] + 200, o[1] - 200), sobre(o[0], o[1] - 200), sobre(o[0], o[1])
+        check('Largura hover: the point under the mouse, a new point on the line away from points, nothing elsewhere',
+              canto['pontoHover'] == 1 and canto['novoHover'] is None and meio_lado['pontoHover'] is None
+              and meio_lado['novoHover'] is not None and longe['hover'] is None, (canto['pontoHover'], meio_lado['novoHover'], longe['hover']))
+        ferramenta('mover')
+        m_meio, m_canto = sobre(o[0], o[1] - 200), sobre(o[0] + 200, o[1] - 200)
+        ferramenta('apagar')
+        a_canto = sobre(o[0] + 200, o[1] - 200)
+        ferramenta('chegada')
+        c_lado = sobre(o[0] + 200, o[1])
+        ferramenta('pontos')
+        p_perto = sobre(o[0] + 3, o[1] - 190)
+        ferramenta('pincel')
+        b_linha = sobre(o[0] - 200, o[1] + 40)
+        check('Mover, Apagar, Chegada, Pontos and Pincel show their target before the click',
+              m_meio['novoHover'] is not None and m_canto['hover']['afetados'] == 1 and a_canto['hover']['apagados'] == 1
+              and c_lado['hover']['chegada'] and p_perto['hover']['segmento'] == 0 and b_linha['hover']['encaixe'],
+              (m_meio['novoHover'], m_canto['hover'], a_canto['hover'], c_lado['hover'], p_perto['hover'], b_linha['hover']))
+        sobre(o[0], o[1] - 200)
+        page.screenshot(path=str(shots / 'editor_hover_pincel.png'))
+        ferramenta('mover')
 
         # The editor remembers its settings: tool, line, radius, what is shown, and per circuit each background and line.
         def deslizar(seletor, valor):

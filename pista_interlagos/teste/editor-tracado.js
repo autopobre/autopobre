@@ -33,7 +33,7 @@ const soPacote = {};           // circuitos que só existem numa pasta de refer�
 let S = vazio();
 let camada = 'eixo', ferramenta = 'pincel';
 const hist = [], refaz = [];
-function vazio() { return { eixo: [], fechado: false, pit: [], chegada: null, larguras: [] }; }
+function vazio() { return { eixo: [], fechado: false, pit: [], chegada: null }; }
 
 const carregarImagem = url => new Promise((ok, falha) => {
   const i = new Image();
@@ -256,8 +256,8 @@ function trocarVista(nova) {
 
 // ---------- histórico e memória do navegador ----------
 function marcar() { hist.push(JSON.stringify(S)); if (hist.length > 300) hist.shift(); refaz.length = 0; }
-function desfazer() { if (!hist.length) return; refaz.push(JSON.stringify(S)); S = JSON.parse(hist.pop()); S.larguras ??= []; larguraSel = null; mudou(); }
-function refazer() { if (!refaz.length) return; hist.push(JSON.stringify(S)); S = JSON.parse(refaz.pop()); S.larguras ??= []; larguraSel = null; mudou(); }
+function desfazer() { if (!hist.length) return; refaz.push(JSON.stringify(S)); S = JSON.parse(hist.pop()); larguraSel = null; mudou(); }
+function refazer() { if (!refaz.length) return; hist.push(JSON.stringify(S)); S = JSON.parse(refaz.pop()); larguraSel = null; mudou(); }
 let tSalvar = 0;
 function mudou() {
   atualizarPainel();
@@ -284,7 +284,7 @@ function lerLocal(id) {
   const o = lerLocalBruto(id);
   if (o.largura) $('largura').value = o.largura;
   return o.S && Array.isArray(o.S.eixo)
-    ? { eixo: o.S.eixo, fechado: !!o.S.fechado, pit: o.S.pit || [], chegada: o.S.chegada || null, larguras: o.S.larguras || [] } : null;
+    ? { eixo: o.S.eixo, fechado: !!o.S.fechado, pit: o.S.pit || [], chegada: o.S.chegada || null } : null;
 }
 function aplicarVisuais(id) {
   const o = lerLocalBruto(id);
@@ -391,43 +391,28 @@ function pontoNaLinha(L, p, fech) {
   }
   return melhor;
 }
-// Larguras por ponto (ferramenta Largura): cada ponto de largura fica preso ao lugar do eixo mais perto dele e muda a
-// largura até `r` metros ao longo da pista, para os dois lados, com transição suave até a largura padrão; pontos que se
-// alcançam fazem a média. Como ficam presos ao lugar e não a um índice, sobrevivem ao Pincel, ao Mover e ao Apagar.
-function arcos(L, fech) {
-  const cum = [0];
-  for (let i = 1; i < L.length; i++) cum.push(cum[i - 1] + dist(L[i - 1], L[i]));
-  return { cum, total: cum[cum.length - 1] + (fech && L.length > 2 ? dist(L[L.length - 1], L[0]) : 0) };
-}
-function sNaLinha(L, fech, cum, p) {
-  const pn = pontoNaLinha(L, p, fech);
-  return cum[pn.i] + pn.t * dist(L[pn.i], L[(pn.i + 1) % L.length]);
-}
-function largurasDaLinha(L, fech, padrao, ancoras) {
-  if (!ancoras?.length || L.length < 2) return padrao;
-  const { cum, total } = arcos(L, fech), sa = ancoras.map(a => sNaLinha(L, fech, cum, a.p));
-  return cum.map(s => {
-    let soma = 0, peso = 0;
-    ancoras.forEach((a, k) => {
-      let d = Math.abs(s - sa[k]);
-      if (fech) d = Math.min(d, total - d);
-      const u = d / Math.max(1, a.r);
-      if (u < 1) { const g = (1 - u * u) ** 2; soma += g * (a.w - padrao); peso += g; }
-    });
-    return padrao + (peso > 1 ? soma / peso : soma);
-  });
-}
+// Largura nos pontos da pista (ferramenta Largura): cada ponto do eixo pode ter a sua largura, um terceiro número
+// ([x, y, largura]); sem ele vale a largura padrão. Entre um ponto e o próximo a borda muda em linha reta: se o do meio
+// mede 10 e o próximo 15, a pista alarga para a frente; se o anterior mede 8, ela afina para trás.
 const larguraPadrao = () => +$('largura').value;
-// O eixo com a largura de cada trecho: sem pontos de largura, a padrão; com eles, a linha a cada 2 m (uma reta longa
-// desenhada com dois pontos também alarga no meio).
-function eixoComLarguras() {
-  if (!S.larguras.length || S.eixo.length < 3) return { L: S.eixo, W: larguraPadrao() };
-  const L = reamostrar(S.eixo, 2, S.fechado);
-  return { L, W: largurasDaLinha(L, S.fechado, larguraPadrao(), S.larguras) };
+const larguraDoPonto = p => p[2] ?? larguraPadrao();
+const temLargura = L => L.some(p => p.length > 2);
+function larguraNoSegmento(L, i, t) {
+  const a = larguraDoPonto(L[i]), b = larguraDoPonto(L[(i + 1) % L.length]);
+  return a + (b - a) * t;
 }
 function larguraEm(p) {
-  const { L, W } = eixoComLarguras();
-  return typeof W === 'number' ? W : W[pontoNaLinha(L, p, S.fechado).i];
+  const pn = pontoNaLinha(S.eixo, p, S.fechado);
+  return pn ? larguraNoSegmento(S.eixo, pn.i, pn.t) : larguraPadrao();
+}
+// Um ponto novo no segmento i (fração t): onde as pontas têm largura própria, ele nasce com a largura da reta entre elas
+// (sem abrir um buraco na borda).
+function pontoNovo(L, i, q, t) {
+  const a = L[i], b = L[(i + 1) % L.length];
+  return a.length > 2 || b.length > 2 ? [q[0], q[1], Math.round(larguraNoSegmento(L, i, t) * 10) / 10] : [q[0], q[1]];
+}
+function eixoComLarguras() {
+  return { L: S.eixo, W: temLargura(S.eixo) ? S.eixo.map(larguraDoPonto) : larguraPadrao() };
 }
 // Mover sem nenhum ponto dentro do círculo (o meio de uma reta desenhada com dois pontos): um ponto novo na linha, no
 // lugar mais perto do centro. null: a linha não passa dentro do círculo.
@@ -435,20 +420,57 @@ function pontoNoRaio(L, c, R, fech) {
   if (L.some(p => dist(p, c) < R)) return L;
   const perto = pontoNaLinha(L, c, fech);
   if (!perto || perto.d > R) return null;
-  return L.slice(0, perto.i + 1).concat([perto.q], L.slice(perto.i + 1));
+  return L.slice(0, perto.i + 1).concat([pontoNovo(L, perto.i, perto.q, perto.t)], L.slice(perto.i + 1));
+}
+
+// Douglas-Peucker: os índices que ficam da linha aberta Q, a menos de `tol` dela (as pontas sempre; manter(i) força um).
+function rdp(Q, tol, manter = () => false) {
+  const n = Q.length;
+  if (n < 3) return [...Array(n).keys()];
+  const fica = new Uint8Array(n), pilha = [[0, n - 1]];
+  fica[0] = fica[n - 1] = 1;
+  while (pilha.length) {
+    const [a, b] = pilha.pop(), [ax, ay] = Q[a], dx = Q[b][0] - ax, dy = Q[b][1] - ay, l2 = dx * dx + dy * dy;
+    let k = -1, dm = tol;
+    for (let i = a + 1; i < b; i++) {
+      const t = l2 ? Math.max(0, Math.min(1, ((Q[i][0] - ax) * dx + (Q[i][1] - ay) * dy) / l2)) : 0;
+      const d = manter(i) ? Infinity : Math.hypot(Q[i][0] - ax - dx * t, Q[i][1] - ay - dy * t);
+      if (d > dm) { dm = d; k = i; }
+    }
+    if (k >= 0) { fica[k] = 1; pilha.push([a, k], [k, b]); }
+  }
+  return [...fica.keys()].filter(i => fica[i]);
+}
+// Simplificar pontos (botão): a linha que se pinta com os pontos que a forma pede, a até 0,4 m da original; os pontos
+// com largura própria ficam.
+function simplificarLinha() {
+  const L = linhaAtiva(), fech = ativaFechada();
+  if (L.length < 4) return aviso('A linha já tem poucos pontos.');
+  const Q = fech ? L.concat([L[0]]) : L;
+  const novos = rdp(Q, .4, i => Q[i].length > 2).filter(i => !(fech && i === L.length)).map(i => L[i]);
+  if (novos.length === L.length) return aviso('A linha já está com o mínimo de pontos para a forma dela.');
+  marcar();
+  S[camada] = novos;
+  larguraSel = null;
+  mudou();
+  aviso(`${L.length.toLocaleString('pt-BR')} → ${novos.length.toLocaleString('pt-BR')} pontos (a forma não muda mais que 0,4 m).`);
 }
 
 // ---------- pincel: desenha do zero, emenda na ponta ou refaz um trecho ----------
 function fecharSePerto() {
-  if (camada !== 'eixo' || S.fechado || S.eixo.length < 30) return;
+  if (camada !== 'eixo' || S.fechado || S.eixo.length < 3) return;
   if (comprimento(S.eixo, false) > 300 && distTela(S.eixo[S.eixo.length - 1], S.eixo[0]) < ENCAIXE) {
     S.fechado = true;
     aviso('Volta fechada.');
   }
 }
 function aplicarTraco(bruto) {
-  const tr = reamostrar(bruto, 2.0, false);
+  let tr = reamostrar(bruto, 2.0, false);
   if (tr.length < 2 || comprimento(tr, false) < 3) return;
+  // Só os pontos que o desenho precisa (a 1,2 px dele na tela): poucos nas retas, mais nas curvas. Cada ponto da linha é
+  // um controle (Mover, Largura); um a cada 2 m enchia o pit lane de pontos.
+  const naTela = tr.map(q => paraTela(q[0], q[1]));
+  if (naTela.every(Boolean)) tr = rdp(naTela, 1.2).map(i => tr[i]);
   const L = linhaAtiva(), n = L.length;
   marcar();
   if (n < 2) {
@@ -486,6 +508,57 @@ function aplicarTraco(bruto) {
 
 // ---------- desenho ----------
 let pedido = false, cursorMundo = null, arrasto = null, destaque = null, larguraSel = null, marcouPainel = false;
+// O que um clique pegaria agora, por ferramenta, mostrado antes do clique (desenharHover): o ponto embaixo do mouse (até
+// 12 px), o ponto novo que nasceria, os pontos que o Mover mexe ou o Apagar tira, o trecho onde a ferramenta Pontos
+// encaixa, a chegada e a emenda do Pincel. Os mesmos alcances dos cliques.
+let hover = null;
+function calcularHover(w) {
+  if (!w || arrasto || ferramenta === 'mao') return null;
+  const L = linhaAtiva(), fech = ativaFechada(), R = +$('raio').value;
+  const perto = (M, px) => { let k = null, dm = px; M.forEach((q, i) => { const d = distTela(q, w); if (d < dm) { dm = d; k = i; } }); return k; };
+  const dentro = M => M.flatMap((q, i) => dist(q, w) < R ? [i] : []);
+  if (ferramenta === 'largura') {
+    if (S.eixo.length < 3) return null;
+    const k = perto(S.eixo, 12);
+    if (k !== null) return { linha: S.eixo, ponto: k };
+    const pn = pontoNaLinha(S.eixo, w, S.fechado);
+    return pn && distTela(pn.q, w) <= 30 ? { linha: S.eixo, novo: pn.q } : null;
+  }
+  if (ferramenta === 'chegada') {
+    if (S.eixo.length < 3) return null;
+    return { linha: S.eixo, ponto: perto(S.eixo, 12), chegada: pontoNaLinha(S.eixo, w, S.fechado) };
+  }
+  if (ferramenta === 'mover') {
+    if (L.length < 2) return null;
+    const afetados = dentro(L);
+    if (afetados.length) return { linha: L, ponto: perto(L, 12), afetados };
+    const pn = pontoNaLinha(L, w, fech);
+    return pn && pn.d < R ? { linha: L, novo: pn.q } : null;
+  }
+  if (ferramenta === 'apagar') {
+    const apagados = dentro(L);
+    return apagados.length ? { linha: L, apagados } : null;
+  }
+  if (ferramenta === 'pontos') {
+    const segmento = fech && L.length > 2 ? pontoNaLinha(L, w, true).i : L.length ? L.length - 1 : null;
+    return { linha: L, ponto: perto(L, 12), novo: w, segmento, aberto: !(fech && L.length > 2) };
+  }
+  if (ferramenta === 'pincel') {
+    if (L.length < 2) return null;
+    const k = perto(L, 12), pn = pontoNaLinha(L, w, fech), encaixe = pn && distTela(pn.q, w) < ENCAIXE ? pn.q : null;
+    return k !== null || encaixe ? { linha: L, ponto: k, encaixe } : null;
+  }
+  return null;
+}
+function atualizarHover(w) {
+  const antes = hover;
+  hover = calcularHover(w);
+  if (!espaco && !arrasto) {
+    tela.style.cursor = ferramenta === 'largura' ? (hover?.ponto != null ? 'pointer' : hover?.novo ? 'copy' : '')
+      : ferramenta === 'pontos' ? 'copy' : '';
+  }
+  if (antes || hover) pedirDesenho();
+}
 function pedirDesenho() { if (!pedido) { pedido = true; requestAnimationFrame(pintar); } }
 function ajustarTela() {
   const r = tela.getBoundingClientRect(), k = window.devicePixelRatio || 1;
@@ -592,39 +665,105 @@ function desenharChegada() {
   ctx.strokeText('CHEGADA', q[0] + 6, q[1] + 4); ctx.fillText('CHEGADA', q[0] + 6, q[1] + 4);
   ctx.restore();
 }
-// Os pontos de largura: losangos no eixo; o selecionado mostra o trecho que alcança e a largura.
-// Só com a ferramenta Largura: fora dela o efeito aparece nas bordas, sem os losangos por cima.
+// Com a ferramenta Largura: os pontos da pista (bolinhas; losangos com o número onde têm largura própria) e, no ponto
+// selecionado, o trecho que ele muda, do ponto anterior ao próximo.
 function desenharLarguras() {
-  if (ferramenta !== 'largura' || !S.larguras.length || S.eixo.length < 3) return;
-  const sel = S.larguras[larguraSel];
+  if (ferramenta !== 'largura' || S.eixo.length < 3) return;
+  const L = S.eixo, n = L.length, sel = L[larguraSel];
   if (sel) {
-    const D = reamostrar(S.eixo, 2, S.fechado), { cum, total } = arcos(D, S.fechado), s0 = sNaLinha(D, S.fechado, cum, sel.p);
-    const trecho = D.filter((_, i) => { let d = Math.abs(cum[i] - s0); if (S.fechado) d = Math.min(d, total - d); return d < sel.r; });
-    if (trecho.length > 1) {
-      caminho(trecho, false);
-      ctx.strokeStyle = 'rgba(255,209,102,.55)'; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.stroke();
-    }
+    const ant = larguraSel > 0 ? L[larguraSel - 1] : S.fechado ? L[n - 1] : null;
+    const prox = larguraSel < n - 1 ? L[larguraSel + 1] : S.fechado ? L[0] : null;
+    caminho([ant, sel, prox].filter(Boolean), false);
+    ctx.strokeStyle = 'rgba(255,209,102,.6)'; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.stroke();
   }
-  S.larguras.forEach((a, k) => {
-    const q = paraTela(a.p[0], a.p[1]);
+  const a = paraTela(L[0][0], L[0][1]), b = paraTela(L[1][0], L[1][1]), perto = a && b && Math.hypot(a[0] - b[0], a[1] - b[1]) >= 5;
+  // A largura escrita em cada ponto, para ter noção dos vizinhos: sempre no selecionado e nos que têm a sua (amarelo);
+  // nos outros (branco) quando há espaço desde o último número escrito.
+  let ultimo = null;
+  L.forEach((p, k) => {
+    const q = paraTela(p[0], p[1]);
     if (!q) return;
-    const t = k === larguraSel ? 8 : 5;
-    ctx.beginPath(); ctx.moveTo(q[0], q[1] - t); ctx.lineTo(q[0] + t, q[1]); ctx.lineTo(q[0], q[1] + t); ctx.lineTo(q[0] - t, q[1]); ctx.closePath();
-    ctx.fillStyle = k === larguraSel ? '#ffd166' : '#ffffff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
-    ctx.fill(); ctx.stroke();
-    const txt = `${(+a.w).toLocaleString('pt-BR')} m`;
-    ctx.font = '600 11px system-ui, sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.fillStyle = '#fff';
-    ctx.strokeText(txt, q[0] + 10, q[1] - 8); ctx.fillText(txt, q[0] + 10, q[1] - 8);
+    const proprio = p.length > 2, escolhido = k === larguraSel;
+    if (proprio || escolhido) {
+      const t = escolhido ? 9 : 7;
+      ctx.beginPath(); ctx.moveTo(q[0], q[1] - t); ctx.lineTo(q[0] + t, q[1]); ctx.lineTo(q[0], q[1] + t); ctx.lineTo(q[0] - t, q[1]); ctx.closePath();
+      ctx.fillStyle = escolhido ? '#ffd166' : '#ffffff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+      ctx.fill(); ctx.stroke();
+    } else if (perto) bolinha(q, 4.5);
+    else return;
+    const apertado = ultimo && Math.hypot(q[0] - ultimo.q[0], q[1] - ultimo.q[1]) < 46;
+    if (!proprio && !escolhido && apertado) return;
+    const txt = `${(+larguraDoPonto(p)).toLocaleString('pt-BR')} m`;
+    ctx.font = `${proprio || escolhido ? 700 : 600} 11px system-ui, sans-serif`; ctx.lineWidth = 3; ctx.strokeStyle = '#000';
+    ctx.fillStyle = proprio || escolhido ? '#ffd166' : '#ffffff';
+    // Colado no número anterior (dois pontos com largura própria lado a lado), vai para o outro lado do ponto.
+    const lado = apertado && ultimo.lado > 0 ? -1 : 1, x = lado > 0 ? q[0] + 10 : q[0] - 10 - ctx.measureText(txt).width, y = lado > 0 ? q[1] - 8 : q[1] + 18;
+    ctx.strokeText(txt, x, y); ctx.fillText(txt, x, y);
+    ultimo = { q, lado };
   });
 }
+function desenharHover() {
+  const h = hover;
+  if (!h) return;
+  const anel = (p, r, cor, grosso = 2.5) => {
+    const q = p && paraTela(p[0], p[1]);
+    if (!q) return;
+    ctx.beginPath(); ctx.arc(q[0], q[1], r, 0, 7);
+    ctx.strokeStyle = '#000'; ctx.lineWidth = grosso + 2; ctx.stroke();
+    ctx.strokeStyle = cor; ctx.lineWidth = grosso; ctx.stroke();
+  };
+  const texto = (q, txt, cor = '#ffd166') => {
+    ctx.font = '700 12px system-ui, sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.fillStyle = cor;
+    ctx.strokeText(txt, q[0] + 13, q[1] - 10); ctx.fillText(txt, q[0] + 13, q[1] - 10);
+  };
+  for (const i of h.afetados ?? []) anel(h.linha[i], 5, '#ffd166', 1.5);
+  for (const i of h.apagados ?? []) anel(h.linha[i], 7, '#e2553f', 2.5);
+  if (h.segmento != null && h.novo) {
+    // Onde a ferramenta Pontos encaixa o ponto: entre as pontas do trecho (ou depois do último, na linha aberta).
+    const a = h.linha[h.segmento], b = h.aberto ? null : h.linha[(h.segmento + 1) % h.linha.length];
+    caminho([a, h.novo, b].filter(Boolean), false);
+    ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(255,209,102,.9)'; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+  }
+  if (h.ponto != null) {
+    anel(h.linha[h.ponto], 11, '#ffd166');
+    const q = paraTela(h.linha[h.ponto][0], h.linha[h.ponto][1]);
+    if (q && ferramenta === 'largura' && h.linha[h.ponto].length < 3 && h.ponto !== larguraSel) texto(q, `${(+larguraDoPonto(h.linha[h.ponto])).toLocaleString('pt-BR')} m`);
+  }
+  if (h.novo && (h.ponto == null || ferramenta === 'pontos')) {
+    const q = paraTela(h.novo[0], h.novo[1]);
+    if (q) {
+      ctx.beginPath(); ctx.moveTo(q[0], q[1] - 8); ctx.lineTo(q[0] + 8, q[1]); ctx.lineTo(q[0], q[1] + 8); ctx.lineTo(q[0] - 8, q[1]); ctx.closePath();
+      ctx.setLineDash([3, 2]); ctx.strokeStyle = '#000'; ctx.lineWidth = 3.5; ctx.stroke();
+      ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 1.8; ctx.stroke(); ctx.setLineDash([]);
+      texto(q, '+');
+    }
+  }
+  if (h.encaixe) anel(h.encaixe, 7, '#ffd166', 2);
+  if (h.chegada) {
+    // A chegada tracejada onde o clique a põe, atravessada no trecho.
+    const pn = h.chegada, a = h.linha[pn.i], b = h.linha[(pn.i + 1) % h.linha.length];
+    const dx = b[0] - a[0], dy = b[1] - a[1], m = Math.hypot(dx, dy) || 1, hw = larguraEm(pn.q) / 2 + 1, c = pn.q;
+    const p1 = paraTela(c[0] - dy / m * hw, c[1] + dx / m * hw), p2 = paraTela(c[0] + dy / m * hw, c[1] - dx / m * hw);
+    if (p1 && p2) {
+      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]);
+      ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 6; ctx.stroke();
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3; ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+}
+// Os pontos da linha que se pinta: bolinhas brancas de contorno escuro, grandes o bastante para achar (só quando há
+// espaço entre eles na tela).
+function bolinha(q, r = 4) {
+  ctx.beginPath(); ctx.arc(q[0], q[1], r, 0, 7);
+  ctx.fillStyle = '#fff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.fill(); ctx.stroke();
+}
 function desenharPontos(L) {
-  if (L.length < 2) return;
+  if (L.length < 2 || ferramenta === 'largura') return;
   const a = paraTela(L[0][0], L[0][1]), b = paraTela(L[1][0], L[1][1]);
   if (!a || !b || Math.hypot(a[0] - b[0], a[1] - b[1]) < 6) return;
-  ctx.fillStyle = '#fff';
   for (const p of L) {
     const q = paraTela(p[0], p[1]);
-    if (q) { ctx.beginPath(); ctx.arc(q[0], q[1], 2, 0, 7); ctx.fill(); }
+    if (q) bolinha(q);
   }
 }
 function pintar() {
@@ -658,6 +797,7 @@ function pintar() {
   if ($('verPontos').checked) desenharPontos(linhaAtiva());
   desenharChegada();
   desenharLarguras();
+  desenharHover();
   if (destaque) {
     const q = paraTela(destaque[0], destaque[1]);
     if (q) { ctx.beginPath(); ctx.arc(q[0], q[1], 16, 0, 7); ctx.strokeStyle = '#e2553f'; ctx.lineWidth = 2.5; ctx.stroke(); }
@@ -683,7 +823,7 @@ const AJUDA = {
   pontos: 'Clique para pôr um ponto: no fim da linha (se aberta) ou no trecho mais perto (se a volta está fechada).',
   apagar: 'Arraste por cima para <b>apagar pontos</b> dentro do círculo vermelho; depois refaça o trecho com o Pincel.',
   chegada: 'Clique no eixo onde fica a <b>linha de chegada</b>, em qualquer lugar dele; clique de novo para mudar.',
-  largura: 'Clique no eixo para pôr um <b>ponto de largura</b> (ou num losango para selecionar). Ajuste a largura ali e o alcance: o trecho em amarelo muda, com transição suave até a largura padrão. Arraste o losango para levá-lo ao longo da pista. Terminou? Clique fora do eixo ou aperte <kbd>Esc</kbd>.',
+  largura: 'Clique num <b>ponto da pista</b> para escolher a largura dele (no eixo longe de um ponto, cria um ali). A borda vai em linha reta até o ponto anterior e o próximo: o trecho em amarelo. <kbd>Delete</kbd> volta o ponto à largura padrão. Terminou? Clique fora do eixo ou aperte <kbd>Esc</kbd>.',
   mao: 'Arraste para mover a imagem; a roda do mouse dá zoom.',
 };
 const fmtM = v => Math.round(v).toLocaleString('pt-BR') + ' m';
@@ -769,12 +909,13 @@ function atualizarPainel() {
   $('mRaio').style.color = r && r.r < 10 ? 'var(--bad)' : '';
   $('mPit').textContent = S.pit.length > 1 ? fmtM(comprimento(S.pit, false)) : '—';
   $('bFechar').textContent = S.fechado ? 'Abrir volta' : 'Fechar volta';
-  if (!S.larguras[larguraSel]) larguraSel = null;
-  const sel = ferramenta === 'largura' ? S.larguras[larguraSel] : null;
+  if (!S.eixo[larguraSel]) larguraSel = null;
+  const sel = ferramenta === 'largura' ? S.eixo[larguraSel] : null;
   $('painelLargura').hidden = !sel;
   if (sel) {
-    $('larguraPonto').value = sel.w; $('larguraPontoVal').textContent = `${(+sel.w).toLocaleString('pt-BR')} m`;
-    $('alcancePonto').value = sel.r; $('alcancePontoVal').textContent = `${sel.r} m`;
+    const w = larguraDoPonto(sel);
+    $('larguraPonto').value = w; $('larguraPontoVal').textContent = `${(+w).toLocaleString('pt-BR')} m`;
+    $('bRemoverLargura').disabled = sel.length < 3;
   }
 }
 
@@ -814,7 +955,7 @@ tela.addEventListener('pointerdown', e => {
   } else if (ferramenta === 'pontos') {
     marcar();
     const L = linhaAtiva();
-    if (ativaFechada() && L.length > 2) L.splice(pontoNaLinha(L, w, true).i + 1, 0, w);
+    if (ativaFechada() && L.length > 2) { const pn = pontoNaLinha(L, w, true); L.splice(pn.i + 1, 0, pontoNovo(L, pn.i, w, pn.t)); }
     else L.push(w);
     fecharSePerto();
     mudou();
@@ -826,22 +967,19 @@ tela.addEventListener('pointerdown', e => {
   } else if (ferramenta === 'largura') {
     if (S.eixo.length < 3) return aviso('Pinte o eixo primeiro: a largura vale para o eixo da pista.', true);
     marcouPainel = false;
-    const perto = S.larguras.findIndex(a => distTela(a.p, w) < 12);
-    marcar();
-    if (perto >= 0) {
-      larguraSel = perto;
-      arrasto = { tipo: 'largura', i: perto, mexeu: false };
-    } else {
+    let perto = -1, dm = 12;
+    S.eixo.forEach((p, k) => { const d = distTela(p, w); if (d < dm) { dm = d; perto = k; } });
+    if (perto >= 0) larguraSel = perto;
+    else {
       const pn = pontoNaLinha(S.eixo, w, S.fechado);
       if (distTela(pn.q, w) > 30) {
-        hist.pop();
         // Fora do eixo: com um ponto selecionado, só o solta; sem nenhum, explica onde clicar.
         if (larguraSel !== null) { soltarLargura(); return; }
-        return aviso('Clique em cima do eixo para pôr um ponto de largura.', true);
+        return aviso('Clique num ponto da pista (ou em cima do eixo, para criar um ponto ali).', true);
       }
-      const atual = Math.round(larguraEm(pn.q) * 2) / 2, r = S.larguras.length ? S.larguras[S.larguras.length - 1].r : 40;
-      S.larguras.push({ p: pn.q, w: atual, r });
-      larguraSel = S.larguras.length - 1;
+      marcar();
+      S.eixo.splice(pn.i + 1, 0, pontoNovo(S.eixo, pn.i, pn.q, pn.t));
+      larguraSel = pn.i + 1;
       marcouPainel = true;
       mudou();
     }
@@ -860,7 +998,11 @@ tela.addEventListener('pointermove', e => {
   $('sCoord').textContent = cursorMundo
     ? (circ?.sistema === 'utm' ? `E ${cursorMundo[0].toFixed(1)}  N ${cursorMundo[1].toFixed(1)}  (EPSG ${circ.epsg})` : `x ${cursorMundo[0].toFixed(1)}  y ${cursorMundo[1].toFixed(1)} m`)
     : 'fora do chão';
-  if (!arrasto) { if (ferramenta === 'mover' || ferramenta === 'apagar') pedirDesenho(); return; }
+  if (!arrasto) {
+    if (ferramenta === 'mover' || ferramenta === 'apagar') pedirDesenho();
+    atualizarHover(cursorMundo);
+    return;
+  }
   if (arrasto.tipo === 'pan') {
     V().px = arrasto.px + sx - arrasto.sx;
     V().py = arrasto.py + sy - arrasto.sy;
@@ -869,13 +1011,9 @@ tela.addEventListener('pointermove', e => {
     if (Math.hypot(sx - ult[0], sy - ult[1]) >= 3 && cursorMundo) { arrasto.tela.push([sx, sy]); arrasto.mundo.push(cursorMundo); }
   } else if (arrasto.tipo === 'mover' && cursorMundo) {
     const dx = cursorMundo[0] - arrasto.p0[0], dy = cursorMundo[1] - arrasto.p0[1];
-    S[camada] = arrasto.base.map((p, i) => arrasto.peso[i] ? [p[0] + dx * arrasto.peso[i], p[1] + dy * arrasto.peso[i]] : p);
+    S[camada] = arrasto.base.map((p, i) => arrasto.peso[i] ? [p[0] + dx * arrasto.peso[i], p[1] + dy * arrasto.peso[i], ...p.slice(2)] : p);
     arrasto.mexeu ||= Math.hypot(dx, dy) > .05;
   } else if (arrasto.tipo === 'apagar' && cursorMundo) apagarEm(cursorMundo);
-  else if (arrasto.tipo === 'largura' && cursorMundo) {
-    S.larguras[arrasto.i].p = pontoNaLinha(S.eixo, cursorMundo, S.fechado).q;
-    arrasto.mexeu = true;
-  }
   pedirDesenho();
 });
 function soltar() {
@@ -889,12 +1027,13 @@ function soltar() {
     else { S[camada] = a.antes; hist.pop(); }       // só um clique: nem os pontos novos ficam
   }
   else if (a.tipo === 'apagar') { if (a.apagou) mudou(); else hist.pop(); }
-  else if (a.tipo === 'largura') { if (a.mexeu) mudou(); else hist.pop(); }
   pedirDesenho();
 }
 tela.addEventListener('pointerup', soltar);
 tela.addEventListener('pointercancel', soltar);
-tela.addEventListener('pointerleave', () => { cursorMundo = null; pedirDesenho(); });
+tela.addEventListener('pointerleave', () => { cursorMundo = null; hover = null; pedirDesenho(); });
+// Depois de um clique ou de um arrasto o que está embaixo do mouse mudou (um ponto novo, outro selecionado).
+tela.addEventListener('pointerup', () => atualizarHover(cursorMundo));
 
 // ---------- teclado ----------
 window.addEventListener('keydown', e => {
@@ -907,7 +1046,7 @@ window.addEventListener('keydown', e => {
     return;
   }
   if (e.code === 'Space') { e.preventDefault(); espaco = true; tela.style.cursor = 'grab'; return; }
-  if ((k === 'delete' || k === 'backspace') && ferramenta === 'largura' && S.larguras[larguraSel]) { e.preventDefault(); removerLargura(); return; }
+  if ((k === 'delete' || k === 'backspace') && ferramenta === 'largura' && S.eixo[larguraSel]) { e.preventDefault(); removerLargura(); return; }
   const ferr = { b: 'pincel', m: 'mover', p: 'pontos', e: 'apagar', c: 'chegada', l: 'largura', h: 'mao' }[k];
   if (ferr) { trocarFerramenta(ferr); return; }
   const n = Number.parseInt(k, 10);
@@ -930,6 +1069,8 @@ window.addEventListener('resize', pedirDesenho);
 function trocarFerramenta(f) {
   if (f !== ferramenta) larguraSel = null;
   ferramenta = f;
+  if (!espaco && !arrasto) tela.style.cursor = '';
+  atualizarHover(cursorMundo);
   atualizarPainel(); pedirDesenho(); salvarPrefs();
 }
 function soltarLargura() { larguraSel = null; marcouPainel = false; atualizarPainel(); pedirDesenho(); }
@@ -961,26 +1102,26 @@ $('pasta').onchange = e => {
   e.target.value = '';
   if (arquivos.length) abrirPacote(arquivos).catch(err => aviso('A pasta não abriu: ' + err.message, true));
 };
-// Painel do ponto de largura selecionado (um passo de desfazer por seleção, não um por movimento do controle).
+// Painel do ponto selecionado (um passo de desfazer por seleção, não um por movimento do controle).
 function removerLargura() {
-  if (!S.larguras[larguraSel]) return;
+  const p = S.eixo[larguraSel];
+  if (!p || p.length < 3) return;
   marcar();
-  S.larguras.splice(larguraSel, 1);
-  larguraSel = null;
+  S.eixo[larguraSel] = [p[0], p[1]];
+  marcouPainel = false;
   mudou();
 }
-for (const [id, campo] of [['larguraPonto', 'w'], ['alcancePonto', 'r']]) {
-  $(id).addEventListener('input', () => {
-    const a = S.larguras[larguraSel];
-    if (!a) return;
-    if (!marcouPainel) { marcar(); marcouPainel = true; }
-    a[campo] = +$(id).value;
-    mudou();
-  });
-}
+$('larguraPonto').addEventListener('input', () => {
+  const p = S.eixo[larguraSel];
+  if (!p) return;
+  if (!marcouPainel) { marcar(); marcouPainel = true; }
+  S.eixo[larguraSel] = [p[0], p[1], +$('larguraPonto').value];
+  mudou();
+});
 $('bRemoverLargura').onclick = removerLargura;
 $('bInverter').onclick = () => { if (S.eixo.length < 3) return; marcar(); S.eixo.reverse(); mudou(); aviso('Sentido invertido: ' + $('mSentido').textContent + '.'); };
 $('bFechar').onclick = () => { if (S.eixo.length < 3) return; marcar(); S.fechado = !S.fechado; mudou(); };
+$('bSimplificar').onclick = simplificarLinha;
 $('bRaio').onclick = () => {
   const r = raioMinimo(S.eixo, S.fechado);
   if (!r) return;
@@ -1000,9 +1141,9 @@ function exportar() {
     eixo_fechado: S.fechado, sentido: S.eixo.length > 2 && S.fechado ? sentido(S.eixo) : null,
     comprimento_m: Math.round(comprimento(S.eixo, S.fechado) * 10) / 10, largura_mostrada_m: +$('largura').value,
     eixo: r2(S.eixo), chegada: S.chegada ? r2([S.chegada])[0] : null, pit: r2(S.pit),
-    // Pontos de largura (x, y, largura, alcance ao longo da pista); fora do alcance deles vale largura_mostrada_m. O
-    // gerador (eixo_do_editor.py) faz a mesma conta a cada 2 m da pista.
-    larguras_pontos: S.larguras.map(a => [...r2([a.p])[0], +a.w, +a.r]),
+    // A largura em cada ponto do eixo (m), quando algum tem a sua; entre os pontos ela vai em linha reta, como o
+    // gerador (eixo_do_editor.py) refaz a cada 2 m da pista.
+    largura_m: temLargura(S.eixo) ? S.eixo.map(p => Math.round(larguraDoPonto(p) * 100) / 100) : null,
   };
   if (circ.origemJogo) {
     // O mesmo traçado no sistema local do arquivo da pista atual (x leste, y norte, já na escala do jogo).
@@ -1046,8 +1187,9 @@ $('arquivo').onchange = async e => {
     if (o.circuito && o.circuito !== circ.id) throw new Error(`é do circuito ${o.circuito}; escolha-o antes`);
     if (o.sistema && o.sistema !== circ.sistema) throw new Error(`está em ${o.sistema}, o circuito em ${circ.sistema}`);
     marcar();
-    const larguras = Array.isArray(o.larguras_pontos) ? o.larguras_pontos.filter(a => a.length >= 4 && a.every(Number.isFinite)).map(a => ({ p: [a[0], a[1]], w: a[2], r: a[3] })) : [];
-    S = { eixo: o.eixo.map(p => [+p[0], +p[1]]), fechado: o.eixo_fechado ?? true, pit: ok(o.pit) ? o.pit.map(p => [+p[0], +p[1]]) : [], chegada: o.chegada || null, larguras };
+    const padrao = +o.largura_mostrada_m || larguraPadrao(), W = Array.isArray(o.largura_m) && o.largura_m.length === o.eixo.length ? o.largura_m : null;
+    S = { eixo: o.eixo.map((p, i) => W && Number.isFinite(+W[i]) && Math.abs(W[i] - padrao) > 1e-6 ? [+p[0], +p[1], +W[i]] : [+p[0], +p[1]]),
+          fechado: o.eixo_fechado ?? true, pit: ok(o.pit) ? o.pit.map(p => [+p[0], +p[1]]) : [], chegada: o.chegada || null };
     if (o.largura_mostrada_m) $('largura').value = o.largura_mostrada_m;
     larguraSel = null;
     mudou();
@@ -1073,7 +1215,9 @@ window.editorTracado = {
     linhasVer: Object.fromEntries(linhasRef.map(l => [l.nome, l.ver])), ferramentaAtual: ferramenta, camadaAtual: camada,
     linhas: linhasRef.map(l => l.nome), eixo: S.eixo.length, fechado: S.fechado, comprimento: comprimento(S.eixo, S.fechado),
     pit: S.pit.length, chegada: S.chegada, sentido: S.eixo.length > 2 ? sentido(S.eixo) : null,
-    larguras: S.larguras.map(a => ({ ...a })), larguraSel, cor: corPintura.cor }),
+    larguras: S.eixo.flatMap((p, i) => p.length > 2 ? [[i, p[2]]] : []), larguraSel, pontoHover: hover?.ponto ?? null, novoHover: hover?.novo ?? null,
+    hover: hover && { afetados: hover.afetados?.length ?? 0, apagados: hover.apagados?.length ?? 0, segmento: hover.segmento ?? null,
+                      encaixe: !!hover.encaixe, chegada: !!hover.chegada }, cor: corPintura.cor }),
   exportar, abrirCircuito, abrirPacote, trocarVista, paraTela, doTela, larguraEm,
   ferramenta: f => trocarFerramenta(f),
 };

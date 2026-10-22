@@ -49,11 +49,15 @@ def main():
     if not t.get('eixo_fechado'):
         raise SystemExit(f'{arquivo.name}: a volta nao esta fechada')
     P = np.array(t['eixo'], float)
+    # Largura de cada ponto (ferramenta Largura do editor): entre um ponto e o proximo ela vai em linha reta.
+    Wp = np.array(t['largura_m'], float) if t.get('largura_m') and len(t['largura_m']) == len(P) else None
     # Pontos repetidos (a volta fechada em cima do primeiro ponto) e voltas no sentido contrario ao configurado.
     manter = np.r_[True, np.linalg.norm(np.diff(P, axis=0), axis=1) > .5]
     P = P[manter]
+    Wp = Wp[manter] if Wp is not None else None
     if np.linalg.norm(P[-1] - P[0]) < .5:
         P = P[:-1]
+        Wp = Wp[:-1] if Wp is not None else None
     area = .5 * np.sum(P[:, 0] * np.roll(P[:, 1], -1) - np.roll(P[:, 0], -1) * P[:, 1])
     sentido = 'anti-horario' if area > 0 else 'horario'
     if sentido != c['sentido']:
@@ -62,24 +66,12 @@ def main():
     fino = gaussian_filter1d(fino, SUAVE_M / .5, axis=0, mode='wrap')
     eixo, L = reamostrar(fino, DS)
     desvio = max(np.min(np.linalg.norm(eixo - p, axis=1)) for p in P)
-    pontos_largura = [a for a in t.get('larguras_pontos') or [] if len(a) >= 4]
-    Wp = None
-    if pontos_largura:
-        # Ferramenta Largura do editor: a mesma conta dele (largurasDaLinha), nas estacoes de 2 m. Cada ponto fica no
-        # lugar da volta mais perto dele e muda a largura ate `alcance` m para os dois lados, com (1 - u^2)^2.
-        padrao = float(t.get('largura_mostrada_m') or c.get('largura_m') or 13.0)
-        s = np.arange(len(eixo)) * L / len(eixo)
-        soma, peso = np.zeros(len(eixo)), np.zeros(len(eixo))
-        for x, y, w, r in (a[:4] for a in pontos_largura):
-            sa = s[np.argmin(np.hypot(eixo[:, 0] - x, eixo[:, 1] - y))]
-            d = np.abs(s - sa)
-            d = np.minimum(d, L - d)
-            u = d / max(1.0, r)
-            g = np.where(u < 1, (1 - u * u) ** 2, 0.0)
-            soma += g * (w - padrao)
-            peso += g
-        Wp = padrao + np.where(peso > 1, soma / np.maximum(peso, 1e-9), soma)
-        largura = Wp
+    if Wp is not None:
+        # A mesma reta do editor, ponto a ponto, levada as estacoes de 2 m pela distancia ao longo da volta (a do eixo
+        # alisado, na proporcao da pintada: o arredondamento dos cantos encurta a volta uns metros).
+        s_p = np.r_[0, np.cumsum(np.linalg.norm(np.diff(np.vstack([P, P[:1]]), axis=0), axis=1))]
+        s_est = np.arange(len(eixo)) * L / len(eixo) * (L_pintado / L)
+        largura = np.interp(s_est, s_p, np.r_[Wp, Wp[:1]])
     else:
         largura = np.full(len(eixo), float(c.get('largura_m') or t.get('largura_mostrada_m') or 13.0))
     saida = {'circuito': nome, 'epsg': c['epsg'], 'passo_m': DS, 'comprimento_osm_m': None,

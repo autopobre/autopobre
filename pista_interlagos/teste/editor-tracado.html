@@ -109,12 +109,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
           <input id="larguraPonto" type="range" min="6" max="30" step=".5" value="14">
           <span class="val" id="larguraPontoVal">14 m</span>
         </div>
-        <div class="linha">
-          <label for="alcancePonto">Alcance na pista</label>
-          <input id="alcancePonto" type="range" min="5" max="400" step="5" value="40">
-          <span class="val" id="alcancePontoVal">40 m</span>
-        </div>
-        <div class="acoes"><button class="btn mini perigo" id="bRemoverLargura">Remover este ponto</button></div>
+        <div class="acoes"><button class="btn mini" id="bRemoverLargura">Voltar à largura padrão</button></div>
       </div>
     </section>
 
@@ -150,6 +145,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
         <button class="btn" id="bInverter">Inverter sentido</button>
         <button class="btn" id="bFechar">Fechar volta</button>
         <button class="btn" id="bRaio">Mostrar curva fechada</button>
+        <button class="btn" id="bSimplificar" title="Deixa na linha que você está pintando só os pontos que a forma dela pede">Simplificar pontos</button>
       </div>
     </section>
 
@@ -172,7 +168,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
           <li>Roda do mouse: zoom · botão direito ou <kbd>Espaço</kbd> + arrastar: mover a imagem</li>
           <li><kbd>1</kbd> vista de cima · <kbd>2</kbd>, <kbd>3</kbd>… vistas em perspectiva · <kbd>F</kbd> enquadrar</li>
           <li><kbd>[</kbd> <kbd>]</kbd> raio menor / maior · <kbd>Esc</kbd> cancela o traço</li>
-          <li>Largura: <kbd>Delete</kbd> remove o ponto selecionado</li>
+          <li>Largura: <kbd>Delete</kbd> volta o ponto selecionado à largura padrão</li>
           <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> desfazer · <kbd>Ctrl</kbd>+<kbd>Y</kbd> refazer · <kbd>Ctrl</kbd>+<kbd>S</kbd> salvar</li>
         </ul>
       </details>

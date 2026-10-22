@@ -510,8 +510,9 @@ Major Sertório; alturas de prédios do mapa de 2004.
 o pit lane de qualquer circuito do jogo sobre o chão dele (`assets/circuitos/<id>_solo.jpg`), com o traçado atual por
 baixo. Pincel (emenda na ponta ou, começando e terminando em cima da linha, refaz o trecho entre os dois pontos), Mover
 (empurra com alcance suave; sem ponto dentro do círculo, cria um na linha), Pontos, Apagar, Chegada (em qualquer lugar
-do eixo), Largura (pontos presos ao eixo com largura e alcance ao longo da pista, transição `(1 - u²)²` até a largura
-padrão); desfazer, medidas (volta, oficial, sentido, curva mais fechada). O editor lembra ferramenta, controles e, por
+do eixo), Largura (a largura mora nos próprios pontos do eixo, `[x, y, largura]`, e a borda vai em linha reta até o
+ponto anterior e o próximo; sem largura própria vale a padrão; pontos novos no meio de um trecho nascem com a largura
+da reta ali); desfazer, medidas (volta, oficial, sentido, curva mais fechada). O editor lembra ferramenta, controles e, por
 circuito, a linha, a vista e cada fundo.
 
 - **Pasta de referências** (`fontes/<id>/referencias/`, fora do repositório e do site; o editor a abre do disco):
@@ -526,7 +527,7 @@ circuito, a linha, a vista e cada fundo.
 - **Arquivo salvo** `tracado_<id>.json` (`formato: autopobre-tracado-v1`): eixo, pit lane e chegada no sistema da
   pasta (UTM), sentido e comprimento; para um circuito do jogo também `jogo.eixo_local`, nas mesmas coordenadas e
   escala das amostras de `dados/pista_<id>.json`. É a entrada dos geradores para corrigir uma pista; com pontos de
-  largura leva `larguras_pontos` (x, y, largura, alcance) e `largura_mostrada_m` (a padrão). `eixo_do_editor.py <id>`
-  leva o mais novo para `eixo_refinado.json` (a largura dos pontos refeita a cada 2 m, `largura_do_editor`, que no
+  largura leva `largura_m` (uma por ponto do eixo) e `largura_mostrada_m` (a padrão). `eixo_do_editor.py <id>` leva o
+  mais novo para `eixo_refinado.json` (a reta entre os pontos refeita a cada 2 m, `largura_do_editor`, que no
   `gerar_pista.py` passa na frente da `largura_publicada`); por enquanto só Guaratiba (`eixo_do_editor: True`) usa.
 - Conferência: `scripts/verificar_editor_tracado.py [porta] [pasta das fotos]`.
