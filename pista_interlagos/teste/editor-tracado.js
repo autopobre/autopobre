@@ -299,7 +299,7 @@ function aplicarVisuais(id) {
 function salvarPrefs() {
   try {
     localStorage.setItem(CHAVE, JSON.stringify({ circuito: circ?.id, ferramenta, camada, raio: $('raio').value,
-      verFaixa: $('verFaixa').checked, verSetas: $('verSetas').checked, verPontos: $('verPontos').checked }));
+      verFaixa: $('verFaixa').checked, verSetas: $('verSetas').checked, verPontos: $('verPontos').checked, cor: corPintura.cor }));
   } catch (e) { /* sem armazenamento */ }
 }
 function lerPrefs() {
@@ -518,7 +518,20 @@ function bordas(L, fech, larg) {
   const N = normais(L, fech), h = i => (typeof larg === 'number' ? larg : larg[i]) / 2;
   return [L.map((p, i) => [p[0] + N[i][0] * h(i), p[1] + N[i][1] * h(i)]), L.map((p, i) => [p[0] - N[i][0] * h(i), p[1] - N[i][1] * h(i)])];
 }
-function desenharLinha(L, fech, cor, larg, tracejado) {
+// Cor da pista pintada (eixo, bordas e faixa), escolhida no painel: claras para fundos escuros e escuras para fundos
+// claros; a linha ganha um contorno do lado oposto (escuro nas claras, claro nas escuras).
+const CORES = [
+  { cor: '#00e5ff', nome: 'Ciano', clara: true }, { cor: '#ffe14d', nome: 'Amarelo', clara: true },
+  { cor: '#7dff4f', nome: 'Verde-limão', clara: true }, { cor: '#ff6bd6', nome: 'Rosa', clara: true },
+  { cor: '#ffffff', nome: 'Branco', clara: true },
+  { cor: '#111111', nome: 'Preto', clara: false }, { cor: '#0b2a8f', nome: 'Azul-escuro', clara: false },
+  { cor: '#b3001b', nome: 'Vermelho', clara: false }, { cor: '#5a1d9f', nome: 'Roxo', clara: false },
+  { cor: '#0b6b26', nome: 'Verde-escuro', clara: false },
+];
+let corPintura = CORES[0];
+const rgba = (hex, a) => `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
+const contorno = c => c.clara ? 'rgba(0,0,0,.65)' : 'rgba(255,255,255,.85)';
+function desenharLinha(L, fech, cor, larg, tracejado, halo = 'rgba(0,0,0,.65)') {
   if (L.length < 2) return;
   caminho(L, fech);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
@@ -526,10 +539,10 @@ function desenharLinha(L, fech, cor, larg, tracejado) {
     ctx.setLineDash([7, 5]); ctx.strokeStyle = cor; ctx.lineWidth = larg; ctx.stroke(); ctx.setLineDash([]);
     return;
   }
-  ctx.strokeStyle = 'rgba(0,0,0,.65)'; ctx.lineWidth = larg + 2.5; ctx.stroke();
+  ctx.strokeStyle = halo; ctx.lineWidth = larg + 2.5; ctx.stroke();
   ctx.strokeStyle = cor; ctx.lineWidth = larg; ctx.stroke();
 }
-function desenharFaixa(L, fech, larg, preenche) {
+function desenharFaixa(L, fech, larg, preenche, borda = 'rgba(255,255,255,.55)') {
   if (L.length < 3) return;
   const [esq, dir] = bordas(L, fech, larg);
   if (preenche) {
@@ -546,9 +559,9 @@ function desenharFaixa(L, fech, larg, preenche) {
     ctx.fillStyle = preenche;
     ctx.fill('evenodd');
   }
-  for (const b of [esq, dir]) { caminho(b, fech); ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1; ctx.stroke(); }
+  for (const b of [esq, dir]) { caminho(b, fech); ctx.strokeStyle = borda; ctx.lineWidth = 1; ctx.stroke(); }
 }
-function desenharSetas(L, fech, cor) {
+function desenharSetas(L, fech, cor, halo = 'rgba(0,0,0,.7)') {
   if (L.length < 3) return;
   const R = reamostrar(L, 2, fech);
   for (let i = 20; i < R.length - 3; i += 60) {
@@ -560,7 +573,7 @@ function desenharSetas(L, fech, cor) {
     ctx.lineTo(p[0] + Math.cos(ang + 2.5) * t, p[1] + Math.sin(ang + 2.5) * t);
     ctx.lineTo(p[0] + Math.cos(ang - 2.5) * t, p[1] + Math.sin(ang - 2.5) * t);
     ctx.closePath();
-    ctx.fillStyle = cor; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.lineWidth = 1.5;
+    ctx.fillStyle = cor; ctx.strokeStyle = halo; ctx.lineWidth = 1.5;
     ctx.fill(); ctx.stroke();
   }
 }
@@ -580,11 +593,11 @@ function desenharChegada() {
   ctx.restore();
 }
 // Os pontos de largura: losangos no eixo; o selecionado mostra o trecho que alcança e a largura.
+// Só com a ferramenta Largura: fora dela o efeito aparece nas bordas, sem os losangos por cima.
 function desenharLarguras() {
-  if (!S.larguras.length || S.eixo.length < 3) return;
-  const ativo = ferramenta === 'largura';
+  if (ferramenta !== 'largura' || !S.larguras.length || S.eixo.length < 3) return;
   const sel = S.larguras[larguraSel];
-  if (ativo && sel) {
+  if (sel) {
     const D = reamostrar(S.eixo, 2, S.fechado), { cum, total } = arcos(D, S.fechado), s0 = sNaLinha(D, S.fechado, cum, sel.p);
     const trecho = D.filter((_, i) => { let d = Math.abs(cum[i] - s0); if (S.fechado) d = Math.min(d, total - d); return d < sel.r; });
     if (trecho.length > 1) {
@@ -595,15 +608,13 @@ function desenharLarguras() {
   S.larguras.forEach((a, k) => {
     const q = paraTela(a.p[0], a.p[1]);
     if (!q) return;
-    const t = k === larguraSel && ativo ? 8 : 5;
+    const t = k === larguraSel ? 8 : 5;
     ctx.beginPath(); ctx.moveTo(q[0], q[1] - t); ctx.lineTo(q[0] + t, q[1]); ctx.lineTo(q[0], q[1] + t); ctx.lineTo(q[0] - t, q[1]); ctx.closePath();
-    ctx.fillStyle = k === larguraSel && ativo ? '#ffd166' : '#ffffff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+    ctx.fillStyle = k === larguraSel ? '#ffd166' : '#ffffff'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
     ctx.fill(); ctx.stroke();
-    if (ativo) {
-      const txt = `${(+a.w).toLocaleString('pt-BR')} m`;
-      ctx.font = '600 11px system-ui, sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.fillStyle = '#fff';
-      ctx.strokeText(txt, q[0] + 10, q[1] - 8); ctx.fillText(txt, q[0] + 10, q[1] - 8);
-    }
+    const txt = `${(+a.w).toLocaleString('pt-BR')} m`;
+    ctx.font = '600 11px system-ui, sans-serif'; ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.fillStyle = '#fff';
+    ctx.strokeText(txt, q[0] + 10, q[1] - 8); ctx.fillText(txt, q[0] + 10, q[1] - 8);
   });
 }
 function desenharPontos(L) {
@@ -638,12 +649,12 @@ function pintar() {
   }
   if ($('verFaixa').checked) {
     const { L, W } = eixoComLarguras();
-    desenharFaixa(L, S.fechado, W, 'rgba(0,229,255,.10)');
+    desenharFaixa(L, S.fechado, W, rgba(corPintura.cor, corPintura.clara ? .12 : .2), rgba(corPintura.cor, .9));
     if (S.pit.length > 2) desenharFaixa(S.pit, false, 8, 'rgba(255,159,26,.10)');
   }
   desenharLinha(S.pit, false, '#ff9f1a', 2);
-  desenharLinha(S.eixo, S.fechado, '#00e5ff', 2.2);
-  if ($('verSetas').checked) { desenharSetas(S.eixo, S.fechado, '#00e5ff'); desenharSetas(S.pit, false, '#ff9f1a'); }
+  desenharLinha(S.eixo, S.fechado, corPintura.cor, 2.2, false, contorno(corPintura));
+  if ($('verSetas').checked) { desenharSetas(S.eixo, S.fechado, corPintura.cor, contorno(corPintura)); desenharSetas(S.pit, false, '#ff9f1a'); }
   if ($('verPontos').checked) desenharPontos(linhaAtiva());
   desenharChegada();
   desenharLarguras();
@@ -672,7 +683,7 @@ const AJUDA = {
   pontos: 'Clique para pôr um ponto: no fim da linha (se aberta) ou no trecho mais perto (se a volta está fechada).',
   apagar: 'Arraste por cima para <b>apagar pontos</b> dentro do círculo vermelho; depois refaça o trecho com o Pincel.',
   chegada: 'Clique no eixo onde fica a <b>linha de chegada</b>, em qualquer lugar dele; clique de novo para mudar.',
-  largura: 'Clique no eixo para pôr um <b>ponto de largura</b> (ou num losango para selecionar). Ajuste a largura ali e o alcance: o trecho em amarelo muda, com transição suave até a largura padrão. Arraste o losango para levá-lo ao longo da pista.',
+  largura: 'Clique no eixo para pôr um <b>ponto de largura</b> (ou num losango para selecionar). Ajuste a largura ali e o alcance: o trecho em amarelo muda, com transição suave até a largura padrão. Arraste o losango para levá-lo ao longo da pista. Terminou? Clique fora do eixo ou aperte <kbd>Esc</kbd>.',
   mao: 'Arraste para mover a imagem; a roda do mouse dá zoom.',
 };
 const fmtM = v => Math.round(v).toLocaleString('pt-BR') + ' m';
@@ -822,7 +833,12 @@ tela.addEventListener('pointerdown', e => {
       arrasto = { tipo: 'largura', i: perto, mexeu: false };
     } else {
       const pn = pontoNaLinha(S.eixo, w, S.fechado);
-      if (distTela(pn.q, w) > 30) { hist.pop(); return aviso('Clique em cima do eixo para pôr um ponto de largura.', true); }
+      if (distTela(pn.q, w) > 30) {
+        hist.pop();
+        // Fora do eixo: com um ponto selecionado, só o solta; sem nenhum, explica onde clicar.
+        if (larguraSel !== null) { soltarLargura(); return; }
+        return aviso('Clique em cima do eixo para pôr um ponto de largura.', true);
+      }
       const atual = Math.round(larguraEm(pn.q) * 2) / 2, r = S.larguras.length ? S.larguras[S.larguras.length - 1].r : 40;
       S.larguras.push({ p: pn.q, w: atual, r });
       larguraSel = S.larguras.length - 1;
@@ -893,7 +909,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Space') { e.preventDefault(); espaco = true; tela.style.cursor = 'grab'; return; }
   if ((k === 'delete' || k === 'backspace') && ferramenta === 'largura' && S.larguras[larguraSel]) { e.preventDefault(); removerLargura(); return; }
   const ferr = { b: 'pincel', m: 'mover', p: 'pontos', e: 'apagar', c: 'chegada', l: 'largura', h: 'mao' }[k];
-  if (ferr) { ferramenta = ferr; atualizarPainel(); pedirDesenho(); salvarPrefs(); return; }
+  if (ferr) { trocarFerramenta(ferr); return; }
   const n = Number.parseInt(k, 10);
   if (n >= 1 && n <= 9) { const id = Object.keys(vistas)[n - 1]; if (id) trocarVista(id); return; }
   if (k === 'f') { enquadrar(V()); pedirDesenho(); }
@@ -902,6 +918,7 @@ window.addEventListener('keydown', e => {
     r.value = Math.max(+r.min, Math.min(+r.max, +r.value + (k === ']' ? 5 : -5)));
     atualizarPainel(); pedirDesenho();
   } else if (k === 'escape' && arrasto?.tipo === 'pincel') { arrasto = null; pedirDesenho(); }
+  else if (k === 'escape' && larguraSel !== null) soltarLargura();
   else if (k === '+' || k === '=' || k === '-') { const r = tela.getBoundingClientRect(); zoomEm(r.width / 2, r.height / 2, k === '-' ? .8 : 1.25); }
 });
 window.addEventListener('keyup', e => { if (e.code === 'Space') { espaco = false; tela.style.cursor = ''; } });
@@ -909,10 +926,34 @@ window.addEventListener('blur', () => { espaco = false; });
 window.addEventListener('resize', pedirDesenho);
 
 // ---------- botões ----------
-document.querySelectorAll('#ferramentas button').forEach(b => b.onclick = () => { ferramenta = b.dataset.ferr; atualizarPainel(); pedirDesenho(); salvarPrefs(); });
+// Trocar de ferramenta solta o ponto de largura selecionado (ele não fica destacado esquecido na tela).
+function trocarFerramenta(f) {
+  if (f !== ferramenta) larguraSel = null;
+  ferramenta = f;
+  atualizarPainel(); pedirDesenho(); salvarPrefs();
+}
+function soltarLargura() { larguraSel = null; marcouPainel = false; atualizarPainel(); pedirDesenho(); }
+document.querySelectorAll('#ferramentas button').forEach(b => b.onclick = () => trocarFerramenta(b.dataset.ferr));
 document.querySelectorAll('#camadas button').forEach(b => b.onclick = () => { camada = b.dataset.camada; atualizarPainel(); pedirDesenho(); salvarPrefs(); });
 for (const id of ['largura', 'raio']) $(id).addEventListener('input', () => { atualizarPainel(); pedirDesenho(); salvarLocal(); salvarPrefs(); });
 for (const id of ['verFaixa', 'verSetas', 'verPontos']) $(id).addEventListener('change', () => { pedirDesenho(); salvarPrefs(); });
+function montarCores() {
+  for (const c of CORES) {
+    const b = Object.assign(document.createElement('button'), { type: 'button', title: c.nome });
+    b.dataset.cor = c.cor;
+    b.setAttribute('aria-label', 'Pista pintada em ' + c.nome.toLowerCase());
+    b.style.background = c.cor;
+    b.onclick = () => { corPintura = c; marcarCor(); pedirDesenho(); salvarPrefs(); };
+    $(c.clara ? 'coresClaras' : 'coresEscuras').appendChild(b);
+  }
+}
+function marcarCor() {
+  for (const b of document.querySelectorAll('#cores button')) {
+    const on = b.dataset.cor === corPintura.cor;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+}
 $('circuito').onchange = () => abrirCircuito($('circuito').value).catch(e => aviso('Não abriu: ' + e.message, true));
 $('bPasta').onclick = () => $('pasta').click();
 $('pasta').onchange = e => {
@@ -1032,9 +1073,9 @@ window.editorTracado = {
     linhasVer: Object.fromEntries(linhasRef.map(l => [l.nome, l.ver])), ferramentaAtual: ferramenta, camadaAtual: camada,
     linhas: linhasRef.map(l => l.nome), eixo: S.eixo.length, fechado: S.fechado, comprimento: comprimento(S.eixo, S.fechado),
     pit: S.pit.length, chegada: S.chegada, sentido: S.eixo.length > 2 ? sentido(S.eixo) : null,
-    larguras: S.larguras.map(a => ({ ...a })), larguraSel }),
+    larguras: S.larguras.map(a => ({ ...a })), larguraSel, cor: corPintura.cor }),
   exportar, abrirCircuito, abrirPacote, trocarVista, paraTela, doTela, larguraEm,
-  ferramenta: f => { ferramenta = f; atualizarPainel(); },
+  ferramenta: f => trocarFerramenta(f),
 };
 montarSeletor();
 const prefs = lerPrefs();
@@ -1042,6 +1083,9 @@ if (AJUDA[prefs.ferramenta]) ferramenta = prefs.ferramenta;
 if (prefs.camada === 'eixo' || prefs.camada === 'pit') camada = prefs.camada;
 if (prefs.raio) $('raio').value = prefs.raio;
 for (const id of ['verFaixa', 'verSetas', 'verPontos']) if (typeof prefs[id] === 'boolean') $(id).checked = prefs[id];
+corPintura = CORES.find(c => c.cor === prefs.cor) ?? CORES[0];
+montarCores();
+marcarCor();
 let inicial = prefs.circuito || 'cascavel';
 if (!Object.hasOwn(CIRCUITS, inicial)) {
   // Um circuito que só existe numa pasta de referências precisa dela de novo; o trabalho volta ao abri-la.

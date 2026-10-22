@@ -127,10 +127,21 @@ with sync_playwright() as p:
         check('Largura: a point mid-side sets the width there, fades within its reach, default beyond',
               len(lp) == 1 and abs(lp[0][0] - o[0]) < 2 and abs(lp[0][1] - (o[1] - 200)) < .01 and lp[0][2:] == [22, 60]
               and abs(no[0] - 22) < .6 and padrao < no[1] < 22 and abs(no[2] - padrao) < 1e-6, (lp, no, padrao))
+        # Done editing (user 10-22: the selected point stayed highlighted, forgotten): Esc lets it go, a click on its
+        # diamond takes it again, and changing tool lets it go too.
+        page.keyboard.press('Escape')
+        solto = info()['larguraSel']
+        page.mouse.click(box['x'] + meio[0], box['y'] + meio[1])
+        de_novo = info()['larguraSel']
+        check('Esc lets the width point go, a click on its diamond selects it again',
+              solto is None and de_novo == 0 and page.is_hidden('#painelLargura') is False, (solto, de_novo))
         page.keyboard.press('Delete')
         sem = info()['larguras']
         page.keyboard.press('Control+z')
         check('Delete removes the width point and Ctrl+Z brings it back', sem == [] and len(info()['larguras']) == 1, (sem, info()['larguras']))
+        page.click('#ferramentas button[data-ferr="mover"]')
+        check('changing tool lets the width point go (no diamonds outside the Largura tool)', info()['larguraSel'] is None, info()['larguraSel'])
+        page.click('#ferramentas button[data-ferr="largura"]')
         page.keyboard.press('Control+z')
         page.keyboard.press('Control+z')
         page.keyboard.press('Control+z')
@@ -143,6 +154,7 @@ with sync_playwright() as p:
         deslizar('#raio', 60)
         deslizar('#largura', 12)
         page.uncheck('#verSetas')
+        page.click('#cores button[data-cor="#0b2a8f"]')
         deslizar('#listaCamadas input[type=range]', 40)
         page.locator('#listaLinhas .item', has_text='Pit lane atual do jogo').locator('input[type=checkbox]').uncheck()
         page.reload()
@@ -151,7 +163,11 @@ with sync_playwright() as p:
         check('settings come back after reloading the page',
               i['ferramentaAtual'] == 'apagar' and i['camadaAtual'] == 'pit' and page.input_value('#raio') == '60'
               and page.input_value('#largura') == '12' and not page.is_checked('#verSetas')
-              and abs(i['fundos'][0]['opac'] - .4) < 1e-6 and i['linhasVer']['Pit lane atual do jogo'] is False, i)
+              and abs(i['fundos'][0]['opac'] - .4) < 1e-6 and i['linhasVer']['Pit lane atual do jogo'] is False
+              and i['cor'] == '#0b2a8f' and page.get_attribute('#cores button[data-cor="#0b2a8f"]', 'aria-pressed') == 'true', i)
+        # The painted lap is drawn in the chosen colour (a dark one here): its borders show it on the canvas.
+        page.screenshot(path=str(shots / 'editor_cor_escura.png'))
+        page.click('#cores button[data-cor="#00e5ff"]')
         page.click('#ferramentas button[data-ferr="mover"]')
         page.click('#camadas button[data-camada="eixo"]')
         deslizar('#raio', 25)
