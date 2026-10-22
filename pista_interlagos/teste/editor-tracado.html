@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Editor de traçado</title>
+<link rel="icon" href="favicon.svg">
+<style>
+:root{--bg:#14161a;--panel:#1d2026;--panel2:#23272e;--line:#2c3038;--text:#e8e9ec;--muted:#9aa0aa;--accent:#f2b134;--bad:#e2553f;--eixo:#00e5ff;--pit:#ff9f1a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.4 system-ui,Segoe UI,Roboto,sans-serif;overflow:hidden}
+#app{display:grid;grid-template-columns:300px 1fr;height:100%}
+aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:14px 14px 28px}
+h1{font-size:16px;margin:0 0 2px}
+h1+p{margin:0 0 10px;color:var(--muted);font-size:12px}
+section{border-top:1px solid var(--line);padding:10px 0 8px}
+section>h2{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:0 0 8px;font-weight:600}
+select{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+.seg{display:flex;flex-wrap:wrap;gap:4px}
+.seg button,.btn{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font:inherit;cursor:pointer}
+.seg button:hover,.btn:hover{border-color:#4a505c}
+.seg button.on{border-color:var(--accent);color:var(--accent)}
+.btn.primario{border-color:var(--accent);color:var(--accent)}
+.btn.perigo:hover{border-color:var(--bad)}
+.btn.mini{padding:2px 7px;font-size:12px}
+.linha{display:flex;align-items:center;gap:8px;margin:6px 0}
+.linha label{flex:1}
+.linha input[type=range]{width:110px}
+.val{min-width:44px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.chk{display:flex;align-items:center;gap:7px;margin:4px 0;cursor:pointer}
+.amostra{width:18px;height:3px;border-radius:2px;display:inline-block;flex:none}
+.item{display:grid;grid-template-columns:auto 1fr auto;gap:4px 7px;align-items:center;margin:5px 0}
+.item input[type=range]{grid-column:2/4;width:100%}
+.item .nome{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ajuda{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:7px 9px;margin-top:8px;color:#c9cdd5;font-size:12px}
+.nota{color:var(--muted);font-size:12px;margin:6px 0 0}
+dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:0}
+dt{color:var(--muted)}
+dd{margin:0;font-variant-numeric:tabular-nums;text-align:right}
+.acoes{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+kbd{font:11px ui-monospace,Consolas,monospace;background:#0f1114;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:#c9cdd5}
+details summary{cursor:pointer;color:var(--muted)}
+details ul{margin:6px 0 0;padding-left:18px;color:#c9cdd5;font-size:12px}
+main{position:relative;overflow:hidden}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#vistas{position:absolute;top:10px;left:10px;display:flex;gap:4px;flex-wrap:wrap}
+#vistas button{background:rgba(20,22,26,.85);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:5px 9px;font:inherit;cursor:pointer}
+#vistas button.on{border-color:var(--accent);color:var(--accent)}
+#status{position:absolute;left:0;right:0;bottom:0;display:flex;gap:18px;padding:5px 12px;background:rgba(20,22,26,.8);color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;pointer-events:none}
+#aviso{position:absolute;top:52px;left:50%;transform:translateX(-50%);background:#1a1d22;border:1px solid var(--line);padding:8px 14px;border-radius:8px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:70%;text-align:center}
+#aviso.ver{opacity:1}
+#aviso.ruim{border-color:var(--bad)}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <h1>Editor de traçado</h1>
+    <p>Pinte ou corrija o eixo de um circuito sobre imagens de referência.</p>
+
+    <section>
+      <h2>Circuito</h2>
+      <select id="circuito"></select>
+      <div class="acoes">
+        <button class="btn" id="bPasta">Abrir pasta de referências…</button>
+      </div>
+      <input type="file" id="pasta" webkitdirectory multiple hidden>
+      <p class="nota" id="pastaInfo">Sem pasta de referências: só o chão do jogo.</p>
+    </section>
+
+    <section>
+      <h2>Fundo da vista de cima</h2>
+      <div id="listaCamadas"></div>
+    </section>
+
+    <section>
+      <h2>Linha que você está pintando</h2>
+      <div class="seg" id="camadas">
+        <button data-camada="eixo" class="on">Eixo da pista</button>
+        <button data-camada="pit">Pit lane</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Ferramenta</h2>
+      <div class="seg" id="ferramentas">
+        <button data-ferr="pincel" class="on">Pincel <kbd>B</kbd></button>
+        <button data-ferr="mover">Mover <kbd>M</kbd></button>
+        <button data-ferr="pontos">Pontos <kbd>P</kbd></button>
+        <button data-ferr="apagar">Apagar <kbd>E</kbd></button>
+        <button data-ferr="chegada">Chegada <kbd>C</kbd></button>
+        <button data-ferr="largura">Largura <kbd>L</kbd></button>
+        <button data-ferr="mao">Mão <kbd>H</kbd></button>
+      </div>
+      <div class="linha">
+        <label for="raio">Raio (mover / apagar)</label>
+        <input id="raio" type="range" min="3" max="120" value="25">
+        <span class="val" id="raioVal">25 m</span>
+      </div>
+      <div class="ajuda" id="ajuda"></div>
+      <div id="painelLargura" hidden>
+        <div class="linha">
+          <label for="larguraPonto">Largura neste ponto</label>
+          <input id="larguraPonto" type="range" min="6" max="30" step=".5" value="14">
+          <span class="val" id="larguraPontoVal">14 m</span>
+        </div>
+        <div class="linha">
+          <label for="alcancePonto">Alcance na pista</label>
+          <input id="alcancePonto" type="range" min="5" max="400" step="5" value="40">
+          <span class="val" id="alcancePontoVal">40 m</span>
+        </div>
+        <div class="acoes"><button class="btn mini perigo" id="bRemoverLargura">Remover este ponto</button></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Mostrar</h2>
+      <div id="listaLinhas"></div>
+      <label class="chk"><input type="checkbox" id="verFaixa" checked> <span class="amostra" style="background:rgba(255,255,255,.6)"></span> Bordas da pista pintada</label>
+      <div class="linha">
+        <label for="largura">Largura padrão</label>
+        <input id="largura" type="range" min="6" max="22" step=".5" value="14">
+        <span class="val" id="larguraVal">14 m</span>
+      </div>
+      <label class="chk"><input type="checkbox" id="verSetas" checked> Setas do sentido</label>
+      <label class="chk"><input type="checkbox" id="verPontos" checked> Pontos (com zoom)</label>
+    </section>
+
+    <section>
+      <h2>Medidas</h2>
+      <dl>
+        <dt>Volta pintada</dt><dd id="mComp">—</dd>
+        <dt>Oficial</dt><dd id="mOficial">—</dd>
+        <dt>Traçado do jogo</dt><dd id="mJogo">—</dd>
+        <dt>Pontos</dt><dd id="mPontos">—</dd>
+        <dt>Sentido</dt><dd id="mSentido">—</dd>
+        <dt>Curva mais fechada</dt><dd id="mRaio">—</dd>
+        <dt>Pit lane</dt><dd id="mPit">—</dd>
+      </dl>
+      <div class="acoes">
+        <button class="btn" id="bInverter">Inverter sentido</button>
+        <button class="btn" id="bFechar">Fechar volta</button>
+        <button class="btn" id="bRaio">Mostrar curva fechada</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Arquivo</h2>
+      <div class="acoes">
+        <button class="btn primario" id="bSalvar">Salvar arquivo</button>
+        <button class="btn" id="bCopiar">Copiar JSON</button>
+        <button class="btn" id="bAbrir">Abrir arquivo</button>
+        <button class="btn perigo" id="bLimpar">Limpar</button>
+      </div>
+      <input type="file" id="arquivo" accept=".json,application/json" hidden>
+      <p class="nota">O trabalho fica guardado neste navegador, por circuito. Para o gerador da pista usar, salve <code id="nomeArquivo">tracado_….json</code> na pasta de referências do circuito (ou deixe em Downloads).</p>
+    </section>
+
+    <section>
+      <details>
+        <summary>Atalhos</summary>
+        <ul>
+          <li>Roda do mouse: zoom · botão direito ou <kbd>Espaço</kbd> + arrastar: mover a imagem</li>
+          <li><kbd>1</kbd> vista de cima · <kbd>2</kbd>, <kbd>3</kbd>… vistas em perspectiva · <kbd>F</kbd> enquadrar</li>
+          <li><kbd>[</kbd> <kbd>]</kbd> raio menor / maior · <kbd>Esc</kbd> cancela o traço</li>
+          <li>Largura: <kbd>Delete</kbd> remove o ponto selecionado</li>
+          <li><kbd>Ctrl</kbd>+<kbd>Z</kbd> desfazer · <kbd>Ctrl</kbd>+<kbd>Y</kbd> refazer · <kbd>Ctrl</kbd>+<kbd>S</kbd> salvar</li>
+        </ul>
+      </details>
+    </section>
+  </aside>
+
+  <main>
+    <canvas id="tela"></canvas>
+    <div id="vistas"></div>
+    <div id="status"><span id="sCoord">—</span><span id="sZoom"></span></div>
+    <div id="aviso"></div>
+  </main>
+</div>
+<script type="module" src="./editor-tracado.js"></script>
+</body>
+</html>

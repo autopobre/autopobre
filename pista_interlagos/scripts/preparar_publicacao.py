@@ -1,13 +1,13 @@
 """Build only approved game files into dist/. No dependencies beyond Python 3.10+.
 
-By default the build is the main link's: without the multiplayer test room and the sound bench.
-Only the /dev/ address is built with --multiplayer, which brings both."""
+By default the build is the main link's: without the multiplayer test room, the sound bench and the track editor.
+Only the /dev/ address is built with --multiplayer, which brings them."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import re
-from publicacao import ROOT, PUBLIC_FILES, OPTIONAL_AUDIO, MULTIPLAYER, BANCADA, ROOM_SERVER, audio_manifest, contained_file, content_policy, security_headers
+from publicacao import ROOT, PUBLIC_FILES, OPTIONAL_AUDIO, MULTIPLAYER, BANCADA, EDITOR, DEV_PAGES, ROOM_SERVER, audio_manifest, contained_file, content_policy, security_headers
 
 
 def build(multiplayer=False):
@@ -28,7 +28,7 @@ def build(multiplayer=False):
             if p.is_file() and p.relative_to(dist).as_posix() not in expected:
                 raise ValueError('dist contains an unexpected file; inspect it before building')
     payload = {out: contained_file(ROOT, src).read_bytes() for out, src in PUBLIC_FILES.items()
-               if multiplayer or out not in MULTIPLAYER + BANCADA}
+               if multiplayer or out not in MULTIPLAYER + BANCADA + EDITOR}
     if not multiplayer:
         # main.js then never reads #desafio=NOME nor asks for multiplayer.js, which is not published.
         if payload['main.js'].count(b'const MULTIPLAYER=true;') != 1:
@@ -51,16 +51,21 @@ def build(multiplayer=False):
     policy = content_policy(html, multiplayer=multiplayer)
     html = html.replace('<link rel="icon"', '<meta http-equiv="Content-Security-Policy" content="' + policy + '">\n<meta name="referrer" content="no-referrer">\n<link rel="icon"', 1)
     payload['index.html'] = html.encode('utf-8')
-    if 'bancada-som.html' in payload:
-        # The sound bench page gets the game's versioned script and its content policy (no import map of its own).
-        bench = payload['bancada-som.html'].decode('utf-8')
+    for page in DEV_PAGES:
+        if page not in payload:
+            continue
+        # The /dev/ tool pages (sound bench, track editor) get the game's versioned script and its content policy
+        # (no import map of their own).
+        bench = payload[page].decode('utf-8')
         bench = re.sub(r'''((?:src|href)=["'][^"'?]+\.(?:js|css))(?:\?[^"']*)?(["'])''', lambda m: m[1] + '?v=' + version + m[2], bench)
         if bench.count('<link rel="icon"') != 1:
-            raise ValueError('bancada-som.html: icon link not found for the content policy')
+            raise ValueError(page + ': icon link not found for the content policy')
         bench = bench.replace('<link rel="icon"', '<meta http-equiv="Content-Security-Policy" content="' + policy + '">\n<meta name="referrer" content="no-referrer">\n<link rel="icon"', 1)
-        payload['bancada-som.html'] = bench.encode('utf-8')
+        payload[page] = bench.encode('utf-8')
     # Published, dados/ and exports/ sit beside index.html instead of one folder up.
     payload['main.js'] = payload['main.js'].replace(b'../dados/', b'./dados/').replace(b'../exports/interlagos_pista.glb', b'./exports/interlagos_pista.glb')
+    if 'editor-tracado.js' in payload:
+        payload['editor-tracado.js'] = payload['editor-tracado.js'].replace(b"'../dados/'", b"'./dados/'")
     # Fail closed on any other path that only resolves in the repository layout (an
     # uncorrected one fetches from the parent site: the /dev/ build read the main link's files).
     for name, data in payload.items():
@@ -78,9 +83,9 @@ def build(multiplayer=False):
         if Path(name).suffix in {'.js', '.json', '.html', '.css', '.svg'} and private.search(data):
             raise ValueError('Private data candidate in public file: ' + name)
     dist.mkdir(exist_ok=True)
-    # Remove only known retired assets, optional songs removed by the owner, or the multiplayer and
-    # sound bench files of an earlier --multiplayer build.
-    for name in set(OPTIONAL_AUDIO) | retired_files | set(MULTIPLAYER) | set(BANCADA):
+    # Remove only known retired assets, optional songs removed by the owner, or the multiplayer, sound
+    # bench and track editor files of an earlier --multiplayer build.
+    for name in set(OPTIONAL_AUDIO) | retired_files | set(MULTIPLAYER) | set(BANCADA) | set(EDITOR):
         if name not in payload and (dist / name).is_file():
             contained_file(dist, name).unlink()
     for name, data in payload.items():
@@ -94,7 +99,7 @@ def build(multiplayer=False):
     audit.mkdir(exist_ok=True)
     (audit / 'publicacao.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(f"dist/: {report['files']} files, {report['bytes'] / 1000000:.1f} MB, "
-          f"{'with the multiplayer and the sound bench (/dev/ only)' if multiplayer else 'without the multiplayer'}. Publish only this directory.")
+          f"{'with the multiplayer, the sound bench and the track editor (/dev/ only)' if multiplayer else 'without the multiplayer'}. Publish only this directory.")
     return report
 
 

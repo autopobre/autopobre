@@ -196,6 +196,14 @@ CIRCUITOS = {
         # meios-fios e batimetria do GeoFloripa (Prefeitura de Florianopolis).
         'relevo_local': 'geofloripa_mdt_1m',
         'edificios_locais': 'geofloripa',
+        # Ortofotos do GeoFloripa (WMS) para o editor de traçado (pacote_referencia.py): a de 2016, na escala 1:1.000 (mostra
+        # a Hercilio Luz antes da restauracao), e a de 2023, menos nitida.
+        'ortofotos_wms': [
+            {'nome': 'Ortofoto 2016 (GeoFloripa, 1:1.000)', 'url': 'https://geofloripa.pmf.sc.gov.br/geoserver/ows',
+             'camada': 'Florianopolis:201601MUN', 'res': .2},
+            {'nome': 'Ortofoto 2023 (GeoFloripa)', 'url': 'https://geofloripa.pmf.sc.gov.br/geoserver/ows',
+             'camada': 'Florianopolis:2023MUN_RU', 'res': .3},
+        ],
     },
     'minhocao': {
         # Circuito de rua imaginario (pedido da equipe, 11/10/2026, desenhado sobre o mapa das ruas):
@@ -248,6 +256,38 @@ CIRCUITOS = {
         # ortofoto de 2015 do BHGeo (Prefeitura de Belo Horizonte / PRODABEL, CC-BY), nesta caixa UTM (a volta e 500 m).
         'relevo_local': 'bhgeo_lidar_2015',
         'caixa_utm': (603500, 7802100, 608750, 7806650),
+    },
+    'guaratiba': {
+        # Autodromo Parque de Guaratiba (Rio de Janeiro), em projeto (Populous e Driven International, apresentado em
+        # 06/11/2025; licenciamento em 2026, inauguracao prevista para 2028): nao ha planta publicada. O eixo foi pintado
+        # no editor de traçado (teste/editor-tracado.html) sobre o render aereo oficial retificado por uma camera ajustada
+        # a ortofoto de 2025 do IPP (fontes/guaratiba/referencias/, eixo_do_editor.py). Na Av. Dom Joao VI, perto do BRT
+        # Mato Alto, entre ela e a Estrada da Matriz.
+        'nome': 'Autódromo Parque de Guaratiba',
+        'cidade': 'Rio de Janeiro, RJ',
+        'centro': (-22.9893, -43.6155),
+        'raio_m': 1500,
+        'epsg': 31983,                 # SIRGAS 2000 / UTM 23S (o mesmo do IPP / data.rio)
+        'anadem': '23K',
+        'copernicus': 'Copernicus_DSM_COG_10_S23_00_W044_00_DEM',
+        'worldcover': 'S24W045',
+        # Prefeitura do Rio / Populous / Driven (2025): 4,71 km, 10 curvas, 4 retas (duas principais paralelas), ate
+        # 11 configuracoes, FIA grau 1. Sentido nao publicado: anti-horario, com a chegada na reta de dentro, diante do
+        # predio dos boxes e do paddock (lado oeste), como no traçado pintado.
+        'extensao_m': 4710,
+        'centro_cidade': (-22.9028, -43.1729),   # Praca XV, centro do Rio
+        'largura_m': 14,
+        'sentido': 'anti-horario',
+        # Larguras do grau 1 da FIA (sem medida publicada; o render mede 14 a 15 m): 15 m na reta de largada, 14 no resto.
+        'largura_publicada': (14, 15),
+        # Boxes a direita dos carros na reta de largada (o predio comprido e o paddock ficam a oeste dela).
+        'lado_boxes': -1,
+        'folga_minima_boxes_m': 4.6,
+        # Baixada ao lado do mangue do Rio Piraque, 1 a 2 m acima do mar: a volta tem ~1,2 m de desnivel (meta.flat_site).
+        'terreno_plano': True,
+        # Eixo e chegada pintados no editor (tracado_guaratiba*.json -> eixo_refinado.json, eixo_do_editor.py).
+        'eixo_do_editor': True,
+        'referencias_proprias': True,
     },
 }
 

@@ -16,7 +16,7 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 PORT = sys.argv[1] if len(sys.argv) > 1 else '8799'
 OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / 'renders' / 'camera'; OUT.mkdir(parents=True, exist_ok=True)
-GRIDS = ['interlagos', 'curvelo', 'cascavel', 'piracicaba', 'chapeco', 'brasilia', 'goiania'] if 'todas' in sys.argv[3:] else ['interlagos', 'brasilia']
+GRIDS = ['interlagos', 'curvelo', 'cascavel', 'piracicaba', 'chapeco', 'brasilia', 'goiania', 'guaratiba'] if 'todas' in sys.argv[3:] else ['interlagos', 'brasilia']
 URL = f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
 HIDE_UI = 'body *{visibility:hidden!important} #view{visibility:visible!important}'
 CAMERA = "m=>{const s=document.getElementById('camera');s.value=m;s.dispatchEvent(new Event('change'));return true;}"

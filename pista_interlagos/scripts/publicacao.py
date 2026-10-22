@@ -34,12 +34,16 @@ MODULES = (
 MULTIPLAYER = ('multiplayer.js', 'multiplayer.css', 'net-room.js', 'net-cars.js', 'net-link.js', 'net-verify.js')
 # The sound bench, where the pilots tune the engines by ear: also only under /dev/ (the same --multiplayer build).
 BANCADA = ('bancada-som.html', 'bancada-som.js')
+# The track editor, where a circuit's centreline is painted or corrected over reference images: also only under /dev/.
+# Its reference folders (fontes/<circuito>/referencias/) stay on the user's machine; the page opens them from disk.
+EDITOR = ('editor-tracado.html', 'editor-tracado.js')
+DEV_PAGES = ('bancada-som.html', 'editor-tracado.html')
 ASSETS = (
     'branding/old_stock_preparada_v1.jpg',
     'branding/patrocinio_omp_v1.webp', 'branding/patrocinio_rtj_v1.webp', 'branding/patrocinio_eletric_v1.webp',
     'branding/apoiadores_porta_motorista_v1.jpg', 'branding/apoiadores_porta_passageiro_v1.jpg',
     'circuitos/cascavel_solo.jpg', 'circuitos/piracicaba_solo.jpg', 'circuitos/chapeco_solo.jpg', 'circuitos/brasilia_solo.jpg',
-    'circuitos/goiania_solo.jpg',
+    'circuitos/goiania_solo.jpg', 'circuitos/guaratiba_solo.jpg',
     'circuitos/chapada_solo.jpg', 'circuitos/chapada_medio.jpg', 'circuitos/chapada_longe.jpg',
     'circuitos/chapada_medio_relevo.bin', 'circuitos/chapada_longe_relevo.bin',
     'circuitos/floripa_solo.jpg', 'circuitos/floripa_medio.jpg', 'circuitos/floripa_longe.jpg',
@@ -80,7 +84,7 @@ THREE = (
     'examples/jsm/utils/BufferGeometryUtils.js', 'examples/jsm/utils/SkeletonUtils.js',
     'LICENSE',
 )
-PUBLIC_FILES = {name: GAME + name for name in MODULES + MULTIPLAYER + BANCADA}
+PUBLIC_FILES = {name: GAME + name for name in MODULES + MULTIPLAYER + BANCADA + EDITOR}
 PUBLIC_FILES.update({'assets/' + name: GAME + 'assets/' + name for name in ASSETS})
 PUBLIC_FILES.update({'vendor/three/' + name: GAME + 'node_modules/three/' + name for name in THREE})
 PUBLIC_FILES.update({
@@ -90,6 +94,7 @@ PUBLIC_FILES.update({
     'dados/pista_chapeco.json': 'pista_interlagos/dados/pista_chapeco.json',
     'dados/pista_brasilia.json': 'pista_interlagos/dados/pista_brasilia.json',
     'dados/pista_goiania.json': 'pista_interlagos/dados/pista_goiania.json',
+    'dados/pista_guaratiba.json': 'pista_interlagos/dados/pista_guaratiba.json',
     'dados/pista_chapada.json': 'pista_interlagos/dados/pista_chapada.json',
     'dados/pista_floripa.json': 'pista_interlagos/dados/pista_floripa.json',
     'dados/pista_minhocao.json': 'pista_interlagos/dados/pista_minhocao.json',

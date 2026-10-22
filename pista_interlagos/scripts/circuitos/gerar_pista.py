@@ -152,6 +152,33 @@ EXTRA = {
                      'reforma de 2025-26 (15 m na reta principal, 14 m no resto); perfil do modelo das curvas de nível de '
                      '5 m da Prefeitura ajustado ao ANADEM, suavizado; caimento, zebras e muros são escolhas de modelagem.'),
     },
+    'guaratiba': {
+        # Em projeto (4,71 km, 10 curvas, duas retas principais paralelas), sem planta numerada. A deteccao acha 9
+        # trechos; o de 203 graus a esquerda no alto do oeste (a subida do pescoco e o laco) conta como dois. A ultima, o
+        # grampo de 180 graus entre as retas paralelas, e a curva 10 do projeto ("Turn 10 club overlooking the last
+        # corner and the main straights"), o que confirma o sentido anti-horario.
+        'trechos': {394: 'Curva 1', 549: 'Curva 2', 697: 'Curva 3', 1260: 'Curva 4', 1362: 'Curva 5',
+                    1577: 'Curvas 6 e 7 · o laço', 2618: 'Curva 8', 3255: 'Curva 9', 4264: 'Curva 10 · grampo'},
+        'depois': {1577: 'Reta oeste', 2618: 'Reta sul', 3255: 'Reta paralela', 4264: 'Reta de largada'},
+        'reta': 'Reta de largada',
+        'caimento_extra': {},
+        # A arquibancada grande do render fica do lado de fora da reta oeste (a direita dos carros, que descem para o sul).
+        'arquibancadas': [{'antes_da_chegada': 2690, 'blocos': 8, 'lado': -1, 'recuo': 14}],
+        'linha_chegada': 'editor',
+        'zebras': ['#c8201e', '#f1efe8'],
+        # Boxes a direita da reta de largada, diante do predio comprido do render (com o paddock atras, a oeste):
+        # garagens de ~270 m antes da linha a ~35 m depois dela.
+        'pit_sintetico': {'lado': -1, 'inicio': .04, 'antes_do_fim': 250, 'entrada': 60, 'saida': 60, 'largura': 7.6,
+                          'garagens': (-270, 35),
+                          'fonte': 'Pit lane modelado diante do prédio dos boxes do render do projeto (Populous/Driven '
+                                   'International, 2025): o autódromo ainda não foi construído.'},
+        'eixo_fonte': ('Pintado no editor de traçado do jogo sobre o render aéreo oficial do projeto (Populous/Driven '
+                       'International, 2025), retificado por uma câmera ajustada à ortofoto de 2025 do IPP (Prefeitura do Rio)'),
+        'ressalva': ('Reconstrução para jogo de um autódromo ainda em projeto. Eixo pintado sobre o render oficial retificado; '
+                     'extensão oficial de 4,71 km; larguras de grau 1 da FIA (14 m, 15 m na reta de largada); sentido e '
+                     'chegada escolhidos pelo render (paddock a oeste da reta de dentro); relevo atual do terreno (ANADEM), '
+                     'antes da obra; caimento, zebras, muros e boxes são escolhas de modelagem.'),
+    },
 }
 
 
@@ -395,7 +422,8 @@ def main():
 
     # O eixo medido ondula (nos do OSM, ruido da deteccao): suaviza o rumo, forte nas retas.
     P = alisar_rumo(gaussian_filter1d(np.array(eixo['eixo']), 2, axis=0, mode='wrap'))
-    largura = np.clip(np.array(eixo['largura_m']), 9.0, 16.0)
+    # Larguras pintadas no editor (eixo_do_editor.py) podem ir alem das medidas: escapes asfaltados, uma reta de largada larga.
+    largura = np.clip(np.array(eixo['largura_m']), 8.0, 25.0 if eixo.get('largura_do_editor') else 16.0)
     largura = uniform_filter1d(largura, 15, mode='wrap')
     n = len(P)
     seg = np.linalg.norm(np.roll(P, -1, 0) - P, axis=1)
@@ -425,6 +453,9 @@ def main():
         sb = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Pb, axis=0), axis=1))]
         meio = int(np.searchsorted(sb, sum(boxes['garagens_s']) / 2))
         i0 = int(cKDTree(P).query(Pb[meio])[1])
+    elif x['linha_chegada'] == 'editor':
+        # Linha pintada no editor de traçado (eixo_do_editor.py); a reta principal e o trecho reto que a contem.
+        i0 = int(cKDTree(P).query(np.array(eixo['chegada']))[1])
     elif x['linha_chegada'] == 'predio_sentinel2':
         # Sem pit lane no OSM e sem imagem aerea da pista pronta (Chapeco): o predio dos boxes e
         # a faixa clara (telhado e concreto) do lado dos boxes da maior reta, no Sentinel-2. A
@@ -448,6 +479,7 @@ def main():
     while volta < n // 2 and desvio(i0 - volta - 1) < math.radians(5):
         volta += 1
     reta_s = (-volta * DS, ida * DS)
+    x.setdefault('reta_principal', reta_s)
     P = np.roll(P, -i0, 0)
     largura = np.roll(largura, -i0)
 
@@ -491,7 +523,7 @@ def main():
     s = np.r_[0, np.cumsum(ds[:-1])]
     L = float(ds.sum())
     T, E = quadro(xy)
-    if c.get('largura_publicada'):
+    if c.get('largura_publicada') and not eixo.get('largura_do_editor'):
         # Larguras publicadas no lugar das medidas (Brasilia: 15 m na reta de largada, 14 m no resto):
         # na imagem as areas de escape pavimentadas encostam no asfalto e alargam a medida. Transicao
         # de 40 m nas pontas da reta.
@@ -723,7 +755,8 @@ def main():
     meta = {
         'id': nome, 'name': c['nome'], 'nominal_m': c['extensao_m'], 'direction': c['sentido'],
         'reconstructed_xy_m': L, 'reconstructed_3d_m': comp_3d,
-        'measured_centreline_m': float(eixo['comprimento_refinado_m']), 'osm_centreline_m': float(eixo['comprimento_osm_m']),
+        'measured_centreline_m': float(eixo['comprimento_refinado_m']),
+        'osm_centreline_m': float(eixo['comprimento_osm_m']) if eixo.get('comprimento_osm_m') is not None else None,
         'horizontal_scale_to_nominal': escala, 'difference_nominal_pct': 100 * (comp_3d / c['extensao_m'] - 1),
         'elevation_min_m': float(z_abs.min()), 'elevation_max_m': float(z_abs.max()),
         'elevation_range_m': float(np.ptp(z_abs)), 'grade_min_pct': float(100 * grade.min()),
@@ -740,6 +773,8 @@ def main():
         # Horizonte do jogo (landscape.js): 'rural' longe da cidade (Chapeco fica a 20 km do centro).
         **({'horizon': c['horizonte']} if c.get('horizonte') else {}),
         **({'natural_relief_m': desnivel_terreno} if c.get('desnivel_m') else {}),
+        # Terreno de baixada, quase plano de verdade (Guaratiba): os testes nao pedem o desnivel de um circuito de morro.
+        **({'flat_site': True} if c.get('terreno_plano') else {}),
         'elevation_check': validacao, 'sources': fontes,
         'centreline': x.get('eixo_fonte', 'OSM (highway=raceway) refinado sobre imagem aérea de 2025 (scripts/circuitos/refinar_eixo.py)'),
         'caveat': x.get('ressalva') or ('Reconstrução para jogo. Eixo e larguras medidos sobre imagem aérea; perfil do ANADEM (30 m) '
@@ -987,6 +1022,10 @@ def pit_sintetico(cfg, reta, xy, z, E, T, bank, largura, s, L, superficie):
     us = np.arange(a, b + 1e-6, DS)
     sm = us % L
     idx = np.clip(np.searchsorted(s, sm) - 1, 0, len(s) - 1)
+    # Esticada ate a extensao oficial (Guaratiba, x1,008) a volta tem estacoes de mais de 2 m e a mesma estacao vinha duas
+    # vezes: ponto repetido na faixa, declive NaN. Fica so a primeira (ECPA e Chapeco nao repetem e nao mudam).
+    unica = np.r_[True, np.diff(idx) != 0]
+    us, sm, idx = us[unica], sm[unica], idx[unica]
     # Plataforma de 4,6 m entre a pista e a faixa (muro dos boxes e banca da equipe).
     off_final = largura[idx] / 2 + 4.6 + cfg['largura'] / 2
     t = us - a
@@ -1016,11 +1055,21 @@ def pit_sintetico(cfg, reta, xy, z, E, T, bank, largura, s, L, superficie):
     abertura = float(ps[np.argmax(gap > .3)])
     muro_idx = np.flatnonzero(gap > 1.3)
     muro_trechos = [(ps[muro_idx[0]], ps[muro_idx[-1]])] if len(muro_idx) else []
+    wall_nose = muro_trechos[0][0] if muro_trechos else abertura
+    wall_end = muro_trechos[0][1] if muro_trechos else ps[-1] - 40
     print(f'pit sintetico {ps[-1]:.0f} m: entra em s={main_s[0]:.0f}, volta em s={main_s[-1]:.0f}; garagens {g0:.0f}-{g1:.0f} m')
+    if lado < 0:
+        # Boxes a direita (Guaratiba): como em montar_pit, as estacoes vao da saida para a entrada, com as garagens a
+        # esquerda delas (meia volta do bloco; o caimento troca de sinal com o eixo lateral).
+        fim = float(ps[-1])
+        pxy, pz, pbank, main_s, gap = pxy[::-1], pz[::-1], -pbank[::-1], main_s[::-1], gap[::-1]
+        lo, hi = -hi[::-1], -lo[::-1]
+        g0, g1 = fim - g1, fim - g0
+        abertura, wall_nose, wall_end = fim - abertura, fim - wall_nose, fim - wall_end
+        muro_trechos = [(fim - b, fim - a) for a, b in reversed(muro_trechos)]
     return completar_pit(pxy, lo, hi, pz, pbank, main_s, gap, (g0, g1), superficie,
                          cfg.get('fonte', 'Faixa de serviço fictícia ao lado da reta principal, diante do paddock: o ECPA não tem pit lane mapeado.'),
-                         abertura, muro_trechos[0][0] if muro_trechos else abertura, muro_trechos[0][1] if muro_trechos else ps[-1] - 40,
-                         L, muro_trechos)
+                         abertura, wall_nose, wall_end, L, muro_trechos, reverso=lado < 0)
 
 
 # --- Cenario -------------------------------------------------------------------------

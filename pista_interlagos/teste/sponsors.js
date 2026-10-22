@@ -92,10 +92,17 @@ export const SPONSORS=Object.freeze({
  pernabamba:S('PEDALINHOS PERNA-BAMBA','PERNA-BAMBA','#2a9d8f','#ffffff','#f4a261','drop','repeat','Uma volta na lagoa no muque','bh'),
  capivara:S('NATAÇÃO PRA CAPIVARA','CAPIVARA','#6b705c','#fefae0','#ddbea9','leaf','split','Turma nova toda segunda','bh'),
  cademeucarro:S('GUINCHO CADÊ MEU CARRO?','CADÊ?','#264653','#e9c46a','#ffffff','car','stripe','Volta de 20 km? A gente busca','bh'),
- curvatudo:S('AZULEJOS CURVA-TUDO','CURVA-TUDO','#1d3557','#f1faee','#a8dadc','star','badge','Até parede torta fica bonita','bh')
+ curvatudo:S('AZULEJOS CURVA-TUDO','CURVA-TUDO','#1d3557','#f1faee','#a8dadc','star','badge','Até parede torta fica bonita','bh'),
+ // Rio de Janeiro (Guaratiba, in the west of the city): the sun, the mangrove, the sea wind and the stand vendors.
+ galao:S('MATE GELADO GALÃO NAS COSTAS','GALÃO','#f4a261','#3d2b1f','#ffffff','cup','script','Gelado até a curva 10','rio'),
+ pelama:S('CARANGUEJADA PÉ NA LAMA','PÉ NA LAMA','#bc4749','#fff3e0','#386641','leaf','badge','Do mangue direto pro prato','rio'),
+ nuncavoa:S('GUARDA-SOL NUNCA-VOA','NUNCA-VOA','#0077b6','#ffffff','#ffd166','star','stripe','Aguenta o vento da restinga','rio'),
+ fpsmil:S('PROTETOR SOLAR FPS MIL','FPS MIL','#ffb703','#023047','#fb8500','drop','repeat','Pra largada ao meio-dia','rio'),
+ sopro:S('BISCOITO SOPRO-DE-AREIA','SOPRO','#e9c46a','#264653','#e76f51','cup','split','De mão em mão na arquibancada','rio'),
+ transborda:S('AÇAÍ TRANSBORDA-COPO','TRANSBORDA','#4a1942','#ffffff','#c2185b','cup','badge','Colher grátis, guardanapo nem tanto','rio')
 });
 // Each circuit's region (its local sponsors).
-const REGIONS={interlagos:'sp',piracicaba:'sp',cascavel:'pr',chapeco:'sc',brasilia:'df',goiania:'go',curvelo:'mg',chapada:'mt',floripa:'ilha',minhocao:'centro',pampulha:'bh'};
+const REGIONS={interlagos:'sp',piracicaba:'sp',cascavel:'pr',chapeco:'sc',brasilia:'df',goiania:'go',curvelo:'mg',chapada:'mt',floripa:'ilha',minhocao:'centro',pampulha:'bh',guaratiba:'rio'};
 const NATIONAL=['autopobre','oldstock','posto99','tia','retifica','blazer'],EXTRA=['pulapula','pegaprimeira','oleovo','semtranco'];
 export const regionOf=id=>REGIONS[id]??'sp';
 // A circuit's own seed: the same banners and boards at every load of it, different from the others'.

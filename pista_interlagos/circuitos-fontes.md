@@ -297,6 +297,42 @@ o tifffile (Python puro) e numpy, `projecao.py` faz as conversões UTM/geográfi
 às do serviço de geometria da Prefeitura abaixo de 1 µm) e `compat_scipy.py` traz os filtros e a interpolação do
 `scipy.ndimage` em numpy. Com o rasterio e o scipy carregando, os scripts continuam usando os dois.
 
+## Guaratiba (Autódromo Parque de Guaratiba, Rio de Janeiro, em projeto) — fontes baixadas em 22/10/2026
+
+Autódromo novo do Rio, ainda no papel: plano diretor e traçado apresentados em 06/11/2025 (Prefeitura do Rio,
+Populous no projeto, Driven International no traçado, consórcio da Genial Investimentos com a Rock World), obras depois
+do licenciamento, inauguração prevista para 2028. Lei Complementar 273/2024 (Operação Urbana Consorciada do Autódromo
+Parque de Guaratiba). Publicado: 4,71 km, 10 curvas, 4 retas com duas principais paralelas, até 11 configurações, grau 1
+da FIA, F1 simulada em ~1:09,5. Terreno ao lado da Av. Dom João VI, perto do BRT Mato Alto, entre ela e a Estrada da
+Matriz; o "Turn 10 club" fica "de frente para a última curva e as retas principais".
+
+- **Sem planta publicada.** A única fonte do traçado é o render aéreo oficial
+  (`driven-international.com/.../POPULOUS-Rio-MSP-Render-AERIAL-scaled.png`, 2560×1027). A câmera dele foi ajustada
+  sobre a ortofoto 2025 do IPP casando a Av. Dom João VI (OSM), a borda arredondada da mata a nordeste do terreno (dica
+  da equipe, a âncora que fez o ajuste convergir) e as duas retas paralelas; a ortofoto projetada por ela casa com a
+  mata, o Rio Piraquê, a avenida e o bairro. `scripts/circuitos/referencias_guaratiba.py` guarda a câmera e monta a pasta
+  de referências do editor: o render visto de cima (0,5 m/px), a ortofoto 2025, o render em perspectiva (homografia) e o
+  limite oficial do terreno (IPP, `Urbanismo/IU_Operacoes_urbanas_temp/MapServer/59`, setor I).
+- **Eixo pintado à mão** no editor de traçado (`tracado_guaratiba_*.json` na pasta de referências; o mais novo vale):
+  `eixo_do_editor.py guaratiba` tira pontos repetidos, arredonda os cantos da polilinha (3 m) e grava
+  `eixo_refinado.json` com a chegada pintada; `gerar_pista.py` usa `linha_chegada: 'editor'`. A volta pintada mede
+  4.692 m e foi esticada 0,8% para os 4.710 m oficiais.
+- **Leitura do render (aproximações declaradas):** sentido anti-horário, largada na reta de dentro (oeste) diante do
+  prédio comprido dos boxes, com o paddock atrás; a curva 10 é o grampo entre as retas paralelas. A detecção acha 9
+  trechos de curva; o laço do oeste (203°) conta como as curvas 6 e 7. Larguras de grau 1 (15 m na reta de largada, 14 m
+  no resto). Pit lane sintético à direita da reta de largada (`pit_sintetico` com `lado: -1`, bloco reverso como em
+  Brasília), garagens de ~270 m antes da linha a ~35 m depois. Arquibancadas no começo da reta oeste, do lado de fora.
+- **Relevo:** o de hoje, antes da obra: baixada a 1–2 m acima do mar ao lado do mangue (ANADEM e Copernicus concordam);
+  a volta tem 1,2 m de desnível (`meta.flat_site`, o teste aceita relevo de baixada). Cobertura WorldCover, cor do chão
+  Sentinel-2 S2B_23KPQ_20261004, casas do Microsoft Building Footprints (o bairro do Piraquê e a Pedra de Guaratiba).
+
+| Dado | Fonte | Uso |
+|---|---|---|
+| Render aéreo do projeto | Populous / Driven International (2025-2026) | traçado (só medição local, não distribuído) |
+| Ortofoto 2025 (15 cm), limite da OUC | IPP / Prefeitura do Rio (pgeo3.rio.rj.gov.br, CC BY 4.0) | câmera do render, conferência |
+| Vias, mata, água | OpenStreetMap (Overpass, base 22/10/2026) | câmera, cenário |
+| Relevo 30 m, superfície 30 m, cobertura 10 m, cor 10 m, edificações | ANADEM, Copernicus GLO-30, ESA WorldCover, Sentinel-2, Microsoft Building Footprints | terreno, cenário |
+
 ## Chapada dos Sonhos (imaginário, Chapada dos Guimarães, MT) — fontes baixadas em 11/10/2026
 
 Pedido #5 da Central de Projetos: um autódromo **que não existe**, no alto do paredão da Chapada dos Guimarães, sem
@@ -467,3 +503,30 @@ os boxes e a arquibancada são desenho de jogo. Gerado por `scripts/circuitos/ge
 **Aproximações declaradas:** o circuito inteiro; a rampa de saída subida e o Minhocão ao contrário; a ligação de 30 m
 no túnel; o leito do túnel sob a praça (desenhado); larguras mínimas de corrida; os muros; os boxes e a arquibancada na
 Major Sertório; alturas de prédios do mapa de 2004.
+
+## Editor de traçado e pastas de referência
+
+`teste/editor-tracado.html` (no servidor local e só no /dev/ publicado, como a bancada de som) pinta ou corrige o eixo e
+o pit lane de qualquer circuito do jogo sobre o chão dele (`assets/circuitos/<id>_solo.jpg`), com o traçado atual por
+baixo. Pincel (emenda na ponta ou, começando e terminando em cima da linha, refaz o trecho entre os dois pontos), Mover
+(empurra com alcance suave; sem ponto dentro do círculo, cria um na linha), Pontos, Apagar, Chegada (em qualquer lugar
+do eixo), Largura (pontos presos ao eixo com largura e alcance ao longo da pista, transição `(1 - u²)²` até a largura
+padrão); desfazer, medidas (volta, oficial, sentido, curva mais fechada). O editor lembra ferramenta, controles e, por
+circuito, a linha, a vista e cada fundo.
+
+- **Pasta de referências** (`fontes/<id>/referencias/`, fora do repositório e do site; o editor a abre do disco):
+  `camadas.json` (`formato: autopobre-referencias-v1`, sistema `utm` + EPSG do circuito, ou `local` como Interlagos) com
+  imagens vistas de cima (`tipo: planta`, canto noroeste `x0`/`y1` e `res` em m/px) ou em perspectiva (`tipo:
+  perspectiva`, homografia `H` do chão menos `origem` para o pixel), e linhas de apoio (`editavel: false` para limites).
+  `scripts/circuitos/pacote_referencia.py <id>|todos` monta a dos circuitos atuais a partir do mosaico Esri (reprojetado
+  de Web Mercator para UTM) e da ortofoto local (Goiânia); com `ortofotos_wms` na config baixa ortofotos da prefeitura
+  em blocos na caixa da volta mais 150 m (Floripa: GeoFloripa 2016 a 0,2 m, com os vazios sobre o mar preenchidos pela
+  de 2023, e a 2023 a 0,3 m). Um circuito que só existe numa pasta aparece no seletor como "só referências"; Guaratiba
+  tem a sua (`referencias_guaratiba.py`).
+- **Arquivo salvo** `tracado_<id>.json` (`formato: autopobre-tracado-v1`): eixo, pit lane e chegada no sistema da
+  pasta (UTM), sentido e comprimento; para um circuito do jogo também `jogo.eixo_local`, nas mesmas coordenadas e
+  escala das amostras de `dados/pista_<id>.json`. É a entrada dos geradores para corrigir uma pista; com pontos de
+  largura leva `larguras_pontos` (x, y, largura, alcance) e `largura_mostrada_m` (a padrão). `eixo_do_editor.py <id>`
+  leva o mais novo para `eixo_refinado.json` (a largura dos pontos refeita a cada 2 m, `largura_do_editor`, que no
+  `gerar_pista.py` passa na frente da `largura_publicada`); por enquanto só Guaratiba (`eixo_do_editor: True`) usa.
+- Conferência: `scripts/verificar_editor_tracado.py [porta] [pasta das fotos]`.

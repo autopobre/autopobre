@@ -4,7 +4,7 @@
 // Floripa street circuit (gerar_floripa.py) the walls by the asphalt and the bridge decks over the sea; on the
 // Minhocão street circuit (gerar_minhocao.py) the elevated deck, the tunnel and the lap passing under itself; on the
 // Pampulha street circuit (gerar_pampulha.py) the 20 km lap raced in one lap, the lake and the shared first block.
-//   node scripts/testar_circuitos_abertos.mjs [cascavel|piracicaba|chapeco|brasilia|goiania|chapada|floripa|minhocao|pampulha]
+//   node scripts/testar_circuitos_abertos.mjs [cascavel|piracicaba|chapeco|brasilia|goiania|guaratiba|chapada|floripa|minhocao|pampulha]
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {CIRCUITS,fixedLaps,raceLaps} from '../teste/circuits.js';
@@ -31,7 +31,7 @@ function selfCrossings(a){
    out.push({s:[a[i][0]+u*Math.hypot(x2-x1,y2-y1),a[j][0]+v*Math.hypot(x4-x3,y4-y3)],z:[a[i][3]+u*(a[i2][3]-a[i][3]),a[j][3]+v*(a[j2][3]-a[j][3])]});}}
  return out;
 }
-for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa','minhocao','pampulha']){
+for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','guaratiba','chapada','floripa','minhocao','pampulha']){
  if(only&&only!==id)continue;
  const circuit=CIRCUITS[id],data=JSON.parse(readFileSync(new URL(`../dados/pista_${id}.json`,import.meta.url)));
  data.meta.id=id;data.meta.name=circuit.name;
@@ -58,7 +58,7 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  if(crossings.length)out.crossings=crossings.map(c=>({s:c.s.map(Math.round),dz:+Math.abs(c.z[0]-c.z[1]).toFixed(1)}));
  if(id==='piracicaba')assert(Math.abs(L-circuit.length)<15,'ECPA shows its measured length');
  else assert(Math.abs(data.meta.reconstructed_3d_m-circuit.length)<.5,`${id} matches the published length`);
- assert.equal(circuit.length,{cascavel:3058,piracicaba:1930,chapeco:4004,brasilia:5384,goiania:3835,chapada:5153,floripa:4445,minhocao:4035,pampulha:20533}[id]);
+ assert.equal(circuit.length,{cascavel:3058,piracicaba:1930,chapeco:4004,brasilia:5384,goiania:3835,guaratiba:4710,chapada:5153,floripa:4445,minhocao:4035,pampulha:20533}[id]);
  // Chapecó (opened 08/2026): the earthworks profile is calibrated to the published 18.5 m, and the
  // sections carry the official numbering (12 curves, curve 7 the long constant-radius sweep).
  if(id==='chapeco'){
@@ -197,7 +197,9 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','chapada
  // --- Relief: real circuits, not a flat plate; grades a car can climb.
  const grades=a.map(p=>p[6]);out.grade=[Math.min(...grades),Math.max(...grades)].map(g=>+(g*100).toFixed(1));
  // The Chapada's profile is game earthworks on a plateau with valleys (up to 8%), not the relief under the line: no DEM check.
- assert(data.meta.elevation_range_m>10&&data.meta.elevation_range_m<(data.meta.imaginary?70:60),`${id}: relief range`);
+ // Guaratiba is lowland by the mangrove, 1-2 m above the sea (meta.flat_site): its small relief still comes from the DEM.
+ if(data.meta.flat_site)assert(data.meta.elevation_range_m>.3&&data.meta.elevation_range_m<10,`${id}: lowland relief range`);
+ else assert(data.meta.elevation_range_m>10&&data.meta.elevation_range_m<(data.meta.imaginary?70:60),`${id}: relief range`);
  // (A street circuit takes the streets as they are: Floripa's Rua Hoepcke comes down the hill at 12%.)
  const maxGrade=data.meta.street?.125:data.meta.imaginary?.081:.15;
  assert(Math.max(...grades.map(Math.abs))<maxGrade,`${id}: grade under ${maxGrade*100}%`);

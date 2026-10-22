@@ -1,6 +1,6 @@
 """Cascavel, ECPA, Chapeco, Brasilia e Goiania no navegador: carregam sem erros, cenario montado, fotos de conferencia.
 
-    python verificar_circuitos_abertos.py [porta] [cascavel|piracicaba|chapeco|brasilia|goiania]
+    python verificar_circuitos_abertos.py [porta] [cascavel|piracicaba|chapeco|brasilia|goiania|guaratiba]
 
 Abre cada circuito pelo seletor (?circuito=), entra no Modo Corrida, confere o cenario
 (terreno, arvores, edificacoes, arquibancadas, boxes) e fotografa a largada, a volta de
@@ -23,7 +23,7 @@ relatorio = {}
 erros = []
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path=browser_executable(), headless=True, args=browser_args())
-    for circuito in ['cascavel', 'piracicaba', 'chapeco', 'brasilia', 'goiania']:
+    for circuito in ['cascavel', 'piracicaba', 'chapeco', 'brasilia', 'goiania', 'guaratiba']:
         if SO and SO != circuito:
             continue
         page = browser.new_page(viewport={'width': 1280, 'height': 720})

@@ -16,7 +16,7 @@ import {standLayout} from '../teste/track-clearance.js';
 import {guardrailPresent,guardrailClearance} from '../teste/physics.js';
 
 const only=process.argv[2],report={},seen=new Map();
-for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','chapada','floripa','minhocao','pampulha']){
+for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','guaratiba','chapada','floripa','minhocao','pampulha']){
  if(only&&only!==id)continue;
  const data=id==='curvelo'?createCurveloData():JSON.parse(readFileSync(new URL(`../dados/${id==='interlagos'?'pista':'pista_'+id}.json`,import.meta.url)));
  data.meta.id=id;data.meta.name=CIRCUITS[id].name;
