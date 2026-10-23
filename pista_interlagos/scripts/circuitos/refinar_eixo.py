@@ -91,6 +91,13 @@ def rota(nome, vias):
         seq = vias[288004311]['nodes'] + vias[288004307]['nodes'][1:]
         assert seq[0] == seq[-1]
         return seq[:-1]
+    if nome == 'velocitta':
+        # Traçado de competicao (3.443 m, o da Stock Car): a via 478876097 fecha a volta, ja no sentido anti-horario
+        # da corrida, pela Caipirinha e pela Ferradura. O laco das curvas 3 e 4 originais (1156617273), a ultima curva
+        # original (1156617274) e as ligacoes dos circuitos curtos (478876098, 750945804, 750945805) sao trechos fechados.
+        nos = vias[478876097]['nodes']
+        assert nos[0] == nos[-1]
+        return nos[:-1]
     raise KeyError(nome)
 
 
@@ -110,7 +117,47 @@ def rota_boxes(nome, vias):
         # "Pit Lane" (879890871, oneway): sai da reta oposta antes da curva inclinada, corta por dentro
         # dela e corre ao lado da reta principal diante dos boxes ate voltar no meio dela.
         return vias[879890871]['nodes']
+    if nome == 'velocitta':
+        # Pit lane (677322173): sai da pista no alto, antes do grampo que leva a Ferradura, contorna o grampo por fora,
+        # passa diante dos boxes ao norte da reta e volta na curva 1.
+        return vias[677322173]['nodes']
     return None
+
+
+# Trechos de asfalto fora do traçado de corrida (config 'trechos_fechados'): desenhados no jogo e fechados por barreiras.
+# Cada um: via OSM (no sentido em que foi mapeada), nome, tipo e largura de partida da medida.
+FECHADOS = {
+    'velocitta': [
+        {'via': 1156617273, 'id': 'curvas_3_4', 'nome': 'Curvas 3 e 4 do traçado original', 'tipo': 'tracado', 'largura': 12},
+        {'via': 1156617274, 'id': 'paciencia', 'nome': 'Curva da Paciência · última curva do traçado original',
+         'tipo': 'tracado', 'largura': 12},
+        {'via': 478876098, 'id': 'ligacao_h', 'nome': 'Ligação do H', 'tipo': 'ligacao', 'largura': 11},
+        {'via': 750945804, 'id': 'anel_superior', 'nome': 'Ligação do anel superior', 'tipo': 'ligacao', 'largura': 11},
+        {'via': 750945805, 'id': 'ligacao_curta', 'nome': 'Ligação curta', 'tipo': 'ligacao', 'largura': 9},
+        {'via': 718141140, 'id': 'acesso_museu', 'nome': 'Acesso do Museu', 'tipo': 'servico', 'largura': 6},
+    ],
+}
+
+
+def refinar_fechados(nome, ref, vias, nos, T):
+    """Eixo e largura de cada trecho fechado, medidos como o pit lane (uma via aberta), com deslocamento curto: as vias
+    OSM ja seguem o asfalto e as pontas encostam na pista, cujo asfalto a medida nao deve puxar."""
+    saida = []
+    for f in FECHADOS.get(nome, []):
+        pts = np.array([T.transform(*nos[n]) for n in vias[f['via']]['nodes']])
+        L_osm = float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
+        w0 = f['largura']
+        if L_osm < 60:
+            # Curto demais para a programacao (a ligacao curta, 38 m entre a pista e a ligacao do anel): o desenho OSM.
+            cs, L = spline(pts, False)
+            _, P, _ = estacoes(cs, L, False)
+            w = np.full(len(P), float(w0))
+        else:
+            P, _, w, L, _ = refinar(ref, pts, False, [(2.5, max(5, w0 - 4), w0 + 3)], w0)
+        saida.append({'id': f['id'], 'nome': f['nome'], 'tipo': f['tipo'], 'via_osm': f['via'], 'comprimento_osm_m': L_osm,
+                      'comprimento_m': float(L), 'eixo': np.round(P, 3).tolist(), 'largura_m': np.round(w, 2).tolist()})
+        print(f'  fechado {f["id"]}: OSM {L_osm:.0f} m -> {L:.0f} m, largura media {np.mean(w):.1f} m')
+    return saida
 
 
 class Referencia:
@@ -474,6 +521,11 @@ def main():
         # da obra (09/2025), onde os dois predios ja tem telhado.
         ref_g = Referencia(pasta, c['epsg']) if c.get('garagens_na_esri') else ref
         garagens = patio_dos_boxes(ref_g, Pb, Nb, wb, Lb, lado, hb, **c.get('patio_boxes', {}))
+        if c.get('garagens_pit_s'):
+            # Predio dos boxes medido a mao na imagem (Velocitta: o patio mais claro e o da tenda do paddock, ao lado).
+            garagens = [float(v) for v in c['garagens_pit_s']]
+            hb.append({'garagens_medidas_na_imagem': garagens})
+            print(f'  garagens no predio medido: de {garagens[0]:.0f} a {garagens[1]:.0f} m do pit lane')
     if boxes and c.get('faixa_nas_garagens'):
         Pb, Nb, wb, Lb = faixa_nas_garagens(ref, Pb, Nb, wb, Lb, lado, garagens, c['faixa_nas_garagens'], hb)
     if boxes and c.get('boxes_sob_cobertura'):
@@ -529,6 +581,11 @@ def main():
         saida['boxes'] = {'eixo': np.round(Pb, 3).tolist(), 'largura_m': np.round(wb, 2).tolist(),
                           'comprimento_m': Lb, 'passadas': hb, 'garagens_s': garagens}
         linhas += [(Pb, (0, 255, 255)), (Pb + (wb / 2)[:, None] * Nb, (0, 160, 255)), (Pb - (wb / 2)[:, None] * Nb, (0, 160, 255))]
+    if c.get('trechos_fechados'):
+        saida['fechados'] = refinar_fechados(nome, ref, vias, nos, T)
+        for f in saida['fechados']:
+            Pf = np.array(f['eixo'])
+            linhas.append((Pf, (255, 120, 0)))
     (pasta / 'eixo_refinado.json').write_text(json.dumps(saida), encoding='utf-8')
     desenhar(ref, pasta, linhas)
     print(f'{nome}: OSM {L_osm:.1f} m -> refinado {L:.1f} m (oficial {c["extensao_m"]} m); '

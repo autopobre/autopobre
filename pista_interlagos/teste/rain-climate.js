@@ -16,5 +16,8 @@ export const RAIN_CLIMATE=Object.freeze({
  chapada:Object.freeze({station:'Cuiabá (INMET 83361), abaixo do planalto',period:'1981-2010',rainDays:[17,14,15,10,4,1,1,2,4,8,11,15],heavyDays:[7,7,6,3,1,1,0,1,2,3,5,6]}),
  floripa:Object.freeze({station:'Florianópolis · São José (INMET 83897)',period:'1981-2010',rainDays:[16,15,14,9,9,7,9,7,11,13,13,12],heavyDays:[8,6,5,4,4,3,4,3,5,5,5,4]}),
  pampulha:Object.freeze({station:'Belo Horizonte (INMET 83587)',period:'1991-2020',rainDays:[15,10,11,7,3,1,1,1,4,8,14,17],heavyDays:[9,6,6,3,1,0,0,0,2,4,8,10]}),
- curvelo:Object.freeze({station:'Curvelo (INMET 83536)',period:'1991-2020',rainDays:[13,9,9,4,2,1,1,1,3,6,13,15],heavyDays:[7,4,5,1,1,0,0,0,1,3,6,8]})
+ curvelo:Object.freeze({station:'Curvelo (INMET 83536)',period:'1991-2020',rainDays:[13,9,9,4,2,1,1,1,3,6,13,15],heavyDays:[7,4,5,1,1,0,0,0,1,3,6,8]}),
+ // Velocitta (Mogi Guaçu): the same interior-paulista climate as Piracicaba, ~100 km away; ESALQ's series stands in until a
+ // nearer station's day counts come in.
+ velocitta:Object.freeze({station:'Piracicaba · ESALQ/USP, a ~100 km de Mogi Guaçu (dias contados na série diária)',period:'1991-2020',rainDays:[15.5,12.4,10.4,4.9,5.2,3.8,3.1,3,5.7,9,10,13.2],heavyDays:[7.9,5.8,5.1,2.3,2.1,1.6,1,1,2.4,4.1,4.8,6.1]})
 });

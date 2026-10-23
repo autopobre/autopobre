@@ -1569,6 +1569,202 @@ export const AI_REFERENCE_TIMES=[
   "bestRace": 408.442
  },
  {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "73",
+  "bestLap": 106.892,
+  "bestRace": 328.842
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "00",
+  "bestLap": 111.875,
+  "bestRace": 342.058
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "7",
+  "bestLap": 110.908,
+  "bestRace": 342.458
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "64",
+  "bestLap": 113.3,
+  "bestRace": 355.55
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "2",
+  "bestLap": 109.933,
+  "bestRace": 342.808
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "19",
+  "bestLap": 111.467,
+  "bestRace": 339.725
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "51",
+  "bestLap": 113.608,
+  "bestRace": 351.833
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "93",
+  "bestLap": 107.4,
+  "bestRace": 382.842
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "312",
+  "bestLap": 113.258,
+  "bestRace": 353.175
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "70",
+  "bestLap": 113.225,
+  "bestRace": 354.908
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "9",
+  "bestLap": 113.975,
+  "bestRace": 351.425
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "74",
+  "bestLap": 116.825,
+  "bestRace": 362.875
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "88",
+  "bestLap": 114.6,
+  "bestRace": 359.917
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "normal",
+  "number": "42",
+  "bestLap": 112.35,
+  "bestRace": 353.567
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "73",
+  "bestLap": 106.892,
+  "bestRace": 328.842
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "00",
+  "bestLap": 111.875,
+  "bestRace": 342.058
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "7",
+  "bestLap": 110.908,
+  "bestRace": 342.458
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "64",
+  "bestLap": 113.3,
+  "bestRace": 355.55
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "2",
+  "bestLap": 109.933,
+  "bestRace": 342.808
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "19",
+  "bestLap": 111.467,
+  "bestRace": 339.725
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "51",
+  "bestLap": 113.608,
+  "bestRace": 351.833
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "93",
+  "bestLap": 107.4,
+  "bestRace": 382.842
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "312",
+  "bestLap": 113.258,
+  "bestRace": 353.175
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "70",
+  "bestLap": 113.225,
+  "bestRace": 354.908
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "9",
+  "bestLap": 113.975,
+  "bestRace": 351.425
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "74",
+  "bestLap": 116.825,
+  "bestRace": 362.875
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "88",
+  "bestLap": 114.6,
+  "bestRace": 359.917
+ },
+ {
+  "circuit": "velocitta",
+  "mode": "immersive",
+  "number": "42",
+  "bestLap": 112.35,
+  "bestRace": 353.567
+ },
+ {
   "circuit": "chapada",
   "mode": "normal",
   "number": "73",

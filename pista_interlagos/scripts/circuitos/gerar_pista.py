@@ -179,6 +179,36 @@ EXTRA = {
                      'chegada escolhidos pelo render (paddock a oeste da reta de dentro); relevo atual do terreno (ANADEM), '
                      'antes da obra; caimento, zebras, muros e boxes são escolhas de modelagem.'),
     },
+    'velocitta': {
+        # Traçado de competicao: 12 curvas publicadas, anti-horario, sem planta numerada. A deteccao acha 14 trechos; a dobra a
+        # direita no comeco da reta oposta e a do alto, antes do grampo, nao contam. A Caipirinha (2015) faz as curvas 3 e 4, no
+        # lugar das originais; a Curva do Guiga, o "saca-rolha" no fim da reta oposta, e "perna a esquerda, depois a direita, o
+        # raio mais fechado, e a longa curva final" (Flatout): as curvas 8, 9 e 10. A Curva da Mata margeia a reserva florestal
+        # perto do casarao do museu (Flatout), no grampo do Museu, o alto da volta (771 m). A Ferradura (2015) e a 12.
+        'trechos': {342: 'Curva 1', 593: 'Curva 2', 795: 'Curva 3 · Caipirinha', 909: 'Curva 4 · Caipirinha', 1165: 'Curva 5',
+                    1420: 'Curva 6 · Curva da Mata', 1664: 'Curva 7 · Grampo do Museu', 1798: 'Reta oposta · descida',
+                    2275: 'Curva 8 · Curva do Guiga', 2336: 'Curva 9 · Curva do Guiga', 2394: 'Curva 10', 2523: 'Alto do Guiga',
+                    2617: 'Curva 11 · grampo', 2869: 'Curva 12 · Ferradura'},
+        'depois': {1165: 'Subida da mata', 1664: 'Reta oposta · descida', 2869: 'Reta dos boxes · descida'},
+        'reta': 'Reta dos boxes · descida',
+        'caimento_extra': {},
+        # Sem arquibancada publicada (o publico fica nos camarotes sobre os boxes e nos barrancos): tres blocos do lado de
+        # dentro da reta, de frente para os boxes (aproximacao declarada).
+        'arquibancadas': [{'antes_da_chegada': 120, 'blocos': 3, 'lado': 1, 'recuo': 14}],
+        # A linha branca de lado a lado na cabeceira do grid pintado, logo depois do predio dos boxes (imagem aerea).
+        'linha_chegada': 'pit_s',
+        'linha_pit_s': 497,
+        'zebras': ['#c8201e', '#f1efe8'],
+        'fonte_boxes': ('Pit lane: OSM (via 677322173) refinado sobre a imagem aérea; garagens diante do prédio dos boxes medido '
+                        'na imagem (8 boxes publicados).'),
+        'eixo_fonte': ('OSM (highway=raceway, via 478876097: o traçado de competição, com a Caipirinha e a Ferradura) refinado '
+                       'sobre imagem aérea (scripts/circuitos/refinar_eixo.py); os outros trechos de asfalto (vias 1156617273, '
+                       '1156617274, 478876098, 750945804, 750945805 e 718141140) medidos do mesmo jeito, fechados no jogo'),
+        'ressalva': ('Reconstrução para jogo. Eixo medido sobre imagem aérea: 3.347 m, 2,8% abaixo dos 3.443 m publicados (o '
+                     'traçado original mede 3.390 m contra 3.493 m: a diferença é da medição oficial), sem escala para não '
+                     'descolar a pista do relevo; perfil do ANADEM (30 m) suavizado; caimento, zebras, muros, barreiras dos '
+                     'trechos fechados e arquibancadas são escolhas de modelagem.'),
+    },
 }
 
 
@@ -453,6 +483,10 @@ def main():
         sb = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Pb, axis=0), axis=1))]
         meio = int(np.searchsorted(sb, sum(boxes['garagens_s']) / 2))
         i0 = int(cKDTree(P).query(Pb[meio])[1])
+    elif x['linha_chegada'] == 'pit_s' and Pb is not None:
+        # A linha pintada vista na imagem, na cabeceira do grid, pela distancia ao longo do pit lane (contada da entrada).
+        sb = np.r_[0, np.cumsum(np.linalg.norm(np.diff(Pb, axis=0), axis=1))]
+        i0 = int(cKDTree(P).query(Pb[int(np.searchsorted(sb, x['linha_pit_s']))])[1])
     elif x['linha_chegada'] == 'editor':
         # Linha pintada no editor de traçado (eixo_do_editor.py); a reta principal e o trecho reto que a contem.
         i0 = int(cKDTree(P).query(np.array(eixo['chegada']))[1])
@@ -655,15 +689,20 @@ def main():
         pit = montar_pit(pxy, pw, xy, z, E, T, bank, largura, s, L, superficie, vias_dem, origem, base, escala,
                          fonte=x.get('fonte_boxes', 'Pit lane: OSM (way 628049496) refinado sobre imagem aérea de 2025; '
                                                     'garagens sob a cobertura, medidas nos transectos.'),
-                         garagens_s=boxes['garagens_s'], lado=c.get('lado_boxes', 1), folga_min=c.get('folga_minima_boxes_m'))
+                         garagens_s=boxes['garagens_s'], lado=c.get('lado_boxes', 1), folga_min=c.get('folga_minima_boxes_m'),
+                         trecho_folga=c.get('trecho_folga_boxes_s'))
     elif x.get('pit_sintetico'):
         cfg = dict(x['pit_sintetico'])
         if cfg.get('garagens'):
             cfg['garagens'] = [v * escala for v in cfg['garagens']]
         pit = pit_sintetico(cfg, [v * escala for v in x['reta_principal']], xy, z, E, T, bank, largura, s, L, superficie)
 
+    # --- Trechos fechados (Velocitta): o resto do asfalto do autodromo, fora do traçado de corrida.
+    fechados = montar_fechados(eixo.get('fechados', []), origem, escala, vias_dem, base, superficie, largura) \
+        if c.get('trechos_fechados') else []
+
     # --- Terreno: ANADEM na grade de 4 m; perto das vias segue o plano da pista.
-    pontos = [xy] + ([np.array(pit['xy'])] if pit else [])
+    pontos = [xy] + ([np.array(pit['xy'])] if pit else []) + [np.array(f['samples'])[:, 1:3] for f in fechados]
     todos = np.vstack(pontos)
     x0 = math.floor((todos[:, 0].min() - MARGEM) / PASSO) * PASSO
     y0 = math.floor((todos[:, 1].min() - MARGEM) / PASSO) * PASSO
@@ -715,10 +754,12 @@ def main():
         ppeso = np.clip((22 - pout) / 16, 0, 1) * (dp < 60) * ~ponta
         usa = (ppeso > 0) & ((pout < fora) | (ppeso > peso))
         zt = np.where(usa, dem * (1 - ppeso) + (pz[ip] - .06) * ppeso, zt)
-    terrain = {'x0': float(x0), 'y0': float(y0), 'step': PASSO, 'nx': nx, 'ny': ny, 'z': np.round(zt, 2).tolist()}
+        fora = np.minimum(fora, np.where(ppeso > 0, pout, np.inf))
+    zt = colar_fechados(q, zt, dem, fechados, fora)
+    terrain ={'x0': float(x0), 'y0': float(y0), 'step': PASSO, 'nx': nx, 'ny': ny, 'z': np.round(zt, 2).tolist()}
 
     # --- Cenario: cobertura do solo, edificacoes reais, arquibancadas.
-    scenery = cenario(nome, pasta, epsg, origem, escala, gx, gy, xy, largura, pit, s, L, T, E, x)
+    scenery = cenario(nome, pasta, epsg, origem, escala, gx, gy, xy, largura, pit, s, L, T, E, x, fechados)
     solo(nome, pasta, epsg, origem, escala, gx, gy)
 
     # --- Muros/guard-rails: dos dois lados, menos do lado do pit enquanto ele corre junto
@@ -786,6 +827,9 @@ def main():
              'terrain': terrain, 'scenery': scenery}
     if pit is None:
         del saida['pit']
+    if fechados:
+        # O asfalto fora do traçado de corrida (closed-roads.js): desenhado, com o chao colado nele, e fechado por barreiras.
+        saida['closed_roads'] = fechados
     destino = DADOS / f'pista_{nome}.json'
     destino.write_text(json.dumps(saida, separators=(',', ':'), ensure_ascii=False), encoding='utf-8')
     print(f'{destino.name}: {destino.stat().st_size / 1e6:.2f} MB')
@@ -901,6 +945,113 @@ def completar_pit(pxy, pw_lo, pw_hi, pz, pbank, main_s, gap, garagens, superfici
     }
 
 
+# Trechos fechados: a barreira de uma boca fica onde ela inteira passa BARREIRA_M da borda da pista (atras do guard-rail,
+# que esta a 5 m, quando ha um; sem ele, ao lado do pit, e ela que fecha), com BARREIRA_SOBRA m alem de cada borda do
+# trecho.
+BARREIRA_M = 6.5
+BARREIRA_SOBRA = .8
+
+
+def montar_fechados(lista, origem, escala, vias_dem, base, superficie, largura):
+    """Trechos de asfalto fora do traçado de corrida (Velocitta: o laco das curvas 3 e 4 originais, a ultima curva original,
+    as ligacoes dos circuitos curtos, o acesso do museu), medidos por refinar_eixo.py. Perfil do relevo suavizado, colado ao
+    plano da pista onde corre perto dela (como o pit lane); zebras do lado de dentro das curvas fechadas; barreiras onde
+    cada um sai da pista (o jogo desenha as barreiras e os carros batem nelas: closed-roads.js, physics.js)."""
+    trechos = []
+    for f in lista:
+        P0 = (np.array(f['eixo']) - origem[:2]) * escala
+        s0 = np.r_[0, np.cumsum(np.linalg.norm(np.diff(P0, axis=0), axis=1))]
+        ss = np.arange(0, s0[-1] + 1e-6, DS)
+        if s0[-1] - ss[-1] > .5:
+            ss = np.r_[ss, s0[-1]]
+        P = np.column_stack([np.interp(ss, s0, P0[:, 0]), np.interp(ss, s0, P0[:, 1])])
+        w = np.interp(ss, s0, np.array(f['largura_m']) * escala)
+        w = np.clip(gaussian_filter1d(w, 5, mode='nearest'), 5.0, 14.0)
+        T, E = quadro(P, fechado=False)
+        k, _, lat, z_pista = superficie(P)
+        gap = np.abs(lat) - largura[k] / 2
+        zd = gaussian_filter1d(vias_dem(P[:, 0] / escala + origem[0], P[:, 1] / escala + origem[1]) - base, 12 / DS, mode='nearest')
+        junto = gaussian_filter1d(np.clip((14 - np.maximum(gap, 0)) / 8, 0, 1), 5, mode='nearest')
+        z = zd * (1 - junto) + z_pista * junto
+        # Zebras: do lado de dentro onde o raio fica abaixo de 100 m (so nos trechos de traçado e nas ligacoes).
+        rumo = np.unwrap(np.arctan2(T[:, 1], T[:, 0]))
+        kappa = gaussian_filter1d(np.gradient(rumo, ss), 2, mode='nearest')
+        curva = (np.abs(kappa) > 1 / 100) & (f['tipo'] != 'servico')
+        zebra_e = (curva & (kappa > 0)).astype(float)
+        zebra_d = (curva & (kappa < 0)).astype(float)
+        # Folga da barreira em cada estacao: a menor distancia ate a borda da pista entre as pontas e o meio dela.
+        meia = w / 2 + BARREIRA_SOBRA
+        kk, _, ll, _ = superficie(np.vstack([P - E * meia[:, None], P, P + E * meia[:, None]]))
+        folga = (np.abs(ll) - largura[kk] / 2).reshape(3, -1).min(0)
+        trechos.append((f, ss, P, E, w, z, zebra_d, zebra_e, gap, folga))
+    # Um trecho onde a barreira nunca cabe alem de BARREIRA_M (a ligacao curta, 38 m colados a pista) e area de escape
+    # aberta: onde ele encosta noutro trecho, a barreira desse outro fica alem da juncao.
+    juncoes = {}
+    for f, ss, P, E, w, z, *_, folga in trechos:
+        if folga.max() >= BARREIRA_M:
+            continue
+        for g in trechos:
+            if g[0] is f:
+                continue
+            Pg = g[2]
+            for ponta in (P[0], P[-1]):
+                dist = np.linalg.norm(Pg - ponta, axis=1)
+                j = int(np.argmin(dist))
+                if dist[j] < g[4][j] / 2:
+                    juncoes.setdefault(g[0]['id'], []).append(float(g[1][j]))
+    saida = []
+    for f, ss, P, E, w, z, zebra_d, zebra_e, gap, folga in trechos:
+        # Barreiras: cada passagem da faixa de BARREIRA_M em volta da pista (as pontas, e o cruzamento do laco das curvas 3 e
+        # 4 com a Caipirinha), na estacao de fora, afastada ate a barreira inteira ficar alem dela e alem das juncoes abertas.
+        meia = w / 2 + BARREIRA_SOBRA
+        barreiras = []
+        fora = gap >= BARREIRA_M
+        bocas = [(i, 1) if fora[i] else (i - 1, -1) for i in range(1, len(P)) if fora[i] != fora[i - 1]]
+        for i, passo in bocas:
+            # (Cada juncao aberta vale para a boca mais perto dela.)
+            minhas = [sj for sj in juncoes.get(f['id'], []) if min(bocas, key=lambda b: abs(ss[b[0]] - sj))[0] == i]
+            antes = lambda j: any((ss[j] - sj) * passo < 8 for sj in minhas)
+            j = i
+            while 0 <= j < len(P) and (folga[j] < BARREIRA_M or antes(j)):
+                j += passo
+            if not 0 <= j < len(P):
+                continue
+            a, b = P[j] - E[j] * meia[j], P[j] + E[j] * meia[j]
+            barreiras.append([round(float(v), 3) for v in (*a, *b)] + [round(float(z[j]), 3)])
+        amostras = np.column_stack([ss, P, z, w, E, zebra_d, zebra_e, gap])
+        saida.append({'id': f['id'], 'name': f['nome'], 'kind': f['tipo'], 'osm_way': f['via_osm'], 'length_m': float(ss[-1]),
+                      'columns': ['s', 'x', 'y', 'z', 'width', 'lx', 'ly', 'kerb_right', 'kerb_left', 'gap'],
+                      'samples': np.round(amostras, 4).tolist(),
+                      'barriers': {'columns': ['x1', 'y1', 'x2', 'y2', 'z'], 'items': barreiras}})
+        print(f'  fechado {f["id"]}: {ss[-1]:.0f} m, largura {w.mean():.1f} m, z {z.min():.1f}-{z.max():.1f}, '
+              f'zebras {(zebra_d.sum() + zebra_e.sum()) * DS:.0f} m, {len(barreiras)} barreira(s)')
+    return saida
+
+
+def colar_fechados(q, zt, dem, fechados, fora):
+    """Terreno colado aos trechos fechados (como ao pit lane): onde o trecho esta mais perto que a pista (fora: distancia ate a
+    borda dela), o chao vai do plano do trecho ao relevo em 20 m. Junto da pista vale o plano dela: o trecho entra de 2 a 8 m
+    da borda (nas bocas e no cruzamento com a Caipirinha, a rampa da pista deixava o plano do trecho meio metro fora)."""
+    if not fechados:
+        return zt
+    cols = fechados[0]['columns']
+    ix, iy, iz, iw, ilx, ily = (cols.index(c) for c in ('x', 'y', 'z', 'width', 'lx', 'ly'))
+    A = np.vstack([np.array(f['samples']) for f in fechados])
+    ponta = np.concatenate([np.r_[-1, np.zeros(len(f['samples']) - 2), 1] for f in fechados])
+    dist, i = cKDTree(A[:, [ix, iy]]).query(q, distance_upper_bound=60)
+    ok = np.isfinite(dist)
+    i = np.where(ok, i, 0)
+    d = q - A[i][:, [ix, iy]]
+    lat = d[:, 0] * A[i, ilx] + d[:, 1] * A[i, ily]
+    adiante = d[:, 0] * A[i, ily] - d[:, 1] * A[i, ilx]       # ao longo do trecho (tangente = normal girada)
+    alem = (ponta[i] < 0) & (adiante < -1) | (ponta[i] > 0) & (adiante > 1)
+    out = np.maximum(np.abs(lat) - A[i, iw] / 2, 0)
+    peso = np.clip((20 - out) / 16, 0, 1) * ok * ~alem
+    usa = (peso > 0) & (out < fora)
+    longe = np.clip((fora - 2) / 6, 0, 1)
+    return np.where(usa, zt * (1 - longe) + (dem * (1 - peso) + (A[i, iz] - .06) * peso) * longe, zt)
+
+
 def main_s_monotono(ps, main_s, lat, pt, T, k, L):
     align = pt[:, 0] * T[k, 0] + pt[:, 1] * T[k, 1]
     unwrapped = np.unwrap(main_s, period=L)
@@ -915,9 +1066,10 @@ def main_s_monotono(ps, main_s, lat, pt, T, k, L):
 
 
 def montar_pit(pxy, pw, xy, z, E, T, bank, largura, s, L, superficie, vias_dem, origem, base, escala, fonte, garagens_s,
-               lado=1, folga_min=None):
+               lado=1, folga_min=None, trecho_folga=None):
     """Pit lane medido (Cascavel, Brasilia): perfil do relevo, juntando-se ao plano da pista nas
-    pontas. lado: 1 com os boxes a esquerda da pista no sentido da corrida, -1 a direita."""
+    pontas. lado: 1 com os boxes a esquerda da pista no sentido da corrida, -1 a direita. trecho_folga: s do pit lane
+    (da entrada) onde a folga minima vale alem das garagens (Velocitta: do predio dos boxes ate a saida)."""
     # Reamostra a cada 2 m.
     ps0 = np.r_[0, np.cumsum(np.linalg.norm(np.diff(pxy, axis=0), axis=1))]
     ps = np.arange(0, ps0[-1] + 1e-6, DS)
@@ -931,7 +1083,10 @@ def montar_pit(pxy, pw, xy, z, E, T, bank, largura, s, L, superficie, vias_dem, 
         # pede o muro de 3,4 m a 0,6 m de cada via. Onde a faixa medida corre mais perto da pista ela se
         # afasta o que falta (Brasilia: ~0,3 m), com transicao suave.
         g0_, g1_ = (v * escala for v in garagens_s)
-        falta = np.where((ps > g0_ - 40) & (ps < g1_ + 40), np.maximum(0, folga_min - gap), 0)
+        zona = (ps > g0_ - 40) & (ps < g1_ + 40)
+        if trecho_folga:
+            zona |= (ps > trecho_folga[0] * escala) & (ps < trecho_folga[1] * escala)
+        falta = np.where(zona, np.maximum(0, folga_min - gap), 0)
         falta = gaussian_filter1d(maximum_filter1d(falta, 41, mode='nearest'), 8, mode='nearest')
         pxy = pxy + (lado * falta)[:, None] * E[k]
         pt, pl = quadro(pxy, fechado=False)
@@ -1079,7 +1234,7 @@ def pit_sintetico(cfg, reta, xy, z, E, T, bank, largura, s, L, superficie):
 WORLDCOVER = {10: '1', 20: '2', 30: '0', 40: '3', 50: '4', 60: '5', 70: '5', 80: '6', 90: '0', 95: '1', 100: '0'}
 
 
-def cenario(nome, pasta, epsg, origem, escala, gx, gy, xy, largura, pit, s, L, T, E, x):
+def cenario(nome, pasta, epsg, origem, escala, gx, gy, xy, largura, pit, s, L, T, E, x, fechados=()):
     from shapely.geometry import Polygon, LineString, Point
     from shapely import prepared
     para_local = Transformer.from_crs(4326, epsg, always_xy=True)
@@ -1165,7 +1320,16 @@ def cenario(nome, pasta, epsg, origem, escala, gx, gy, xy, largura, pit, s, L, T
     bandas = [(LineString(np.vstack([xy, xy[:1]])), np.median(largura) / 2 + 16)]
     if pit:
         bandas.append((LineString(np.array(pit['xy'])), 34))
-    livre = lambda g: all(g.distance(linha) > folga for linha, folga in bandas)
+        # Atras das garagens o jogo reserva a cobertura (23 m alem do piso, que no Box 99 vai 16 m alem da faixa: ate ~43 m
+        # do eixo dela, track-clearance.js sceneryBands 'boxes').
+        ps_, g0_, g1_ = np.array(pit['samples'])[:, 0], *pit['garages']
+        junto_g = (ps_ >= g0_ - 5) & (ps_ <= g1_ + 5)
+        if junto_g.sum() > 1:
+            bandas.append((LineString(np.array(pit['xy'])[junto_g]), 46))
+    for f in fechados:
+        A = np.array(f['samples'])
+        bandas.append((LineString(A[:, 1:3]), float(A[:, 4].max()) / 2 + 4))
+    livre =lambda g: all(g.distance(linha) > folga for linha, folga in bandas)
     # As arquibancadas do jogo (track-clearance.js standLayout: blocos de 28 m, 19 degraus) tomam o
     # lugar do que houver ali (Brasilia: a estrutura velha da arquibancada coberta).
     for cfg in x['arquibancadas']:

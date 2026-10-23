@@ -333,6 +333,59 @@ Matriz; o "Turn 10 club" fica "de frente para a última curva e as retas princip
 | Vias, mata, água | OpenStreetMap (Overpass, base 22/10/2026) | câmera, cenário |
 | Relevo 30 m, superfície 30 m, cobertura 10 m, cor 10 m, edificações | ANADEM, Copernicus GLO-30, ESA WorldCover, Sentinel-2, Microsoft Building Footprints | terreno, cenário |
 
+## Velocitta (Autódromo Velocitta, Mogi Guaçu, SP) — fontes baixadas em 23/10/2026
+
+Autódromo particular na Fazenda Paineiras, 12 km a nordeste de Mogi Guaçu, aberto em 16/06/2012 (antes, campo de testes
+de rali da Mitsubishi). Uma pista de muitas montagens: o traçado original (3.493 m, 14 curvas), o de competição (3.443 m,
+12 curvas, de 2015: a **Caipirinha**, um S de média-alta no lugar das curvas de baixa 3 e 4, e a **Ferradura**, por fora da
+última curva, que deu ~20 km/h a mais no fim da reta), o anel superior (2.090 m, o primeiro construído) e os circuitos
+curtos ligados pelo "H". A Stock Car corre o de competição desde 2017: 3.443 m, 12 curvas, **anti-horário**; recorde de
+corrida 1:29,283 (Gaetano Di Mauro, 2025, 138,8 km/h). Desnível de 45 m (Flatout; a NASCAR Brasil cita 50 m); pit lane com
+8 boxes. Nomes publicados: Curva do Guiga (o "saca-rolha", um S em mergulho no fim da reta oposta: perna à esquerda, perna
+à direita, a mais fechada, e a longa curva final), grampo do Museu (antes da reta oposta), Curva da Mata (junto da reserva
+florestal, perto do casarão do museu), Curva da Paciência (o trecho final do traçado original).
+
+- **O jogo monta todo o asfalto e corre só o traçado de competição.** O OSM tem a pista inteira: a via 478876097 é a volta
+  de competição (já fechada e no sentido da corrida), e os outros trechos são vias à parte: o laço das curvas 3 e 4
+  originais (1156617273, que cruza a Caipirinha em nível), a última curva original por dentro da Ferradura (1156617274),
+  as ligações do H (478876098), do anel superior (750945804) e curta (750945805) e o acesso do museu (718141140). Cada um é
+  medido como o pit lane (`refinar_eixo.py`, `FECHADOS`) e gravado em `closed_roads` (`gerar_pista.py montar_fechados`):
+  estações a cada 2 m com largura, altura (o relevo suavizado, colado ao plano da pista onde corre perto dela) e zebras
+  por dentro das curvas de raio menor que 100 m; o terreno é colado neles como no pit lane, sem passar na frente do plano
+  da pista a menos de 8 m da borda dela.
+- **Barreiras nas bocas.** Onde cada trecho sai da pista (e dos dois lados do cruzamento com a Caipirinha), uma fileira de
+  barreiras plásticas atravessa o trecho onde ela inteira fica a 6,5 m ou mais da borda da pista, 0,8 m além de cada borda
+  do trecho: atrás do guard-rail, que fica a 5 m, ou sozinha ao lado do pit lane, onde a pista não tem guard-rail (a
+  Ferradura e a reta, por dentro: a Paciência e a ponta da ligação do anel). A ligação curta fica toda a menos disso da
+  pista: é área de escape aberta, e a barreira da ligação do anel vai para além da junção com ela. No jogo,
+  `closed-roads.js` desenha o asfalto (só fora da pista e das zebras dela), as linhas, as zebras e as barreiras, e o carro
+  bate nelas (`physics.js closureBarrier`); `testar_circuitos_abertos.mjs` lança um carro contra cada boca.
+- **Medida e extensão.** O eixo refinado mede 3.347 m (3.331 m em 3D depois do alisamento), 2,8% menos que os 3.443 m; o
+  traçado original medido do mesmo jeito dá 3.390 m contra 3.493 m: a diferença é da medição oficial, não do traçado. Sem
+  escala (como no ECPA), para não descolar a pista do relevo e dos prédios; o jogo mostra a medida.
+- **Numeração casada com a geometria:** a detecção acha 14 trechos; a dobra à direita no começo da reta oposta e a do alto,
+  antes do grampo, não contam. Curvas 3 e 4 = Caipirinha; 8, 9 e 10 = Curva do Guiga (raios de 26, 22 e 37 m); 11 = o
+  grampo antes da Ferradura; 12 = Ferradura. O relevo confirma a descrição: o grampo do Museu é o alto da volta (771 m), a
+  reta oposta mergulha 40 m até o saca-rolha, a curva 1 e o laço original ficam no baixo (720 m); 51,8 m de desnível no
+  ANADEM (o Copernicus concorda, mediana de 0,26 m).
+- **Boxes e linha.** O pit lane (677322173) sai antes do grampo, contorna-o por fora, corta por dentro da Ferradura e corre
+  ao norte da reta até a curva 1 (816 m). O prédio dos 8 boxes é o de telhado marrom com o bloco branco (os caminhões das
+  equipes atrás), medido na imagem; o pátio mais claro ao lado é o de uma tenda do paddock. Oito boxes não abrigam 15
+  carros (na Stock Car as outras equipes ficam em tendas): a fileira de garagens do jogo vai do prédio até o fim da tenda
+  (`garagens_pit_s`, 186 m, 14 garagens), e a fila dos rivais depois da bandeirada cabe diante dela. A
+  linha fica na faixa branca da cabeceira do grid pintado (`linha_chegada: 'pit_s'`). Do prédio à saída a medida deixava a
+  faixa encostar na pista: a folga mínima de 4,6 m vale até 70 m antes da saída (`trecho_folga_boxes_s`).
+- **Aproximações declaradas:** as barreiras e onde ficam, as zebras dos trechos fechados, as três arquibancadas do lado de
+  dentro da reta (nenhuma publicada; o público fica nos camarotes sobre os boxes e nos barrancos), a fileira de garagens do
+  jogo sobre a área da tenda, o pódio no paddock 150 m depois da linha, caimentos e guard-rails como nos outros circuitos.
+
+| Dado | Fonte | Uso |
+|---|---|---|
+| Traçado de competição, trechos fechados, pit lane, edificações | OpenStreetMap (API 0.6, edição de 23/10/2026) | eixos iniciais, cenário |
+| Imagem aérea Esri World Imagery | Vantor/Esri | medir eixos, larguras, prédio dos boxes e a linha; **não é distribuída** |
+| Relevo 30 m, superfície 30 m, cobertura 10 m, cor 10 m, edificações | ANADEM (23K), Copernicus GLO-30, ESA WorldCover, Sentinel-2 S2B_23KLR_20260927, Microsoft Building Footprints | terreno, cenário |
+| Extensões, curvas, sentido, nomes | site do autódromo, Stock Car (Band, ABCdoABC), Flatout (2016), NASCAR Brasil, Wikipédia | dados publicados |
+
 ## Chapada dos Sonhos (imaginário, Chapada dos Guimarães, MT) — fontes baixadas em 11/10/2026
 
 Pedido #5 da Central de Projetos: um autódromo **que não existe**, no alto do paredão da Chapada dos Guimarães, sem

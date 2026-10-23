@@ -87,6 +87,21 @@ def main():
             c0, r0 = px(b[i, col['x']] + b[i, col['lx']] * 25, b[i, col['y']] + b[i, col['ly']] * 25)
             c1, r1 = px(b[i, col['x']], b[i, col['y']])
             dr.line([(c0, r0), (c1, r1)], fill=(255, 140, 0), width=3)
+    # Trechos fechados (bordas em laranja, zebras em magenta) e as barreiras das bocas (vermelho).
+    for f in d.get('closed_roads', []):
+        col = {n: i for i, n in enumerate(f['columns'])}
+        b = np.array(f['samples'])
+        for lado in (-1, 1):
+            off = b[:, col['width']] / 2 * lado
+            cc, rr = px(b[:, col['x']] + b[:, col['lx']] * off, b[:, col['y']] + b[:, col['ly']] * off)
+            dr.line(list(zip(cc, rr)), fill=(255, 140, 0), width=2)
+        for key, lado in (('kerb_right', -1), ('kerb_left', 1)):
+            off = (b[:, col['width']] / 2 + .6) * lado
+            cc, rr = px(b[:, col['x']] + b[:, col['lx']] * off, b[:, col['y']] + b[:, col['ly']] * off)
+            for i in np.flatnonzero(b[:, col[key]] > 0):
+                dr.ellipse([cc[i] - 2, rr[i] - 2, cc[i] + 2, rr[i] + 2], fill=(255, 0, 255))
+        for x1, y1, x2, y2, _ in f['barriers']['items']:
+            dr.line([px(x1, y1), px(x2, y2)], fill=(255, 0, 0), width=4)
     for it in d['scenery']['buildings']['items']:
         bx, by, bw, bd, h = it[0], it[1], it[2], it[3], it[4]
         u = np.array([math.cos(h), math.sin(h)])

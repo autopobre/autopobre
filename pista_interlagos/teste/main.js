@@ -90,6 +90,7 @@ import {createPampulhaPontes,hasPampulhaPontes} from './pampulha-pontes.js';
 import {createPampulhaFutebol,hasPampulhaFutebol} from './pampulha-futebol.js';
 import {createFlyingSaucer,hasFlyingSaucer} from './flying-saucer.js';
 import {createBranchScenery} from './branch-scenery.js';
+import {createClosedRoads,hasClosedRoads} from './closed-roads.js';
 import {hasBranches} from './branch-layout.js';
 import {createCityStreets} from './city-streets.js';
 import {createStreetClosures} from './street-closures.js';
@@ -902,6 +903,11 @@ function mapOutline(w,h){
  // A branch road (data.branches) is part of the lap: drawn with it, from where it leaves to where it rejoins.
  for(const b of data.branches??[]){const c=b.columns,x=c.indexOf('x'),y=c.indexOf('y');b.samples.forEach((p,i)=>{const [px,py]=projectMap(p[x],p[y]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});}
  ctx.lineWidth=8;ctx.strokeStyle='#ffffff16';ctx.stroke();ctx.lineWidth=2;ctx.strokeStyle='#b6c5b5';ctx.stroke();
+ // The stretches closed to the race (data.closed_roads), faint under the lap.
+ if(data.closed_roads?.length){
+  ctx.beginPath();for(const r of data.closed_roads){const x=r.columns.indexOf('x'),y=r.columns.indexOf('y');r.samples.forEach((p,i)=>{const [px,py]=projectMap(p[x],p[y]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});}
+  ctx.lineWidth=1.5;ctx.strokeStyle='#b6c5b544';ctx.stroke();
+ }
  mapBase={data,w,h,project:projectMap,canvas};return canvas;
 }
 function drawMap(){
@@ -2315,6 +2321,9 @@ async function loadCircuit(){
   // Guanabara, the attenuators on the noses and the sign over the road before it (branch-scenery.js; its walls are the
   // lap's, street-walls.js).
   if(hasBranches(data))circuitExtras.push(createBranchScenery(data,roadSurface,{textures:terrainTextures,ground:groundAt,mobile:scenery.mobile}));
+  // The rest of an autódromo's asphalt, closed to the race (data.closed_roads: Velocitta's original turns 3 and 4 and last
+  // corner, the links of its short circuits): drawn on the ground with its lines and kerbs, barriers across its mouths.
+  if(hasClosedRoads(data))circuitExtras.push(createClosedRoads(data,roadSurface,{textures:terrainTextures,ground:groundAt,mobile:scenery.mobile}));
   // The lake's capybaras (a family at one bank per race) and now and then the fat caiman (pampulha-fauna.js); they
   // watch the cars passing and shy from the pilot on foot.
   if(hasPampulhaFauna(data))circuitExtras.push(createPampulhaFauna(data,{mobile:scenery.mobile,ground:groundAt,cars:()=>[carRoot,...(immersive?.visual?.rivals??[])],walker:()=>walker?.active?walker.hero:null}));

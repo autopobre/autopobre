@@ -4,7 +4,7 @@
 import {GRID_START_BACK} from './race-roster.js';
 import {pitLane,pitGeometry,locatePit,pitLimit,wallContact} from './pit-lane.js';
 import {cliffEdge} from './cliff-edge.js';
-import {locateBranch,branchPoint,branchS,branchSpan,branchGapEnd,branchBarrier,barrierNear} from './branch-lane.js';
+import {locateBranch,branchPoint,branchS,branchSpan,branchGapEnd,branchBarrier,barrierNear,lineBarrier} from './branch-lane.js';
 import {branchLayouts,stationZ} from './branch-layout.js';
 export const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 export const wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
@@ -202,7 +202,7 @@ function bodyAxes(heading,pitch,roll,axes){
 }
 const renderAxes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};
 export class TestCar {
- constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.cliff=cliffEdge(data);this.decks=!!data.meta?.decks?.length;this.tunnels=!!data.meta?.tunnels?.length;this.roam=roamWorld(data);this.forks=forkWorld(data);this.edgeHit={};this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.weatherGrip=1;this.reset();}
+ constructor(data){this.data=data;this.a=data.samples;this.n=this.a.length;this.pitGeo=pitGeometry(data);this.cliff=cliffEdge(data);this.decks=!!data.meta?.decks?.length;this.tunnels=!!data.meta?.tunnels?.length;this.roam=roamWorld(data);this.forks=forkWorld(data);this.closures=closureBarrier(data);this.edgeHit={};this.axes={f:[1,0,0],l:[0,1,0],u:[0,0,1],j:[0,1,0]};this.body=OPALA_BODY;this.weatherGrip=1;this.reset();}
  // The body it meets the world with (OPALA_BODY, FUSCA_BODY), with its mechanics; the next reset or settle seats
  // it on its own shell.
  setBody(body){if(body!==this.body){this.body=body;this.shell=null;}return this;}
@@ -604,6 +604,11 @@ export class TestCar {
    const hit=barrierHit(this,F.barrier);if(!hit)break;
    this.wallPush(hit);
   }
+  // The rows of barriers across the mouths of the stretches closed to the race (data.closed_roads, closureBarrier).
+  for(let pass=0;this.closures&&pass<2;pass++){
+   const hit=barrierHit(this,this.closures);if(!hit)break;
+   this.wallPush(hit);
+  }
   // Tree trunks (tree-contact.js; main.js gives them to the player's car).
   if(this.posts){const hit=this.posts.collide(this);if(hit)this.wallImpactSpeed=Math.max(this.wallImpactSpeed,hit);}
   this.distance+=speed*dt;this.clock+=dt;this.spin+=v*dt/m.tyre;
@@ -845,6 +850,19 @@ function forkWorld(data){
  list=branchLayouts(data).map(B=>{const [from,to]=branchSpan(B.geo),g=[...B.geo.mainGaps].sort((p,q)=>p[0]-q[0]);
   return {geo:B.geo,stations:B.stations,from,to,inner:[branchS(B.geo,g[0][1])-10,branchS(B.geo,g.at(-1)[0])+10],barrier:branchBarrier(B.geo,WALL_REACH,ends)};});
  forkWorlds.set(data,list);return list;
+}
+// --- Stretches closed to the race (data.closed_roads, gerar_pista.py montar_fechados: Velocitta's original turns 3 and 4
+// and last corner, the links of its short circuits, the museum's road): the asphalt is there (closed-roads.js draws it on
+// the ground), but a row of water-filled barriers stands across each mouth, past the lap's guardrail where there is one
+// and on its own beside the pit lane, where the lap has none. Lines met from either side, as a branch road's noses.
+export const CLOSURE_HALF=.3;
+const closureBarriers=new WeakMap();
+export function closureBarrier(data){
+ if(!data.closed_roads?.length)return null;
+ let barrier=closureBarriers.get(data);if(barrier)return barrier;
+ const segments=[];
+ for(const road of data.closed_roads)for(const [x1,y1,x2,y2] of road.barriers.items)segments.push({x1,y1,x2,y2,half:CLOSURE_HALF+WALL_REACH,name:'Barreira_'+road.id});
+ barrier=lineBarrier(segments);closureBarriers.set(data,barrier);return barrier;
 }
 // A branch road's walls against a car's body (branchBarrier: lines, half their thickness either side; WALL_REACH already
 // in their place): the body's outline (BODY_POINTS, as against the lap's walls) into a wall from the side its centre of

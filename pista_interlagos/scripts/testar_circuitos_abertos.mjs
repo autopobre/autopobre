@@ -4,7 +4,7 @@
 // Floripa street circuit (gerar_floripa.py) the walls by the asphalt and the bridge decks over the sea; on the
 // Minhocão street circuit (gerar_minhocao.py) the elevated deck, the tunnel and the lap passing under itself; on the
 // Pampulha street circuit (gerar_pampulha.py) the 20 km lap raced in one lap, the lake and the shared first block.
-//   node scripts/testar_circuitos_abertos.mjs [cascavel|piracicaba|chapeco|brasilia|goiania|guaratiba|chapada|floripa|minhocao|pampulha]
+//   node scripts/testar_circuitos_abertos.mjs [cascavel|piracicaba|chapeco|brasilia|goiania|guaratiba|velocitta|chapada|floripa|minhocao|pampulha]
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {CIRCUITS,fixedLaps,raceLaps} from '../teste/circuits.js';
@@ -31,7 +31,7 @@ function selfCrossings(a){
    out.push({s:[a[i][0]+u*Math.hypot(x2-x1,y2-y1),a[j][0]+v*Math.hypot(x4-x3,y4-y3)],z:[a[i][3]+u*(a[i2][3]-a[i][3]),a[j][3]+v*(a[j2][3]-a[j][3])]});}}
  return out;
 }
-for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','guaratiba','chapada','floripa','minhocao','pampulha']){
+for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','guaratiba','velocitta','chapada','floripa','minhocao','pampulha']){
  if(only&&only!==id)continue;
  const circuit=CIRCUITS[id],data=JSON.parse(readFileSync(new URL(`../dados/pista_${id}.json`,import.meta.url)));
  data.meta.id=id;data.meta.name=circuit.name;
@@ -57,8 +57,10 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','guarati
  for(const c of crossings){const [up,low]=c.z[0]>c.z[1]?[c.s[0],c.s[1]]:[c.s[1],c.s[0]];assert(Math.abs(c.z[0]-c.z[1])>4&&onDeck(data,up)&&!onDeck(data,low),`${id}: the lap crosses itself on two levels at s=${c.s.map(s=>s.toFixed(0))} (${c.z.map(z=>z.toFixed(1))})`);}
  if(crossings.length)out.crossings=crossings.map(c=>({s:c.s.map(Math.round),dz:+Math.abs(c.z[0]-c.z[1]).toFixed(1)}));
  if(id==='piracicaba')assert(Math.abs(L-circuit.length)<15,'ECPA shows its measured length');
+ // Velocitta measures 2.8% short of its published 3,443 m (its original layout as short of 3,493 m): kept unscaled, shown measured.
+ else if(id==='velocitta')assert(Math.abs(data.meta.reconstructed_3d_m-circuit.length)<1&&data.meta.nominal_m===3443,'Velocitta shows its measured length');
  else assert(Math.abs(data.meta.reconstructed_3d_m-circuit.length)<.5,`${id} matches the published length`);
- assert.equal(circuit.length,{cascavel:3058,piracicaba:1930,chapeco:4004,brasilia:5384,goiania:3835,guaratiba:4710,chapada:5153,floripa:4445,minhocao:4035,pampulha:20533}[id]);
+ assert.equal(circuit.length,{cascavel:3058,piracicaba:1930,chapeco:4004,brasilia:5384,goiania:3835,guaratiba:4710,velocitta:3331,chapada:5153,floripa:4445,minhocao:4035,pampulha:20533}[id]);
  // Chapecó (opened 08/2026): the earthworks profile is calibrated to the published 18.5 m, and the
  // sections carry the official numbering (12 curves, curve 7 the long constant-radius sweep).
  if(id==='chapeco'){
@@ -247,6 +249,35 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','guarati
  const lineInPit=data.pit.entry_main_s>data.pit.exit_main_s;
  if(lineInPit)assert(!railPit.some(([f,t])=>0>=f&&0<=t),'no rail on the pit side at the timing line');
  assert(!railPit.some(([f,t])=>f<=data.pit.entry_main_s+30&&t>=data.pit.entry_main_s+30),'no rail across the pit lane');
+ // --- Stretches closed to the race (data.closed_roads: Velocitta's other layouts, closed-roads.js): kept clear like the
+ // lap's asphalt; at each mouth a barrier wholly past 6.4 m from the lap's edge (behind the lap's guardrail, or on its own
+ // beside the pit lane where the lap has none). A car sent from the lap's side at each one, at 70 km/h, along the stretch,
+ // never reaches its asphalt beyond the barrier (it stops on the barrier, or on the lap's guardrail and slides along it).
+ if(data.closed_roads){
+  assert(sceneryBands(data).some(b=>b.name==='trecho_fechado'),'closed stretches kept clear of the scenery');
+  const lapOut=(x,y)=>{car.index=car.nearest(x,y,true).i;const q=car.sample(x,y,car.index);return Math.abs(q.d)-q.width/2;};
+  let barriers=0,stoppedByBarrier=0;
+  for(const road of data.closed_roads){
+   const c=Object.fromEntries(road.columns.map((k,i)=>[k,i])),st=road.samples;
+   assert(st.every(p=>p.every(Number.isFinite))&&st.length>=10,`${id}: ${road.id} samples`);
+   const nearestStation=(x,y)=>st.reduce((b,p,i)=>Math.hypot(p[c.x]-x,p[c.y]-y)<Math.hypot(st[b][c.x]-x,st[b][c.y]-y)?i:b,0);
+   for(const [x1,y1,x2,y2] of road.barriers.items){
+    barriers++;
+    for(let t=0;t<=1.001;t+=.1)assert(lapOut(x1+(x2-x1)*t,y1+(y2-y1)*t)>6.4,`${id}: ${road.id} barrier clear of the lap`);
+    const mx=(x1+x2)/2,my=(y1+y2)/2,k=nearestStation(mx,my);
+    const tx=st[k][c.ly],ty=-st[k][c.lx],ahead=[[mx+tx*10,my+ty*10],[mx-tx*10,my-ty*10]],near=lapOut(...ahead[0])<lapOut(...ahead[1])?0:1,[sx,sy]=ahead[near];
+    // (Beyond: the stretch's stations on the far side of the barrier's.)
+    const away=near===0?-1:1,beyond=(x,y)=>{const j=nearestStation(x,y),p=st[j],lat=(x-p[c.x])*p[c.lx]+(y-p[c.y])*p[c.ly];return (st[j][c.s]-st[k][c.s])*away>.5&&Math.abs(lat)<p[c.width]/2&&lapOut(x,y)>6.5;};
+    const nx=(mx-sx)/10,ny=(my-sy)/10,probe=new TestCar(data);
+    probe.relocate(sx,sy,NaN,Math.atan2(ny,nx));probe.vx=nx*19.4;probe.vy=ny*19.4;
+    let reached=false,closest=Infinity;
+    for(let s=0;s<120*3&&!reached;s++){probe.step({throttle:1,brake:0,left:0,right:0,reverse:0,handbrake:0},1/120);reached=beyond(probe.x,probe.y);closest=Math.min(closest,-((probe.x-mx)*nx+(probe.y-my)*ny));}
+    assert(!reached,`${id}: a car gets past the ${road.id} barrier at (${mx.toFixed(0)}, ${my.toFixed(0)})`);
+    if(closest<3.2)stoppedByBarrier++;
+   }
+  }
+  out.closed={roads:data.closed_roads.length,barriers,stoppedByBarrier};
+ }
  // --- Stands and buildings keep off the roads.
  const stands=standLayout(data);assert(stands.length>=(data.meta.street?0:3),'grandstand blocks');
  // (The nearest stretch at the height of what stands there: where the lap passes over itself, the one at that level.)
@@ -273,8 +304,8 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','guarati
   // (On a bridge deck the posts stand on the concrete walls, half a metre off the asphalt.)
   assert(Math.abs(onTrack.d)>onTrack.width/2+(post.deck?.5:POST_CLEARANCE),`${id}: gantry post ${post.side} off the track`);
   assert(!lane||lane.d<lane.lo-POST_CLEARANCE||lane.d>lane.hi+POST_CLEARANCE,`${id}: gantry post ${post.side} on the pit lane (d ${lane?.d.toFixed(1)})`);
-  // Clear of the pit walls, or (Chapecó, Brasília, Goiânia, Chapada: the line facing the garages) mounted on the pit wall's platform.
-  if(post.onWall)assert(wallUnderPost(geo,post.x,post.y)&&['chapeco','brasilia','goiania','chapada'].includes(id),`${id}: gantry post ${post.side} on the pit wall top`);
+  // Clear of the pit walls, or (Chapecó, Brasília, Goiânia, Chapada, Velocitta: the line facing the garages) mounted on the pit wall's platform.
+  if(post.onWall)assert(wallUnderPost(geo,post.x,post.y)&&['chapeco','brasilia','goiania','chapada','velocitta'].includes(id),`${id}: gantry post ${post.side} on the pit wall top`);
   else assert.equal(wallsNear(geo,post.x,post.y,POST_CLEARANCE).length,0,`${id}: gantry post ${post.side} against a pit wall`);
  }
  out.gantry=posts.map(p=>+p.d.toFixed(1));

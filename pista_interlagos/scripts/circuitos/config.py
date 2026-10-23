@@ -289,6 +289,44 @@ CIRCUITOS = {
         'eixo_do_editor': True,
         'referencias_proprias': True,
     },
+    'velocitta': {
+        # Autodromo Velocitta (Velo Citta), na Fazenda Paineiras, 12 km a nordeste de Mogi Guacu, aberto em 16/06/2012.
+        # A pista tem varias montagens: o traçado original (3.493 m, 14 curvas), o de competicao (3.443 m, 12 curvas, com a
+        # Caipirinha no lugar das curvas 3 e 4 e a Ferradura por fora da ultima curva, ambas de 2015), o anel superior
+        # (2.090 m) e os circuitos curtos ligados pelo "H". O jogo monta todo o asfalto e corre so o traçado de competicao,
+        # o da Stock Car desde 2017; o resto fica fechado por barreiras, como num fim de semana de corrida.
+        'nome': 'Autódromo Velocitta',
+        'cidade': 'Mogi Guaçu, SP',
+        # Centro do tracado no OSM (via 478876097, highway=raceway; complexo 439630883).
+        'centro': (-22.2895, -46.8486),
+        'raio_m': 1500,
+        'epsg': 31983,                 # SIRGAS 2000 / UTM 23S
+        'anadem': '23K',
+        'copernicus': 'Copernicus_DSM_COG_10_S23_00_W047_00_DEM',
+        'worldcover': 'S24W048',
+        # Site do autodromo e ficha da Stock Car (Band, ABCdoABC, 2025-26): 3.443 m, 12 curvas, sentido anti-horario,
+        # desnivel de 45 m (Flatout, 2016; a NASCAR Brasil cita 50 m), pit lane de 160 m diante de 8 boxes.
+        'extensao_m': 3443,
+        'centro_cidade': (-22.3675, -46.9428),   # centro de Mogi Guacu
+        'largura_m': 12,
+        'sentido': 'anti-horario',
+        'largura_faixa_m': (9, 16),
+        # Boxes ao norte da reta, que se corre para noroeste: a direita dos carros.
+        'lado_boxes': -1,
+        'folga_minima_boxes_m': 4.6,
+        # O predio dos 8 boxes (telhado marrom e o bloco branco, com os caminhoes das equipes atras), medido na imagem: de 394 a
+        # 472 m do pit lane, contados da entrada; o patio mais claro ao lado e o da tenda do paddock, ate 580 m. Oito boxes nao
+        # abrigam 15 carros (na Stock Car as outras equipes ficam em tendas no paddock): a fileira de garagens do jogo vai do
+        # predio ate o fim da tenda, e a fila dos rivais depois da bandeirada cabe diante dela (race-field.js pitRoute).
+        'garagens_pit_s': (394, 580),
+        # Do predio ate a saida o pit lane corre colado a reta atras de um muro continuo (imagem); a medida, com a faixa pintada
+        # na largura da pista, o deixava encostar nela: a folga minima vale ate 70 m antes da saida.
+        'trecho_folga_boxes_s': (330, 745),
+        # Numa fazenda, entre cafezais, laranjais, eucaliptos e a reserva de mata: sem a cidade no horizonte.
+        'horizonte': 'rural',
+        # Trechos de asfalto fora do traçado de competicao (vias OSM highway=raceway), desenhados e fechados.
+        'trechos_fechados': True,
+    },
 }
 
 

@@ -80,6 +80,11 @@ export function sceneryBands(data){
  }
  // A branch road (data.branches, branch-layout.js): its asphalt, as the lap's.
  bands.push(...branchBands(data));
+ // A stretch closed to the race (data.closed_roads, closed-roads.js: Velocitta's other layouts): its asphalt too.
+ for(const road of data.closed_roads??[]){
+  const c=Object.fromEntries(road.columns.map((k,i)=>[k,i]));
+  bands.push({name:'trecho_fechado',margin:0,points:road.samples.map(p=>[p[c.x],p[c.y],p[c.lx],p[c.ly],-p[c.width]/2,p[c.width]/2])});
+ }
  for(const b of standLayout(data))
   bands.push({name:'arquibancada',margin:12,points:[-b.length/2,b.length/2].map(a=>[...standPoint(b,a,0),-b.rx,-b.ry,-b.roof.to,-b.apron])});
  // Bridge decks (meta.decks, Floripa): nothing stands beside them, over the water or on the shore far below: no trees,

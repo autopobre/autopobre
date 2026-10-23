@@ -14,10 +14,11 @@ const curvelo=createCurveloData();curvelo.meta.id='curvelo';
 const brasilia=JSON.parse(fs.readFileSync(new URL('../dados/pista_brasilia.json',import.meta.url)));brasilia.meta.id='brasilia';
 const goiania=JSON.parse(fs.readFileSync(new URL('../dados/pista_goiania.json',import.meta.url)));goiania.meta.id='goiania';
 const guaratiba=JSON.parse(fs.readFileSync(new URL('../dados/pista_guaratiba.json',import.meta.url)));guaratiba.meta.id='guaratiba';
+const velocitta=JSON.parse(fs.readFileSync(new URL('../dados/pista_velocitta.json',import.meta.url)));velocitta.meta.id='velocitta';
 const minhocao=JSON.parse(fs.readFileSync(new URL('../dados/pista_minhocao.json',import.meta.url)));minhocao.meta.id='minhocao';
 const pampulha=JSON.parse(fs.readFileSync(new URL('../dados/pista_pampulha.json',import.meta.url)));pampulha.meta.id='pampulha';
 const report={};
-for(const [name,data] of [['interlagos',interlagos],['curvelo',curvelo],['brasilia',brasilia],['goiania',goiania],['guaratiba',guaratiba],['minhocao',minhocao],['pampulha',pampulha]]){
+for(const [name,data] of [['interlagos',interlagos],['curvelo',curvelo],['brasilia',brasilia],['goiania',goiania],['guaratiba',guaratiba],['velocitta',velocitta],['minhocao',minhocao],['pampulha',pampulha]]){
  const R=pitRoute(data),geo=pitGeometry(data),frame=data.pit??curveloPitFrame(data),u0=data.pit?0:150,b=frame.box99;
  // Box 99 service box (lane distance u, offset d to the cars' left) and its car pose; on a reversed
  // block the stations run against the cars, so u counts from the lane's far end and d turns round.

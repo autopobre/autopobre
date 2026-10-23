@@ -99,10 +99,17 @@ export const SPONSORS=Object.freeze({
  nuncavoa:S('GUARDA-SOL NUNCA-VOA','NUNCA-VOA','#0077b6','#ffffff','#ffd166','star','stripe','Aguenta o vento da restinga','rio'),
  fpsmil:S('PROTETOR SOLAR FPS MIL','FPS MIL','#ffb703','#023047','#fb8500','drop','repeat','Pra largada ao meio-dia','rio'),
  sopro:S('BISCOITO SOPRO-DE-AREIA','SOPRO','#e9c46a','#264653','#e76f51','cup','split','De mão em mão na arquibancada','rio'),
- transborda:S('AÇAÍ TRANSBORDA-COPO','TRANSBORDA','#4a1942','#ffffff','#c2185b','cup','badge','Colher grátis, guardanapo nem tanto','rio')
+ transborda:S('AÇAÍ TRANSBORDA-COPO','TRANSBORDA','#4a1942','#ffffff','#c2185b','cup','badge','Colher grátis, guardanapo nem tanto','rio'),
+ // Mogi Guaçu's countryside (Velocitta, on a farm): orange groves, coffee, eucalyptus, the potteries and the red dust.
+ tijolotorto:S('CERÂMICA TIJOLO TORTO','TIJOLO TORTO','#b5451b','#fff4e6','#3d2b1f','star','badge','Torto, mas segura a parede','mogi'),
+ chupabagaco:S('LARANJA CHUPA-BAGAÇO','CHUPA-BAGAÇO','#f77f00','#ffffff','#2d6a4f','leaf','stripe','Doce até a Ferradura','mogi'),
+ coadonopano:S('CAFÉ COADO NO PANO','COADO NO PANO','#3e2723','#f5e6c8','#c8a165','cup','script','Passado na hora, igual vó faz','mogi'),
+ sempressa:S('PAMONHA SEM PRESSA','SEM PRESSA','#f2e394','#2f3e1a','#6a994e','leaf','repeat','Quentinha até o grampo do Museu','mogi'),
+ sombrafina:S('EUCALIPTO SOMBRA-FINA','SOMBRA-FINA','#1b4332','#d8f3dc','#95d5b2','leaf','split','A sombra mais magrinha do interior','mogi'),
+ poeiranenhuma:S('LAVA-JATO POEIRA NENHUMA','POEIRA NENHUMA','#7f1d1d','#fde2e4','#f4a261','drop','badge','Tira a terra vermelha, deixa a saudade','mogi')
 });
 // Each circuit's region (its local sponsors).
-const REGIONS={interlagos:'sp',piracicaba:'sp',cascavel:'pr',chapeco:'sc',brasilia:'df',goiania:'go',curvelo:'mg',chapada:'mt',floripa:'ilha',minhocao:'centro',pampulha:'bh',guaratiba:'rio'};
+const REGIONS={interlagos:'sp',piracicaba:'sp',cascavel:'pr',chapeco:'sc',brasilia:'df',goiania:'go',curvelo:'mg',chapada:'mt',floripa:'ilha',minhocao:'centro',pampulha:'bh',guaratiba:'rio',velocitta:'mogi'};
 const NATIONAL=['autopobre','oldstock','posto99','tia','retifica','blazer'],EXTRA=['pulapula','pegaprimeira','oleovo','semtranco'];
 export const regionOf=id=>REGIONS[id]??'sp';
 // A circuit's own seed: the same banners and boards at every load of it, different from the others'.

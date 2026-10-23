@@ -112,6 +112,13 @@ export function branchBarrier(geo,reach=0,ends=[]){
 }
 // The barrier's segments that may reach within 4 m of (x, y).
 export function barrierNear(barrier,x,y){return barrier.wallGrid.get(key(Math.floor(x/CELL),Math.floor(y/CELL)))??[];}
+// A barrier of free-standing lines met from either side (physics.js barrierHit), in the same grid: segments {x1, y1, x2,
+// y2, half, name}, both ends free. The rows of barriers across the mouths of a closed stretch (closed-roads.js).
+export function lineBarrier(segments){
+ const walls=[],wallGrid=new Map();
+ for(const s of segments){const segment={...s,free1:true,free2:true,ox:0,oy:0};walls.push(segment);bucket(wallGrid,Math.min(s.x1,s.x2)-4-s.half,Math.min(s.y1,s.y2)-4-s.half,Math.max(s.x1,s.x2)+4+s.half,Math.max(s.y1,s.y2)+4+s.half,segment);}
+ return {walls,wallGrid};
+}
 // Is lap s inside a gap a branch opens in the lap's wall on this side (1 left, -1 right)? Those ends are square: the
 // branch's asphalt runs on past them.
 export function inBranchGap(data,s,side){

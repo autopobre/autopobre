@@ -41,7 +41,7 @@ assert(!FLAG_LEVELS.media.shadow&&!FLAG_LEVELS.media.fine&&FLAG_LEVELS.media.rea
 }
 
 const only=process.argv[2],report={};
-for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','guaratiba','chapada','floripa','minhocao','pampulha']){
+for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','guaratiba','velocitta','chapada','floripa','minhocao','pampulha']){
  if(only&&only!==id)continue;
  const data=id==='curvelo'?createCurveloData():JSON.parse(readFileSync(new URL(`../dados/${id==='interlagos'?'pista':'pista_'+id}.json`,import.meta.url)));
  data.meta.id=id;data.meta.name=CIRCUITS[id].name;
