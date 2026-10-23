@@ -120,3 +120,6 @@ desktop.ini
 # Servidor das salas (sala-cloudflare): segredos locais e cache do wrangler
 .dev.vars
 .wrangler/
+
+# The narration script for TTS tools (user, 2026-10-22: stays on the PC only).
+/geracoes_jogo/v05_historia_interlagos/NARRACAO_TTS.md

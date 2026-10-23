@@ -101,7 +101,11 @@ with sync_playwright() as p:
         em(page, min(c['start'] + 20, c['end'] - 1.5), 2200)
         foto(page, f"{k + 1:02d}b")
     # Every line with a picture or the presenter: both on screen.
-    linhas = page.evaluate("""(async()=>{const m=await import('./historia-interlagos.js'),t=(await import('./track-history.js')).buildTimeline(m.HISTORY);
+    # (Timed as the player times them: by the recorded voice playing, if one is.)
+    linhas = page.evaluate("""(async()=>{const m=await import('./historia-interlagos.js'),th=await import('./track-history.js'),i=interlagosAutodromo.info();
+      let voice=null;if(i.timedBy){const e=(await (await fetch('./assets/historia/vozes_interlagos.json')).json()).find(e=>`gravada:${e.src.split('/').pop()}`===i.timedBy);
+       voice=th.recordedVoice(await (await fetch(`./${e.src}.json`)).json(),e.src);}
+      const t=th.buildTimeline(m.HISTORY,i.lang,voice);
       return t.lines.filter(l=>l.image||l.presenter).map(l=>({start:l.start,dur:l.dur,image:l.image||null,index:l.index}));})()""")
     for linha in linhas[:8]:
         lido = em(page, linha['start'] + min(3, linha['dur'] / 2), 2000)
@@ -174,6 +178,8 @@ with sync_playwright() as p:
     foto(page, 'tela_historias')
     page.click('[data-historia="interlagos"]')
     wait_js(page, 'window.interlagosAutodromo?.info().active', timeout=300000)
+    # (It starts once the story's recorded voices are in: a moment, 1.5 s at most.)
+    page.wait_for_timeout(1800)
     check('the story plays from that screen', info(page)['playing'])
     page.wait_for_timeout(1500)
     page.keyboard.press('Escape')

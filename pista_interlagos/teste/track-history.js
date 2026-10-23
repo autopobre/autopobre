@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {createPeople,OUTFITS,POSES,clonePose,applyPose} from './pit-crew.js';
 
 // A circuit's history told over its 3D track, played like a video: play, pause, a bar with the chapters marked
-// on it to jump to, captions, a narrator's voice (the browser's own, in Portuguese) and Stevan as the presenter,
+// on it to jump to, captions, a narrator's voice (a recorded one, or the browser's own) and Stevan as the presenter,
 // microphone in hand, beside the pictures that the 3D cannot show. Everything on screen is a function of the
 // time on the bar (camera, layers drawn over the track, the ghost Opala on the old layout, captions), so any
 // point can be jumped to. A script (historia-<circuito>.js) lists chapters of lines; a line says what is heard
@@ -16,17 +16,22 @@ import {createPeople,OUTFITS,POSES,clonePose,applyPose} from './pit-crew.js';
 // keep their timings at the voice's own rate and the whole story (voice, camera, ghost car) runs 1.75 times as fast.
 export const CHARS_PER_SECOND=14,PACE=1.75;
 export const estimateDuration=text=>Math.max(3,String(text||'').length/CHARS_PER_SECOND+.8);
+// The pause after a recorded line, in seconds at Normal speed.
+export const BREATH=.5;
 // lang: 'pt' (the script's own words) or a language of script.translations (its chapters' titles and lines, in the
 // same order: text, say, title); a line's length follows the words of that language.
-export function buildTimeline(script,lang='pt'){
+// voice: a recorded voice of that language (recordedVoice): a line it recorded lasts as long as the recording and a
+// breath (a ride given a longer dur keeps it), so the pictures follow that voice line by line.
+export function buildTimeline(script,lang='pt',voice=null){
  const chapters=[],lines=[],tr=lang==='pt'?null:script.translations?.[lang];let t=0;
  script.chapters.forEach((c,ci)=>{
   const tc=tr?.chapters?.[c.id];
   const chapter={id:c.id,title:tc?.title??c.title,years:tc?.years??c.years??'',era:c.era??'novo',start:t,lines:[],links:[...(c.links??[])],index:ci};
   c.lines.forEach((l,li)=>{
-   const tl=tc?.lines?.[li],text=tl?.text??l.text,say=tl?(tl.say??tl.text):l.say??l.text,dur=Math.max(2.2,(l.dur??estimateDuration(say))/PACE);
+   const tl=tc?.lines?.[li],text=tl?.text??l.text,say=tl?(tl.say??tl.text):l.say??l.text,clip=voice?.clip(`${c.id}/${li}`,say)??null;
+   const dur=clip?Math.max(2.2,clip.end-clip.start+BREATH,(l.dur??0)/PACE):Math.max(2.2,(l.dur??estimateDuration(say))/PACE);
    const legend=l.legend?.map((item,i)=>({...item,text:tl?.legend?.[i]??item.text}));
-   const line={...l,text,say,title:tl?.title??l.title,legend,chapter:ci,index:lines.length,inChapter:li,start:t,dur,end:t+dur};
+   const line={...l,text,say,clip,title:tl?.title??l.title,legend,chapter:ci,index:lines.length,inChapter:li,start:t,dur,end:t+dur};
    if(l.card&&!chapter.links.includes(l.card))chapter.links.push(l.card);
    chapter.lines.push(line);lines.push(line);t+=dur;
   });
@@ -48,7 +53,16 @@ export function buildTimeline(script,lang='pt'){
   const toward=line.shot?.ride;if(toward&&typeof toward.to==='string'&&Number.isNaN(Number(toward.to)))named.add(`${toward.path}:${toward.to}`);
   labels=[...named];line.shotSeg=shot;line.carSeg=car;line.showNow=show;line.labelsNow=labels;
  }
- return {chapters,lines,duration:t};
+ return {chapters,lines,duration:t,voice};
+}
+// A recorded voice (scripts/gerar_narracao.py): the story's lines read by a neural voice into one MP3 (src + '.mp3'),
+// meta = its JSON (each line's key '<chapter>/<line>', start and end in seconds, and words). A line is played only
+// while its words are still the script's; any other is left to the browser's voice. Named by its file: the same
+// neural voice may be recorded at more than one pace.
+export function recordedVoice(meta,src){
+ const clips=new Map(meta.lines.map(l=>[l.key,l]));
+ return {name:`gravada:${src.split('/').pop()}`,label:meta.label,lang:meta.voice.split('-').slice(0,2).join('-'),recorded:true,src,cps:meta.chars/meta.speech,
+  clip:(key,say)=>{const c=clips.get(key);return c&&c.say===say?c:null;}};
 }
 // The line playing at time t (the last one at the very end).
 export function lineAt(timeline,t){
@@ -380,37 +394,60 @@ class Presenter{
  }
 }
 
-// ---- The voice: the browser's ones in the story's language (Windows and Edge have several); a man's by default
-// (Stevan presents), any of them by choice, at the story's speed ----
+// ---- The voice: the story's recorded ones first (the same in every browser), then the browser's ones in the story's
+// language (Windows and Edge have several); a man's by default (Stevan presents), any of them by choice, at the
+// story's speed ----
 const MALE=/antonio|daniel|thiago|fabio|donato|julio|humberto|valerio|nicolau|leandro|marcelo|guy|andrew|brian|christopher|eric|roger|steffan|davis|tony|jason|ryan|thomas|william|george|mark|david|james|liam|connor|male|masculin/i;
 const REGIONS={'pt-BR':['Brasil','Brazil'],'pt-PT':['Portugal','Portugal'],'en-US':['EUA','US'],'en-GB':['Reino Unido','UK'],'en-AU':['Austrália','Australia'],'en-CA':['Canadá','Canada'],'en-IN':['Índia','India'],'en-IE':['Irlanda','Ireland']};
 class Narrator{
- constructor(){this.all=[];this.voices=[];this.voice=null;this.lang='pt';this.wanted='';this.rate=1;this.speaking=null;this.onVoices=null;this.measured=new Map();this.synth=typeof speechSynthesis!=='undefined'?speechSynthesis:null;
+ constructor(){this.all=[];this.recorded=[];this.story=null;this.voices=[];this.voice=null;this.lang='pt';this.wanted='';this.rate=1;this.speaking=null;this.onVoices=null;this.measured=new Map();this.synth=typeof speechSynthesis!=='undefined'?speechSynthesis:null;
   if(!this.synth)return;const load=()=>{this.all=this.synth.getVoices();this.refresh();this.onVoices?.();};load();this.synth.addEventListener?.('voiceschanged',load);}
  static score(v,lang){const home=lang==='pt' ? /^pt[-_]BR/i : /^en[-_](US|GB)/i;return (home.test(v.lang)?8:6)+(MALE.test(v.name)?4:0)+(/natural|online|neural/i.test(v.name)?2:0)+(/google/i.test(v.name)?1:0)+(v.localService?0:.5);}
  // The voices of one language (pt: Brazil's first; en: American and British first), the best-sounding first.
  static forLanguage(voices,lang){const re=new RegExp(`^${lang}`,'i');return voices.filter(v=>re.test(v.lang||'')).sort((a,b)=>Narrator.score(b,lang)-Narrator.score(a,lang)||a.name.localeCompare(b.name));}
  static choose(voices,lang='pt'){return Narrator.forLanguage(voices,lang)[0]??null;}
  // "Microsoft Antonio Online (Natural) - Portuguese (Brazil)" → "Antonio · natural · Brasil" (the region in the UI's language).
- static label(v,ui='pt'){const name=v.name.replace(/^Microsoft\s+/i,'').replace(/\s*-\s*[A-Z][a-zçã]+\s*\(.*\)$/i,'').replace(/\s*-\s*(Portug|English).*$/i,'').replace(/\s*Online\s*\(Natural\)/i,' · natural').replace(/^Google\s+(portugu[eê]s|UK English|US English)\s*(d[oe]\s+\w+)?/i,'Google');
+ static label(v,ui='pt'){if(v.recorded)return `${v.label} · ${ui==='en'?'recorded':'gravada'} · ${REGIONS[v.lang]?.[ui==='en'?1:0]??v.lang}`;
+  const name=v.name.replace(/^Microsoft\s+/i,'').replace(/\s*-\s*[A-Z][a-zçã]+\s*\(.*\)$/i,'').replace(/\s*-\s*(Portug|English).*$/i,'').replace(/\s*Online\s*\(Natural\)/i,' · natural').replace(/^Google\s+(portugu[eê]s|UK English|US English)\s*(d[oe]\s+\w+)?/i,'Google');
   const region=REGIONS[(v.lang||'').replace('_','-')];return `${name} · ${region?region[ui==='en'?1:0]:v.lang}`;}
- refresh(){this.voices=Narrator.forLanguage(this.all,this.lang);this.pick();}
+ refresh(){this.voices=[...this.recorded.filter(v=>v.lang.startsWith(this.lang)),...Narrator.forLanguage(this.all,this.lang)];this.pick();}
  setLanguage(lang,wanted){this.lang=lang;this.wanted=wanted||'';this.refresh();}
- // The one chosen if this browser has it; else the best one of the language.
- pick(){this.voice=this.voices.find(v=>v.name===this.wanted)??this.voices[0]??null;}
+ // The one chosen if this browser has it; else the best one of the language (a recorded one starts downloading).
+ pick(){this.voice=this.voices.find(v=>v.name===this.wanted)??this.voices[0]??null;if(this.voice?.recorded)this.fetchRecording(this.voice);}
  use(name){this.wanted=name||'';this.pick();}
  get available(){return !!this.voice;}
+ // The browser's best voice of the language: it says the lines a recorded voice lacks.
+ get spare(){return Narrator.forLanguage(this.all,this.lang)[0]??null;}
+ // A story's recorded voices (assets/historia/vozes_<historia>.json; none when it is missing), listed before the
+ // browser's ones.
+ async loadRecorded(story){
+  if(this.story===story)return;this.story=story;let list=[];
+  try{const r=await fetch(`./assets/historia/vozes_${story}.json`);if(r.ok)list=await r.json();}catch{}
+  const voices=await Promise.all(list.map(async e=>{try{const r=await fetch(`./${e.src}.json`);return r.ok?recordedVoice(await r.json(),e.src):null;}catch{return null;}}));
+  if(this.story!==story)return;this.recorded=voices.filter(Boolean);this.refresh();
+ }
+ // A recorded voice's MP3, downloaded whole once: the lines are played by seeking in it (the local server has no
+ // ranges). One <audio> per voice, its pitch kept at other speeds.
+ fetchRecording(v){
+  v.ready??=fetch(`./${v.src}.mp3`).then(r=>{if(!r.ok)throw new Error(`${v.src}.mp3: ${r.status}`);return r.blob();})
+   .then(blob=>{const a=new Audio();a.preload='auto';a.preservesPitch=true;a.src=URL.createObjectURL(blob);v.audio=a;return a;});
+  v.ready.catch(()=>{v.failed=true;});return v.ready;
+ }
  // The rate a voice reads at, at Normal speed. Windows' own voices (Daniel, Maria: local, not "Natural") are slow at
  // rate 1, and 1.05×PACE suits them — the pace the user approved on 10-21 ("essa velocidade atual ficou boa"): keep it.
  // The online "Natural" voices (Edge) already speak at a natural pace; at that rate they rushed: theirs is 1.15.
  static natural(v){return !!v&&(!v.localService||/natural|online|neural/i.test(v.name));}
- static baseRate(v){return Narrator.natural(v)?1.15:1.05*PACE;}
+ // A recorded voice was read at that pace already (gerar_narracao.py --rate): it plays at the story's speed.
+ static baseRate(v){return v?.recorded?1:Narrator.natural(v)?1.15:1.05*PACE;}
  rateFor(v=this.voice){return clamp(Narrator.baseRate(v)*this.rate,.5,3);}
  // How fast a voice really reads (characters a second at rate 1): measured on its finished lines, a guess until then.
- cpsOf(v=this.voice){return this.measured.get(v?.name)??(Narrator.natural(v)?15:13.3);}
+ cpsOf(v=this.voice){return v?.recorded?v.cps:this.measured.get(v?.name)??(Narrator.natural(v)?15:13.3);}
  // Characters a second the voice says now, at the speed chosen.
  get pace(){return this.cpsOf()*this.rateFor();}
- speak(line,text=line?.say){if(!this.synth||!this.voice||!text)return false;this.cancel();const u=new SpeechSynthesisUtterance(text),voice=this.voice;u.voice=voice;u.lang=voice.lang;u.rate=this.rateFor(voice);u.pitch=1;
+ speak(line,text=line?.say){
+  if(this.voice?.recorded&&line?.clip&&!this.voice.failed)return this.play(line,line.clip,this.voice);
+  const voice=this.voice?.recorded?this.spare:this.voice;if(!this.synth||!voice||!text)return false;
+  this.cancel();const u=new SpeechSynthesisUtterance(text);u.voice=voice;u.lang=voice.lang;u.rate=this.rateFor(voice);u.pitch=1;
   const token={line,done:false,started:false,at:performance.now(),chars:text.length,rate:u.rate};
   u.onstart=()=>{token.started=true;token.t0=performance.now();};
   u.onend=u.onerror=e=>{
@@ -418,7 +455,21 @@ class Narrator{
    if(!token.cancelled&&e.type==='end'&&token.t0){const secs=(performance.now()-token.t0)/1000;if(secs>1.2&&token.chars>20){const cps=token.chars/secs/token.rate,prev=this.measured.get(voice.name);this.measured.set(voice.name,prev?prev*.7+cps*.3:cps);}}
    token.done=true;if(this.speaking===token)this.speaking=null;};
   this.speaking=token;this.synth.speak(u);return true;}
- cancel(){if(this.speaking){this.speaking.done=true;this.speaking.cancelled=true;this.speaking=null;}this.synth?.cancel();}
+ // A recorded line: from its start in the voice's MP3 to its end, at the story's speed. A timer from the time left
+ // stops it, checked again on the audio's own clock until it gets there (the pause after each line is the margin).
+ play(line,clip,voice){
+  this.cancel();const token={line,done:false,started:false,at:performance.now(),chars:clip.say.length,rate:this.rateFor(voice)};this.speaking=token;
+  token.stop=()=>{if(token.done)return;token.done=true;clearTimeout(token.timer);voice.audio?.pause();if(this.speaking===token)this.speaking=null;};
+  this.fetchRecording(voice).then(a=>{
+   if(token.done)return;a.playbackRate=token.rate;a.currentTime=clip.start;
+   const check=()=>{clearTimeout(token.timer);if(token.done)return;const left=clip.end-a.currentTime;
+    if(left<=.02||a.ended)token.stop();else token.timer=setTimeout(check,Math.max(15,left/a.playbackRate*1000-10));};
+   a.ontimeupdate=a.onended=check;
+   a.play().then(()=>{if(token.done){a.pause();return;}token.started=true;token.t0=performance.now();check();},token.stop);
+  },token.stop);
+  return true;
+ }
+ cancel(){const s=this.speaking;if(s){s.cancelled=true;s.stop?.();s.done=true;this.speaking=null;}this.synth?.cancel();}
  busyWith(line){return !!this.speaking&&!this.speaking.done&&this.speaking.line===line;}
  // The voice sounding now (an engine that never says it started counts after half a second).
  get talking(){const s=this.speaking;return !!s&&!s.done&&(s.started||performance.now()-s.at>500);}
@@ -483,15 +534,27 @@ export class TrackHistory{
   if(!LANGS.includes(lang))return;const changed=lang!==this.prefs.lang;this.prefs.lang=lang;this.savePrefs();
   this.narrator.cancel();this.narrator.setLanguage(lang,this.prefs.voices?.[lang]);
   if(!this.active||!changed)return;
+  this.rebuild();
+ }
+ // The timeline again (another language, another voice) and the page with it, from the start of the same line.
+ rebuild(){
   const index=lineAt(this.timeline,this.time).index,playing=this.playing,settings=!this.settings.hidden;
-  this.timeline=buildTimeline(this.script,lang);for(const s of this.labelSprites.values())s.removeFromParent();this.labelSprites.clear();
+  this.narrator.cancel();this.timeline=buildTimeline(this.script,this.prefs.lang,this.timedVoice());for(const s of this.labelSprites.values())s.removeFromParent();this.labelSprites.clear();
   this.root.remove();this.buildDom();this.settings.hidden=!settings;
   this.time=this.timeline.lines[index].start;this.lastLine=null;this.playing=playing;this.root.classList.toggle('paused',!playing);this.renderUi(this.timeline.lines[index],true);
+ }
+ // A recorded voice times the story's lines itself; the browser's ones follow the estimate (voiceFollow).
+ timedVoice(){return this.narrator.voice?.recorded?this.narrator.voice:null;}
+ retime(){if(this.active&&this.timeline.voice!==this.timedVoice())this.rebuild();}
+ // A recorded voice this player has not offered yet is chosen once, over a browser voice chosen before.
+ offerRecorded(){
+  const fresh=this.narrator.voices.find(v=>v.recorded&&!this.prefs.offered?.includes(v.name));if(!fresh)return;
+  this.prefs.offered=[...(this.prefs.offered??[]),fresh.name];this.prefs.voices={...this.prefs.voices,[this.prefs.lang]:fresh.name};this.narrator.use(fresh.name);this.savePrefs();
  }
  // script: the circuit's (historia-<id>.js); context: {data (pista.json), oldLayout, media, scene, ghostCar, renderer, camera}.
  // The timeline, the paths and the places, without the page (a Node check samples the camera with this alone).
  prepare(script,context,lang=this.prefs.lang){
-  this.script=script;this.ctx=context;this.timeline=buildTimeline(script,lang);this.time=0;this.hold=0;this.lastLine=null;
+  this.script=script;this.ctx=context;this.timeline=buildTimeline(script,lang,this.timedVoice());this.time=0;this.hold=0;this.lastLine=null;
   const d=context.data,cols=d.columns,ix=cols.indexOf('x_east_m'),iy=cols.indexOf('y_north_m'),iz=cols.indexOf('z_local_m');
   this.paths={new:new TrackPath(d.samples.map(p=>[p[0],p[ix],p[iy],p[iz]]),d.meta.reconstructed_xy_m)};
   const old=context.oldLayout;if(old){const c=old.columns;this.paths.old=new TrackPath(old.samples.map(p=>[p[c.indexOf('s')],p[c.indexOf('x')],p[c.indexOf('y')],p[c.indexOf('z')]]),old.length_m);}
@@ -522,7 +585,12 @@ export class TrackHistory{
   // The bar's previews: the chapters' first lines first, then every line in order (none without hover).
   const firsts=this.timeline.chapters.map(c=>c.lines[0].index);this.thumbs=new Map();this.thumbTick=0;this.thumbsFrom=performance.now()+2500;this.hoverLine=null;
   this.thumbQueue=matchMedia('(hover: hover)').matches?[...firsts,...this.timeline.lines.map(l=>l.index).filter(i=>!firsts.includes(i))]:[];
-  this.buildDom();this.active=true;document.body.classList.add('history-on');this.ctx.audio?.theme(this.prefs.music);this.setPlaying(true);this.showControls();
+  this.buildDom();this.active=true;document.body.classList.add('history-on');this.ctx.audio?.theme(this.prefs.music);this.showControls();
+  // The story's recorded voices first (a moment), so the first line is already in the voice that times it; after
+  // 1.5 s the story starts anyway and a voice that comes later retimes it from the line playing.
+  let started=false;const go=()=>{if(started||!this.active||this.script!==script)return;started=true;if(!this.playing)this.setPlaying(true);};
+  this.narrator.loadRecorded(script.id).then(()=>{if(!this.active||this.script!==script)return;this.offerRecorded();this.retime();this.renderSettings();go();});
+  setTimeout(go,1500);
   if(context.renderer&&context.camera)context.renderer.compileAsync?.(this.presenter.root,context.camera,context.scene).catch(()=>{});
  }
  stop(exit=true){
@@ -700,7 +768,7 @@ export class TrackHistory{
   this.renderUi(line);
   return true;
  }
- voiceFollow(){return clamp(this.narrator.pace/(CHARS_PER_SECOND*PACE*this.prefs.speed),.5,1.4);}
+ voiceFollow(){return this.timeline?.voice&&this.timeline.voice===this.narrator.voice?1:clamp(this.narrator.pace/(CHARS_PER_SECOND*PACE*this.prefs.speed),.5,1.4);}
  enterLine(line,fresh){
   if(this.playing&&this.prefs.voice&&fresh)this.narrator.speak(line);
   const chapter=this.timeline.chapters[line.chapter];document.body.classList.toggle('history-era-antigo',chapter.era==='antigo');
@@ -757,9 +825,9 @@ export class TrackHistory{
   if(this.playing&&this.prefs.voice){const l=lineAt(this.timeline,this.time);this.time=l.start;this.narrator.speak(l);}
   this.flashNote(this.t('speedNote')(speed));this.renderSettings();this.renderUi(lineAt(this.timeline,this.time),true);
  }
- setVoice(name){this.prefs.voices={...this.prefs.voices,[this.prefs.lang]:name};this.narrator.use(name);this.savePrefs();this.preview();this.renderSettings();}
- // A sample of the voice chosen, at the speed chosen (the story waits, paused).
- preview(){if(!this.narrator.available)return;this.pause();this.narrator.speak(null,this.t('sample'));}
+ setVoice(name){this.prefs.voices={...this.prefs.voices,[this.prefs.lang]:name};this.narrator.use(name);this.savePrefs();this.retime();this.preview();this.renderSettings();}
+ // A sample of the voice chosen, at the speed chosen (the story waits, paused): a recorded voice says the first line.
+ preview(){if(!this.narrator.available)return;this.pause();this.narrator.speak(this.narrator.voice.recorded?this.timeline.lines[0]:null,this.t('sample'));}
  setMusic(theme){this.prefs.music=theme;this.savePrefs();this.ctx.audio?.theme(theme);this.renderSettings();}
  renderSettings(){
   const box=this.settings;if(!box)return;const voices=this.narrator.voices;
@@ -780,6 +848,7 @@ export class TrackHistory{
   chapters:this.timeline?.chapters.map(c=>({title:c.title,start:c.start,end:c.end,lines:c.lines.length}))??[],voice:this.narrator.voice?.name??null,voices:this.narrator.voices.map(v=>v.name),voiceOn:this.prefs.voice,captions:this.prefs.captions,
   speed:this.prefs.speed,music:this.prefs.music,duck:this.prefs.duck,talking:this.narrator.talking,lang:this.prefs.lang,caption:line?.text??null,thumbs:this.thumbs?.size??0,thumbsLeft:this.thumbQueue?.length??0,
   voiceRate:this.narrator.voice?this.narrator.rateFor():null,voiceNatural:Narrator.natural(this.narrator.voice),voiceCps:this.narrator.voice?+this.narrator.cpsOf().toFixed(2):null,follow:+this.voiceFollow().toFixed(3),
+  recorded:!!this.narrator.voice?.recorded,timedBy:this.timeline?.voice?.name??null,clip:line?.clip?[line.clip.start,line.clip.end]:null,audioAt:this.narrator.voice?.audio?.currentTime??null,
   layers:Object.fromEntries(Object.entries(this.layers??{}).map(([k,l])=>[k,+l.mesh.material.opacity.toFixed?.(3)||l.mesh.material.uniforms?.opacity.value||0])),presenter:this.presenter?.root.visible??false,image:line?.image??null};}
 
  // ---- the page ----

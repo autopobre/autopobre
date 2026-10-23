@@ -82,6 +82,20 @@ const english=buildTimeline(HISTORY,'en');
  assert.equal((await card.load()).HISTORY,HISTORY,'the card loads this script');
  for(const h of HISTORIAS)assert(h.title&&h.place&&h.summary&&typeof h.load==='function',`${h.circuit} card complete`);}
 
+// As vozes gravadas (scripts/gerar_narracao.py): cada fala do roteiro gravada com as palavras de hoje (texto mudado =
+// gravar de novo), os trechos em ordem dentro do MP3, tudo publicado; com a voz, cada fala dura a sua gravação.
+{const index=join(teste,'assets','historia',`vozes_${HISTORY.id}.json`);
+ if(existsSync(index)){const {recordedVoice,BREATH}=await import('../teste/track-history.js');
+  assert(publicacao.includes(`'historia/vozes_${HISTORY.id}.json'`),'recorded voices index published');
+  for(const entry of JSON.parse(readFileSync(index,'utf8'))){
+   const meta=JSON.parse(readFileSync(join(teste,`${entry.src}.json`),'utf8')),voice=recordedVoice(meta,entry.src),name=entry.src.replace(/^assets\//,'');
+   for(const ext of ['mp3','json'])assert(existsSync(join(teste,`${entry.src}.${ext}`))&&publicacao.includes(`'${name}.${ext}'`),`${name}.${ext} on disk and published`);
+   const timed=buildTimeline(HISTORY,entry.lang,voice),stale=timed.lines.filter(l=>!l.clip).map(l=>`${timed.chapters[l.chapter].id}/${l.inChapter}`);
+   assert.deepEqual(stale,[],`${entry.label} (${entry.lang}): every line recorded with today's words (run gerar_narracao.py)`);
+   meta.lines.reduce((end,c)=>{assert(c.start>=end&&c.end>c.start,`${c.key} in order`);return c.end;},0);
+   for(const l of timed.lines)assert(l.dur>=l.clip.end-l.clip.start+BREATH-1e-9,'a line lasts its recording');
+   console.log(`voz gravada ${entry.label} (${entry.lang}): ${timed.lines.length} falas, a história em ${formatTime(timed.duration)}`);}}}
+
 // O que a narração afirma olhando a geometria do jogo.
 const track=new TrackPath(data.samples.map(p=>[p[0],p[1],p[2],p[3]]),data.meta.reconstructed_xy_m);
 const at=s=>track.point(s),bearing=p=>(Math.atan2(p.hx,p.hy)*180/Math.PI+360)%360;

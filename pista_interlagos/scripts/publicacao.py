@@ -61,6 +61,9 @@ ASSETS = (
     'historia/historia_mapa_1.jpg', 'historia/historia_mapa_2.jpg', 'historia/historia_nascimento_1.jpg', 'historia/historia_opala_1.jpg',
     'historia/historia_pace_1.jpg', 'historia/historia_pace_2.jpg', 'historia/historia_pilotos1936_1.jpg', 'historia/historia_planta1936_1.jpg',
     'historia/historia_reta_1.jpg', 'historia/historia_senna_1.jpg', 'historia/historia_ssenna_1.jpg', 'historia/creditos.txt',
+    # Its narration read by a neural voice (scripts/gerar_narracao.py, edge-tts): the lines in one MP3, their times in the JSON.
+    'historia/vozes_interlagos.json', 'historia/voz_interlagos_pt_antonio.mp3', 'historia/voz_interlagos_pt_antonio.json',
+    'historia/voz_interlagos_pt_antonio_rapido.mp3', 'historia/voz_interlagos_pt_antonio_rapido.json',
     'audio/car_trying_to_start.mp3',
     'audio/loops_m3.mp3', 'audio/loops_m3.json', 'audio/loops_fusca.mp3', 'audio/loops_fusca.json',
     'audio/lenta_opala.mp3', 'audio/lenta_opala.json', 'audio/lenta_fusca.mp3', 'audio/lenta_fusca.json',
