@@ -1,6 +1,6 @@
 import {GRID_SIZE} from './race-roster.js';
 import {TANK,burnRate} from './fuel.js';
-import {fanCount,eatEnergy,loadCareer,newCareer,applyRace,reviseRace,moraleCards,repairBill,repairPerPoint,repairCards,divorce,divorceCards,pensionCards,challengeCards,answerExpense,releaseBlazer as blazerOut,buyOpala as opalaBought,overReason,lineCard,prizeFor,giftScale,expenseScale,SNAG_COST,INTRO_LINES,CHALLENGES,BLAZER_AFTER,BLAZER_GOAL} from './story-career.js';
+import {fanCount,eatEnergy,loadCareer,newCareer,applyRace,reviseRace,firstsCards,moraleCards,repairBill,repairPerPoint,repairCards,divorce,divorceCards,pensionCards,challengeCards,answerExpense,releaseBlazer as blazerOut,buyOpala as opalaBought,overReason,lineCard,prizeFor,giftScale,expenseScale,SNAG_COST,INTRO_LINES,CHALLENGES,BLAZER_AFTER,BLAZER_GOAL} from './story-career.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const FANS=[
  {name:'Dona Cida',taste:'família',hint:'Vim com os netos. Adoro uma história de família.',gift:42},
@@ -78,10 +78,10 @@ export class ImmersiveState {
   if(!c.intro)return {kind:'intro',cards:[...INTRO_LINES.map((line,i)=>lineCard(line,'intro','intro',i)),{type:'challenge',challenge:CHALLENGES[0].id,fund:this.profile.fund,left:CHALLENGES[0].races,fresh:true}]};
   return null;
  }
- // The report's cards (a report waiting for the wife's answer shows just her request again); the
- // challenge is applied here, then the end of the story if a bar reached zero.
+ // The report's cards (a report waiting for the wife's answer shows just her request again): Kléber first for a first
+ // podium or win; the challenge is applied here, then the end of the story if a bar reached zero.
  reportCards(){
-  const c=this.profile.career,r=c.report,cards=r.awaiting?[]:[...moraleCards(c),...repairCards(r,this.profile),...divorceCards(c,this.profile)];let over=overReason(c);
+  const c=this.profile.career,r=c.report,cards=r.awaiting?[]:[...firstsCards(c),...moraleCards(c),...repairCards(r,this.profile),...divorceCards(c,this.profile)];let over=overReason(c);
   if(!over){r.awaiting=null;cards.push(...challengeCards(c,this.profile));over=r.awaiting?null:overReason(c);}
   if(!r.awaiting)c.report=null;if(over){c.over=over;cards.push({type:'over',reason:over});}
   return cards;

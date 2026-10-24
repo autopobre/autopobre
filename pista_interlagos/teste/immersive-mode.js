@@ -244,9 +244,10 @@ export class ImmersiveMode {
   const next=(label='Avançar →')=>this.button('scene:next',label+(touch?'':' (Enter)'),true);
   const person=(face,who,kicker,title)=>`<div class="social-person"><span class="social-avatar career-avatar" data-who="${who}">${face}</span><div><span>${kicker}</span><h2>${title}</h2></div><b>◆</b></div>`;
   const challenge=CHALLENGES.find(ch=>ch.id===card.challenge);
-  // Kléber's box is played on the scene (story-scene.js): the line as a film subtitle under it.
+  // Kléber's box is played on the scene (story-scene.js): the line as a film subtitle under it. His welcome and his
+  // congratulations can be skipped.
   const group=this.sceneGroup();if(group.length>1)return this.reportPanel(group,next);
-  if(card.type==='line')return `<div class="cutscene-line" data-who="${card.who}"><span class="cutscene-who">${card.who==='kleber'?'Kléber Eletric':card.who==='lawyer'?'Advogado':card.who==='daughter'?'Sua filha':name}</span><p>${card.how?`<i>(${card.how})</i>${card.text?' ':''}`:''}${card.text?`“${card.text}”`:''}</p></div><div class="cutscene-buttons">${next()}${scene.kind==='intro'?this.button('scene:skip','Pular a conversa'):''}</div>`;
+  if(card.type==='line')return `<div class="cutscene-line" data-who="${card.who}"><span class="cutscene-who">${card.who==='kleber'?'Kléber Eletric':card.who==='lawyer'?'Advogado':card.who==='daughter'?'Sua filha':name}</span><p>${card.how?`<i>(${card.how})</i>${card.text?' ':''}`:''}${card.text?`“${card.text}”`:''}</p></div><div class="cutscene-buttons">${next()}${scene.kind==='intro'||['done','parabens','podio'].includes(card.act)?this.button('scene:skip','Pular a conversa'):''}</div>`;
   if(card.type==='morale'){
    const n=scene.cards.slice(0,scene.at+1).filter(x=>x.type==='morale').length,of=scene.cards.filter(x=>x.type==='morale').length,d=card.delta;
    return `<div class="imm-eyebrow">DEPOIS DA ${card.race}ª CORRIDA · ${OUTCOME_TITLES[card.outcome].toUpperCase()} · QUADRO ${n} DE ${of}</div>${person(MORALE_ICONS[card.key],card.key,MORALE_LABELS[card.key].toUpperCase(),MORALE_NAMES[card.key])}<p class="career-text">${card.text}</p><div class="career-delta" data-sign="${Math.sign(d)}">${MORALE_LABELS[card.key]}: ${d>0?'+':''}${d}%</div>${this.moraleBar(card.key,card.value)}<small>Antes: ${card.before}% · agora: ${card.value}%</small>${card.key==='esposa'?this.wifeWarning(card):''}${next()}`;

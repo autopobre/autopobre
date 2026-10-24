@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {OUTFITS,STEVAN_OUTFITS,POSES,clonePose,applyPose,dressPerson} from './pit-crew.js';
+import {OUTFITS,STEVAN_OUTFITS,POSES,IDLE_ARMS,clonePose,applyPose,dressPerson} from './pit-crew.js';
 
 // Kléber Eletric's box in Modo História (story-career.js INTRO_LINES, DONE_LINES, MISSED_LINES): the talks
 // played in 3D at the door of his team's garage (#70, pit-building.js), his orange Opala parked nose in.
@@ -13,13 +13,23 @@ import {OUTFITS,STEVAN_OUTFITS,POSES,clonePose,applyPose,dressPerson} from './pi
 // the lawyer takes them and leaves, Stevan stays alone, head down, then gets his breath back.
 // The daughter's kart (Central #16, DONE_LINES.kart) too: she drives round on the lane in front of the Box 99 while
 // her father watches from the door, then stops in front of him.
+// Kléber congratulates on every conquest (KLEBER_LINES, act 'parabens', as the businessman) and on the first podium
+// and win (FIRST_LINES, act 'podio', still in his overalls): Stevan brings what he bought in his right hand (PROP_OF),
+// or his trophy, and how each line is said moves them (talkPose): laughing, clapping, pointing, arms open, scared, proud.
 const up=new THREE.Vector3(0,1,0);
 const yawOf=v=>Math.atan2(-v.z,v.x);
 const SCALARS=['y','lean','head','turn','twist','tilt','sway','lid'],PAIRS=['thigh','knee','arm','elbow','spread','roll'];
 function blend(cur,target,k){for(const key of SCALARS)cur[key]+=((target[key]??0)-cur[key])*k;for(const key of PAIRS)for(const i of [0,1])cur[key][i]+=((target[key]?.[i]??0)-cur[key][i])*k;}
 // What Stevan wears and who comes, by act (the divorce: Stevan as the card says, the lawyer at the Box 99; the kart:
 // his daughter at the Box 99).
-const ACTS={intro:{pilot:'civil',kleber:'pilot'},done:{pilot:'proprio',kleber:'business'},missed:{pilot:'emprestado',kleber:'pilot'},divorce:{pilot:null,lawyer:true},kart:{pilot:null,daughter:true}};
+const ACTS={intro:{pilot:'civil',kleber:'pilot'},done:{pilot:'proprio',kleber:'business'},missed:{pilot:'emprestado',kleber:'pilot'},divorce:{pilot:null,lawyer:true},kart:{pilot:null,daughter:true},
+ parabens:{pilot:null,kleber:'business'},podio:{pilot:null,kleber:'pilot'}};
+// The talks at Kléber's box whose lines move the body by how they are said (talkPose).
+const TALKS=new Set(['done','parabens','podio']);
+// What Stevan brings to each conquest's talk (the Opala's key comes in Kléber's hand).
+const PROP_OF=Object.freeze({luvas:'gloves',sapatilhas:'shoes',capacete:'helmet',hans:'hans',carretinha:'hitch',ferramentas:'wrench',bodas:'suitcase',motor:'piston',blazer:'key',opala:'key99',podio:'trophy',vitoria:'bigTrophy'});
+// Arm targets [raise, elbow, spread, forearm roll] for the talks' gestures, beside the idle ones (pit-crew.js).
+const TALK_ARMS=Object.freeze({belly:[.3,1.45,.22,.3],show:[1.05,.45,.1,0],lift:[1.55,.5,.15,0],point:[1.5,.05,-.2,0],open:[.3,.2,1.25,0],palms:[1.05,1.75,.35,0],chest:[.55,2.05,.55,0]});
 const FOV={wide:40,medium:34,over:33,close:30,alone:36};
 // The divorce's shots, card by card: the lawyer arriving, his words over Stevan's shoulder, the papers, the
 // signature, Stevan left alone while the lawyer walks off, Stevan close as he gets up again.
@@ -105,6 +115,86 @@ function helmetModel(){
  const peak=new THREE.Mesh(new THREE.BoxGeometry(.07,.012,.17),material(0xf2c418));peak.position.set(.12,.205,0);peak.rotation.z=-.25;
  g.add(shell,peak);return g;
 }
+// What Stevan shows Kléber (PROP_OF), each with its origin at the grip in his right hand: +x the way he faces, +y up,
+// +z to his right. Gloves, boots, helmet, suitcase and keys hang from the hand; the rest is held upright.
+const chrome=()=>new THREE.MeshStandardMaterial({color:0xb9bec4,roughness:.3,metalness:.85});
+function propGroup(name,parts){const g=new THREE.Group();g.name=name;for(const o of parts){o.castShadow=true;g.add(o);}return g;}
+const part=(geometry,mat,[x,y,z],[rx,ry,rz]=[0,0,0])=>{const m=new THREE.Mesh(geometry,mat);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);return m;};
+// His red gloves, the pair held by the cuffs, the backs out to the side (where the talk is filmed from), a size up so
+// they read on screen.
+function glovesModel(){
+ const red=material(0xc8141e),black=material(0x17181a),white=material(0xf4f1ea),parts=[];
+ for(const [dx,dz,tilt] of [[0,.02,.1],[.04,-.02,-.12]]){
+  const glove=[part(new THREE.CylinderGeometry(.044,.048,.075,12),red,[0,-.037,0]),part(new THREE.BoxGeometry(.09,.012,.032),white,[0,-.07,0]),part(new THREE.BoxGeometry(.09,.115,.032),black,[0,-.132,0]),
+   ...[-.032,-.011,.011,.032].map((x,i)=>part(new THREE.BoxGeometry(.019,.072-Math.abs(i-1.5)*.01,.026),black,[x,-.226+Math.abs(i-1.5)*.005,0])),part(new THREE.BoxGeometry(.02,.06,.026),black,[.058,-.14,0],[0,0,.55])];
+  const g=propGroup('Luva',glove);g.position.set(dx,0,dz);g.rotation.z=tilt;parts.push(g);
+ }
+ const pair=propGroup('Luvas_novas',parts);pair.scale.setScalar(1.45);return pair;
+}
+// The racing boots, red with a white stripe and thin black soles, held by the heel tabs, toes to Kléber.
+function shoesModel(){
+ const red=material(0xc8141e),black=material(0x17181a),white=material(0xf4f1ea),parts=[];
+ for(const [x,z] of [[0,-.05],[.05,.05]]){
+  const shoe=propGroup('Sapatilha',[part(new THREE.BoxGeometry(.27,.016,.088),black,[.135,-.105,0]),part(new THREE.BoxGeometry(.2,.075,.084),red,[.11,-.06,0]),part(new THREE.CapsuleGeometry(.038,.04,4,10),red,[.215,-.072,0],[0,0,Math.PI/2]),
+   part(new THREE.BoxGeometry(.1,.11,.08),red,[.04,-.01,0]),part(new THREE.BoxGeometry(.16,.014,.086),white,[.1,-.05,0],[0,0,.32]),part(new THREE.BoxGeometry(.012,.03,.06),black,[.005,.055,0])]);
+  shoe.position.set(x,0,z);shoe.rotation.z=-.35;parts.push(shoe);
+ }
+ const pair=propGroup('Sapatilhas_novas',parts);pair.scale.setScalar(1.15);return pair;
+}
+// His helmet, white with a red stripe over the crown and a smoked visor, held by the chin opening, the visor to Kléber.
+function racingHelmetModel(){
+ const shell=part(new THREE.SphereGeometry(.15,22,16),new THREE.MeshStandardMaterial({color:0xf4f1ea,roughness:.22}),[0,-.17,0]);shell.scale.set(1.08,1,1);
+ const visor=part(new THREE.SphereGeometry(.153,20,8,Math.PI-.95,1.9,Math.PI/2-.42,.5),new THREE.MeshStandardMaterial({color:0x14181e,roughness:.08,metalness:.3,side:THREE.DoubleSide}),[0,-.17,0]);visor.scale.set(1.08,1,1);
+ const stripe=part(new THREE.TorusGeometry(.152,.016,6,28,Math.PI),material(0xc8141e),[0,-.17,0]);stripe.scale.set(1.08,1,1);
+ const chin=part(new THREE.BoxGeometry(.05,.03,.16),material(0x17181a),[.11,-.29,0]);
+ return propGroup('Capacete_novo',[shell,visor,stripe,chin]);
+}
+// The HANS: the carbon yoke that sits on the shoulders (two arms forward from a back piece) and its upright collar with
+// the tether anchors, held by the collar's top and turned to the side so its U shows.
+function hansModel(){
+ const carbon=new THREE.MeshStandardMaterial({color:0x1d1f22,roughness:.35,metalness:.25}),orange=material(0xe0601c);
+ const yoke=[part(new THREE.BoxGeometry(.06,.022,.2),carbon,[0,0,0]),...[-1,1].map(s=>part(new THREE.BoxGeometry(.24,.022,.05),carbon,[.13,0,s*.085],[0,-s*.12,0])),
+  part(new THREE.BoxGeometry(.035,.15,.11),carbon,[-.01,.075,0]),...[-1,1].map(s=>part(new THREE.CylinderGeometry(.012,.012,.03,10),orange,[.012,.12,s*.035],[0,0,Math.PI/2]))];
+ const hans=propGroup('HANS',yoke);hans.position.set(.01,-.15,0);hans.rotation.x=-1.05;
+ return propGroup('HANS_novo',[hans]);
+}
+// The tow hitch for the Blazer: the black square bar and the chrome ball, held by the bar.
+function hitchModel(){
+ const black=material(0x17181a),metal=chrome();
+ return propGroup('Engate_Blazer',[part(new THREE.BoxGeometry(.3,.05,.05),black,[.08,0,0]),part(new THREE.BoxGeometry(.06,.012,.11),black,[.2,.03,0]),part(new THREE.CylinderGeometry(.016,.022,.04,10),metal,[.2,.055,0]),part(new THREE.SphereGeometry(.03,14,10),metal,[.2,.095,0])]);
+}
+// The Box 99's new impact wrench: yellow and black, held by its handle, the socket to the front.
+function wrenchModel(){
+ const yellow=material(0xf2c418),black=material(0x17181a);
+ return propGroup('Parafusadeira_nova',[part(new THREE.BoxGeometry(.045,.12,.035),black,[0,0,0],[0,0,-.18]),part(new THREE.CylinderGeometry(.036,.036,.19,14),yellow,[.03,.08,0],[0,0,Math.PI/2]),
+  part(new THREE.BoxGeometry(.08,.045,.06),black,[-.01,-.075,0]),part(new THREE.CylinderGeometry(.016,.016,.05,10),chrome(),[.15,.08,0],[0,0,Math.PI/2]),part(new THREE.CylinderGeometry(.022,.022,.035,12),chrome(),[.185,.08,0],[0,0,Math.PI/2])]);
+}
+// A new piston on its connecting rod, held by the rod's big end, the crown up.
+function pistonModel(){
+ const metal=new THREE.MeshStandardMaterial({color:0xc7cbd0,roughness:.35,metalness:.75}),steel=material(0x6d7277);
+ const piston=propGroup('Pistao_novo',[part(new THREE.TorusGeometry(.03,.011,8,16),steel,[0,0,0]),part(new THREE.BoxGeometry(.016,.13,.022),steel,[0,.09,0]),part(new THREE.CylinderGeometry(.047,.047,.07,20),metal,[0,.19,0]),
+  ...[.205,.218].map(y=>part(new THREE.TorusGeometry(.047,.0025,4,24),steel,[0,y,0],[Math.PI/2,0,0]))]);
+ piston.scale.setScalar(1.4);return piston;
+}
+// The trip's suitcase: blue, with two straps, hung from its handle, its long side along the walk.
+function suitcaseModel(){
+ const blue=material(0x2f5d8a),black=material(0x17181a);
+ return propGroup('Mala_bodas',[part(new THREE.BoxGeometry(.44,.32,.15),blue,[0,-.2,0]),...[-.12,.12].map(x=>part(new THREE.BoxGeometry(.03,.322,.152),black,[x,-.2,0])),part(new THREE.TorusGeometry(.05,.011,6,14,Math.PI),black,[0,-.04,0])]);
+}
+// A car key on its ring (the Blazer's), or the Opala 99's with a yellow 99 tag; hung from the ring, made bigger than
+// life so it reads on screen.
+function keyModel(tag=false){
+ const black=material(0x17181a),parts=[part(new THREE.TorusGeometry(.016,.003,6,16),chrome(),[0,-.016,0]),part(new THREE.BoxGeometry(.014,.05,.03),black,[0,-.055,0]),part(new THREE.BoxGeometry(.005,.05,.013),chrome(),[0,-.104,0])];
+ if(tag){parts.push(part(new THREE.BoxGeometry(.005,.07,.045),material(0xf2c418),[.012,-.06,.03]));const plate=plateTexture();if(plate)parts.push(part(new THREE.PlaneGeometry(.04,.025),new THREE.MeshStandardMaterial({map:plate,roughness:.55}),[.0152,-.06,.03],[0,Math.PI/2,0]));}
+ const key=propGroup(tag?'Chave_Opala_99':'Chave_Blazer',parts);key.scale.setScalar(2.6);return key;
+}
+// His podium trophy, gold on a black base, held by the stem (the first win's a size up).
+function trophyModel(h=.3){
+ const cup=new THREE.LatheGeometry([[0,0],[.06,0],[.06,.025],[.025,.035],[.014,.07],[.014,h*.42],[.028,h*.48],[.07,h*.6],[.088,h*.86],[.093,h],[.086,h],[.078,h*.87],[0,h*.8]].map(([x,y])=>new THREE.Vector2(x,y)),22);
+ const grip=-h*.3,parts=[part(cup,gold(),[0,grip,0]),part(new THREE.BoxGeometry(.13,.06,.13),material(0x17181a),[0,grip-.03,0])];
+ for(const s of [-1,1])parts.push(part(new THREE.TorusGeometry(.045,.008,6,14),gold(),[0,grip+h*.72,s*.1],[0,Math.PI/2,0]));
+ return propGroup(h>.32?'Trofeu_vitoria':'Trofeu_podio',parts);
+}
 export class StoryScene{
  // at(along,out): a world point on the lane floor, `along` metres down the lane from the middle of
  // Kléber's garage door and `out` metres from it toward the lane. car: his Opala, parked nose in.
@@ -126,6 +216,8 @@ export class StoryScene{
    const rig=this.kleber.userData.rig;this.badges=[badge(rig.torso,[.142,.44,-.062],.12,.018,Math.PI/2),badge(rig.head,[.127,.19,0],.1,.016,Math.PI/2,-.3)];}
   if(car){this.car=car;if(car.userData.nameLabel)car.userData.nameLabel.visible=false;car.traverse(o=>{if(o.isSprite)o.visible=false;});this.group.add(car);}
   this.bag=bagModel();this.suit=foldedSuit();this.briefcase=briefcaseModel();this.papers=papersModel();this.pen=penModel();this.group.add(this.bag,this.suit,this.briefcase,this.papers,this.pen);
+  this.props={gloves:glovesModel(),shoes:shoesModel(),helmet:racingHelmetModel(),hans:hansModel(),hitch:hitchModel(),wrench:wrenchModel(),suitcase:suitcaseModel(),piston:pistonModel(),key:keyModel(),key99:keyModel(true),trophy:trophyModel(),bigTrophy:trophyModel(.4)};
+  for(const prop of Object.values(this.props)){prop.visible=false;this.group.add(prop);}this.prop=null;this.propHolder=null;
   this.poses=new Map([[this.kleber,clonePose(POSES.stand)],[this.pilot,clonePose(POSES.stand)],[this.lawyer,clonePose(POSES.stand)],[this.daughter,clonePose(POSES.stand)]]);
   this.time=0;this.cardTime=0;this.active=false;this.card=null;this.view=null;this.stage=null;this.papersHolder=null;
  }
@@ -164,6 +256,8 @@ export class StoryScene{
    this.other=act.lawyer?this.lawyer:act.daughter?this.daughter:this.kleber;this.kleber.visible=!act.lawyer&&!act.daughter;this.lawyer.visible=!!act.lawyer&&line.index<5;if(this.car)this.car.visible=!act.lawyer&&!act.daughter;
    this.kart.visible=!!act.daughter;if(act.daughter&&this.card?.act!=='kart'){this.kartState={u:-Math.PI/2,stop:null,heading:0,steer:0,last:null};this.driveKart(0);}
    if(this.card?.act!==line.act)this.bagHolder=line.act==='done'?this.pilot:null;
+   // What he bought in Stevan's hand all through its talk; the Opala's key in Kléber's until he hands it over.
+   this.prop=TALKS.has(line.act)?this.props[PROP_OF[line.scene]]??null:null;this.propHolder=this.prop&&(line.scene!=='opala'||line.index>0)?this.pilot:this.prop?this.kleber:null;
    // The papers: in the lawyer's hand as he holds them out, in Stevan's to sign, back with the lawyer as he goes.
    this.papersHolder=line.act!=='divorce'?null:[null,null,this.lawyer,this.pilot,this.lawyer,null][line.index]??null;
    if(line.act==='divorce'&&line.index===4)this.lawyer.position.copy(this.lawyerSpot);
@@ -175,8 +269,9 @@ export class StoryScene{
   const how=card.how??'';
   if(card.act==='divorce')return DIVORCE_SHOTS[card.index]??'wide';
   if(card.act==='kart')return KART_SHOTS[card.index]??'kartWide';
+  if(how.includes('entrega a chave'))return 'medium';
   if(card.index===0)return 'wide';
-  if(how.includes('bolsa')||card.act==='intro'&&card.index===6)return 'medium';
+  if(how.includes('bolsa')||how.includes('mostra')||how.includes('abre os braços')||card.act==='intro'&&card.index===6)return 'medium';
   return card.who==='kleber'?'overKleber':'overPilot';
  }
  // The lawyer walks: from `from` to `to` over `seconds` after `delay`, legs and the free arm swinging; facing the
@@ -241,6 +336,27 @@ export class StoryScene{
   if(c.index===1){const clap=Math.abs(Math.sin(this.time*7));p.arm=[.95,.95];p.elbow=[.75+.25*clap,.75+.25*clap];p.spread=[.02-.12*clap,.02-.12*clap];}
   if(c.index===3){p.head=.18;p.arm[1]=.55;p.elbow[1]=2.05;p.spread[1]=.55;p.lean=.03;}
  }
+ // How a line is said at Kléber's box (TALKS): laughing (hands on the belly, the head back and shaking), clapping,
+ // pointing at the other, arms open, scared (palms out, shaking the head no), proud (hands on the hips, or what he holds
+ // lifted high), moved (a hand on the chest), showing what he holds. Stevan keeps what he bought in his right hand, so
+ // his one-handed gestures take the left. The Opala's key: Kléber holds it out and Stevan reaches for it.
+ talkPose(p,who,c,how){
+  const t=this.time,ct=this.cardTime,held=who==='pilot'&&!!this.prop&&this.propHolder===this.pilot,free=held?0:1;
+  const set=(i,[arm,elbow,spread,roll])=>{p.arm[i]=arm;p.elbow[i]=elbow;p.spread[i]=spread;p.roll[i]=roll;},both=a=>{set(0,a);if(!held)set(1,a);};
+  if(how.includes('sem graça')&&held){p.arm=[2.55,.08];p.elbow=[2.05,.25];p.spread=[.45,.1];}
+  if(how.includes('rindo')){const shake=Math.sin(t*13);both(TALK_ARMS.belly);p.head=-.14+.05*shake;p.y+=.006*Math.abs(shake);p.lean=-.03;p.tilt=.04*Math.sin(t*6.5);}
+  if(how.includes('aplaudindo')){const beat=Math.sin(t*11)*.14;both(IDLE_ARMS.clap);p.spread[0]+=beat;p.spread[1]+=beat;p.head=-.05;}
+  if(how.includes('aponta')){set(free,TALK_ARMS.point);p.arm[free]+=.06*Math.sin(t*9);p.head=-.03;}
+  if(how.includes('abre os braços')){both(TALK_ARMS.open);p.head=-.06;p.lean=-.02;}
+  if(how.includes('assustado')){both(TALK_ARMS.palms);p.turn=.25*Math.sin(t*11);p.lean=-.05;p.head=-.04;}
+  if(how.includes('orgulhoso')){set(0,IDLE_ARMS.hip);set(1,held?TALK_ARMS.lift:IDLE_ARMS.hip);p.lean=-.04;p.head=-.08;}
+  if(how.includes('emocionado')){set(free,TALK_ARMS.chest);p.head=.15;}
+  if(how.includes('mostra')&&held)set(1,TALK_ARMS.show);
+  if(c.scene==='opala'&&c.index===0){
+   if(who==='kleber'){const reach=ct<.8?Math.min(1,ct*2):Math.max(0,1-(ct-.8)*1.5);p.arm[1]=.2+.85*reach;p.elbow[1]=.2+.5*(1-reach);}
+   else{const reach=ct<.8?Math.min(1,ct*2):Math.max(0,1-(ct-.8)*1.5);p.arm[1]=.08+.9*reach;p.elbow[1]=.25+.2*reach;}
+  }
+ }
  // Gestures: the speaker talks with the hands and nods, the other listens; how the line is said changes
  // the body (sad, embarrassed); the bag goes from Stevan's hand to Kléber's; Kléber offers the overalls.
  update(dt){
@@ -262,9 +378,11 @@ export class StoryScene{
    if(c.act==='intro'&&c.index===6&&who==='kleber'){p.arm=[.95,.95];p.elbow=[.55,.55];p.spread=[.18,.18];}
    if(c.act==='divorce')this.divorcePose(p,who,c);
    if(c.act==='kart')this.kartPose(p,who,c);
+   if(TALKS.has(c.act))this.talkPose(p,who,c,how);
    const cur=this.poses.get(person);blend(cur,p,k);applyPose(person.userData.rig,cur);
   }
   if(c.act==='done'&&c.index===1&&this.cardTime>=.8)this.bagHolder=this.kleber;
+  if(c.scene==='opala'&&c.index===0&&this.cardTime>=.8&&this.prop)this.propHolder=this.pilot;
   this.group.updateMatrixWorld(true);
   this.bag.visible=!!this.bagHolder;
   if(this.bag.visible){const hand=this.bagHolder.userData.rig.limbs[1].hand.getWorldPosition(new THREE.Vector3());this.bag.position.copy(this.group.worldToLocal(hand));this.bag.rotation.y=this.bagHolder.rotation.y+Math.PI/2;}
@@ -279,6 +397,9 @@ export class StoryScene{
   if(this.papers.visible){const holder=this.papersHolder,side=holder===this.pilot&&c.index===3?-1:1;this.papers.position.copy(hand(holder,side));this.papers.rotation.set(0,holder.rotation.y+(side<0?-.35:0),holder===this.pilot&&c.index===3?.25:-.15);}
   this.pen.visible=c.act==='divorce'&&c.index===3&&this.papersHolder===this.pilot;
   if(this.pen.visible){this.pen.position.copy(hand(this.pilot,1));this.pen.rotation.set(.9,this.pilot.rotation.y,.5);}
+  // What he bought, in the right hand that holds it, facing the way its holder faces.
+  for(const prop of Object.values(this.props))prop.visible=prop===this.prop&&!!this.propHolder?.visible;
+  if(this.prop?.visible){this.prop.position.copy(hand(this.propHolder,1));this.prop.rotation.set(0,this.propHolder.rotation.y,0);}
  }
  head(person){return person===this.daughter?person.userData.rig.head.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,.08,0)):person.position.clone().add(new THREE.Vector3(0,1.58,0));}
  // The kart's shots (KART_SHOTS), the lane seen from the Box 99's door and back.
@@ -302,7 +423,8 @@ export class StoryScene{
   let pos,look,fov;
   // The subtitles take the bottom of the frame: the shots look a little low, so the people stand higher in it.
   if(this.view==='wide'){pos=mid.clone().addScaledVector(this.out,6).addScaledVector(this.along,.9-drift).add(new THREE.Vector3(0,.1,0));look=mid.clone().addScaledVector(this.out,-.5).add(new THREE.Vector3(0,-.62,0));fov=FOV.wide;}
-  else if(this.view==='medium'){pos=mid.clone().addScaledVector(side,(this.stage==='box99'?4.3:2.9)-drift).add(new THREE.Vector3(0,-.1,0));look=mid.clone().add(new THREE.Vector3(0,-.55,0));fov=FOV.medium;}
+  // The talks at Kléber's box a step further back: what changes hands and the gestures show whole, heads in frame.
+  else if(this.view==='medium'){pos=mid.clone().addScaledVector(side,(this.stage==='box99'?4.3:TALKS.has(this.card?.act)?3.5:2.9)-drift).add(new THREE.Vector3(0,-.1,0));look=mid.clone().add(new THREE.Vector3(0,-.55,0));fov=FOV.medium;}
   // Stevan alone at his door (the lawyer walking out of the frame), and close on him as he lifts his head.
   else if(this.view==='alone'){pos=P.clone().addScaledVector(this.out,4.4).addScaledVector(this.along,-1.6+drift).add(new THREE.Vector3(0,.15,0));look=P.clone().addScaledVector(this.along,.3).add(new THREE.Vector3(0,-.7,0));fov=FOV.alone;}
   else if(this.view==='closePilot'){const f=new THREE.Vector3(Math.cos(this.pilot.rotation.y),0,-Math.sin(this.pilot.rotation.y));pos=P.clone().addScaledVector(f,3-drift*.3).addScaledVector(this.along,-.45).add(new THREE.Vector3(0,.08,0));look=P.clone().add(new THREE.Vector3(0,-.3,0));fov=FOV.close;}
@@ -313,5 +435,6 @@ export class StoryScene{
  info(){return {active:this.active,act:this.card?.act??null,index:this.card?.index??null,view:this.view,stage:this.stage,outfit:this.outfit,kleberLook:this.kleberLook,kleber:this.kleber.position.toArray(),pilot:this.pilot.position.toArray(),
   lawyer:this.lawyer.visible?this.lawyer.position.toArray():null,car:this.car?.visible?this.car.position.toArray():null,bag:this.bag.visible?(this.bagHolder===this.kleber?'kleber':'pilot'):null,suit:this.suit.visible,
   briefcase:this.briefcase.visible,papers:this.papers.visible?(this.papersHolder===this.lawyer?'lawyer':'pilot'):null,pen:this.pen.visible,
+  prop:this.active&&this.prop?.visible?{name:this.prop.name,holder:this.propHolder===this.kleber?'kleber':'pilot'}:null,
   kart:this.active&&this.kart.visible?{position:this.kart.position.toArray(),heading:this.kart.rotation.y,stopped:!!this.kartState.stop&&this.kartState.stop.t>=KART.stopTime,daughter:this.head(this.daughter).toArray()}:null};}
 }

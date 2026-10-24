@@ -24,7 +24,7 @@ with sync_playwright() as p:
   before=info()['hero'];page.keyboard.down('KeyW');wait_js(page,'interlagos.immersiveInfo().nearFan>=0');page.keyboard.up('KeyW');check('walk_to_supporter',info()['hero']!=before)
   page.keyboard.press('KeyE');page.wait_for_selector('[data-action="joke:0"]');fan=info()['nearFan'];topics=['família','oficina','corrida'];tastes=['família','oficina','corrida','família','oficina','corrida'];correct=topics.index(tastes[fan])
   page.click(f'[data-action="joke:{(correct+1)%3}"]');check('bad_joke_no_donation',info()['cash']==0)
-  page.click(f'[data-action="joke:{correct}"]');check('laugh_pays_donation',info()['cash']>0);shot('piada')
+  page.click(f'[data-action="joke:{correct}"]');check('laugh_pays_donation',info()['profile']['fund']>0);shot('piada')
   # Collect remaining donations with the same state actions to shorten navigation in regression runs.
   page.evaluate('''async()=>{const {FANS,JOKES}=await import('./immersive-state.js');const s=fixtureMode.state;for(let i=0;i<FANS.length;i++){s.talk(i);s.joke(JOKES.findIndex(j=>j.topic===FANS[i].taste));}fixtureMode.action('close');}''')
   # The walk up to the team stand is covered by verificar_inscricao.py; here the team's panel opens directly.
@@ -44,7 +44,7 @@ with sync_playwright() as p:
   page.evaluate("()=>{const m=fixtureMode;m.start();m.state.phase='race';m.state.finish(1);m.sync();}");frame();page.click('[data-action="afterPodium"]');page.click('[data-action="inspect"]');page.evaluate('''()=>{for(let i=0;i<1100&&fixtureMode.state.phase==='inspection';i++)fixtureMode.step({},1/120);}''');check('winner_gets_prize_but_sixth_podium',info()['result']['position']==1 and info()['podiumPlace']==6 and info()['prize']==800);shot('podio_vitoria')
   # The Blazer is the career's dream once the four challenges are done (story-career.js), after the race's cards; then
   # (Central #16) its card and the HANS, the next challenge.
-  page.evaluate('()=>{window.interlagosHistoria.skipCards();const s=fixtureMode.state;s.profile.career.challenge=4;s.profile.fund=900;s.touch();}');frame();page.click('[data-action="blazer"]');check('blazer_released',info()['profile']['released'] and info()['scene']['cards']==['dream','challenge']);shot('blazer_livre')
+  page.evaluate('()=>{window.interlagosHistoria.skipCards();const s=fixtureMode.state;s.profile.career.challenge=4;s.profile.fund=900;s.touch();}');frame();page.click('[data-action="blazer"]');check('blazer_released',info()['profile']['released'] and info()['scene']['cards']==['line']*6+['dream','challenge']);shot('blazer_livre')
   page.evaluate('window.interlagosHistoria.skipCards()');frame();page.click('[data-action="normal"]');check('normal_mode_restored',not info()['active']);open_menu(page);enter_track(page);check('garage_progress_persists',info()['profile']['released'] and not info()['active'])
   check('no_browser_errors',not report['errors']);report['passed']=True
  finally:

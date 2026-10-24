@@ -126,12 +126,118 @@ export const INTRO_LINES=Object.freeze([
  ['kleber','Vou te emprestar um. Mas você precisa comprar o seu o quanto antes e me devolver este. Pode ser que eu precise.']
 ]);
 export const DONE_LINES=Object.freeze({
- macacao:[['pilot','Muito obrigado pelo macacão, senhor Kléber Eletric. Graças a ele pude começar no automobilismo.','entrega a bolsa'],['kleber','Não há de quê, Pobre Piloto. Parabéns pela conquista do seu primeiro macacão. Tomara que ele te dê sorte e traga muitas vitórias.','pega a bolsa']],
+ macacao:[['pilot','Muito obrigado pelo macacão, senhor Kléber Eletric. Graças a ele pude começar no automobilismo.','entrega a bolsa'],['kleber','Não há de quê, Pobre Piloto. Deixa eu ver se ele voltou inteiro...','pega a bolsa'],
+  ['kleber','Hum... Está com cheiro de guincho. Esse macacão andou mais no caminhão do resgate do que dentro do carro!','rindo'],
+  ['pilot','É que o rapaz do resgate já me conhece, senhor. Ele disse que na terceira vez eu ganho desconto.','sem graça'],
+  ['kleber','Pois agora o seu é vermelho e novinho. Se rasgar no muro, o prejuízo é todo seu, hein?','aponta'],
+  ['kleber','Brincadeira, Pobre Piloto! Macacão próprio é coisa de quem leva a sério. Tomara que ele te dê sorte e traga muitas vitórias.','abre os braços']],
  // The daughter's kart (story-scene.js 'kart'): she drives round in front of the Box 99, her father watching.
  kart:[['daughter','Pai, olha eu! Sou piloto igual a você!','acelerando o kart'],['pilot','Essa é a minha filha! Segura firme na curva!','orgulhoso'],['daughter','Quando eu crescer, vou correr de Opala também!','para o kart na frente do pai'],['pilot','Vai sim, filha. E vai ser bem mais rápida que o pai.','emocionado']]
 });
 // The act a challenge's lines are staged in (story-scene.js): Kléber's box, or the kart at the Box 99.
 const DONE_ACTS=Object.freeze({kart:'kart'});
+// Kléber comes to congratulate on every conquest (user, 10-24): each challenge bought (the overalls: DONE_LINES), the
+// Blazer out, the Opala 99 bought. Caricature, after the stories Stevan tells in his videos: he puts the pilot
+// down hard, always ending on his support. Played at his box (act 'parabens', story-scene.js), the pilot showing what
+// he bought; how a line is said also picks the gesture.
+export const KLEBER_LINES=Object.freeze({
+ luvas:[['kleber','Pobre Piloto! Me contaram que você comprou luvas. Suas mesmo? Não pegou emprestado de ninguém?'],
+  ['pilot','Minhas, senhor Kléber Eletric! Fiquei duas semanas sem almoçar pra juntar. Ainda bem que água é de graça.','mostra as luvas'],
+  ['kleber','Ótimo. Agora acabou a desculpa pra sair do box sem luva e levar bronca do fiscal na frente do autódromo inteiro.','rindo'],
+  ['pilot','Aquilo foi a tensão do primeiro treino, senhor...','sem graça'],
+  ['kleber','E lembra: luva protege a mão, não protege o carro. O muro continua lá.','aponta'],
+  ['kleber','Brincadeira! Mão firme no volante, Pobre Piloto. Parabéns pela conquista. Tô contigo!','abre os braços']],
+ sapatilhas:[['kleber','Sapatilha nova, Pobre Piloto? Deixa eu ver esse pezinho de piloto.'],
+  ['pilot','Olha só, senhor Kléber Eletric. Com essa sola fininha, agora o pé sente o pedal!','mostra as sapatilhas'],
+  ['kleber','Que bom, porque até hoje o seu pé não sentia nem o acelerador. Em Brasília você pisou tão de leve que o motor afogou de tédio!','rindo'],
+  ['pilot','Todo mundo me falou que o carro era perigoso, senhor. Fui com cuidado...','sem graça'],
+  ['kleber','Cuidado demais! Naquele dia, o guincho deu mais voltas na pista do que você.','aponta'],
+  ['kleber','Mas agora não tem desculpa: sapatilha nova é pra pisar fundo. Parabéns, Pobre Piloto!','aplaudindo']],
+ capacete:[['kleber','Capacete próprio! Agora sim, Pobre Piloto: o kit de piloto está completo. Parabéns!','aplaudindo'],
+  ['pilot','Obrigado, senhor Kléber Eletric. Do meu tamanho, finalmente. O emprestado apertava tanto que eu saía do carro com bochecha de baiacu.','mostra o capacete'],
+  ['kleber','Cuida bem dele. Aí dentro vai a peça mais importante de um piloto... que, no seu caso, ainda está em fase de testes.','rindo'],
+  ['pilot','O senhor está falando da minha cabeça?','sem graça'],
+  ['kleber','Lembra quando eu pedi pra você dar uma volta em Interlagos só na mente, de olho fechado? Você rodou! Ninguém roda mentalmente, Pobre Piloto!','rindo'],
+  ['kleber','Mas, falando sério: kit completo é sinal de quem não desiste. Isso é o perfil Eletric. Tô orgulhoso de você.','abre os braços']],
+ hans:[['kleber','HANS novo, Pobre Piloto! Sabe pra que serve isso aí?'],
+  ['pilot','Pra segurar a cabeça nas batidas, senhor Kléber Eletric.','mostra o HANS'],
+  ['kleber','Exato. E do jeito que você bate, foi o melhor investimento da sua carreira. Ele se paga em duas corridas!','rindo'],
+  ['pilot','O rapaz do resgate disse que eu já sou cliente resgate safira. Falta pouco pro diamante!','orgulhoso'],
+  ['kleber','Isso não é meta, Pobre Piloto!','assustado'],
+  ['kleber','Brincadeira à parte: segurança em primeiro lugar. Eu quero você inteirinho no grid da próxima. Parabéns!','abre os braços']],
+ carretinha:[['kleber','Engate e carretinha na Blazer! Agora o Opala viaja com você, Pobre Piloto.'],
+  ['pilot','Chega de caminhão-cegonha, senhor Kléber Eletric. E de ônibus também: eu era o único piloto do grid que chegava pela rodoviária.','mostra o engate'],
+  ['kleber','Só tem um problema: a Blazer puxa o Opala. E quem puxa a Blazer quando a gasolina acabar no meio da estrada?','rindo'],
+  ['pilot','Já pensei nisso, senhor. Vai um galão no banco de trás. E, se precisar, a torcida empurra.','orgulhoso'],
+  ['kleber','Planejamento de piloto pobre: humilde, mas funciona. Parabéns! Agora é chegar descansado e voar baixo.','abre os braços']],
+ ferramentas:[['kleber','Ferramenta nova no Box 99! A equipe está tão feliz que até sorriu, Pobre Piloto.'],
+  ['pilot','Macaco a ar e parafusadeira, senhor Kléber Eletric. A turma merecia.','mostra a parafusadeira'],
+  ['kleber','Merecia mesmo. Por sua causa, num fim de semana só, eles trocaram o câmbio duas vezes, o diferencial e o motor. São os mecânicos mais treinados do Brasil!','rindo'],
+  ['pilot','Eu gosto de dizer que eu ajudo no desenvolvimento do carro, senhor.','orgulhoso'],
+  ['kleber','Ajuda: você quebra, eles aprendem. O Edu, o segundo piloto, que também é mecânico, disse que agora conserta mais rápido do que você consegue quebrar.','aponta'],
+  ['kleber','Mas, falando sério: cuidar de quem cuida do carro é atitude de primeiro piloto. Parabéns, a equipe está com você!','abre os braços']],
+ bodas:[['kleber','Viagem de bodas, Pobre Piloto? Parabéns! Sua esposa merece... principalmente por aguentar você.','rindo'],
+  ['pilot','Uma semana só nós dois, senhor Kléber Eletric. Sem pista, sem Opala, sem guincho.','mostra a mala'],
+  ['kleber','Uma semana inteira sem você no box. A equipe mandou agradecer à sua esposa pessoalmente.','rindo'],
+  ['pilot','O senhor vai sentir minha falta?'],
+  ['kleber','Vou. Mas, se passar Copa Truck na TV do hotel, desliga! Da última vez que você torceu por mim, estourou o turbo do caminhão.','assustado'],
+  ['kleber','Vai, aproveita. Piloto feliz em casa é piloto rápido na pista. Volta descansado!','abre os braços']],
+ kart:[['kleber','Pobre Piloto, eu vi sua filha no kart! Que tocada, hein? Muito mais limpa que a sua.'],
+  ['pilot','Ela puxou o pai, senhor Kléber Eletric!','orgulhoso'],
+  ['kleber','Puxou nada! Ela fez a curva sem rodar. Isso aí não veio de você.','rindo'],
+  ['kleber','Daqui a uns anos, a primeira pilota do 99 vai ser ela. E você vai dormir no sofá-cama.','aponta'],
+  ['pilot','Se for no autódromo, senhor, eu durmo até na barraca.','emocionado'],
+  ['kleber','Isso é que é legado, Pobre Piloto. Parabéns, pai! A família 99 está crescendo.','abre os braços']],
+ motor:[['kleber','Peças novas no motor! Agora o Opala tem força de sobra, Pobre Piloto.'],
+  ['pilot','Pistão, anel e bronzina, senhor Kléber Eletric. O motor voltou a encher!','mostra o pistão'],
+  ['kleber','Ótimo. Então, se você chegar lá atrás, acabou a desculpa do motor. Agora é só o piloto mesmo.','rindo'],
+  ['pilot','Ainda tenho o câmbio, o diferencial, o tanque e o para-brisa, senhor.','sem graça'],
+  ['kleber','Pobre Piloto, você tem mais desculpa do que o Opala tem peça!','aponta'],
+  ['kleber','Mas olha: motor forte com piloto que tem vontade dá pódio. Vai pra cima, que Jesus tá on!','abre os braços']],
+ blazer:[['kleber','Pobre Piloto! Fiquei sabendo que a Blazer saiu da oficina. Parabéns, o sonho virou realidade!'],
+  ['pilot','Saiu, senhor Kléber Eletric! Paguei o mecânico até o último centavo.','mostra a chave'],
+  ['kleber','Já avisou o rapaz do guincho? Coitado, ele vai perder a renda extra.','rindo'],
+  ['pilot','Agora ela anda, senhor! Só o marcador de gasolina que não marca. E o alternador. E às vezes ela não liga. Mas anda!','orgulhoso'],
+  ['kleber','Você é o único piloto que eu conheço com dois carros pra empurrar: um na pista e outro em casa!','rindo'],
+  ['kleber','Mas sonho realizado é sonho realizado. Quem tira a Blazer da oficina tira o Opala do fundo do grid. Tô contigo!','abre os braços']],
+ opala:[['kleber','Pobre Piloto... chegou o dia. O Opala 99 é seu.','entrega a chave'],
+  ['pilot','Nem acredito, senhor Kléber Eletric. Da vaquinha ao grid. O carro é meu!','emocionado'],
+  ['kleber','É seu. E, a partir de hoje, quando quebrar, é você que chora e é você que paga. Bem-vindo ao clube dos donos de carro velho!','rindo'],
+  ['pilot','Eu já era sócio, senhor. Tenho a Blazer.','orgulhoso'],
+  ['pilot','Um dia eu vou ser campeão e vou esquecer de todo mundo que me ajudou. Mas, até lá, nunca vou esquecer do senhor.','emocionado'],
+  ['kleber','Você veio de ônibus, dormiu em barraca, pulou almoço e nunca desistiu. Isso é o perfil Eletric. Tô orgulhoso de você, piloto!','abre os braços']]
+});
+// The career's firsts on the track (user, 10-24, after Stevan's first podium in sixth): Kléber, still in his overalls
+// after the race (act 'podio'), congratulates, and the pilot with his trophy promises to cheer for him. A first podium
+// below sixth opens with PODIUM_OPENING ({Lugar}: Segundo..Quinto); a first win is a first podium too, so it gets the
+// win's talk alone.
+export const PODIUM_PLACES=Object.freeze(['','primeiro','segundo','terceiro','quarto','quinto','sexto']);
+export const FIRST_LINES=Object.freeze({
+ podio:[['kleber','Pobre Piloto, PÓDIO! Sexto lugar! Só na Old Stock mesmo pra sexto lugar subir no pódio. Em qualquer outra categoria, você ia assistir da arquibancada!','aplaudindo'],
+  ['pilot','Obrigado, senhor Kléber Eletric! Tudo bem que um bateu, dois quebraram, um foi punido e só um eu ultrapassei. Mas cada um com o seu, né?','orgulhoso'],
+  ['kleber','Isso é resiliência, cara. É o perfil Eletric que a gente espera.'],
+  ['pilot','O senhor é uma inspiração pra mim. Na próxima corrida, eu vou torcer muito pelo senhor!','emocionado'],
+  ['kleber','Não, não, não! Torcer por mim, não! Está no contrato! Você torce pros outros.','assustado'],
+  ['kleber','E pode vir no meu box... mas só de vez em quando, tá bom? Brincadeira. Parabéns, Pobre Piloto: você continua no time!','abre os braços']],
+ vitoria:[['kleber','Pobre Piloto... você GANHOU! Você ganhou a corrida!','aplaudindo'],
+  ['pilot','Ganhei, senhor Kléber Eletric! Eu, o piloto que já rodou até mentalmente!','orgulhoso'],
+  ['kleber','Já mandei os fiscais conferirem tudo: as voltas, a balança, o regulamento... Vai que foi engano!','rindo'],
+  ['pilot','Será que agora eu tenho estrela, senhor?'],
+  ['kleber','Estrela, eu não sei. Mas hoje até o meu Laranjão ficou pequeno perto de você.','aponta'],
+  ['kleber','Parabéns de verdade, Pobre Piloto. Hoje a Old Stock inteira aprendeu o seu nome. Tô orgulhoso!','abre os braços']]
+});
+const PODIUM_OPENING='Pobre Piloto, PÓDIO! {Lugar} lugar! Eu tive que perguntar duas vezes pro cronometrista se não era engano!';
+// Kléber's talk for a conquest (KLEBER_LINES, FIRST_LINES) as line cards, Stevan in what he wears then.
+export const kleberCards=(career,id,lines=KLEBER_LINES[id],act='parabens')=>(lines??[]).map((line,i)=>({...lineCard(line,id,act,i),outfit:outfitOf(career)}));
+// The race's first podium or first win, once per career (career.firsts), before the report's cards; a first podium
+// below sixth opens with its own place.
+export function firstsCards(career){
+ const r=career.report,kind=r?.outcome==='vitoria'?'vitoria':r?.outcome==='podio'?'podio':null;
+ if(!kind||career.firsts.includes(kind))return [];
+ for(const k of kind==='vitoria'?['podio','vitoria']:['podio'])if(!career.firsts.includes(k))career.firsts.push(k);
+ const place=PODIUM_PLACES[r.position]??'',lines=FIRST_LINES[kind].map((line,i)=>kind==='podio'&&i===0&&r.position!==6&&place?[line[0],PODIUM_OPENING.replace('{Lugar}',place[0].toUpperCase()+place.slice(1)),line[2]]:line);
+ return kleberCards(career,kind,lines,'podio');
+}
 export const MISSED_LINES=Object.freeze({
  macacao:[['kleber','O prazo acabou, Pobre Piloto. Cadê o seu macacão?'],['pilot','Ainda não deu, senhor Kléber Eletric... A grana não fechou.','sem graça'],['kleber','Tudo bem, empresto mais um pouco. Mas não demora: a equipe já está comentando.']]
 });
@@ -191,7 +297,8 @@ export const DIVORCE_LINES=Object.freeze([
 // The divorce's cards in the report it came with: the scene (in what the pilot wears), then what she took.
 export const divorceCards=(career,wallet)=>career.report?.divorce?[...DIVORCE_LINES.map((line,i)=>({...lineCard(line,'divorce','divorce',i),outfit:outfitOf(career)})),{type:'divorce',taken:career.report.divorce.taken,fund:wallet.fund,race:career.report.race}]:[];
 
-// blazerAt: the race count when the Blazer came out (null before); opala: the Opala 99 bought (Central #16).
+// blazerAt: the race count when the Blazer came out (null before); opala: the Opala 99 bought (Central #16); firsts: the
+// first podium and first win Kléber already came for ('podio', 'vitoria').
 // The hero's energy (user, 10-24): full at a career's start, a race takes ENERGY.race, the Tia's café gives it back — a
 // coffee or a pão de queijo ENERGY.one each, both in the same paddock fill it (he is mineiro), a doce de leite ENERGY.sweet.
 export const ENERGY=Object.freeze({start:100,race:60,one:30,sweet:15});
@@ -199,7 +306,7 @@ export function eatEnergy(energy,id,eaten){
  const both=['cafe','pao'].every(item=>item===id||eaten.includes(item));
  return clamp(both?100:energy+(id==='doce'?ENERGY.sweet:ENERGY.one),0,100);
 }
-export const newCareer=()=>({version:1,energy:ENERGY.start,morale:Object.fromEntries(MORALE.map(k=>[k,MORALE_START])),races:0,challenge:0,since:0,expense:false,gear:[],intro:false,report:null,over:null,clock:newClock(),divorced:null,pensionFor:null,blazerAt:null,opala:false});
+export const newCareer=()=>({version:1,energy:ENERGY.start,morale:Object.fromEntries(MORALE.map(k=>[k,MORALE_START])),races:0,challenge:0,since:0,expense:false,gear:[],intro:false,report:null,over:null,clock:newClock(),divorced:null,pensionFor:null,blazerAt:null,opala:false,firsts:[]});
 // A saved career, checked field by field; anything unknown starts a new one.
 export function loadCareer(raw){
  const c=newCareer();if(!raw||typeof raw!=='object'||raw.version!==1)return c;
@@ -208,7 +315,7 @@ export function loadCareer(raw){
  c.races=count(raw.races);c.challenge=Math.min(count(raw.challenge),CHALLENGES.length);c.since=Math.min(count(raw.since),c.races);c.expense=raw.expense===true;c.intro=raw.intro===true;
  c.gear=Array.isArray(raw.gear)?CHALLENGES.slice(0,c.challenge).map(ch=>ch.id):[];
  if(raw.report&&typeof raw.report==='object'&&Object.hasOwn(OUTCOME_TITLES,raw.report.outcome)&&MORALE.every(k=>Number.isFinite(raw.report.before?.[k])))
-  c.report={race:count(raw.report.race),outcome:raw.report.outcome,before:Object.fromEntries(MORALE.map(k=>[k,clamp(Math.round(raw.report.before[k]),0,100)])),awaiting:raw.report.awaiting==='expense'?'expense':null,
+  c.report={race:count(raw.report.race),outcome:raw.report.outcome,position:Number.isInteger(raw.report.position)&&raw.report.position>0?raw.report.position:null,before:Object.fromEntries(MORALE.map(k=>[k,clamp(Math.round(raw.report.before[k]),0,100)])),awaiting:raw.report.awaiting==='expense'?'expense':null,
    ...(['damage','bill','charged'].every(k=>Number.isInteger(raw.report.repair?.[k])&&raw.report.repair[k]>=0)?{repair:{damage:raw.report.repair.damage,bill:raw.report.repair.bill,charged:raw.report.repair.charged}}:{})};
  c.over=Object.hasOwn(GAME_OVER,raw.over)?raw.over:null;
  c.energy=Number.isFinite(raw.energy)?clamp(Math.round(raw.energy),0,100):ENERGY.start;
@@ -219,6 +326,8 @@ export function loadCareer(raw){
  c.pensionFor=Number.isInteger(raw.pensionFor)&&raw.pensionFor>=0&&raw.pensionFor<=c.races?raw.pensionFor:null;
  // The Blazer out and the Opala 99 bought (Central #16); a career from before them has neither.
  c.blazerAt=Number.isInteger(raw.blazerAt)&&raw.blazerAt>=0&&raw.blazerAt<=c.races?raw.blazerAt:null;c.opala=raw.opala===true&&c.challenge===CHALLENGES.length;
+ // The firsts Kléber came for (firstsCards); a career from before them has none.
+ c.firsts=Array.isArray(raw.firsts)?['podio','vitoria'].filter(k=>raw.firsts.includes(k)):[];
  if(c.report){const r=raw.report;for(const k of ['clock','clockBefore']){const v=clockOf(r[k]);if(v)c.report[k]=v;}
   if(c.divorced&&Number.isFinite(r.divorce?.taken))c.report.divorce={taken:r.divorce.taken};c.report.divorceDue=r.divorceDue===true&&!c.divorced;}
  return c;
@@ -240,7 +349,7 @@ export const repairCards=(report,wallet)=>report?.repair?[{type:'repair',...repo
 // The wife's clock steps with her new morale (divorceDue: the state takes half of the wallet, divorce()).
 export function applyRace(career,result,repair=null,random=Math.random){
  career.races++;const outcome=outcomeOf(result),before={...career.morale};career.energy=Math.max(0,(career.energy??ENERGY.start)-ENERGY.race);
- career.report={race:career.races,outcome,before,awaiting:null,...(repair?{repair}:{}),clockBefore:{...career.clock}};
+ career.report={race:career.races,outcome,position:outcome==='guincho'?null:result.position,before,awaiting:null,...(repair?{repair}:{}),clockBefore:{...career.clock}};
  for(const card of moraleCards(career))career.morale[card.key]=card.value;
  career.report.divorceDue=divorceStep(career,random);career.report.clock={...career.clock};
  return career.report;
@@ -249,7 +358,7 @@ export function applyRace(career,result,repair=null,random=Math.random){
 // yet shown counts as towed in.
 export function reviseRace(career,result){
  const r=career.report;if(!r||r.awaiting)return false;
- career.morale={...r.before};r.outcome=outcomeOf(result);for(const card of moraleCards(career))career.morale[card.key]=card.value;
+ career.morale={...r.before};r.outcome=outcomeOf(result);r.position=r.outcome==='guincho'?null:result.position;for(const card of moraleCards(career))career.morale[card.key]=card.value;
  // The wife's clock steps again from where it was before the race, her patience as drawn.
  if(!career.divorced&&r.clockBefore){const patience=career.clock.patience;career.clock={...r.clockBefore};r.divorceDue=divorceStep(career,()=>patience??Math.random());r.clock={...career.clock};}
  return true;
@@ -265,7 +374,7 @@ export function challengeCards(career,wallet){
  if(wallet.fund>=c.goal&&c.expense&&!career.expense&&!career.divorced){if(career.report)career.report.awaiting='expense';return [{type:'expense',challenge:c.id,value:expenseFor(c,career),fund:wallet.fund}];}
  if(wallet.fund>=c.goal){
   wallet.fund-=c.goal;career.gear.push(c.id);career.challenge++;career.since=career.races;career.expense=false;if(c.morale)shift(career,c.morale);
-  const act=DONE_ACTS[c.id]??'done',lines=(DONE_LINES[c.id]??[]).map((line,i)=>({...lineCard(line,c.id,act,i),...(act==='done'?{}:{outfit:outfitOf(career)})}));
+  const act=DONE_ACTS[c.id]??'done',lines=[...(DONE_LINES[c.id]??[]).map((line,i)=>({...lineCard(line,c.id,act,i),...(act==='done'?{}:{outfit:outfitOf(career)})})),...kleberCards(career,c.id)];
   return [...lines,{type:'done',challenge:c.id,fund:wallet.fund,morale:{...career.morale}},nextCard(career,wallet)];
  }
  const ran=career.races-career.since;
@@ -279,13 +388,13 @@ export function challengeCards(career,wallet){
 export function releaseBlazer(career,wallet){
  if(stageOf(career,wallet.released).kind!=='blazer'||wallet.fund<BLAZER_GOAL)return null;
  wallet.fund-=BLAZER_GOAL;wallet.released=true;career.blazerAt=career.races;career.since=career.races;career.expense=false;
- return [{type:'dream',dream:'blazer',goal:BLAZER_GOAL,fund:wallet.fund,done:true},nextCard(career,wallet)];
+ return [...kleberCards(career,'blazer'),{type:'dream',dream:'blazer',goal:BLAZER_GOAL,fund:wallet.fund,done:true},nextCard(career,wallet)];
 }
 // The Opala 99 bought from the team (ImmersiveState.buyOpala), after the last challenge.
 export function buyOpala(career,wallet){
  const s=stageOf(career,wallet.released);if(s.kind!=='opala'||s.done||wallet.fund<OPALA_GOAL)return null;
  wallet.fund-=OPALA_GOAL;career.opala=true;
- return [{type:'owned',goal:OPALA_GOAL,fund:wallet.fund}];
+ return [...kleberCards(career,'opala'),{type:'owned',goal:OPALA_GOAL,fund:wallet.fund}];
 }
 // A line of Kléber's box (story-scene.js stages it): act 'intro', 'done' or 'missed', its place in the talk.
 export const lineCard=([who,text,how],scene,act=scene,index=0)=>({type:'line',who,text,how:how??'',scene,act,index});

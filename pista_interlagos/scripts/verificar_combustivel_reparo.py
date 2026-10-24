@@ -51,7 +51,7 @@ with sync_playwright() as p:
     frame()
     page.screenshot(path=str(SHOTS / 'combustivel_mesa_equipe.png'))
     # The race, finished second with the CARRO bar at 75% and a cracked windscreen (not on the bill).
-    page.evaluate("()=>{const m=fixtureMode;m.state.desk=false;m.state.phase='race';m.state.health=.75;m.state.glass=.5;m.state.finish(2);m.sync();}")
+    page.evaluate("()=>{const m=fixtureMode;m.state.desk=false;m.state.profile.career.firsts=['podio','vitoria'];m.state.phase='race';m.state.health=.75;m.state.glass=.5;m.state.finish(2);m.sync();}")
     frame()
     podium = page.inner_text('#immersivePanel') if page.locator('#immersivePanel').count() else page.inner_text('body')
     check('podium_lists_the_repair', 'conserto do carro: −R$ 250,00' in podium, podium[:600])

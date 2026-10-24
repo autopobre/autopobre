@@ -4,9 +4,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {ImmersiveState,FANS,JOKES,COSTS} from '../teste/immersive-state.js';
-import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,MISSED,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,SNAG_COST,outfitOf,repairBill,repairPerPoint,enginePower,ENGINE_PARTS,stageOf,BLAZER_AFTER,OPALA_GOAL,divorceStep,patienceOf,DIVORCE_LINES,PENSION,PENSION_MONTHS,GAME_OVER} from '../teste/story-career.js';
+import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,KLEBER_LINES,FIRST_LINES,MISSED,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,SNAG_COST,outfitOf,repairBill,repairPerPoint,enginePower,ENGINE_PARTS,stageOf,BLAZER_AFTER,OPALA_GOAL,divorceStep,patienceOf,DIVORCE_LINES,PENSION,PENSION_MONTHS,GAME_OVER} from '../teste/story-career.js';
 const checks={},check=(name,value)=>{checks[name]=!!value;assert(value,name);};
-const profileOf=(career={},fund=0)=>({fund,career:{...newCareer(),intro:true,...career}});
+// The career's first podium and win already seen (Kléber's talks for them are checked on their own, below).
+const profileOf=(career={},fund=0)=>({fund,career:{...newCareer(),intro:true,firsts:['podio','vitoria'],...career}});
 const story=(career,fund)=>{const s=new ImmersiveState(profileOf(career,fund));s.start();return s;};
 const fundAll=s=>{for(let i=0;i<FANS.length;i++){s.talk(i);s.joke(JOKES.findIndex(j=>j.topic===FANS[i].taste));s.fan=null;}};
 // From the paddock to the inspection's end: finished at `position`, or towed in (null).
@@ -142,7 +143,8 @@ check('lines_know_act_and_place',first.careerCards()===null&&new ImmersiveState(
 // After the four challenges the Blazer is the dream, bought from the wallet at the end of a race; then (Central #16)
 // the challenges after it start, the HANS first, its deadline from that race.
 const dream=story({challenge:BLAZER_AFTER},850);race(dream,6);check('blazer_card_after_equipment',dream.scene.cards.at(-1).type==='dream'&&dream.scene.cards.at(-1).dream==='blazer');readAll(dream);
-check('blazer_bought_then_hans',dream.releaseBlazer()&&dream.profile.released&&dream.profile.fund===150&&types(dream)==='dream,challenge'&&dream.sceneCard().done&&dream.scene.cards[1].challenge==='hans'&&dream.scene.cards[1].fresh&&dream.scene.cards[1].left===3&&dream.profile.career.blazerAt===1&&dream.profile.career.since===1);
+const talk=KLEBER_LINES.blazer.length;
+check('blazer_bought_then_hans',dream.releaseBlazer()&&dream.profile.released&&dream.profile.fund===150&&types(dream)===[...KLEBER_LINES.blazer.map(()=>'line'),'dream','challenge'].join()&&dream.sceneCard().act==='parabens'&&dream.scene.cards[talk].done&&dream.scene.cards[talk+1].challenge==='hans'&&dream.scene.cards[talk+1].fresh&&dream.scene.cards[talk+1].left===3&&dream.profile.career.blazerAt===1&&dream.profile.career.since===1);
 readAll(dream);check('mechanic_paid_once',!dream.releaseBlazer()&&dream.profile.fund===150);
 // A save whose Blazer came out before these challenges existed: the HANS deadline starts with the next race.
 const legacy=new ImmersiveState({fund:100,released:true,races:9,career:{...newCareer(),intro:true,challenge:BLAZER_AFTER,races:9,since:4}});
@@ -156,7 +158,7 @@ check('their_expenses',later.map(c=>c.expense?expenseFor(c,{morale:{esposa:50}})
 check('trailer_entry',entryFor('cascavel',{gear:['carretinha']})===ENTRY.home&&entryFor('cascavel',{gear:['hans']})===ENTRY.away&&entryFor('cascavel')===ENTRY.away);
 // The Box 99's tools: the team +10 when bought, then R$ 5 a point of damage.
 const tools=story({challenge:6,expense:true},2000);race(tools,1);
-check('tools_bought',tools.profile.career.gear.includes('ferramentas')&&tools.profile.fund===600&&tools.profile.career.morale.equipe===50+20+10&&types(tools)==='morale,morale,morale,repair,done,challenge'&&tools.scene.cards.at(-1).challenge==='bodas');
+check('tools_bought',tools.profile.career.gear.includes('ferramentas')&&tools.profile.fund===600&&tools.profile.career.morale.equipe===50+20+10&&types(tools)===['morale','morale','morale','repair',...KLEBER_LINES.ferramentas.map(()=>'line'),'done','challenge'].join()&&tools.scene.cards.at(-1).challenge==='bodas');
 readAll(tools);tools.start();tools.health=.75;race(tools,12);check('tools_halve_the_bill',repairPerPoint(tools.profile.career)===5&&tools.scene.cards.find(c=>c.type==='repair').bill===125&&repairBill(.75,5000,5).bill===125);
 // Her trip: no expense asked, her bar +25; skipped after a divorce; a deadline missed hurts her, not the team.
 const trip=story({challenge:7},2000);race(trip,1);
@@ -166,13 +168,13 @@ check('trip_skipped_after_divorce',single.profile.career.challenge===8&&types(si
 const late8=story({challenge:7,races:6,since:3},0);race(late8,12);const missed8=late8.scene.cards.find(c=>c.type==='missed');
 check('trip_missed_hurts_her',missed8?.changes.esposa===-10&&!('equipe' in missed8.changes)&&late8.profile.career.morale.esposa===50-10-10&&late8.profile.career.morale.equipe===45);
 // The daughter's kart: her scene at the Box 99 (act 'kart', Stevan in his own overalls), the supporters +15.
-const kart=story({challenge:8,expense:true},3000);race(kart,1);const kartLines=kart.scene.cards.filter(c=>c.type==='line');
-check('kart_scene',kartLines.length===DONE_LINES.kart.length&&kartLines.every((c,i)=>c.act==='kart'&&c.scene==='kart'&&c.index===i&&c.outfit==='proprio')&&kartLines[0].who==='daughter'&&kart.profile.career.morale.torcida===50+20+15&&kart.scene.cards.at(-1).challenge==='motor');
+const kart=story({challenge:8,expense:true},3000);race(kart,1);const kartLines=kart.scene.cards.filter(c=>c.act==='kart');
+check('kart_scene',kartLines.length===DONE_LINES.kart.length&&kartLines.every((c,i)=>c.act==='kart'&&c.scene==='kart'&&c.index===i&&c.outfit==='proprio')&&kartLines[0].who==='daughter'&&kart.profile.career.morale.torcida===50+20+15&&kart.scene.cards.at(-1).challenge==='motor'&&kart.scene.cards.filter(c=>c.act==='parabens').length===KLEBER_LINES.kart.length&&kart.scene.cards.findIndex(c=>c.act==='parabens')===kart.scene.cards.findLastIndex(c=>c.act==='kart')+1);
 // The engine's new parts: a little stronger (3%), in the story only (ImmersiveMode.start sets car.engineScale).
 check('engine_parts',enginePower({gear:['motor']})===ENGINE_PARTS&&ENGINE_PARTS===1.03&&enginePower({gear:['kart']})===1&&enginePower(null)===1);
 // After every challenge, the big dream: the Opala 99, bought after a race; it stays bought.
 const big=story({challenge:CHALLENGES.length},7500);race(big,1);check('opala_dream_after_all',big.scene.cards.at(-1).type==='dream'&&big.scene.cards.at(-1).dream==='opala'&&big.scene.cards.at(-1).goal===OPALA_GOAL&&!big.profile.career.opala);
-readAll(big);check('opala_bought',big.buyOpala()&&big.profile.career.opala&&big.profile.fund===300&&types(big)==='owned');readAll(big);
+readAll(big);check('opala_bought',big.buyOpala()&&big.profile.career.opala&&big.profile.fund===300&&types(big)===[...KLEBER_LINES.opala.map(()=>'line'),'owned'].join()&&big.sceneCard().how==='entrega a chave');readAll(big);
 check('opala_bought_once',!big.buyOpala()&&big.profile.fund===300&&stageOf(new ImmersiveState(JSON.parse(JSON.stringify(big.profile))).profile.career,true).done);
 const poorDream=story({challenge:CHALLENGES.length},100);race(poorDream,12);readAll(poorDream);check('opala_needs_the_money',!poorDream.buyOpala()&&!poorDream.profile.career.opala);
 // The supporters' morale fills the paddock (six at 50% as before, two at 0%, ten at 100%) and the stands (15% at a
@@ -191,4 +193,22 @@ const tired=story();race(tired,5);check('race_tires_the_hero',tired.profile.care
 check('one_snack_gives_30',eatEnergy(40,'cafe',[])===70&&eatEnergy(40,'pao',[])===70&&eatEnergy(40,'doce',[])===55);
 check('coffee_and_cheese_bread_fill_it',eatEnergy(70,'pao',['cafe'])===100&&eatEnergy(10,'cafe',['pao'])===100&&eatEnergy(95,'cafe',[])===100);
 const fed=story();fed.profile.career.energy=40;fed.eat('cafe');fed.eat('pao');check('state_eats',fed.profile.career.energy===100&&loadCareer(JSON.parse(JSON.stringify(fed.profile.career))).energy===100);
+// Kléber congratulates on every conquest (user, 10-24): each challenge bought (the overalls: his own talk), the Blazer,
+// the Opala 99; at his box (act 'parabens'), Stevan in what he wears then; always ending on Kléber's support.
+check('kleber_for_every_conquest',CHALLENGES.every(c=>c.id==='macacao'?DONE_LINES.macacao.length>2:KLEBER_LINES[c.id]?.length>=5)&&['blazer','opala'].every(id=>KLEBER_LINES[id].length>=5));
+check('kleber_ends_supporting',[...Object.values(KLEBER_LINES),...Object.values(FIRST_LINES),DONE_LINES.macacao].every(lines=>lines.at(-1)[0]==='kleber'&&lines.every(([who,text])=>['kleber','pilot'].includes(who)&&text)));
+const gloves=story({challenge:1,expense:true},300);race(gloves,12);const gloveTalk=gloves.scene.cards.filter(c=>c.type==='line');
+check('gloves_talk_before_the_card',gloveTalk.length===KLEBER_LINES.luvas.length&&gloveTalk.every((c,i)=>c.act==='parabens'&&c.scene==='luvas'&&c.index===i&&c.outfit==='proprio')&&gloves.scene.cards[gloves.scene.cards.indexOf(gloveTalk.at(-1))+1].type==='done');
+// The first podium (Stevan's was sixth: "torcer por mim não, está no contrato!") and the first win, once a career,
+// before the race's report; Kléber in his overalls (act 'podio'); a podium lost to the judge does not count.
+const firstPodium=story({firsts:[]});race(firstPodium,6);const podiumTalk=firstPodium.scene.cards.filter(c=>c.type==='line');
+check('first_podium_talk',podiumTalk.length===FIRST_LINES.podio.length&&podiumTalk.every((c,i)=>c.act==='podio'&&c.scene==='podio'&&c.index===i&&c.outfit==='emprestado')&&firstPodium.scene.cards[0].type==='line'&&podiumTalk[0].text.includes('Sexto lugar')&&podiumTalk.some(c=>c.text.includes('Está no contrato'))&&firstPodium.profile.career.firsts.join()==='podio');
+readAll(firstPodium);race(firstPodium,2);check('podium_talk_once',!firstPodium.scene.cards.some(c=>c.type==='line'));
+const third=story({firsts:[]});race(third,3);check('first_podium_says_its_place',third.sceneCard().text.startsWith('Pobre Piloto, PÓDIO! Terceiro lugar!'));
+const firstWin=story({firsts:['podio']});race(firstWin,1);check('first_win_talk',types(firstWin).startsWith(FIRST_LINES.vitoria.map(()=>'line').join())&&firstWin.sceneCard().scene==='vitoria'&&firstWin.profile.career.firsts.join()==='podio,vitoria');
+const winFirst=story({firsts:[]});race(winFirst,1);check('win_counts_as_podium',winFirst.scene.cards.filter(c=>c.type==='line').every(c=>c.scene==='vitoria')&&winFirst.profile.career.firsts.join()==='podio,vitoria');
+readAll(winFirst);race(winFirst,4);check('no_podium_talk_after_a_win',!winFirst.scene.cards.some(c=>c.type==='line'));
+const judged=story({firsts:[]});judged.scene=null;judged.phase='race';judged.finish(2);judged.leavePodium();judged.goToBox();judged.afterDisqualified();
+check('disqualified_podium_no_talk',!judged.scene.cards.some(c=>c.type==='line')&&judged.profile.career.firsts.length===0);
+check('firsts_survive_reload',loadCareer(JSON.parse(JSON.stringify(firstPodium.profile.career))).firsts.join()==='podio'&&loadCareer({...newCareer(),firsts:['x','vitoria']}).firsts.join()==='vitoria'&&loadCareer({version:1}).firsts.length===0);
 const report={passed:true,checks};fs.writeFileSync(new URL('../dados/validacao_carreira.json',import.meta.url),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));

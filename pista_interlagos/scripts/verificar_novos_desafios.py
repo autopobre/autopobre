@@ -19,7 +19,7 @@ ImmersiveMode.prototype.info=function(){window.fixtureMode=this;return old.call(
 # A race of the career at challenge `challenge` (the wife's request already answered), finished at `position`, then the
 # judge's inspection to the report.
 RACE = """([challenge,fund,position,released])=>{const m=fixtureMode,s=m.state,c=s.profile.career;window.interlagosHistoria.skipCards();
- Object.assign(c,{intro:true,races:6,since:6,challenge,expense:true,gear:['macacao','luvas','sapatilhas','capacete','hans','carretinha','ferramentas','bodas','kart','motor'].slice(0,challenge),report:null,opala:false});s.profile.released=released;s.profile.fund=fund;
+ Object.assign(c,{intro:true,races:6,since:6,challenge,expense:true,firsts:['podio','vitoria'],gear:['macacao','luvas','sapatilhas','capacete','hans','carretinha','ferramentas','bodas','kart','motor'].slice(0,challenge),report:null,opala:false});s.profile.released=released;s.profile.fund=fund;
  Object.assign(s,{scene:null,phase:'race',health:1,paid:false,inspected:false,judging:false,cash:0});s.finish(position);m.sync();return true;}"""
 INSPECT = """()=>{const m=fixtureMode;m.action('afterPodium');m.action('inspect');for(let i=0;i<1100&&m.state.phase==='inspection';i++)m.step({},1/120);m.sync();return m.state.scene?.cards.map(c=>c.type).join();}"""
 report = {'errors': [], 'checks': {}}
@@ -56,6 +56,9 @@ with sync_playwright() as p:
     check('blazer_button', 'Pagar o mecânico e buscar a Blazer' in panel(), panel()[:400])
     page.click('[data-action="blazer"]')
     frame()
+    check('kleber_for_the_blazer', card()['type'] == 'line' and card()['act'] == 'parabens' and scene()['prop']['name'] == 'Chave_Blazer', card())
+    page.evaluate("()=>{fixtureMode.action('scene:skip');fixtureMode.sync();fixtureMode.ui();return true;}")
+    frame()
     text = panel()
     check('blazer_out_card', card()['type'] == 'dream' and card()['done'] and 'A Blazer saiu da oficina!' in text and 'novos desafios' in text, text[:400])
     page.screenshot(path=str(SHOTS / 'desafios_blazer.png'))
@@ -72,7 +75,7 @@ with sync_playwright() as p:
     page.evaluate(RACE, [8, 3000, 1, True])
     types = page.evaluate(INSPECT)
     report['kart_cards'] = types
-    check('kart_report', types == 'morale,morale,morale,repair,line,line,line,line,done,challenge', types)
+    check('kart_report', types == 'morale,morale,morale,repair,' + ','.join(['line'] * 10) + ',done,challenge', types)
     nxt()  # the report's moods and bill share one screen (2026-10-24)
     seen = []
     for i in range(4):
@@ -90,6 +93,11 @@ with sync_playwright() as p:
     check('kart_goes_round_then_stops', seen[0]['moved'] and seen[1]['moved'] and seen[2]['kart']['stopped'] and not seen[3]['moved'], report['kart_scene'])
     frame()
     text = panel()
+    # Kléber at his box after her lines (story-career.js KLEBER_LINES.kart).
+    check('kleber_after_kart', card()['type'] == 'line' and card()['act'] == 'parabens' and scene()['stage'] == 'kleber' and not scene()['kart'], card())
+    page.evaluate("()=>{fixtureMode.action('scene:skip');fixtureMode.sync();fixtureMode.ui();return true;}")
+    frame()
+    text = panel()
     check('kart_done_card', card()['type'] == 'done' and 'Kart novo para a filha' in text and 'Moral com a torcida: +15%' in text, text[:400])
     check('kart_scene_closed', not scene()['active'] and not scene()['kart'])
     page.screenshot(path=str(SHOTS / 'desafios_kart_cartao.png'))
@@ -102,6 +110,9 @@ with sync_playwright() as p:
     frame()
     check('opala_button', 'Comprar o Opala 99 da equipe' in panel() and 'GRANDE SONHO' in panel(), panel()[:500])
     page.click('[data-action="opala"]')
+    frame()
+    check('kleber_hands_the_key', card()['type'] == 'line' and card()['how'] == 'entrega a chave', card())
+    page.evaluate("()=>{fixtureMode.action('scene:skip');fixtureMode.sync();fixtureMode.ui();return true;}")
     frame()
     text = panel()
     check('opala_bought', card()['type'] == 'owned' and 'O Opala 99 agora é seu!' in text and page.evaluate('fixtureMode.state.profile.career.opala'), text[:400])

@@ -98,6 +98,13 @@ def desktop(browser):
     if page.is_visible('#resultsContinue'): page.click('#resultsContinue')
     page.evaluate("()=>{fixtureMode.action('afterPodium');fixtureMode.action('inspect');fixtureMode.state.inspectionStep(8);fixtureMode.sync();fixtureMode.ui();}")
     wait_js(page, "fixtureMode.state.phase==='complete'&&fixtureMode.state.scene?.kind==='report'")
+    # The career's first podium: Kléber comes to his box first (story-career.js FIRST_LINES), then the race's report.
+    frames(page)
+    text = panel(page)
+    check('first_podium_kleber_first', card(page) == 'line' and page.evaluate("fixtureMode.state.sceneCard().act==='podio'") and 'Terceiro lugar' in text)
+    shot(page, '06b_primeiro_podio_kleber')
+    for _ in range(6): page.keyboard.press('Enter')
+    frames(page)
     text = panel(page)
     # One screen for the whole report (user, 2026-10-24): the three moods (wife, team, supporters), the repair bill
     # (Central #14) and the challenge's progress, one Continuar for all.
@@ -110,7 +117,7 @@ def desktop(browser):
     check('summary_after_report', page.evaluate('!fixtureMode.state.scene') and 'Carteira' in text and 'Próxima etapa' in text and 'Prêmio: R$ 500,00' in text)
     shot(page, '10_resumo')
     # The money is there: the wife asks first; paid, the overalls are bought and Kléber gets his back.
-    page.evaluate("()=>{const s=fixtureMode.state,c=s.profile.career;s.profile.fund=2000;c.report={race:c.races,outcome:'vitoria',before:{...c.morale},awaiting:null};const cards=s.careerCards();s.openScene(cards.kind,cards.cards);fixtureMode.ui();}")
+    page.evaluate("()=>{const s=fixtureMode.state,c=s.profile.career;s.profile.fund=2000;c.firsts=['podio','vitoria'];c.report={race:c.races,outcome:'vitoria',before:{...c.morale},awaiting:null};const cards=s.careerCards();s.openScene(cards.kind,cards.cards);fixtureMode.ui();}")
     for _ in range(3): page.keyboard.press('Enter')
     frames(page); text = panel(page)
     check('wife_request', card(page) == 'expense' and 'Precisa de R$' in text and 'aniversário' in text and 'Não pagar agora' in text)
@@ -122,8 +129,9 @@ def desktop(browser):
     page.keyboard.press('Enter'); frames(page)
     check('kleber_gets_overalls_back', card(page) == 'line' and 'Muito obrigado pelo macacão' in panel(page))
     shot(page, '12_devolve_macacao')
-    # The challenge done and the next one share the report's screen (2026-10-24).
-    for _ in range(2): page.keyboard.press('Enter')
+    # Kléber's six lines (his jokes, then his support), then the challenge done and the next one share the report's
+    # screen (2026-10-24).
+    for _ in range(6): page.keyboard.press('Enter')
     frames(page)
     check('next_challenge_gloves', card(page) in ('done', 'challenge') and 'Novo desafio' in panel(page) and 'LUVAS' in panel(page).upper())
     check('overalls_owned', page.evaluate("fixtureMode.state.profile.career.gear.join()") == 'macacao')

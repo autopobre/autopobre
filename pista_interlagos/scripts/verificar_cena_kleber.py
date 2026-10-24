@@ -81,6 +81,11 @@ with sync_playwright() as p:
         page.keyboard.press('Enter'); page.wait_for_timeout(1500); frames(page)
         check('bag_to_kleber', scene(page)['bag'] == 'kleber')
         shot(page, '43_devolucao_2_recebe', 200)
+        # Then Kléber's jokes about the overalls, ending on his support (story-career.js DONE_LINES.macacao).
+        for i in range(2, 6):
+            page.keyboard.press('Enter'); frames(page)
+            shot(page, f'43_devolucao_{i + 1}_{scene(page)["view"]}')
+        check('bag_stays_with_kleber', scene(page)['bag'] == 'kleber' and scene(page)['index'] == 5)
         page.keyboard.press('Enter'); frames(page)
         # A deadline missed: Stevan still in the loaned overalls.
         page.evaluate("""async()=>{const m=await import('./story-career.js');const s=fixtureMode.state;s.openScene('report',m.MISSED_LINES.macacao.map((l,i)=>m.lineCard(l,'macacao','missed',i)));fixtureMode.ui();}""")
