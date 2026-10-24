@@ -1,6 +1,6 @@
 import {GRID_SIZE} from './race-roster.js';
-import {TANKS,burnRate} from './fuel.js';
-import {loadCareer,newCareer,applyRace,reviseRace,moraleCards,repairBill,repairCards,divorce,divorceCards,pensionCards,challengeCards,answerExpense,overReason,lineCard,prizeFor,giftScale,expenseScale,SNAG_COST,INTRO_LINES,CHALLENGES,BLAZER_GOAL} from './story-career.js';
+import {TANK,burnRate} from './fuel.js';
+import {loadCareer,newCareer,applyRace,reviseRace,moraleCards,repairBill,repairPerPoint,repairCards,divorce,divorceCards,pensionCards,challengeCards,answerExpense,releaseBlazer as blazerOut,buyOpala as opalaBought,overReason,lineCard,prizeFor,giftScale,expenseScale,SNAG_COST,INTRO_LINES,CHALLENGES,BLAZER_AFTER,BLAZER_GOAL} from './story-career.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const FANS=[
  {name:'Dona Cida',taste:'família',hint:'Vim com os netos. Adoro uma história de família.',gift:42},
@@ -31,7 +31,9 @@ export const START=Object.freeze({low:.22,high:.65,flood:.8,catchTime:.72,batter
 export class ImmersiveState {
  // profile: the wallet (fund), the Blazer (released), the races run and the career (story-career.js).
  // A profile from before the career keeps its race count; its savings and Blazer start over with it.
- constructor(profile={}){profile=profile&&typeof profile==='object'?profile:{};const counter=v=>Number.isFinite(v)&&v>=0?Math.min(v,Number.MAX_SAFE_INTEGER):0,career=!!profile.career;this.profile={fund:career?counter(profile.fund):0,released:career&&profile.released===true,races:Math.floor(counter(profile.races)),career:loadCareer(profile.career)};this.entry=COSTS.entry;this.scene=null;this.active=false;this.phase='off';this.revision=0;this.sounds=[];}
+ // A Blazer taken out before the challenges after it (Central #16): the next one's deadline starts now.
+ constructor(profile={}){profile=profile&&typeof profile==='object'?profile:{};const counter=v=>Number.isFinite(v)&&v>=0?Math.min(v,Number.MAX_SAFE_INTEGER):0,career=!!profile.career;this.profile={fund:career?counter(profile.fund):0,released:career&&profile.released===true,races:Math.floor(counter(profile.races)),career:loadCareer(profile.career)};this.entry=COSTS.entry;this.tank=TANK;this.scene=null;this.active=false;this.phase='off';this.revision=0;this.sounds=[];
+  const c=this.profile.career;if(this.profile.released&&c.blazerAt===null){c.blazerAt=c.races;if(c.challenge===BLAZER_AFTER)c.since=c.races;}}
  emitSound(name,options={}){if(this.sounds.length<64)this.sounds.push({name,options});}
  takeSounds(){return this.sounds.splice(0);}
  touch(){this.revision++;}
@@ -126,7 +128,7 @@ export class ImmersiveState {
  // registration's minimum up).
  buy(litres,film){
   if(this.phase!=='crowd'||!this.desk)return false;
-  litres=clamp(Math.round(Number(litres)||0),2,TANKS.opala);const cost=startCost(litres,film,this.entry),money=this.cash+this.profile.fund;
+  litres=clamp(Math.round(Number(litres)||0),2,this.tank);const cost=startCost(litres,film,this.entry),money=this.cash+this.profile.fund;
   if(money<this.minimum||cost>money){this.emitSound('denied');this.feedback=money<this.minimum?'Ainda não fecha a inscrição: volta lá e pede mais um dindin!':'Não cabe tudo isso no dinheiro: tira uns litros ou a proteção.';this.touch();return false;}
   const cash=Math.min(this.cash,cost);this.emitSound('paper');this.cash-=cash;this.profile.fund=Math.max(0,this.profile.fund-(cost-cash));this.fuel=litres;this.film=!!film;this.desk=false;this.feedback='';this.phase='starting';this.emitSound('fuelFill');this.touch();return true;
  }
@@ -198,10 +200,13 @@ export class ImmersiveState {
   // the wallet; then the team's repair bill out of it. The race moves the career's morale; its report
   // (the bill's card included) shows after the inspection.
   this.prize=this.result?.status==='Desclassificado'?0:prizeFor(this.result?.position);this.snagCost=this.towSnags*SNAG_COST;this.savedCash=Math.max(0,Number.isFinite(this.cash)?this.cash:0);
-  this.profile.fund=Math.max(0,this.profile.fund+this.prize+this.savedCash-this.snagCost);this.repair=repairBill(this.health,this.profile.fund);this.profile.fund-=this.repair.charged;
+  this.profile.fund=Math.max(0,this.profile.fund+this.prize+this.savedCash-this.snagCost);this.repair=repairBill(this.health,this.profile.fund,repairPerPoint(this.profile.career));this.profile.fund-=this.repair.charged;
   this.cash=0;this.profile.races++;applyRace(this.profile.career,this.result,this.repair);this.divorceIfDue();this.emitSound(this.result?.position===1&&this.result?.status!=='Desclassificado'?'podiumWin':'podiumLoss');this.paid=true;this.phase='podium';this.podiumPlace=6;this.touch();
  }
- releaseBlazer(){if(this.phase==='complete'&&!this.scene&&!this.profile.released&&this.profile.career.challenge>=CHALLENGES.length&&this.profile.fund>=BLAZER_COST){this.emitSound('blazer');this.profile.fund-=BLAZER_COST;this.profile.released=true;this.touch();return true;}return false;}
+ // After a race (the summary): the Blazer out of the workshop, then the next challenge's card; at the end of all
+ // challenges, the Opala 99 bought from the team (story-career.js).
+ releaseBlazer(){if(this.phase!=='complete'||this.scene)return false;const cards=blazerOut(this.profile.career,this.profile);if(!cards)return false;this.emitSound('blazer');this.openScene('blazer',cards);return true;}
+ buyOpala(){if(this.phase!=='complete'||this.scene)return false;const cards=opalaBought(this.profile.career,this.profile);if(!cards)return false;this.emitSound('podiumWin');this.openScene('opala',cards);return true;}
  info(){return {active:this.active,phase:this.phase,cash:this.cash,desk:!!this.desk,fuel:this.fuel,health:this.health,glass:this.glass,tankDetached:this.tankDetached,pressure:this.pressure,ignOn:!!this.ignOn,flood:this.flood,battery:this.battery,
   leo:this.leo,coffee:!!this.coffee,cafe:!!this.cafe,position:this.position,result:this.result,reason:this.reason,towGap:this.towGap,towSnags:this.towSnags,snagCost:this.snagCost,inspected:this.inspected,podiumPlace:this.podiumPlace,prize:this.prize,savedCash:this.savedCash,entry:this.entry,minimum:this.minimum,profile:{...this.profile},
   career:JSON.parse(JSON.stringify(this.profile.career)),scene:this.scene?{kind:this.scene.kind,at:this.scene.at,cards:this.scene.cards.map(c=>c.type),card:this.sceneCard()}:null};}

@@ -11,21 +11,21 @@ export const MENU_BUTTON=9,TRIGGERS=Object.freeze([6,7]);
 export const PAD_BUTTONS=Object.freeze([0,1,2,3,4,5,8,10,11,12,13,14,15,16,17]);
 // Each command: its place, its name, a note, the key it presses and its buttons as they come. At the wheel, the team's
 // pedido of 10-22: Y the handbrake, X and A the gears (the automatic's too), ↓ out of the car; the horn went from X to
-// L3 (as in Forza Horizon), the lights from L3 to ← and the IGN from Y to →. On foot, as the controller always was,
-// and ↓ back into the car as well.
+// L3 (as in Forza Horizon), the lights from L3 to ← and the IGN from Y to →; Central #17 (10-24): the horn on LB, the
+// start (PART) it had going to L3. On foot, as the controller always was, and ↓ back into the car as well.
 export const PAD_ACTIONS=Object.freeze([
  {id:'freioMao',place:'car',name:'Freio de mão',note:'aperte para puxar e de novo para soltar; a largada sempre o solta',code:'Space',buttons:[3]},
  {id:'subir',place:'car',name:'Subir a marcha',note:'no manual e no automático: no automático, a marcha escolhida fica uns segundos e ele volta a trocar sozinho',code:'KeyX',buttons:[2]},
  {id:'descer',place:'car',name:'Descer a marcha',note:'no manual e no automático, se o motor não passar do giro; no manual, parado na 1ª, engata a ré',code:'KeyZ',buttons:[0]},
  {id:'re',place:'car',name:'Marcha à ré',note:'segure',code:'KeyQ',buttons:[1]},
  {id:'sair',place:'car',name:'Sair do carro',note:'em qualquer ponto da pista (ele para antes); nos boxes, ir ao café da Tia',code:'KeyF',buttons:[13]},
- {id:'buzina',place:'car',name:'Buzina',note:'segure',code:'KeyH',buttons:[10]},
+ {id:'buzina',place:'car',name:'Buzina',note:'segure',code:'KeyH',buttons:[4]},
  {id:'camera',place:'car',name:'Trocar câmera',note:'',code:'KeyC',buttons:[5]},
  {id:'olharTras',place:'car',name:'Olhar para trás',note:'segure',code:'KeyB',buttons:[11]},
  {id:'fantasma',place:'car',name:'Fantasma',note:'o Opala da sua melhor volta na pista; liga e desliga',code:'KeyG',buttons:[12]},
  {id:'farois',place:'car',name:'Faróis de milha',note:'à noite e na chuva, liga e desliga',code:'KeyK',buttons:[14]},
  {id:'ignicao',place:'car',name:'Ignição (IGN)',note:'na partida do Modo História',code:'KeyL',buttons:[15]},
- {id:'partida',place:'car',name:'Partida',note:'segure, dosando o acelerador',code:'KeyI',buttons:[4]},
+ {id:'partida',place:'car',name:'Partida',note:'segure, dosando o acelerador',code:'KeyI',buttons:[10]},
  {id:'resgate',place:'car',name:'Reposicionar ou pedir reboque',note:'',code:'KeyR',buttons:[8]},
  {id:'freioSegurado',place:'car',name:'Freio de mão segurado',note:'só enquanto segura, o jeito do drift · no reconhecimento, ver outro piloto',code:'KeyN',buttons:[]},
  {id:'linha',place:'car',name:'Linha ideal',note:'completa, só nas curvas ou desligada',code:'KeyO',buttons:[]},

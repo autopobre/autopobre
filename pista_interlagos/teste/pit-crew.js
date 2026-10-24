@@ -40,6 +40,9 @@ export const OUTFITS={
  kleberBusiness:{top:0x17191c,sleeves:'short',bottom:0x2b3240,belt:0x1b1d20,shoes:0x1b1d20,skin:0xb47b5a,hair:0x16120f,hat:'cap',hatColor:0x121315,belly:.25},
  // The wife's lawyer (Central #15, story-scene.js): charcoal suit, white shirt, burgundy tie, glasses, greying hair.
  lawyer:{top:0x2b2f37,bottom:0x2b2f37,belt:0x141518,shoes:0x141518,tie:0x7a1f2b,skin:0xd6a47f,hair:0x7a736c,glasses:true,belly:.35},
+ // Stevan's daughter (Central #16, story-scene.js: her kart): pink kart overalls with a yellow stripe, white gloves and
+ // shoes, her father's dark hair in a ponytail (story-scene.js makes her a child's size).
+ daughter:{top:0xd8418f,bottom:0xd8418f,trim:0xf2c418,hands:0xf4f1ea,shoes:0xf4f1ea,skin:0xc98f68,hair:0x3b2a1a,hairStyle:'ponytail',figure:'f'},
 };
 // The pilot's outfit for each stage of the story (story-career.js outfitOf).
 export const STEVAN_OUTFITS={civil:OUTFITS.stevanCivil,emprestado:OUTFITS.stevanLoan,proprio:OUTFITS.driver};

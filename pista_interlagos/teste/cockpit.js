@@ -436,8 +436,12 @@ export function createCockpit(renderer){
   const phoneArrived=phone.update(root.visible&&cameraInside?dt:0);
   return {speed,rpm,gear,steering:wheelTurn.rotation.z,phoneArrived};
  }
+ // The Luizão Racing logo on the switch bank and the relay board, or plain faces (cockpit-materials.js luizaoFaces):
+ // swapped on the shared materials, so the still copy and the batch seen through the windows follow.
+ let luizao=true;
+ function setLuizao(on){luizao=!!on;root.traverse(o=>{const face=o.material?.userData?.luizao;if(face)o.material.map=face(luizao);});}
  // drop: how far setView lowered the cabin; the driver (driver.js) and photo poses follow it.
- return {root,wheel,wheelTurn,controls,eye,update,setView,outsideBatch,drop:()=>root.position.y,mirrorTarget,mirrorMaterial,rearCamera,resetPhone:()=>phone.reset(),
-  info:()=>({reference:INTERIOR_REFERENCES,steering:wheelTurn.rotation.z,speed:display.speed,mirror:[mirrorTarget.width,mirrorTarget.height],visible:root.visible||!!batch?.visible,batched:!!batch?.visible,phone:phone.info(),controls:controls.info(),
+ return {root,wheel,wheelTurn,controls,eye,update,setView,outsideBatch,setLuizao,drop:()=>root.position.y,mirrorTarget,mirrorMaterial,rearCamera,resetPhone:()=>phone.reset(),
+  info:()=>({reference:INTERIOR_REFERENCES,luizao,steering:wheelTurn.rotation.z,speed:display.speed,mirror:[mirrorTarget.width,mirrorTarget.height],visible:root.visible||!!batch?.visible,batched:!!batch?.visible,phone:phone.info(),controls:controls.info(),
    materials:reflective.size,cabinReflections:!!m.envMap,seat:seat.children.length,view:{classic:classic.visible,cabin:cabin.visible,fillers:fillers.visible,drop:root.position.y,eye:eye.toArray(),mirrorY:mirror.position.y}})};
 }

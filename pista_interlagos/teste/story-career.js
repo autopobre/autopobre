@@ -1,6 +1,6 @@
 // Modo História career: the wallet, three morale bars (wife, team, supporters), the equipment
-// challenges with the wife's expenses, and the Blazer as the final dream, from race to race of
-// the Old Stock season. Pure rules, no DOM: ImmersiveState keeps the career in the story profile
+// challenges with the wife's expenses, the Blazer out of the workshop, the challenges after it and the
+// Opala 99 as the big dream (Central #16), from race to race of the Old Stock season. Pure rules, no DOM: ImmersiveState keeps the career in the story profile
 // (opala99-immersive-v1, profile.career beside the wallet profile.fund) and ImmersiveMode shows
 // its cards. 50% morale is the game as it was before the career.
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -14,16 +14,22 @@ export const PRIZES=Object.freeze([800,600,500,400,300,200,100,100,100,100]);
 export const prizeFor=position=>Number.isInteger(position)&&position>0?PRIZES[position-1]??0:0;
 // The entry: Interlagos is home; elsewhere the pilots also pay the car carrier, the tickets and
 // the team's hotel. More than R$ 150 and the first round (Brasília) could not be paid with jokes alone.
+// With the Blazer's hitch and trailer (challenge 'carretinha') the Opala goes by road: away costs as home.
 export const ENTRY=Object.freeze({home:100,away:150});
-export const entryFor=circuit=>circuit==='interlagos'?ENTRY.home:ENTRY.away;
+export const entryFor=(circuit,career=null)=>circuit==='interlagos'||career?.gear.includes('carretinha')?ENTRY.home:ENTRY.away;
 // Each time the tow strap gets under a wheel, untangling it is paid from the wallet.
 export const SNAG_COST=25;
 // The team's repair bill after a race (Central #14): R$ 10 for each point the CARRO bar lost, as the
 // HUD shows it; the windscreen is not on it, nor what the Box 99 fixed (and charged) during the race.
-// A wallet short of it pays what it has: the team lets the rest go (charged, below bill).
-export const REPAIR_PER_POINT=10;
-export function repairBill(health,fund){
- const damage=100-Math.ceil(clamp(Number.isFinite(health)?health:1,0,1)*100),bill=damage*REPAIR_PER_POINT;
+// A wallet short of it pays what it has: the team lets the rest go (charged, below bill). With the Box 99's new tools
+// (challenge 'ferramentas', Stevan's call in #16.2) a point costs half.
+export const REPAIR_PER_POINT=10,REPAIR_WITH_TOOLS=5;
+export const repairPerPoint=career=>career?.gear.includes('ferramentas')?REPAIR_WITH_TOOLS:REPAIR_PER_POINT;
+// The engine with new parts (challenge 'motor'): just a little stronger (car.engineScale, physics.js), in the story only.
+export const ENGINE_PARTS=1.03;
+export const enginePower=career=>career?.gear.includes('motor')?ENGINE_PARTS:1;
+export function repairBill(health,fund,perPoint=REPAIR_PER_POINT){
+ const damage=100-Math.ceil(clamp(Number.isFinite(health)?health:1,0,1)*100),bill=damage*perPoint;
  return {damage,bill,charged:Math.min(bill,Math.max(0,fund))};
 }
 // The wife's expenses cost 1.5x the standard at 0% and 0.5x at 100%; a knock damages the car on
@@ -56,20 +62,47 @@ export function outcomeOf(result){
  return !p?'guincho':p===1?'vitoria':p<=6?'podio':p<=10?'pontos':'fundo';
 }
 export const OUTCOME_TITLES=Object.freeze({guincho:'Resgatado pelo guincho',fundo:'Do 11º lugar para trás',pontos:'Entre o 7º e o 10º lugar',podio:'No pódio, entre o 2º e o 6º lugar',vitoria:'Vitória!'});
-// The equipment the pilot races in on loan, bought one challenge at a time before the deadline
-// (in races). When the money is there, the wife asks for an expense first (expense.value at 50%).
+// The challenges, one at a time before a deadline (in races): first the pilot's kit, raced on loan until it is bought;
+// then the Blazer out of the workshop (BLAZER_AFTER, no deadline); then (Central #16, Stevan's choices in #16.2) the
+// next steps of a career, dearer each time, and at last the Opala 99 (OPALA_GOAL). When the money is there, the wife
+// asks for an expense first (expense.value at 50%; none for her own trip). now: the challenge card's line meanwhile
+// (the kit: the loan); perk: what it changes after (read from career.gear: entryFor, repairPerPoint, enginePower);
+// morale: the bars it lifts when bought; missedMorale: a deadline missed (MISSED otherwise); wife: her trip, skipped
+// after a divorce.
 export const CHALLENGES=Object.freeze([
  {id:'macacao',title:'Juntar dinheiro para comprar seu macacão',own:'seu macacão',goal:1000,races:3,loan:'o macacão que o Kléber Eletric emprestou',done:'Macacão vermelho novinho, só seu. O emprestado volta para o Kléber.',missed:'O Kléber empresta o macacão por mais um prazo.',
-  expense:{what:'o aniversário da filha',ask:'Amor, o aniversário da nossa filha é no fim de semana. Preciso do dinheiro da festa.'}},
+  expense:{what:'o aniversário da filha',ask:'Amor, o aniversário da nossa filha é no fim de semana. Preciso do dinheiro da festa.',value:300}},
  {id:'luvas',title:'Juntar dinheiro para comprar suas luvas',own:'suas luvas',goal:300,races:2,loan:'as luvas que a equipe 99 emprestou',done:'Luvas novas, só suas. Nada mais de luva emprestada.',missed:'A equipe 99 empresta as luvas por mais um prazo, mas ficou desconfiada.',
-  expense:{what:'a conta de luz atrasada',ask:'A conta de luz venceu e vão cortar a energia. Tem que pagar hoje.'}},
+  expense:{what:'a conta de luz atrasada',ask:'A conta de luz venceu e vão cortar a energia. Tem que pagar hoje.',value:120}},
  {id:'sapatilhas',title:'Juntar dinheiro para comprar suas sapatilhas',own:'suas sapatilhas',goal:400,races:2,loan:'as sapatilhas que a equipe 99 emprestou',done:'Sapatilhas novas: agora o pé sente o pedal.',missed:'A equipe 99 empresta as sapatilhas por mais um prazo, mas ficou desconfiada.',
-  expense:{what:'o material escolar da filha',ask:'A escola mandou a lista de material. A menina não pode ficar sem.'}},
+  expense:{what:'o material escolar da filha',ask:'A escola mandou a lista de material. A menina não pode ficar sem.',value:150}},
  {id:'capacete',title:'Juntar dinheiro para comprar seu capacete',own:'seu capacete',goal:1200,races:3,loan:'o capacete que a equipe 99 emprestou',done:'Capacete novo, do seu tamanho. O kit de piloto está completo!',missed:'A equipe 99 empresta o capacete por mais um prazo, mas ficou desconfiada.',
-  expense:{what:'a geladeira que quebrou',ask:'A geladeira parou de vez e a comida vai estragar. Precisamos de outra.'}}
-].map((c,i)=>Object.freeze({...c,number:i+1,expense:Object.freeze({...c.expense,value:[300,120,150,400][i]})})));
-// After the equipment, the dream that started it all: the Blazer out of the workshop.
-export const BLAZER_GOAL=900;
+  expense:{what:'a geladeira que quebrou',ask:'A geladeira parou de vez e a comida vai estragar. Precisamos de outra.',value:400}},
+ {id:'hans',title:'Juntar dinheiro para comprar seu HANS',own:'seu HANS',goal:1500,races:3,loan:'o HANS que a equipe 99 emprestou',done:'HANS novo, só seu: o protetor de pescoço que segura a cabeça nas batidas.',missed:'A equipe 99 empresta o HANS por mais um prazo, mas ficou desconfiada.',
+  expense:{what:'o uniforme novo da escola',ask:'A escola mudou o uniforme e a menina precisa de um novo. Não dá para ela ir de qualquer jeito.',value:450}},
+ {id:'carretinha',title:'Juntar dinheiro para o engate e a carretinha da Blazer',own:'o engate e a carretinha',goal:1800,races:3,now:'Enquanto isso, o Opala viaja de caminhão-cegonha: fora de Interlagos, a inscrição custa R$ 150.',done:'Engate na Blazer e carretinha atrás: agora é ela que leva o Opala para as corridas.',perk:'Fora de Interlagos, a inscrição passa a custar R$ 100, como em casa.',missed:'Mais um prazo pagando o caminhão-cegonha. A equipe 99 está de olho.',
+  expense:{what:'o imposto da Blazer',ask:'Chegou o imposto da Blazer. Agora que ela saiu da oficina, tem que pagar.',value:500}},
+ {id:'ferramentas',title:'Juntar dinheiro para as ferramentas novas do Box 99',own:'as ferramentas novas do Box 99',goal:2200,races:4,now:'Enquanto isso, a equipe trabalha com as ferramentas velhas: cada 1% de dano custa R$ 10 de conserto.',done:'Macaco a ar e parafusadeira novinhos no Box 99. A equipe está radiante!',perk:'Os consertos do carro passam a custar R$ 5 por 1% de dano.',morale:{equipe:10},missed:'A equipe continua com as ferramentas velhas e está perdendo a paciência.',
+  expense:{what:'o dentista da filha',ask:'A menina está com dor de dente. Precisa ir ao dentista esta semana.',value:550}},
+ {id:'bodas',title:'Juntar dinheiro para a viagem de bodas com a esposa',own:'a viagem de bodas',goal:2600,races:4,now:'Faz anos que vocês não viajam juntos. Ela merece: neste desafio, ela não pede nenhuma despesa.',done:'Malas prontas! Uma semana de bodas, só vocês dois.',morale:{esposa:25},missed:'A viagem ficou para depois. Sua esposa ficou decepcionada.',missedMorale:{esposa:-10},wife:true,expense:null},
+ {id:'kart',title:'Juntar dinheiro para o kart da filha',own:'o kart da filha',goal:3000,races:4,now:'Desde que viu você correr, sua filha só fala em kart.',done:'Kart novo para a filha! A torcida adorou conhecer a nova pilota da família.',morale:{torcida:15},missed:'O kart ficou para depois. Sua filha ficou triste.',missedMorale:{esposa:-5,torcida:-5},
+  expense:{what:'a máquina de lavar que quebrou',ask:'A máquina de lavar quebrou e a roupa está acumulando. Precisamos de outra.',value:600}},
+ {id:'motor',title:'Juntar dinheiro para peças novas do motor do Opala',own:'as peças novas do motor',goal:3500,races:5,now:'O motor do Opala já sente o desgaste de tantas corridas.',done:'Pistões, anéis e bronzinas novos: o motor do Opala voltou a encher.',perk:'O motor ficou um pouquinho mais forte.',missed:'O motor continua cansado e a equipe está preocupada.',
+  expense:{what:'o conserto do telhado',ask:'Choveu e o telhado está pingando em cima da cama. Tem que consertar antes da próxima chuva.',value:700}}
+].map((c,i)=>Object.freeze({...c,number:i+1,now:c.now??`Você corre com ${c.loan}.`,expense:c.expense&&Object.freeze({...c.expense})})));
+// After the pilot's kit (the first four), the dream that started it all: the Blazer out of the workshop. After the last
+// challenge, the big dream: the Opala 99 bought from the team.
+export const BLAZER_AFTER=4,BLAZER_GOAL=900,OPALA_GOAL=8000;
+// Where the career stands: a challenge, the Blazer (once the kit is bought, until the mechanic is paid) or, after the
+// last challenge, the Opala 99 (done: bought). released: the Blazer out (the story profile's).
+export function stageOf(career,released){
+ if(career.challenge===BLAZER_AFTER&&!released)return {kind:'blazer',goal:BLAZER_GOAL,done:false};
+ const challenge=CHALLENGES[career.challenge];
+ return challenge?{kind:'challenge',challenge}:{kind:'opala',goal:OPALA_GOAL,done:!!career.opala};
+}
+export const dreamCard=(stage,wallet,fresh=false)=>({type:'dream',dream:stage.kind,goal:stage.goal,fund:wallet.fund,done:stage.done,...(fresh?{fresh:true}:{})});
+// What comes after a challenge done or skipped (or the Blazer out): the next challenge, its deadline from now, or a dream.
+export function nextCard(career,wallet){const s=stageOf(career,wallet.released);return s.kind==='challenge'?{type:'challenge',challenge:s.challenge.id,fund:wallet.fund,left:s.challenge.races,fresh:true}:dreamCard(s,wallet,true);}
 // A deadline missed: the loan goes on for another deadline, the team and the supporters notice.
 export const MISSED=Object.freeze({equipe:-10,torcida:-5});
 // An expense refused: the wife takes it badly.
@@ -87,8 +120,12 @@ export const INTRO_LINES=Object.freeze([
  ['kleber','Vou te emprestar um. Mas você precisa comprar o seu o quanto antes e me devolver este. Pode ser que eu precise.']
 ]);
 export const DONE_LINES=Object.freeze({
- macacao:[['pilot','Muito obrigado pelo macacão, senhor Kléber Eletric. Graças a ele pude começar no automobilismo.','entrega a bolsa'],['kleber','Não há de quê, Pobre Piloto. Parabéns pela conquista do seu primeiro macacão. Tomara que ele te dê sorte e traga muitas vitórias.','pega a bolsa']]
+ macacao:[['pilot','Muito obrigado pelo macacão, senhor Kléber Eletric. Graças a ele pude começar no automobilismo.','entrega a bolsa'],['kleber','Não há de quê, Pobre Piloto. Parabéns pela conquista do seu primeiro macacão. Tomara que ele te dê sorte e traga muitas vitórias.','pega a bolsa']],
+ // The daughter's kart (story-scene.js 'kart'): she drives round in front of the Box 99, her father watching.
+ kart:[['daughter','Pai, olha eu! Sou piloto igual a você!','acelerando o kart'],['pilot','Essa é a minha filha! Segura firme na curva!','orgulhoso'],['daughter','Quando eu crescer, vou correr de Opala também!','para o kart na frente do pai'],['pilot','Vai sim, filha. E vai ser bem mais rápida que o pai.','emocionado']]
 });
+// The act a challenge's lines are staged in (story-scene.js): Kléber's box, or the kart at the Box 99.
+const DONE_ACTS=Object.freeze({kart:'kart'});
 export const MISSED_LINES=Object.freeze({
  macacao:[['kleber','O prazo acabou, Pobre Piloto. Cadê o seu macacão?'],['pilot','Ainda não deu, senhor Kléber Eletric... A grana não fechou.','sem graça'],['kleber','Tudo bem, empresto mais um pouco. Mas não demora: a equipe já está comentando.']]
 });
@@ -148,7 +185,8 @@ export const DIVORCE_LINES=Object.freeze([
 // The divorce's cards in the report it came with: the scene (in what the pilot wears), then what she took.
 export const divorceCards=(career,wallet)=>career.report?.divorce?[...DIVORCE_LINES.map((line,i)=>({...lineCard(line,'divorce','divorce',i),outfit:outfitOf(career)})),{type:'divorce',taken:career.report.divorce.taken,fund:wallet.fund,race:career.report.race}]:[];
 
-export const newCareer=()=>({version:1,morale:Object.fromEntries(MORALE.map(k=>[k,MORALE_START])),races:0,challenge:0,since:0,expense:false,gear:[],intro:false,report:null,over:null,clock:newClock(),divorced:null,pensionFor:null});
+// blazerAt: the race count when the Blazer came out (null before); opala: the Opala 99 bought (Central #16).
+export const newCareer=()=>({version:1,morale:Object.fromEntries(MORALE.map(k=>[k,MORALE_START])),races:0,challenge:0,since:0,expense:false,gear:[],intro:false,report:null,over:null,clock:newClock(),divorced:null,pensionFor:null,blazerAt:null,opala:false});
 // A saved career, checked field by field; anything unknown starts a new one.
 export function loadCareer(raw){
  const c=newCareer();if(!raw||typeof raw!=='object'||raw.version!==1)return c;
@@ -165,6 +203,8 @@ export function loadCareer(raw){
  c.clock=clockOf(raw.clock)??newClock();
  if(raw.divorced&&Number.isInteger(raw.divorced.race)&&Number.isFinite(raw.divorced.taken)&&raw.divorced.taken>=0)c.divorced={race:Math.min(count(raw.divorced.race),c.races),taken:raw.divorced.taken};
  c.pensionFor=Number.isInteger(raw.pensionFor)&&raw.pensionFor>=0&&raw.pensionFor<=c.races?raw.pensionFor:null;
+ // The Blazer out and the Opala 99 bought (Central #16); a career from before them has neither.
+ c.blazerAt=Number.isInteger(raw.blazerAt)&&raw.blazerAt>=0&&raw.blazerAt<=c.races?raw.blazerAt:null;c.opala=raw.opala===true&&c.challenge===CHALLENGES.length;
  if(c.report){const r=raw.report;for(const k of ['clock','clockBefore']){const v=clockOf(r[k]);if(v)c.report[k]=v;}
   if(c.divorced&&Number.isFinite(r.divorce?.taken))c.report.divorce={taken:r.divorce.taken};c.report.divorceDue=r.divorceDue===true&&!c.divorced;}
  return c;
@@ -203,20 +243,35 @@ export function reviseRace(career,result){
 // The challenge after a race (or after the wife's expense was answered), applied at once:
 // wallet: the profile with fund (the wallet) and released (the Blazer). Returns its cards.
 export function challengeCards(career,wallet){
- const c=CHALLENGES[career.challenge];
- if(!c)return [{type:'dream',goal:BLAZER_GOAL,fund:wallet.fund,released:!!wallet.released}];
- if(wallet.fund>=c.goal&&!career.expense&&!career.divorced){if(career.report)career.report.awaiting='expense';return [{type:'expense',challenge:c.id,value:expenseFor(c,career),fund:wallet.fund}];}
+ const stage=stageOf(career,wallet.released);
+ if(stage.kind!=='challenge')return [dreamCard(stage,wallet)];
+ const c=stage.challenge;
+ // Her trip after a divorce: no wife, no trip; the next challenge starts at once.
+ if(c.wife&&career.divorced){career.challenge++;career.since=career.races;career.expense=false;return [{type:'skipped',challenge:c.id,fund:wallet.fund},nextCard(career,wallet)];}
+ if(wallet.fund>=c.goal&&c.expense&&!career.expense&&!career.divorced){if(career.report)career.report.awaiting='expense';return [{type:'expense',challenge:c.id,value:expenseFor(c,career),fund:wallet.fund}];}
  if(wallet.fund>=c.goal){
-  wallet.fund-=c.goal;career.gear.push(c.id);career.challenge++;career.since=career.races;career.expense=false;
-  const next=CHALLENGES[career.challenge];
-  return [...(DONE_LINES[c.id]??[]).map((line,i)=>lineCard(line,c.id,'done',i)),{type:'done',challenge:c.id,fund:wallet.fund},next?{type:'challenge',challenge:next.id,fund:wallet.fund,left:next.races,fresh:true}:{type:'dream',goal:BLAZER_GOAL,fund:wallet.fund,released:!!wallet.released,fresh:true}];
+  wallet.fund-=c.goal;career.gear.push(c.id);career.challenge++;career.since=career.races;career.expense=false;if(c.morale)shift(career,c.morale);
+  const act=DONE_ACTS[c.id]??'done',lines=(DONE_LINES[c.id]??[]).map((line,i)=>({...lineCard(line,c.id,act,i),...(act==='done'?{}:{outfit:outfitOf(career)})}));
+  return [...lines,{type:'done',challenge:c.id,fund:wallet.fund,morale:{...career.morale}},nextCard(career,wallet)];
  }
  const ran=career.races-career.since;
  if(ran>=c.races){
-  shift(career,MISSED);career.since=career.races;
-  return [...(MISSED_LINES[c.id]??[]).map((line,i)=>lineCard(line,c.id,'missed',i)),{type:'missed',challenge:c.id,changes:MISSED,morale:{...career.morale},left:c.races,fund:wallet.fund}];
+  const changes=c.missedMorale??MISSED;shift(career,changes);career.since=career.races;
+  return [...(MISSED_LINES[c.id]??[]).map((line,i)=>lineCard(line,c.id,'missed',i)),{type:'missed',challenge:c.id,changes,morale:{...career.morale},left:c.races,fund:wallet.fund}];
  }
  return [{type:'challenge',challenge:c.id,fund:wallet.fund,left:c.races-ran}];
+}
+// The Blazer out of the workshop (ImmersiveState.releaseBlazer): the next challenge's deadline starts from this race.
+export function releaseBlazer(career,wallet){
+ if(stageOf(career,wallet.released).kind!=='blazer'||wallet.fund<BLAZER_GOAL)return null;
+ wallet.fund-=BLAZER_GOAL;wallet.released=true;career.blazerAt=career.races;career.since=career.races;career.expense=false;
+ return [{type:'dream',dream:'blazer',goal:BLAZER_GOAL,fund:wallet.fund,done:true},nextCard(career,wallet)];
+}
+// The Opala 99 bought from the team (ImmersiveState.buyOpala), after the last challenge.
+export function buyOpala(career,wallet){
+ const s=stageOf(career,wallet.released);if(s.kind!=='opala'||s.done||wallet.fund<OPALA_GOAL)return null;
+ wallet.fund-=OPALA_GOAL;career.opala=true;
+ return [{type:'owned',goal:OPALA_GOAL,fund:wallet.fund}];
 }
 // A line of Kléber's box (story-scene.js stages it): act 'intro', 'done' or 'missed', its place in the talk.
 export const lineCard=([who,text,how],scene,act=scene,index=0)=>({type:'line',who,text,how:how??'',scene,act,index});
@@ -225,7 +280,7 @@ export const outfitOf=career=>!career.intro?'civil':career.gear.includes('macaca
 // The wife's expense answered: paid from the wallet (as much as there is), or refused (her morale
 // drops). Either way she asks once per challenge; then the challenge goes on (challengeCards).
 export function answerExpense(career,wallet,pay){
- const c=CHALLENGES[career.challenge];if(!c||career.expense||!career.report?.awaiting)return null;
+ const s=stageOf(career,wallet.released),c=s.challenge;if(!c?.expense||career.expense||!career.report?.awaiting)return null;
  const value=expenseFor(c,career);
  if(pay)wallet.fund=Math.max(0,wallet.fund-value);else shift(career,REFUSED);
  career.expense=true;career.report.awaiting=null;

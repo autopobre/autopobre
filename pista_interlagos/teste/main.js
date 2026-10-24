@@ -19,7 +19,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {TestCar,clamp,wrap,recognitionInput,RIGHTING_DELAY,OPALA_BODY,FUSCA_BODY,addRoamSolids} from './physics.js';
-import {PLAYER_ENTRY,ACE_NUMBER,playerGridSlot,carEntry,fieldRoster,duelRivalFor,cssColor,MODEL_NAMES} from './race-roster.js';
+import {PLAYER_ENTRY,ACE_NUMBER,playerGridSlot,carEntry,fieldRoster,duelRivalFor,cssColor,MODEL_NAMES,LUIZAO_CARS} from './race-roster.js';
 import {CarSelect} from './car-select.js';
 import {LookSelect} from './look-select.js';
 import {LookStore} from './pilot-look.js';
@@ -45,7 +45,7 @@ import {SkidMarks} from './skid-marks.js?v=20260923-capotagem';
 import {TyreSmoke} from './tyre-smoke.js?v=20261005-poeira-folhas';
 import {ImmersiveMode} from './immersive-mode.js';
 import {ImmersiveState} from './immersive-state.js';
-import {CHALLENGES,MORALE,MORALE_NAMES,GAME_OVER,BLAZER_GOAL,STORY_PROFILE_KEY,PENSION} from './story-career.js';
+import {stageOf,MORALE,MORALE_NAMES,GAME_OVER,BLAZER_GOAL,OPALA_GOAL,STORY_PROFILE_KEY,PENSION} from './story-career.js';
 import {MobileControls} from './mobile-controls.js';
 import {GamepadControls} from './gamepad-controls.js';
 import {WheelControls} from './wheel-controls.js';
@@ -1549,7 +1549,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  const rivalSound=heard!==car?immersive.rivalSound(heard):null;
  const braking=driveCommand.engineOff?0:driveCommand.brake;if(touchDevice)mobile.showPedals(driveCommand.throttle??0,Math.max(driveCommand.brake??0,driveCommand.reverse??0));brakeLamps.userData.set(model?.visible?braking:0,!!model?.visible&&playerLamps.lit);fuscaBody.brake(braking,playerLamps.lit);
  carAudio.update(heard,rivalSound?.command??driveCommand,rivalSound?.skid??skid,paused||frozen,mode);
- // H (the controller's X / □, a learnt wheel button, the touch Buzina): the horn, while held, at the wheel of one's own car.
+ // H (the controller's LB / L1, a learnt wheel button, the touch Buzina): the horn, while held, at the wheel of one's own car.
  carAudio.honk(pressed('KeyH')&&!paused&&!frozen&&!intro.active&&heard===car&&!pitstop?.opened&&!immersive?.onFoot()&&!walker?.active,car.mechanics?.name==='fusca'?'fusca':'opala',mode);
  carAudio.updateScene({...immersive?.audioScene(heard),speed:Math.hypot(heard.vx,heard.vy),onRoad:heard.surface.onRoad,rain:weather.drops,wet:weather.wetness,...speedFx?.sound(heard===car?car:null),camera:mode},immersive?.state.takeSounds()??[],dt);
  if(futebol){futebol.view.ahead=renderAhead();futebol.view.shown=sessionStarted&&!paused&&!intro.active&&raceResults.root.hidden;}
@@ -1832,11 +1832,12 @@ function resetStoryCareer(){
 // Beside the season on the story's track screen: the wallet, the three bars and the challenge (or the end).
 function renderStoryCareer(){
  const box=$('storyCareer');box.hidden=menuMode!=='historia';if(box.hidden)return;
- const p=storyProfile(),c=p.career,challenge=CHALLENGES[c.challenge],money=n=>`R$ ${n.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+,)/g,'.')}`;
+ const p=storyProfile(),c=p.career,stage=stageOf(c,p.released),challenge=stage.challenge,money=n=>`R$ ${n.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+,)/g,'.')}`;
  const left=challenge?Math.max(0,challenge.races-(c.races-c.since)):0;
  const goal=c.over?`<p class="story-career-over"><b>Fim de jogo.</b> ${GAME_OVER[c.over]} Entre na próxima etapa para recomeçar a história do zero.</p>`
   :challenge?`<p>Desafio ${challenge.number}: ${challenge.title.toLowerCase()} · ${money(Math.min(p.fund,challenge.goal))} de ${money(challenge.goal)} · prazo: ${left} corrida${left===1?'':'s'}</p>`
-  :`<p>${p.released?'A Blazer saiu da oficina!':`Sonho final: tirar a Blazer da oficina · ${money(Math.min(p.fund,BLAZER_GOAL))} de ${money(BLAZER_GOAL)}`}</p>`;
+  :stage.kind==='blazer'?`<p>Sonho: tirar a Blazer da oficina · ${money(Math.min(p.fund,BLAZER_GOAL))} de ${money(BLAZER_GOAL)}</p>`
+  :`<p>${stage.done?'O Opala 99 é seu!':`Grande sonho: comprar o Opala 99 da equipe · ${money(Math.min(p.fund,OPALA_GOAL))} de ${money(OPALA_GOAL)}`}</p>`;
  box.innerHTML=`<span class="tracks-kicker">SUA CARREIRA · ${c.races} corrida${c.races===1?'':'s'}</span><div class="career-wallet"><span>Carteira</span><b>${money(p.fund)}</b></div>`
   +MORALE.map(k=>k==='esposa'&&c.divorced?`<div class="career-bar career-divorced" data-key="${k}"><span>${MORALE_NAMES[k]}</span><em>divorciado · pensão ${money(PENSION)}/mês</em></div>`
    :`<div class="career-bar" data-key="${k}" data-low="${c.morale[k]<=20}"><span>${MORALE_NAMES[k]}</span><i><b style="width:${c.morale[k]}%"></b></i><em>${c.morale[k]}%</em></div>`).join('')+goal;
@@ -2199,15 +2200,17 @@ function arenaPause(on){
 function seatCar(){
  carLivery.clear();showFusca(null);const entry=raceCar==='99'&&raceModel!=='fusca'?null:carEntry(raceCar,raceModel),grid=raceGrid=multiplayer?.gridCar()??raceCar;
  const body=raceModel==='fusca'?FUSCA_BODY:OPALA_BODY;car.setBody(body);immersive.field.body=body;
- // The car's tank (fuel.js): the Fusca's is half the Opala's; the HUD's bar and the Fusca's gauge read against it.
- immersive.tank=tankFor(raceModel);$('fuelBar').max=$('fuelBar').optimum=immersive.tank;$('fuelTank').textContent=immersive.tank+' L';
+ // The car's tank (fuel.js): 15 L, more where the circuit gives it (the Pampulha); the HUD's bar and the Fusca's gauge
+ // read against it.
+ immersive.tank=tankFor(circuit.id);$('fuelBar').max=$('fuelBar').optimum=immersive.tank;$('fuelTank').textContent=immersive.tank+' L';
  immersive.field.roster=fieldRoster(grid,raceModel);immersive.visual.seatOpala99(model,grid,raceModel==='fusca'?fuscaTemplate:null);
  immersive.playerEntry=entry?{...entry,name:immersive.pilotName,shortName:immersive.pilotName}:undefined;
 }
-// Once the grid is set: the player's Opala in that car's colours (car-livery.js), the map's legend, and
-// the paint button only for the 99's two liveries.
+// Once the grid is set: the player's Opala in that car's colours (car-livery.js), the Luizão Racing logo in the
+// cockpit only in the cars it prepared, the map's legend, and the paint button only for the 99's two liveries.
 function paintCar(){
  if(!(raceModel==='fusca'&&showFusca(carEntry(raceCar,'fusca'))))carLivery.apply(model,raceCar==='99'?null:carEntry(raceCar),immersive.visual,{doorAds:oldStockMaterial});
+ cockpit.setLuizao(LUIZAO_CARS.includes(raceCar));
  $('skinButton').hidden=$('touchSkin').hidden=raceCar!=='99'||raceModel==='fusca';document.querySelector('.map-legend').childNodes[1].textContent=` ${raceCar} · VOCÊ `;
 }
 $('start').onclick=()=>chooseMode('corrida');

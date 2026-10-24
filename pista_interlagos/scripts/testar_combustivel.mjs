@@ -1,10 +1,10 @@
 // Fuel by circuit (Central #11, fuel.js): Stevan's 8-lap table, more litres for a longer race, the
-// tanks, the Box 99's refuel up to the tank, and a whole 8-lap race driven by the recon driver
+// tank (15 L, the Pampulha's 40: Central #17), the Box 99's refuel up to the tank, and a whole 8-lap race driven by the recon driver
 // (heroInput) ending with about 1 L in the tank.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {CIRCUITS} from '../teste/circuits.js';
-import {TANKS,tankFor,burnRate,eightLapFuel,lapFuel,recommendedFuel,fuelScale,FUEL_LAPS,FUEL_SPARE} from '../teste/fuel.js';
+import {TANK,tankFor,burnRate,eightLapFuel,lapFuel,recommendedFuel,fuelScale,FUEL_LAPS,FUEL_SPARE} from '../teste/fuel.js';
 import {LAPS} from '../teste/player-preferences.js';
 import {CarCondition,PitService} from '../teste/car-condition.js';
 import {ImmersiveState,COSTS} from '../teste/immersive-state.js';
@@ -19,14 +19,16 @@ check('every_circuit_has_its_litres',Object.keys(CIRCUITS).every(id=>TABLE[id]==
 check('table_up_to_eight_laps',Object.keys(TABLE).every(id=>[1,3,8,Infinity].every(n=>recommendedFuel(id,n)===TABLE[id])));
 check('more_laps_in_proportion',recommendedFuel('interlagos',16)===20&&recommendedFuel('interlagos',12)===15&&recommendedFuel('chapada',20)===28&&recommendedFuel('brasilia',20)===30);
 check('one_litre_left_after_eight',Object.keys(TABLE).every(id=>Math.abs(lapFuel(id)*FUEL_LAPS+FUEL_SPARE-TABLE[id])<1e-9));
-check('tanks',TANKS.opala===80&&TANKS.fusca===40&&tankFor('fusca')===40&&tankFor('opala')===80&&tankFor(undefined)===80);
-check('longest_race_fits_the_tanks',Object.keys(TABLE).every(id=>recommendedFuel(id,CIRCUITS[id].laps??LAPS.max)<=TANKS.fusca));
+check('tank',TANK===15&&tankFor('interlagos')===15&&tankFor('brasilia')===15&&tankFor('pampulha')===40&&tankFor(undefined)===15);
+// Eight laps (the Pampulha's one) fit the tank everywhere; the longest races stop at the Box 99 to refuel.
+check('eight_laps_fit_the_tank',Object.keys(TABLE).every(id=>recommendedFuel(id,CIRCUITS[id].laps??FUEL_LAPS)<=tankFor(id)));
+check('longest_race_needs_a_stop',recommendedFuel('brasilia',LAPS.max)>tankFor('brasilia'));
 
 // The Box 99 fills up to the tank, never past it.
-let fuel=75,wallet=1000;const pit=new PitService({condition:new CarCondition(),getFuel:()=>fuel,setFuel:v=>fuel=v,getTank:()=>TANKS.opala,pay:v=>{wallet-=v;return true;},refund:v=>{wallet+=v;}});
-pit.startFuel(20);pit.step(60);check('refuel_stops_at_the_tank',Math.abs(fuel-80)<1e-9&&wallet===1000-Math.ceil(5*COSTS.litre));
+let fuel=10,wallet=1000;const pit=new PitService({condition:new CarCondition(),getFuel:()=>fuel,setFuel:v=>fuel=v,getTank:()=>TANK,pay:v=>{wallet-=v;return true;},refund:v=>{wallet+=v;}});
+pit.startFuel(20);pit.step(60);check('refuel_stops_at_the_tank',Math.abs(fuel-15)<1e-9&&wallet===1000-Math.ceil(5*COSTS.litre));
 // The team's desk sells up to a full tank, as the money pays.
-const rich=new ImmersiveState({fund:2000,career:{...newCareer(),intro:true}});rich.start();rich.openDesk();check('desk_sells_up_to_the_tank',rich.buy(95,false)&&rich.fuel===TANKS.opala);
+const rich=new ImmersiveState({fund:2000,career:{...newCareer(),intro:true}});rich.start();rich.openDesk();check('desk_sells_up_to_the_tank',rich.buy(95,false)&&rich.fuel===TANK);
 
 // Eight laps by the recon driver at the circuit's scale, from the grid: about 1 L left (the rivals'
 // pace; a slower lap burns a little more), as many litres as the table started with.

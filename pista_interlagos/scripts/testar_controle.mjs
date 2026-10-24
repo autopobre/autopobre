@@ -40,13 +40,13 @@ pads=[pad({axes:[-.6,0,0,0]})];controls.poll(1/60);
 controls.setSteering('direta');controls.poll(1/60);assert.ok(Math.abs(controls.steering-stickValue(-.6,1))<1e-12);
 controls.setSteering('forte');assert.equal(controls.curve,STEERING_CURVES.normal);
 // Buttons at the wheel: one keydown per press, a keyup on release. The team's pedido of 10-22: Y the handbrake, X up
-// and A down a gear, ↓ out of the car (the horn to L3, the lights to ←, the IGN to →).
+// and A down a gear, ↓ out of the car (the lights to ←, the IGN to →); Central #17: the horn on LB, the start on L3.
 events.length=0;
 pads=[pad({buttons:{3:1}})];controls.poll(1/60);controls.poll(1/60);
 assert.deepEqual(events,['keydown:Space']);
 pads=[pad()];controls.poll(1/60);assert.deepEqual(events,['keydown:Space','keyup:Space']);
 const press=index=>{events.length=0;pads=[pad({buttons:{[index]:1}})];controls.poll(1/60);pads=[pad()];controls.poll(1/60);return events.filter(e=>e.startsWith('keydown:')).map(e=>e.slice(8)).join();};
-assert.deepEqual([3,2,0,13,1,10,14,15,4,5,8,11,12].map(press),['Space','KeyX','KeyZ','KeyF','KeyQ','KeyH','KeyK','KeyL','KeyI','KeyC','KeyR','KeyB','KeyG']);
+assert.deepEqual([3,2,0,13,1,4,14,15,10,5,8,11,12].map(press),['Space','KeyX','KeyZ','KeyF','KeyQ','KeyH','KeyK','KeyL','KeyI','KeyC','KeyR','KeyB','KeyG']);
 // On foot, as the controller always was, and ↓ back into the car too.
 where='foot';
 assert.deepEqual([0,1,2,3,13,5,10,8,14,12,15,4,11].map(press),['Space','KeyQ','KeyE','KeyF','KeyF','KeyC','ShiftLeft','KeyR','Digit1','Digit2','Digit3','','']);
@@ -74,9 +74,9 @@ for(const [place] of PAD_PLACES){const used=PAD_ACTIONS.filter(a=>a.place===plac
  const mine=new PadBindings(storage);let heard=0;mine.onChange(()=>heard++);
  assert.equal(mine.code('car',3),'Space');assert.equal(mine.code('foot',3),'KeyF');assert.equal(mine.changed,false);
  const result=mine.set('buzina',0,3);
- assert.deepEqual(result.moved,{id:'freioMao',slot:0,button:10});assert.equal(heard,1);
- assert.deepEqual([mine.code('car',3),mine.code('car',10),mine.code('foot',3)],['KeyH','Space','KeyF'],'Y the horn, L3 the handbrake; on foot Y as it was');
- assert.deepEqual(JSON.parse(memory.get(PAD_STORAGE)).buttons,{freioMao:[10,null],buzina:[3,null]});
+ assert.deepEqual(result.moved,{id:'freioMao',slot:0,button:4});assert.equal(heard,1);
+ assert.deepEqual([mine.code('car',3),mine.code('car',4),mine.code('foot',3)],['KeyH','Space','KeyF'],'Y the horn, LB the handbrake; on foot Y as it was');
+ assert.deepEqual(JSON.parse(memory.get(PAD_STORAGE)).buttons,{freioMao:[4,null],buzina:[3,null]});
  assert.equal(new PadBindings(storage).code('car',3),'KeyH','read back');
  const own=new GamepadControls({target,bindings:mine,place:()=>'car'});events.length=0;
  pads=[pad({buttons:{3:1}})];own.poll(1/60);pads=[pad()];own.poll(1/60);assert.deepEqual(events,['keydown:KeyH','keyup:KeyH']);

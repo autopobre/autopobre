@@ -1,10 +1,10 @@
 // Modo História career (story-career.js through ImmersiveState): the wallet, the three morale bars,
 // prizes, the entry away from Interlagos, the equipment challenges with the wife's expenses, the
-// Blazer as the final dream and the end of the story.
+// Blazer, the challenges after it and the Opala 99 (Central #16), and the end of the story.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {ImmersiveState,FANS,JOKES,COSTS} from '../teste/immersive-state.js';
-import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,MISSED,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,SNAG_COST,outfitOf,repairBill,divorceStep,patienceOf,DIVORCE_LINES,PENSION,PENSION_MONTHS,GAME_OVER} from '../teste/story-career.js';
+import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,MISSED,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,SNAG_COST,outfitOf,repairBill,repairPerPoint,enginePower,ENGINE_PARTS,stageOf,BLAZER_AFTER,OPALA_GOAL,divorceStep,patienceOf,DIVORCE_LINES,PENSION,PENSION_MONTHS,GAME_OVER} from '../teste/story-career.js';
 const checks={},check=(name,value)=>{checks[name]=!!value;assert(value,name);};
 const profileOf=(career={},fund=0)=>({fund,career:{...newCareer(),intro:true,...career}});
 const story=(career,fund)=>{const s=new ImmersiveState(profileOf(career,fund));s.start();return s;};
@@ -137,6 +137,40 @@ check('late_disqualification_can_divorce',!wedBefore&&boxed.profile.career.divor
 check('outfit_by_stage',outfitOf(newCareer())==='civil'&&outfitOf({...newCareer(),intro:true})==='emprestado'&&outfitOf({...newCareer(),intro:true,gear:['macacao']})==='proprio');
 // The lines of Kléber's box know their act and place, which the 3D scene stages.
 check('lines_know_act_and_place',first.careerCards()===null&&new ImmersiveState().careerCards().cards.filter(c=>c.type==='line').every((c,i)=>c.act==='intro'&&c.index===i)&&(()=>{const r=story({},700);race(r,1);readAll(r);r.answerScene(true);const lines=r.scene.cards.filter(c=>c.type==='line');return lines.length===DONE_LINES.macacao.length&&lines.every((c,i)=>c.act==='done'&&c.index===i);})());
-// After the four challenges the Blazer is the dream, bought from the wallet at the end of a race.
-const dream=story({challenge:CHALLENGES.length},850);race(dream,6);check('blazer_card_after_equipment',dream.scene.cards.at(-1).type==='dream');readAll(dream);check('blazer_bought_last',dream.releaseBlazer()&&dream.profile.released&&dream.profile.fund===150);
+// After the four challenges the Blazer is the dream, bought from the wallet at the end of a race; then (Central #16)
+// the challenges after it start, the HANS first, its deadline from that race.
+const dream=story({challenge:BLAZER_AFTER},850);race(dream,6);check('blazer_card_after_equipment',dream.scene.cards.at(-1).type==='dream'&&dream.scene.cards.at(-1).dream==='blazer');readAll(dream);
+check('blazer_bought_then_hans',dream.releaseBlazer()&&dream.profile.released&&dream.profile.fund===150&&types(dream)==='dream,challenge'&&dream.sceneCard().done&&dream.scene.cards[1].challenge==='hans'&&dream.scene.cards[1].fresh&&dream.scene.cards[1].left===3&&dream.profile.career.blazerAt===1&&dream.profile.career.since===1);
+readAll(dream);check('mechanic_paid_once',!dream.releaseBlazer()&&dream.profile.fund===150);
+// A save whose Blazer came out before these challenges existed: the HANS deadline starts with the next race.
+const legacy=new ImmersiveState({fund:100,released:true,races:9,career:{...newCareer(),intro:true,challenge:BLAZER_AFTER,races:9,since:4}});
+check('old_blazer_save_starts_hans_now',legacy.profile.career.blazerAt===9&&legacy.profile.career.since===9&&stageOf(legacy.profile.career,true).challenge.id==='hans');
+// The challenges after the Blazer (Stevan's choices, #16.2): dearer each time than the helmet, longer deadlines, and
+// the wife's expenses climbing from R$ 450 to R$ 700 (none for her own trip).
+const later=CHALLENGES.slice(BLAZER_AFTER);
+check('challenges_after_blazer',later.map(c=>[c.number,c.id,c.goal,c.races].join(':')).join()==='5:hans:1500:3,6:carretinha:1800:3,7:ferramentas:2200:4,8:bodas:2600:4,9:kart:3000:4,10:motor:3500:5'&&CHALLENGES.every((c,i)=>i<=BLAZER_AFTER||c.goal>CHALLENGES[i-1].goal));
+check('their_expenses',later.map(c=>c.expense?expenseFor(c,{morale:{esposa:50}}):0).join()==='450,500,550,0,600,700');
+// The hitch and trailer: away from Interlagos the entry costs as at home.
+check('trailer_entry',entryFor('cascavel',{gear:['carretinha']})===ENTRY.home&&entryFor('cascavel',{gear:['hans']})===ENTRY.away&&entryFor('cascavel')===ENTRY.away);
+// The Box 99's tools: the team +10 when bought, then R$ 5 a point of damage.
+const tools=story({challenge:6,expense:true},2000);race(tools,1);
+check('tools_bought',tools.profile.career.gear.includes('ferramentas')&&tools.profile.fund===600&&tools.profile.career.morale.equipe===50+20+10&&types(tools)==='morale,morale,morale,repair,done,challenge'&&tools.scene.cards.at(-1).challenge==='bodas');
+readAll(tools);tools.start();tools.health=.75;race(tools,12);check('tools_halve_the_bill',repairPerPoint(tools.profile.career)===5&&tools.scene.cards.find(c=>c.type==='repair').bill===125&&repairBill(.75,5000,5).bill===125);
+// Her trip: no expense asked, her bar +25; skipped after a divorce; a deadline missed hurts her, not the team.
+const trip=story({challenge:7},2000);race(trip,1);
+check('trip_needs_no_expense',!trip.scene.cards.some(c=>c.type==='expense')&&trip.profile.career.gear.includes('bodas')&&trip.profile.career.morale.esposa===50+10+25&&trip.profile.fund===200&&trip.scene.cards.at(-1).challenge==='kart');
+const single=story({challenge:7,divorced:{race:0,taken:0}},0);race(single,12);
+check('trip_skipped_after_divorce',single.profile.career.challenge===8&&types(single).endsWith('skipped,challenge')&&single.scene.cards.at(-1).challenge==='kart'&&single.scene.cards.at(-1).fresh&&single.profile.career.since===single.profile.career.races);
+const late8=story({challenge:7,races:6,since:3},0);race(late8,12);const missed8=late8.scene.cards.find(c=>c.type==='missed');
+check('trip_missed_hurts_her',missed8?.changes.esposa===-10&&!('equipe' in missed8.changes)&&late8.profile.career.morale.esposa===50-10-10&&late8.profile.career.morale.equipe===45);
+// The daughter's kart: her scene at the Box 99 (act 'kart', Stevan in his own overalls), the supporters +15.
+const kart=story({challenge:8,expense:true},3000);race(kart,1);const kartLines=kart.scene.cards.filter(c=>c.type==='line');
+check('kart_scene',kartLines.length===DONE_LINES.kart.length&&kartLines.every((c,i)=>c.act==='kart'&&c.scene==='kart'&&c.index===i&&c.outfit==='proprio')&&kartLines[0].who==='daughter'&&kart.profile.career.morale.torcida===50+20+15&&kart.scene.cards.at(-1).challenge==='motor');
+// The engine's new parts: a little stronger (3%), in the story only (ImmersiveMode.start sets car.engineScale).
+check('engine_parts',enginePower({gear:['motor']})===ENGINE_PARTS&&ENGINE_PARTS===1.03&&enginePower({gear:['kart']})===1&&enginePower(null)===1);
+// After every challenge, the big dream: the Opala 99, bought after a race; it stays bought.
+const big=story({challenge:CHALLENGES.length},7500);race(big,1);check('opala_dream_after_all',big.scene.cards.at(-1).type==='dream'&&big.scene.cards.at(-1).dream==='opala'&&big.scene.cards.at(-1).goal===OPALA_GOAL&&!big.profile.career.opala);
+readAll(big);check('opala_bought',big.buyOpala()&&big.profile.career.opala&&big.profile.fund===300&&types(big)==='owned');readAll(big);
+check('opala_bought_once',!big.buyOpala()&&big.profile.fund===300&&stageOf(new ImmersiveState(JSON.parse(JSON.stringify(big.profile))).profile.career,true).done);
+const poorDream=story({challenge:CHALLENGES.length},100);race(poorDream,12);readAll(poorDream);check('opala_needs_the_money',!poorDream.buyOpala()&&!poorDream.profile.career.opala);
 const report={passed:true,checks};fs.writeFileSync(new URL('../dados/validacao_carreira.json',import.meta.url),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));

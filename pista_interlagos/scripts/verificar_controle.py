@@ -133,7 +133,7 @@ with sync_playwright() as p:
     page.check('#padRumble')
     wait_js(page, "fakePad.effects.length===1&&fakePad.effects[0].type==='dual-rumble'")
     page.select_option('#padSteering', 'normal')
-    # A button for a command: Y given to the horn swaps with the handbrake (L3); Menu while one is awaited gives up
+    # A button for a command: Y given to the horn swaps with the handbrake (LB); Menu while one is awaited gives up
     # and leaves the settings open; Restaurar brings the original buttons back.
     slot = lambda id, n=0: f'#padBindings button[data-id="{id}"][data-slot="{n}"]'
     page.click(slot('buzina'))
@@ -141,9 +141,9 @@ with sync_playwright() as p:
     pad("fakePad.buttons[3]=1")
     wait_js(page, f"document.querySelector('{slot('buzina')}').textContent==='Y'")
     pad("fakePad.buttons[3]=0")
-    assert page.text_content(slot('freioMao')) == 'L3', page.text_content(slot('freioMao'))
+    assert page.text_content(slot('freioMao')) == 'LB', page.text_content(slot('freioMao'))
     saved = json.loads(page.evaluate("localStorage.getItem('opala99-controle-v1')"))
-    assert saved['buttons'] == {'freioMao': [10, None], 'buzina': [3, None]}, saved
+    assert saved['buttons'] == {'freioMao': [4, None], 'buzina': [3, None]}, saved
     page.click(slot('sair', 1))
     page.wait_for_timeout(100)
     pad("fakePad.buttons[9]=1")

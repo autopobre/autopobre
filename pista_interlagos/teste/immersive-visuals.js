@@ -207,8 +207,10 @@ export class ImmersiveVisuals {
    const car=entry?this.rivalCar(rivalTemplate,entry.color,entry.number,entry.shortName,{stripe:entry.stripe,finish:entry.finish,dirt:true}):null;
    // The divorce (Central #15) inside the Box 99: `out` toward its door, from a point 9 m in (the lawyer walks in
    // from the lane, the cameras look at the back wall with the crew behind them, at the door).
-   const boxAt=pit?.box99?(a,o)=>L.point(a,pit.box99.front+Math.min(9,pit.box99.depth*.6)-o).add(this.crowd.position):null;
-   this.storyScene=new StoryScene({people:this.people,parent:this.root,at,boxAt,car,groundAt:(x,y)=>this.groundAt?.(x,y),logo});}
+   // The kart (Central #16) goes round the lane in front of it: boxLane, its door and the lane's far edge in those metres.
+   const inside=pit?.box99?Math.min(9,pit.box99.depth*.6):0,boxAt=pit?.box99?(a,o)=>L.point(a,pit.box99.front+inside-o).add(this.crowd.position):null;
+   const boxLane=pit?.box99?{door:inside,wall:inside+pit.box99.front-(L.bounds.d0-.5)}:null;
+   this.storyScene=new StoryScene({people:this.people,parent:this.root,at,boxAt,boxLane,car,groundAt:(x,y)=>this.groundAt?.(x,y),logo});}
   this.banner(this.crowd,'PADDOCK · VAQUINHA ANTES DA LARGADA',L.point(12,L.bounds.d1-.1,6.3),L.heading,9,.55,'#f5d279','#1a292b');
   this.truck=this.truckModel();this.root.add(this.truck);
   this.strap=this.strapMesh();this.root.add(this.strap);

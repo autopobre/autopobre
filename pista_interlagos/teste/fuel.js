@@ -5,9 +5,10 @@
 import {CIRCUITS} from './circuits.js';
 import {AI_REFERENCE_TIMES} from './ai-record-references.js';
 export const FUEL_LAPS=8,FUEL_SPARE=1;
-// The tanks, in litres: the Opala's and the Fusca's (Copa Fusca, Modo Corrida only).
-export const TANKS=Object.freeze({opala:80,fusca:40});
-export const tankFor=model=>TANKS[model]??TANKS.opala;
+// The tank, in litres: 15 in the Opala and in the Fusca alike (Central #17). A circuit may give it more (circuits.js
+// tank): the Pampulha's 20 km lap takes 40 L, a poetic licence.
+export const TANK=15;
+export const tankFor=circuit=>CIRCUITS[circuit]?.tank??TANK;
 // Litres a second before the circuit's scale: the engine running, the speed, the throttle and the
 // rear wheels spinning (burnouts burn more).
 export const burnRate=(speed,throttle=0,spin=0)=>.002+speed*.00045+throttle*.005+spin*.0023;

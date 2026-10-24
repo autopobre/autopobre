@@ -46,6 +46,9 @@ const rosterEntry=([number,shortName,name,points,rank,stage3,stage4,styleIndex,c
  return Object.freeze({number,shortName,name,points,rank,stage3,stage4,styleIndex,color,stripe,finish:finish&&Object.freeze(finish),mark,rating,level:Math.round(70+rating*28),skill,errors});
 };
 export const RIVAL_ROSTER=Object.freeze(entries.map(rosterEntry));
+// The cars Luizão Racing prepared, its logo on their switch bank and relay board (Central #17): Stevan Gaipo's 99,
+// Kleber Eletric's 70, Aloísio Bueno's 312, Marco Maragno's 9 and Rodrigo Battistel's 42 (cockpit.js setLuizao).
+export const LUIZAO_CARS=Object.freeze(['99','70','312','9','42']);
 export const PLAYER_ENTRY=Object.freeze({number:'99',shortName:'Stevan Gaipo',name:'Stevan Gaipo / Edu Neves',points:67,rank:12,color:0xe2fb57});
 // Modo Corrida's car selection (car-select.js): the player may race any car of the grid. Every car is
 // the same Opala (same physics); what changes is the team's paint and number. The driver of the car

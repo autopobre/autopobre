@@ -1,6 +1,7 @@
 // podium (optional): where the story's podium stage stands, [metres along the track from the line, metres across
 // it] (immersive-visuals.js), a clear and level spot off the track; without it 35 m past the line, 32 m aside.
 // fuel: the litres an 8-lap race takes there, about 1 L left at the flag (Stevan's table, Central #11; fuel.js).
+// tank (optional): litres the tank holds there instead of the 15 of every car (fuel.js TANK, Central #17).
 export const CIRCUITS=Object.freeze({
  interlagos:{id:'interlagos',name:'Interlagos',label:'AUTÓDROMO JOSÉ CARLOS PACE',length:4309,description:'4.309 m · 15 curvas · São Paulo, SP',intro:'Subidas, descidas e caimentos do relevo municipal. Pit lane completo: entrada depois do Café, retorno na Reta Oposta.',source:'Mapa e pit lane FIA 2025 · GeoSampa LiDAR 2017 e ortofoto 2020 (20 cm).',fuel:10,altitude:720},
  curvelo:{id:'curvelo',name:'Oval de Curvelo',label:'CIRCUITO DOS CRISTAIS · CURVELO, MG',length:1250,description:'1.250 m · 2 curvas · Inclinação de até 16%',intro:'Duas retas, uma curva inclinada e outra plana. O primeiro oval brasileiro entra no grid.',source:'Traçado CBA · extensão NASCAR Brasil · inclinação Circuito dos Cristais. Larguras e terreno aproximados.',fuel:6,altitude:null},
@@ -66,7 +67,7 @@ export const CIRCUITS=Object.freeze({
  // in Belo Horizonte, clockwise, and a loop round the Mineirão (scripts/circuitos/gerar_pampulha.py: OSM streets, the
  // city's 2015 LiDAR, buildings, kerbs and lake from BHGeo). The start is on Av. Coronel Oscar Paschoal towards the lake,
  // the boxes on its other carriageway, beside the Mineirão. Over 20 km: always a one-lap race (laps).
- pampulha:{id:'pampulha',name:'Circuito da Pampulha',label:'CIRCUITO DA PAMPULHA · BELO HORIZONTE, MG',length:20533,laps:1,description:'20.533 m · 67 curvas · horário · uma volta só · circuito de rua imaginário · Belo Horizonte, MG',intro:'Largada na Av. Coronel Oscar Paschoal rumo à lagoa. A volta inteira da orla da Pampulha no sentido horário: Igrejinha, Parque Ecológico, zoológico, os braços da lagoa e a barragem; depois sobe a Oscar Paschoal e contorna o Mineirão. Corrida de uma volta só.',source:'Ruas do OpenStreetMap · LiDAR 2015, edificações, meios-fios, lagoa e ortofoto do BHGeo (Prefeitura de Belo Horizonte / PRODABEL).',fuel:40,altitude:800,
+ pampulha:{id:'pampulha',name:'Circuito da Pampulha',label:'CIRCUITO DA PAMPULHA · BELO HORIZONTE, MG',length:20533,laps:1,description:'20.533 m · 67 curvas · horário · uma volta só · circuito de rua imaginário · Belo Horizonte, MG',intro:'Largada na Av. Coronel Oscar Paschoal rumo à lagoa. A volta inteira da orla da Pampulha no sentido horário: Igrejinha, Parque Ecológico, zoológico, os braços da lagoa e a barragem; depois sobe a Oscar Paschoal e contorna o Mineirão. Corrida de uma volta só.',source:'Ruas do OpenStreetMap · LiDAR 2015, edificações, meios-fios, lagoa e ortofoto do BHGeo (Prefeitura de Belo Horizonte / PRODABEL).',fuel:40,tank:40,altitude:800,
   data:'pista_pampulha.json',ground:'./assets/circuitos/pampulha_solo.jpg',track:'PAMPULHA',boxTitle:'Cuida do Opala, sô!',weather:'Belo Horizonte · 16h40 · 26 °C · pista seca',venue:'Circuito da Pampulha'}
 });
 export const circuitId=value=>typeof value==='string'&&Object.hasOwn(CIRCUITS,value)?value:'interlagos';

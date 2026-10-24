@@ -257,13 +257,20 @@ function luizaoLogo(ctx,x,y,size,color='#dcd9cf'){
  ctx.font=`italic 900 ${size*.4}px "Arial Black",Arial,sans-serif`;ctx.lineWidth=size*.022;ctx.strokeText('RACING',size*.45,size*.45);
  ctx.restore();
 }
-export function switchPanelTexture(){
+// Luizão Racing's logo only in the cars it prepared (Central #17, race-roster.js LUIZAO_CARS): the material keeps both
+// faces (draw(logo)) and the cockpit's setLuizao picks one; the plain face is drawn the first time a car without it is taken.
+export function luizaoFaces(material,draw){
+ const faces=new Map([[true,draw(true)]]);material.map=faces.get(true);
+ material.userData.luizao=logo=>{if(!faces.has(logo))faces.set(logo,draw(logo));return faces.get(logo);};
+ return material;
+}
+export function switchPanelTexture(logo=true){
  return canvasTexture(2048,576,(ctx,w,h)=>{
   const bg=ctx.createLinearGradient(0,0,w,h);bg.addColorStop(0,'#0e1011');bg.addColorStop(.45,'#1d2022');bg.addColorStop(.55,'#141618');bg.addColorStop(1,'#0b0c0d');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
   const px=x=>(x/.22+.5)*w,py=y=>(.5-y/.062)*h;
   const engrave=(t,x,y,size)=>{ctx.font=`400 ${size}px "Times New Roman",Georgia,serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='rgba(0,0,0,.85)';ctx.fillText(t,px(x)+3,py(y)+3);ctx.fillStyle='#dcd9cf';ctx.fillText(t,px(x),py(y));};
   for(const [label,x] of SWITCH_BANK){if(label!=='PART'){engrave('ON',x,.0104,40);engrave('OFF',x,-.0132,40);}engrave(label,x,-.0252,66);}
-  luizaoLogo(ctx,px(.004),py(.019),112);
+  if(logo)luizaoLogo(ctx,px(.004),py(.019),112);
  });
 }
 // Lettering on a transparent (or plain) card: OMP on the wheel spoke, Sgarbi seat and belts.
@@ -286,10 +293,10 @@ export function msdLabel(){
   ctx.fillStyle='#e8e4dc';ctx.fillRect(250,118,120,36);ctx.fillStyle='#c01822';ctx.font='900 24px Arial';ctx.fillText('6420',310,137);
  });
 }
-export function relayPanelTexture(){
+export function relayPanelTexture(logo=true){
  return canvasTexture(512,448,(ctx,w,h)=>{
   ctx.fillStyle='#101112';ctx.fillRect(0,0,w,h);ctx.fillStyle='rgba(255,255,255,.05)';for(let i=0;i<40;i++)ctx.fillRect(Math.random()*w,Math.random()*h,2,2);
-  luizaoLogo(ctx,370,386,64,'#e2dfd6');
+  if(logo)luizaoLogo(ctx,370,386,64,'#e2dfd6');
  });
 }
 // Battery top: one continuous white and green label with a row of small pictograms.

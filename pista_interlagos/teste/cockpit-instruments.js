@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {clamp} from './physics.js';
-import {AUTOMETER,autoMeterFace,shiftSetLabel,SWITCH_BANK,switchPanelTexture,drawSegments} from './cockpit-materials.js';
+import {AUTOMETER,autoMeterFace,shiftSetLabel,SWITCH_BANK,switchPanelTexture,luizaoFaces,drawSegments} from './cockpit-materials.js';
 
 // Needle rotation for a face drawn by autoMeterFace (clockwise on the dial).
 export const needleAngle=(kind,value)=>{const s=AUTOMETER[kind];return -(s.start+s.sweep*clamp((value-s.min)/(s.max-s.min),0,1))*Math.PI/180;};
@@ -74,7 +74,7 @@ export function buildSwitchBank(kit,position,tilt,hanger){
  const bank=panel(position,kit.root,tilt);bank.name='Painel_botoes_Luizao';
  const acrylic=new THREE.MeshPhysicalMaterial({color:0x0e1011,roughness:.12,clearcoat:1,clearcoatRoughness:.04,envMapIntensity:1.2});
  box([0,0,0],[.22,.062,.005],acrylic,bank);
- const face=mesh(new THREE.PlaneGeometry(.22,.062),new THREE.MeshPhysicalMaterial({map:switchPanelTexture(),roughness:.14,clearcoat:1,clearcoatRoughness:.04,envMapIntensity:1.2,polygonOffset:true,polygonOffsetFactor:-2}),[0,0,.0026],bank);face.castShadow=false;
+ const face=mesh(new THREE.PlaneGeometry(.22,.062),luizaoFaces(new THREE.MeshPhysicalMaterial({roughness:.14,clearcoat:1,clearcoatRoughness:.04,envMapIntensity:1.2,polygonOffset:true,polygonOffsetFactor:-2}),switchPanelTexture),[0,0,.0026],bank);face.castShadow=false;
  for(const [x,y] of [[-.104,.0262],[.104,.0245],[-.103,-.0246],[.105,-.025]])mesh(new THREE.CylinderGeometry(.0028,.0028,.0018,16).rotateX(Math.PI/2),chrome,[x,y,.0033],bank);
  for(const [label,x] of SWITCH_BANK){
   if(label==='PART'){

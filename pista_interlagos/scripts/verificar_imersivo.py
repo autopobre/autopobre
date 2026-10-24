@@ -42,9 +42,10 @@ with sync_playwright() as p:
   # Winner and disqualification fixtures verify both endings through real UI actions.
   page.evaluate("()=>{const m=fixtureMode;m.start();m.state.phase='race';m.state.finish(1);m.sync();}");frame();page.click('[data-action="afterPodium"]');page.click('[data-action="box"]');check('winner_disqualified_for_box',info()['result']['status']=='Desclassificado' and info()['prize']==0 and info()['podiumPlace']==6);shot('desclassificado')
   page.evaluate("()=>{const m=fixtureMode;m.start();m.state.phase='race';m.state.finish(1);m.sync();}");frame();page.click('[data-action="afterPodium"]');page.click('[data-action="inspect"]');page.evaluate('''()=>{for(let i=0;i<1100&&fixtureMode.state.phase==='inspection';i++)fixtureMode.step({},1/120);}''');check('winner_gets_prize_but_sixth_podium',info()['result']['position']==1 and info()['podiumPlace']==6 and info()['prize']==800);shot('podio_vitoria')
-  # The Blazer is the career's final dream (story-career.js): once the four challenges are done, after the race's cards.
-  page.evaluate('()=>{window.interlagosHistoria.skipCards();const s=fixtureMode.state;s.profile.career.challenge=4;s.profile.fund=900;s.touch();}');frame();page.click('[data-action="blazer"]');check('blazer_released',info()['profile']['released']);shot('blazer_livre')
-  page.click('[data-action="normal"]');check('normal_mode_restored',not info()['active']);open_menu(page);enter_track(page);check('garage_progress_persists',info()['profile']['released'] and not info()['active'])
+  # The Blazer is the career's dream once the four challenges are done (story-career.js), after the race's cards; then
+  # (Central #16) its card and the HANS, the next challenge.
+  page.evaluate('()=>{window.interlagosHistoria.skipCards();const s=fixtureMode.state;s.profile.career.challenge=4;s.profile.fund=900;s.touch();}');frame();page.click('[data-action="blazer"]');check('blazer_released',info()['profile']['released'] and info()['scene']['cards']==['dream','challenge']);shot('blazer_livre')
+  page.evaluate('window.interlagosHistoria.skipCards()');frame();page.click('[data-action="normal"]');check('normal_mode_restored',not info()['active']);open_menu(page);enter_track(page);check('garage_progress_persists',info()['profile']['released'] and not info()['active'])
   check('no_browser_errors',not report['errors']);report['passed']=True
  finally:
   report.setdefault('passed',False);(ROOT/'dados/validacao_imersivo_browser.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8');print(json.dumps(report,ensure_ascii=False,indent=2),flush=True);browser.close()

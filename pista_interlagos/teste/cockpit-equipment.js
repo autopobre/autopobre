@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import {msdLabel,relayPanelTexture,windscreenNumber,canvasTexture} from './cockpit-materials.js';
+import {msdLabel,relayPanelTexture,luizaoFaces,windscreenNumber,canvasTexture} from './cockpit-materials.js';
 
 const tube=(points,r)=>new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points.map(p=>new THREE.Vector3(...p))),Math.max(12,points.length*10),r,8,false);
 // Coiled cord between two points (radio and push-to-talk leads).
@@ -20,7 +20,7 @@ export function buildPassengerSide(kit){
  mesh(new THREE.PlaneGeometry(.165,.089),new THREE.MeshStandardMaterial({map:msdLabel(),metalness:.3,roughness:.45}),[0,0,.0006],msd).castShadow=false;
  // Relay and fuse board.
  const board=panel([.766,.60,.53]);board.name='Painel_reles';
- mesh(new THREE.PlaneGeometry(.21,.30),new THREE.MeshStandardMaterial({map:relayPanelTexture(),roughness:.5}),[0,0,.002],board);
+ mesh(new THREE.PlaneGeometry(.21,.30),luizaoFaces(new THREE.MeshStandardMaterial({roughness:.5}),relayPanelTexture),[0,0,.002],board);
  box([0,0,0],[.21,.30,.004],m.shell,board);
  const relay=new THREE.MeshPhysicalMaterial({color:0xf2c4a4,roughness:.1,transparent:true,opacity:.3,clearcoat:1,depthWrite:false});
  const bladeFuse=new THREE.MeshPhysicalMaterial({color:0x4fb86a,roughness:.25,transparent:true,opacity:.85,depthWrite:false});

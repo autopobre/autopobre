@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {ImmersiveState,FANS,JOKES,COSTS,strapPath} from '../teste/immersive-state.js';
-import {CHALLENGES} from '../teste/story-career.js';
+import {BLAZER_AFTER} from '../teste/story-career.js';
 import {snackState,buySnack,giveSnack,useSnack,stepSnack} from '../teste/pitstop.js';
 const checks={},check=(name,value)=>{checks[name]=!!value;assert(value,name);};
 // A career whose welcome in Kléber's box was already seen (story-career.js; testar_carreira.mjs covers it).
@@ -48,7 +48,7 @@ const balance=winner.profile.fund;winner.podium();check('prize_not_paid_twice',w
 const dq=fresh();dq.phase='race';dq.finish(1);dq.leavePodium();dq.goToBox();check('box_before_judge_disqualifies_winner',dq.result.status==='Desclassificado'&&dq.prize===0&&dq.podiumPlace===6);
 for(const reason of ['Motor afogado na partida','Acabou a gasolina','Para-brisa estilhaçado','Carro quebrou']){const d=fresh();d.phase='race';d.fail(reason);d.beginTow();while(d.phase==='tow')d.towStep({brake:1},.05);d.leavePodium();d.requestInspection();d.inspectionStep(8);check('dnf_sixth_'+reason,d.podiumPlace===6&&d.result.status==='Não terminou');}
 winner.start();winner.phase='race';winner.finish(1);winner.leavePodium();winner.requestInspection();winner.inspectionStep(8);check('blazer_waits_for_the_equipment',!winner.releaseBlazer()&&winner.sceneCard()?.type==='morale');
-// The Blazer is the final dream: once the four pieces of equipment are bought.
-winner.scene=null;Object.assign(winner.profile.career,{challenge:CHALLENGES.length,report:null});winner.profile.fund=1200;check('blazer_goal_can_be_completed',winner.releaseBlazer()&&winner.profile.released&&winner.profile.fund===300);check('mechanic_paid_once',!winner.releaseBlazer());
+// The Blazer is the dream once the four pieces of equipment are bought (then come the challenges after it).
+winner.scene=null;Object.assign(winner.profile.career,{challenge:BLAZER_AFTER,report:null});winner.profile.fund=1200;check('blazer_goal_can_be_completed',winner.releaseBlazer()&&winner.profile.released&&winner.profile.fund===300);check('mechanic_paid_once',!winner.releaseBlazer());
 const saved=new ImmersiveState(JSON.parse(JSON.stringify(winner.profile)));check('profile_survives_reload',saved.profile.released&&saved.profile.races===2);saved.disable();check('normal_mode_isolated',!saved.active&&saved.phase==='off');
 const report={passed:true,checks};fs.writeFileSync(new URL('../dados/validacao_imersivo.json',import.meta.url),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));

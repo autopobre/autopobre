@@ -1,7 +1,7 @@
 """Browser check for the fuel by circuit (Central #11, fuel.js) and the story's repair bill (Central #14).
 
 Story at Interlagos: the team's desk shows "Recomendado para este circuito: 10 litros." between the fuel slider
-and the windscreen film, the slider goes up to the Opala's 80 L tank and the old per-lap hint is gone. A race
+and the windscreen film, the slider goes up to the 15 L tank (Central #17) and the old per-lap hint is gone. A race
 finished with the CARRO bar at 75%: after the three morale cards (the supporters' last) comes "Custos de reparo do
 carro", R$ 250,00 charged and the wallet left; the podium's money line lists it too. Modo Corrida starts with
 the table's litres and the HUD's bar reads against the tank.
@@ -46,7 +46,7 @@ with sync_playwright() as p:
      return {rec:rec?.textContent,max:slider.max,between:!!rec&&slider.closest('dd').nextElementSibling===rec&&rec.nextElementSibling===film,hint:hint?.textContent};}""")
     report['desk'] = desk
     check('desk_recommends_the_table', desk['rec'] == 'Recomendado para este circuito: 10 litros.' and desk['between'], desk)
-    check('slider_up_to_the_tank', desk['max'] == '80', desk)
+    check('slider_up_to_the_tank', desk['max'] == '15', desk)
     check('old_lap_hint_gone', 'costuma gastar' not in (desk['hint'] or '') and desk['hint'].startswith('Burnout e vazamentos gastam mais.'), desk)
     frame()
     page.screenshot(path=str(SHOTS / 'combustivel_mesa_equipe.png'))
@@ -72,7 +72,7 @@ with sync_playwright() as p:
     page.screenshot(path=str(SHOTS / 'reparo_custos.png'))
     page.evaluate('window.interlagosHistoria.skipCards()')
     page.close()
-    # Modo Corrida: the race starts with the table's litres (Interlagos, 3 laps: 10 L); the HUD's bar against the tank.
+    # Modo Corrida: the race starts with the table's litres (Interlagos, 3 laps: 10 L); the HUD's bar against the 15 L tank.
     page = browser.new_page(viewport={'width': 1280, 'height': 800})
     page.set_default_timeout(120000)
     page.on('pageerror', lambda e: report['errors'].append(str(e)))
@@ -81,7 +81,7 @@ with sync_playwright() as p:
     page.evaluate(HOOK)
     free = page.evaluate("()=>({fuel:fixtureMode.freeFuel,tank:fixtureMode.tank,target:fixtureMode.fuelTarget,bar:+document.querySelector('#fuelBar').max})")
     report['free'] = free
-    check('free_race_starts_with_the_table', free['fuel'] == 10 and free['target'] == 10 and free['tank'] == 80 and free['bar'] == 80, free)
+    check('free_race_starts_with_the_table', free['fuel'] == 10 and free['target'] == 10 and free['tank'] == 15 and free['bar'] == 15, free)
     browser.close()
 print(json.dumps(report, indent=1, ensure_ascii=False), flush=True)
 assert not report['errors'], report['errors']

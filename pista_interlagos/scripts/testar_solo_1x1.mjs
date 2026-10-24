@@ -6,7 +6,7 @@ import {TestCar,recognitionInput} from '../teste/physics.js';
 import {RaceField} from '../teste/race-field.js';
 import {RIVAL_ROSTER,GRID_START_BACK,GRID_ROW_SPACING,gridSlot,playerGridSlot,rivalEntry,DUEL_DEFAULT} from '../teste/race-roster.js';
 import {ImmersiveMode} from '../teste/immersive-mode.js';
-import {TANKS,recommendedFuel} from '../teste/fuel.js';
+import {TANK,recommendedFuel} from '../teste/fuel.js';
 import {ImmersiveState} from '../teste/immersive-state.js';
 import {AutomaticRecords,readRecords} from '../teste/lap-records.js';
 import {AutomaticAIRecords,readAIRecords} from '../teste/ai-records.js';
@@ -59,7 +59,7 @@ for(const [name,data] of [['interlagos',interlagos],['curvelo',createCurveloData
  // two-car race to the flag whose race times stay off the boards.
  const mode=(lineup,laps=3)=>{
   const m=Object.create(ImmersiveMode.prototype);
-  Object.assign(m,{data,car:new TestCar(data),state:new ImmersiveState(),field:new RaceField(data,{seed:4}),parts:{reset(){}},contacts(){},sync(){},wallImpact(){},laps,storyLaps:3,lineup,tank:TANKS.opala});
+  Object.assign(m,{data,car:new TestCar(data),state:new ImmersiveState(),field:new RaceField(data,{seed:4}),parts:{reset(){}},contacts(){},sync(){},wallImpact(){},laps,storyLaps:3,lineup,tank:TANK});
   m.car.resetGrid(playerGridSlot(lineup?.length));m.resetField();return m;
  };
  {
