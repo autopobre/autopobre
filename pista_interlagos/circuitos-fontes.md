@@ -460,6 +460,18 @@ dados da Prefeitura; `--geofloripa` baixa só eles).
   ficam fora da pista e dos muros (as calçadas ficam), dos boxes e das arquibancadas; além dela, o horizonte da cidade.
   A Rodoviária, o TICEN, o Mercado Público, a Casa da Alfândega, a Catedral e o Forte de Santana têm modelo próprio
   (`floripa-landmarks.js`), como as pontes (`floripa-bridges.js`) e as antenas do Morro da Cruz.
+- **Praça da cabeceira insular da Hercílio Luz (24/10/2026, pedido da equipe)**: o Monumento a Hercílio Luz (OSM nó
+  1763818745, `memorial=statue`, inscrição "A Hercílio Luz / O povo de Santa Catharina / 29-05-1860 – 20-10-1924") no
+  meio do jardim em leque e o mirante de pérgola branca em arco na beira da praça (OSM via 164776332, área de estar; nó
+  `tourism=viewpoint` 1763818766). O centro é o do anel de caminho do OSM em volta do monumento (via 164776331), onde
+  o jogo desenha o jardim (que vem do OSM; na ortofoto o pedestal fica ~4 m a sudoeste); o giro do pedestal e o arco
+  (raios 13,2–16,9 m, 55°, 18 ripas) medidos na ortofoto 2016 do GeoFloripa, só para conferência; modelados do
+  zero (`PRACA_CABECEIRA` em `gerar_floripa.py`, `monumento`/`mirante` em `floripa-landmarks.js`). Abertos: se anda em
+  volta e sob a pérgola, e os sólidos (pedestal, colunas, bancos, guarda-corpo) entram no passeio da cidade.
+- **Perfil sob as copas (24/10/2026)**: na Alameda Adolfo Konder, arborizada, o MDT fotogramétrico chutava o chão sob as
+  árvores e fazia um vale falso de 2,7 m (s 545–575; as curvas de nível de 1 m não descem nem 1 m ali) onde os carros
+  voavam e capotavam. Onde o MDS fica 2 m acima do MDT no eixo por 20 m ou mais (a Alameda, um trecho da Rua 14 de
+  Julho), o perfil só guarda curvas verticais de raio de 700 m ou mais (`gerar_pista.curva_vertical_minima`).
 - **No jogo**: muros de concreto com alambrado dos dois lados (`street-walls.js`, folga por estação nas colunas
   `wall_right_m`/`wall_left_m`), o mar (`sea-water.js`), anéis de relevo e cor até 22 km (`far-terrain.js`).
 - **A cidade (15/10/2026, pedido da equipe: "como se fosse Mônaco")**: `scripts/circuitos/gerar_cidade_floripa.py`, o

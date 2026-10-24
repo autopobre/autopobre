@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import {canvasTexture} from './pit-textures.js';
 import {lightUniforms,nightLights,waterGlints,screenHalf} from './sea-water.js';
+import {addRoamSolids} from './physics.js';
 
 // The postcard of Florianópolis round the street circuit (data.scenery.landmarks, gerar_floripa.py): the Rodoviária
 // Rita Maria beside the boxes, the TICEN, the Mercado Público and the Casa da Alfândega, the Catedral, the Forte de
-// Santana under the bridge's island head and the aerials on the Morro da Cruz. Each building stands on its real OSM
+// Santana under the bridge's island head, the square on that head (the Monumento a Hercílio Luz and the white pergola
+// of its belvedere, both open: walked round and under, their solids in the city's roam world) and the aerials on the
+// Morro da Cruz. Each building stands on its real OSM
 // footprint (outline, w × d along heading) and is drawn from the facts gathered for the circuit: the Rodoviária's
 // hexagonal precast roof tubes, the TICEN's folded canopies and teal bus loops, the yellow market round its covered
 // passage. Everything is merged by material into a handful of meshes: one set near the track (casts shadows), one far
@@ -544,6 +547,125 @@ function forte(m,{near:{stucco:S,tiles:T,paint:P,glass:G,steel:M},ground,mobile,
  return {merlons};
 }
 
+// ---------- The square on the bridge's island head (gerar_floripa.py PRACA_CABECEIRA) ----------
+// A tube from p to q through elliptical rings [t along it 0..1, half-width along `side` (made square to the axis), half-width
+// across]: limbs, bodies and heads of the bronze figures. Both ends closed.
+function tube(B,p,q,rings,col,side,n=10){
+ const d=unit(sub(q,p)),e1=unit(sub(side,mul(d,dot(side,d)))),e2=cross(d,e1);
+ const centre=t=>[p[0]+(q[0]-p[0])*t,p[1]+(q[1]-p[1])*t,p[2]+(q[2]-p[2])*t];
+ const R=rings.map(([t,a,b])=>{const c=centre(t);return Array.from({length:n},(_,i)=>{const w=i*2*Math.PI/n,x=Math.cos(w)*a,y=Math.sin(w)*b;return [c[0]+e1[0]*x+e2[0]*y,c[1]+e1[1]*x+e2[1]*y,c[2]+e1[2]*x+e2[2]*y];});});
+ for(let k=0;k<R.length-1;k++){const c=centre((rings[k][0]+rings[k+1][0])/2);for(let i=0;i<n;i++){const j=(i+1)%n,A=R[k],C=R[k+1];B.quad(A[i],A[j],C[j],C[i],col,sub([(A[i][0]+C[j][0])/2,(A[i][1]+C[j][1])/2,(A[i][2]+C[j][2])/2],c));}}
+ B.poly(R[0],col,mul(d,-1));B.poly(R[R.length-1],col,d);
+}
+// Cast bronze by the sea: dark brown, green patina running down in patches, every fold its own shade.
+const BRONZE=(()=>{const base=lin(0x5c4831),green=lin(0x5f7d66);return p=>{const g=Math.max(0,fbm(p[0]*1.6+p[2]*2.2,p[1]*1.6-p[2]*1.8)-.45)*1.7,k=.8+.38*noise(p[0]*3.3+p[2]*4.1,p[1]*3.3);return [(base[0]+(green[0]-base[0])*g)*k,(base[1]+(green[1]-base[1])*g)*k,(base[2]+(green[2]-base[2])*g)*k];};})();
+// Granite: the polished dark of the pedestal, the pale grey of the steps, each with its own speckle and wear.
+const graniteDark=p=>{const k=.86+.28*noise(p[0]*2.7+p[2]*1.3,p[1]*2.7-p[2]*1.9);return mul(lin(0x2d2c2a),k);};
+const granitePale=p=>{const k=.84+.3*fbm(p[0]*.9+p[2],p[1]*.9-p[2]*.7);return mul(lin(0xaeaaa1),k);};
+// The inscription's bronze letters (OSM: "A Hercílio Luz / O povo de Santa Catharina / 29-05-1860 - 20-10-1924"), cut
+// out of the canvas (alpha) so the granite shows between them.
+function inscriptionTexture(lines){
+ return canvasTexture((ctx,w,h)=>{ctx.clearRect(0,0,w,h);ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+  const sizes=[96,54,50],ys=[.27,.6,.83];
+  lines.forEach((t,i)=>{ctx.font=`700 ${sizes[i]??48}px Georgia,"Times New Roman",serif`;ctx.lineWidth=8;ctx.strokeStyle='#3a2a16';ctx.strokeText(t,w/2,h*ys[i],w-40);ctx.fillStyle='#9c7a45';ctx.fillText(t,w/2,h*ys[i],w-40);});
+ },1024,512);
+}
+// Monumento a Hercílio Luz (governor, 1860-1924; the bridge carries his name): three pale granite steps, a dark polished
+// pedestal with its mouldings and cornice, the bronze letters on its front (to the NE, the way people come from the
+// Alameda and the Parque da Luz), a reclining bronze figure on the plinth's front ledge and the governor standing on top
+// in a frock coat, a rolled paper in his left hand. From scratch, at the size the 2016 orthophoto shows (3.6 m bottom step).
+// Local frame: u to the front, v to the statue's left.
+function monumento(m,{near:{concrete:C,paint:P,steel:M,letters:Lt},ground,solids,clearings}){
+ // (On sloping ground the bottom step's top meets the ground's highest point, at least .1 m over its lowest.)
+ const F0=frame(m.x,m.y,0,m.heading),{floor,low}=footing(F0,ground,m.ground,-1.8,1.8,-1.8,1.8),z0=Math.max(low+.1,floor-.32);
+ const L=frame(m.x,m.y,z0,m.heading),fw=[Math.cos(m.heading),Math.sin(m.heading),0],up=[0,0,1];
+ // Steps, each tier a little worn at its edge by its own noise; the bottom one runs down into the ground.
+ C.box(L,-1.8,1.8,-1.8,1.8,low-.3-z0,.17,granitePale,{bottom:false});
+ C.box(L,-1.5,1.5,-1.5,1.5,.17,.34,granitePale,{bottom:false});
+ C.box(L,-1.22,1.22,-1.22,1.22,.34,.51,granitePale,{bottom:false});
+ // Plinth (its front reaching out as a ledge for the reclining figure), moulding, shaft, cornice and the die under the feet.
+ P.box(L,-.95,1.2,-.95,.95,.51,1.02,graniteDark,{bottom:false});
+ P.box(L,-.8,.8,-.8,.8,1.02,1.16,graniteDark,{bottom:false});
+ P.box(L,-.68,.68,-.68,.68,1.16,3.62,graniteDark,{bottom:false});
+ P.box(L,-.8,.8,-.8,.8,3.62,3.74,graniteDark,{bottom:false});
+ P.box(L,-.86,.86,-.86,.86,3.74,3.86,graniteDark,{bottom:false});
+ P.box(L,-.6,.6,-.6,.6,3.86,4.08,graniteDark,{bottom:false});
+ // The inscription on the shaft's front, just off the stone.
+ if(Lt)Lt.quad(L(.684,-.6,1.55),L(.684,.6,1.55),L(.684,.6,2.75),L(.684,-.6,2.75),[1,1,1],fw,[[0,0],[1,0],[1,1],[0,1]]);
+ // The governor (2.7 m, heroic size), standing with the left foot forward.
+ const S=(u,v,z)=>L(u,v,4.08+z),T=(p,q,rings,n=10)=>tube(M,S(...p),S(...q),rings,BRONZE,fw,n);
+ M.box(frame(...S(.06,.14,0).slice(0,2),z0+4.08,m.heading),-.1,.24,-.075,.075,0,.11,BRONZE,{bottom:false});
+ M.box(frame(...S(-.02,-.14,0).slice(0,2),z0+4.08,m.heading),-.1,.22,-.075,.075,0,.11,BRONZE,{bottom:false});
+ T([.06,.14,.08],[.03,.13,1.02],[[0,.085,.075],[.45,.1,.088],[1,.125,.11]],8);
+ T([-.02,-.14,.08],[-.01,-.13,1.02],[[0,.085,.075],[.45,.1,.088],[1,.125,.11]],8);
+ // Frock coat and body: the skirt flares to the knees, the waist, the chest, the shoulders.
+ T([0,0,.74],[.02,0,2.24],[[0,.27,.36],[.22,.23,.31],[.44,.2,.27],[.7,.245,.31],[.9,.22,.37],[1,.12,.2]],12);
+ tube(M,S(.01,-.39,2.1),S(.01,.39,2.1),[[0,.075,.075],[.18,.11,.105],[.5,.12,.115],[.82,.11,.105],[1,.075,.075]],BRONZE,up,10);
+ // Neck and head, a nose and the moustache he was known for.
+ T([.02,0,2.2],[.03,0,2.67],[[0,.07,.07],[.22,.075,.075],[.34,.11,.1],[.56,.13,.115],[.84,.115,.1],[1,.03,.03]],10);
+ T([.13,0,2.47],[.17,0,2.44],[[0,.026,.02],[1,.01,.01]],6);
+ tube(M,S(.13,-.07,2.4),S(.13,.07,2.4),[[0,.012,.012],[.5,.03,.022],[1,.012,.012]],BRONZE,fw,6);
+ // Right arm down by the side; left arm bent, holding a rolled paper across.
+ T([0,-.42,2.08],[.03,-.45,1.62],[[0,.085,.085],[1,.07,.07]],8);T([.03,-.45,1.62],[.07,-.42,1.22],[[0,.07,.07],[1,.055,.06]],8);T([.07,-.42,1.22],[.08,-.41,1.08],[[0,.055,.045],[1,.03,.028]],6);
+ T([0,.42,2.08],[.1,.45,1.66],[[0,.085,.085],[1,.07,.07]],8);T([.1,.45,1.66],[.38,.32,1.8],[[0,.07,.07],[1,.055,.06]],8);
+ tube(M,S(.41,.16,1.84),S(.41,.5,1.78),[[0,.042,.042],[1,.042,.042]],BRONZE,up,8);
+ // The reclining figure on the front ledge, leaning on its elbow toward the statue's left, a laurel held up.
+ // (A drapery spread on the ledge under it, the body half lying, half raised on the left elbow.)
+ const R=(u,v,z)=>L(u,v,1.02+z),Q=(p,q,rings,n=8)=>tube(M,R(...p),R(...q),rings,BRONZE,up,n);
+ Q([.96,-.9,.0],[.96,.85,.0],[[0,.04,.16],[.12,.09,.22],[.5,.11,.25],[.88,.09,.22],[1,.04,.16]],8);
+ Q([.98,-.86,.12],[.98,-.12,.2],[[0,.08,.1],[.35,.14,.16],[.75,.17,.2],[1,.2,.23]],10);
+ Q([.98,-.12,.2],[.95,.38,.42],[[0,.2,.23],[.45,.16,.19],[.8,.19,.22],[1,.15,.19]],10);
+ Q([.95,.42,.48],[.93,.72,.58],[[0,.08,.08],[.25,.13,.12],[.65,.135,.12],[1,.04,.04]],10);
+ Q([.84,.46,.08],[.88,.42,.4],[[0,.07,.07],[1,.075,.075]],8);
+ Q([1.06,.24,.42],[1.16,.02,.72],[[0,.07,.07],[1,.06,.06]],8);
+ tube(M,R(1.18,0,.78),R(1.18,0,.83),[[0,.15,.15],[1,.15,.15]],BRONZE,fw,12);
+ solids.push({x:m.x,y:m.y,hu:1.8,hv:1.8,h:m.heading});
+ clearings.push({x:m.x,y:m.y,r:4.5});
+ return {height:+(4.08+2.67).toFixed(2)};
+}
+// The belvedere at the square's edge over the Beira-Mar: a white pergola on an arc round the monument (r 13.2-16.9 m,
+// 55°), two rows of square columns carrying two curved beams and the radial slats of its open roof (18 on the 2016
+// orthophoto, running past the outer beam), its paving, a long white bench under it facing the bay with its back to the
+// square, and a white railing along the outer edge. Each column, bench and railing stretch on its own ground; the roof
+// level over the highest.
+function mirante(m,{near:{concrete:C,paint:P},ground,solids,clearings}){
+ const [r0,r1]=m.radii,[a0,a1]=m.angles,span=a1-a0,cx=m.x,cy=m.y,gz=(x,y)=>ground?.(x,y)??m.ground;
+ const at=(r,a)=>[cx+Math.cos(a)*r,cy+Math.sin(a)*r];
+ let hi=-Infinity;for(let i=0;i<=16;i++)for(const r of [r0,r1]){const [x,y]=at(r,a0+span*i/16);hi=Math.max(hi,gz(x,y));}
+ const top=hi+2.8,white=weathered(lin(0xf3f2ee),hi,{amount:.1,damp:.16}),paving=p=>mul(lin(0xcdc8bd),.86+.24*fbm(p[0]*.7,p[1]*.7));
+ // Paving under it, draped on the ground (arc ring in the square's frame).
+ const ring=[];for(let i=0;i<=20;i++){const a=a0-.02+(span+.04)*i/20;ring.push([Math.cos(a)*(r0-.5),Math.sin(a)*(r0-.5)]);}
+ for(let i=20;i>=0;i--){const a=a0-.02+(span+.04)*i/20;ring.push([Math.cos(a)*(r1+.7),Math.sin(a)*(r1+.7)]);}
+ drape(C,ring,frame(cx,cy,0,0),(u,v)=>gz(cx+u,cy+v),paving,{edge:2.5,lift:.04});
+ // Columns: six pairs from end to end.
+ const pairs=6,colAngle=k=>a0+.035+(span-.07)*k/(pairs-1);
+ for(let k=0;k<pairs;k++)for(const r of [r0,r1]){const a=colAngle(k),[x,y]=at(r,a),g=gz(x,y);
+  P.box(frame(x,y,0,a),-.15,.15,-.15,.15,g-.3,top-.3,white,{bottom:false});P.box(frame(x,y,0,a),-.21,.21,-.21,.21,g-.3,g+.12,white,{bottom:false});
+  solids.push({x,y,r:.24});}
+ // Curved beams over each row, in chords between the slats; then the slats across both, past the outer one.
+ const slats=18,slatAngle=k=>a0+.01+(span-.02)*k/(slats-1);
+ for(const r of [r0,r1])for(let k=0;k<slats-1;k++){const [x0,y0]=at(r,slatAngle(k)),[x1,y1]=at(r,slatAngle(k+1)),len=Math.hypot(x1-x0,y1-y0);
+  P.box(frame((x0+x1)/2,(y0+y1)/2,0,Math.atan2(y1-y0,x1-x0)),-len/2-.02,len/2+.02,-.11,.11,top-.32,top,white);}
+ for(let k=0;k<slats;k++){const a=slatAngle(k);P.box(frame(cx,cy,0,a),r0-.45,r1+.65,-.055,.055,top,top+.24,white);}
+ // The benches: one in each bay between the column pairs, 1.25 m in from the inner row, seat facing out over the bay and
+ // backrest on the square's side; the way in under the roof is between the columns, round a bench's end.
+ const rb=r0+1.25,segs=pairs-1;
+ for(let k=0;k<segs;k++){const bay=colAngle(k+1)-colAngle(k),b0=colAngle(k)+bay*.14,b1=colAngle(k+1)-bay*.14,am=(b0+b1)/2,[x0,y0]=at(rb,b0),[x1,y1]=at(rb,b1),len=Math.hypot(x1-x0,y1-y0),[x,y]=at(rb,am),g=gz(x,y);
+  const f=frame(x,y,g,am);
+  P.box(f,-.24,.26,-len/2,len/2,.4,.48,white,{bottom:true});
+  P.box(f,-.3,-.2,-len/2,len/2,.48,.9,white);
+  for(const v of [-len/2+.25,len/2-.25])P.box(f,-.2,.2,v-.09,v+.09,-.2,.4,white,{bottom:false});
+  solids.push({x,y,hu:.3,hv:len/2,h:am});}
+ // Railing along the outer edge: posts, top and mid rails.
+ const rr=r1+.45,posts=Math.max(8,Math.round(rr*span/1.3));
+ for(let k=0;k<=posts;k++){const a=a0+span*k/posts,[x,y]=at(rr,a),g=gz(x,y);P.post([x,y,g-.2],[x,y,g+1.05],.035,.035,6,white);}
+ for(let k=0;k<posts;k++){const [x0,y0]=at(rr,a0+span*k/posts),[x1,y1]=at(rr,a0+span*(k+1)/posts),g0=gz(x0,y0),g1=gz(x1,y1),len=Math.hypot(x1-x0,y1-y0),h=Math.atan2(y1-y0,x1-x0),g=(g0+g1)/2;
+  for(const [z,t] of [[1.02,.05],[.5,.03]])P.box(frame((x0+x1)/2,(y0+y1)/2,g,h),-len/2,len/2,-t,t,z-t,z+t,white);
+  solids.push({x:(x0+x1)/2,y:(y0+y1)/2,hu:len/2,hv:.08,h});}
+ for(let k=0;k<=Math.round(span*(r0+r1)/2/3);k++){const [x,y]=at((r0+r1)/2,a0+span*k/Math.max(1,Math.round(span*(r0+r1)/2/3)));clearings.push({x,y,r:3});}
+ return {columns:pairs*2,slats,benches:segs};
+}
+
 // The aerials on the Morro da Cruz (285 m, 3 km east): lattice towers of 20-60 m along the ridge, some banded orange
 // and white for the planes, some bare galvanised steel, with panel antennas, a dish or two and red lights. From the
 // circuit they are silhouettes on the skyline: solid tapering sections in the lattice's average tone, no alpha.
@@ -654,14 +776,20 @@ export function createFloripaLandmarks(data,{ground,mobile=false}={}){
   foliage:new THREE.MeshStandardMaterial({name:'Marcos_palmeiras',vertexColors:true,roughness:.8,metalness:0,side:THREE.DoubleSide}),
   sign:new THREE.MeshStandardMaterial({name:'Marcos_letreiro',map:sign.map,alphaTest:.5,roughness:.5,metalness:.1})
  };
- const SIZES={concrete:8,stucco:4,tiles:2,glass:2.8,roof:2,sign:1};
+ // The monument's bronze letters (one more draw, only where it stands).
+ const monument=marks.find(m=>m.kind==='monumento_hercilio_luz');
+ if(monument?.inscription)materials.letters=new THREE.MeshStandardMaterial({name:'Marcos_inscricao',map:inscriptionTexture(monument.inscription),alphaTest:.5,vertexColors:true,roughness:.45,metalness:.5});
+ const SIZES={concrete:8,stucco:4,tiles:2,glass:2.8,roof:2,sign:1,letters:1};
  const CELLS={stucco:mobile?5:3,concrete:mobile?16:8};
  const set=()=>Object.fromEntries(Object.keys(materials).map(k=>[k,new Batch(SIZES[k]??0,CELLS[k]??0)]));
  // Near the track (the Rodoviária by the boxes, the TICEN, the fort under the bridge) cast shadows; the old centre
  // and the masts do not (they stand well outside the shadow map's reach).
- const near=set(),far=set(),ctx={near,far,ground,mobile,rand,sign,proxies,palm};
- const builders={rodoviaria,ticen,mercado_publico:mercado,alfandega,catedral,forte_santana:forte};
+ // solids: what stops a car or someone on foot in the city's roam world (the square's monument, columns, benches, railing);
+ // clearings: where the land cover's trees go, beside the yards below.
+ const near=set(),far=set(),solids=[],openClearings=[],ctx={near,far,ground,mobile,rand,sign,proxies,palm,solids,clearings:openClearings};
+ const builders={rodoviaria,ticen,mercado_publico:mercado,alfandega,catedral,forte_santana:forte,monumento_hercilio_luz:monumento,mirante_cabeceira:mirante};
  for(const m of marks){const build=builders[m.kind];if(build&&m.outline)stats[m.kind]=build(m,ctx)??true;}
+ if(data.meta.roam&&solids.length)stats.roamSolids=addRoamSolids(data,solids);
  let drawCalls=0,vertices=0;
  for(const [group,batches,shadow] of [['perto',near,true],['longe',far,false]])for(const [k,b] of Object.entries(batches)){if(!b.vertices)continue;root.add(b.mesh(`Marcos_${group}_${k}`,materials[k],shadow));drawCalls++;vertices+=b.vertices;}
  // Masts and their warning lights: placed on the far relief once it is read (the same file far-terrain.js draws).
@@ -712,7 +840,7 @@ export function createFloripaLandmarks(data,{ground,mobile=false}={}){
  }
  // Where the land cover's trees must go (main.js clears them): the buildings, the Rodoviária's bus apron and the
  // TICEN's paved site, as circles over each footprint's rectangle and a margin round it.
- const clearings=[];
+ const clearings=[...openClearings];
  for(const m of marks){const margin={rodoviaria:34,ticen:6,mercado_publico:4,alfandega:4,catedral:6,forte_santana:3}[m.kind];if(margin===undefined||!m.w)continue;
   const c=Math.cos(m.heading),s=Math.sin(m.heading),hw=m.w/2+margin,hd=m.d/2+margin,step=10;
   for(let u=-hw;u<=hw+1e-6;u+=step)for(let v=-hd;v<=hd+1e-6;v+=step)clearings.push({x:m.x+c*u-s*v,y:m.y+s*u+c*v,r:step*.75});}

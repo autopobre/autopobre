@@ -32,7 +32,7 @@ from pathlib import Path
 import numpy as np
 
 import gerar_pista as gp
-from compat_scipy import cKDTree, gaussian_filter1d
+from compat_scipy import cKDTree, gaussian_filter1d, maximum_filter1d, minimum_filter1d
 from config import ASSETS, CIRCUITOS, DADOS, pasta_fontes
 from projecao import Transformer
 
@@ -79,6 +79,14 @@ ESQUINAS = [{'nome': 'Adolfo Konder x Hoepcke', 'no': (-27.59368, -48.55907), 'r
 # atras do Opala 99, o ultimo) fica no vao central, do lado do continente; a reta segue ate a ilha.
 LINHA = .56
 RAMPA_MAX = .12
+# Sob as copas (a Alameda Adolfo Konder e arborizada de ponta a ponta; um trecho da Rua 14 de Julho) o MDT fotogrametrico
+# nao ve o asfalto e chuta o chao pelo que aparece em volta (o parque, os lotes, mais baixos): fez um vale de 2,7 m na
+# Alameda (s 545-575, -12% e +9,5% em 60 m, baixada de raio 54 m), onde a rua real e quase plana (as curvas de nivel de 1 m
+# do GeoFloripa nao descem nem 1 m ali) e os carros voavam e capotavam (usuario, 24/10/2026). Onde a superficie (MDS) fica
+# COPA_M acima do terreno no eixo por COPA_MIN_M ou mais, o perfil so guarda curvas verticais de raio RAIO_COPA_M ou mais.
+COPA_M = 2.0
+COPA_MIN_M = 20.0
+RAIO_COPA_M = 700.0
 # Greide das pontes (cotas em m acima do mar): cabeceiras pela terra (ou dadas) e o topo no vao.
 GREIDE = {
     'hercilio_luz': {'forma': 'parabola'},
@@ -343,11 +351,12 @@ def ao_longo(f, P, E, offs=(-3.0, -1.5, 0.0, 1.5, 3.0)):
         return np.nanmedian(v, axis=0)
 
 
-def perfil(P, E, s, L, via, rel):
+def perfil(P, E, s, L, via, rel, esquina=None):
     """Perfil da volta. Em terra, o terreno de 1 m sob a secao da pista (suavizado, rampa limitada). Nas pontes, o
     tabuleiro no modelo de superficie (MDS) onde ele passa sobre terra; sobre o mar, onde a correlacao de imagens nao
     mede nada, o greide e ajustado: a Hercilio Luz por uma parabola nos pontos medidos das duas cabeceiras (o vao
-    pensil e abaulado), a Colombo Salles por uma curva suave entre as duas margens com as rampas medidas."""
+    pensil e abaulado), a Colombo Salles por uma curva suave entre as duas margens com as rampas medidas. Sob as copas,
+    so a forma suave do chao (RAIO_COPA_M), menos nas esquinas abertas (`esquina`: devagar, o medido fica)."""
     n = len(P)
     zt = ao_longo(rel.terreno, P, E)
     zs = ao_longo(rel.superficie, P, E)
@@ -445,7 +454,23 @@ def perfil(P, E, s, L, via, rel):
                 aterro[i] = max(aterro[i], aterro[j] - limite)
     z = (corte + aterro) / 2
     z = gaussian_filter1d(z, 3 / DS, mode='wrap')
+    # Sob as copas, so a forma suave do chao medido (COPA_M): trechos de COPA_MIN_M ou mais, emendando os buracos de menos
+    # de 20 m entre eles (um poste, um vao entre duas arvores).
+    with np.errstate(invalid='ignore'):
+        copa = (zs - zt > COPA_M) & ~tab
+    emenda = int(20 / DS) + 1
+    copa = minimum_filter1d(maximum_filter1d(copa.astype(float), emenda, mode='wrap'), emenda, mode='wrap') > 0
+    copa &= ~tab
+    if esquina is not None:
+        copa &= ~esquina
+    for t0, t1 in trechos_de(copa, s, L):
+        if t1 - t0 < COPA_MIN_M:
+            copa[(s >= t0) & (s < t1)] = False
+    antes = z.copy()
+    z = gp.curva_vertical_minima(z, DS, np.where(copa, RAIO_COPA_M, np.inf), rampa=RAMPA_MAX)
     print(f'greide das pontes: {json.dumps(info, ensure_ascii=False)}')
+    print(f'sob as copas (raio vertical minimo {RAIO_COPA_M:.0f} m): '
+          f'{[(round(t0), round(t1)) for t0, t1 in trechos_de(copa, s, L)]}, perfil mudou ate {np.abs(z - antes).max():.2f} m')
     return z, zt, tab, info
 
 
@@ -524,7 +549,7 @@ def main():
           f'largura {largura.min():.1f} a {largura.max():.1f} m (leito medido mediano {np.nanmedian(lm):.1f} m)')
     if '--planta' in sys.argv:
         planta(pasta, P, P0, ORIGEM, epsg, raio)
-    z, z_dem, tab, greide = perfil(P, E, s, L, via, rel)
+    z, z_dem, tab, greide = perfil(P, E, s, L, via, rel, esquina)
     seg = np.linalg.norm(np.roll(P, -1, 0) - P, axis=1)
     grade = (np.roll(z, -1) - np.roll(z, 1)) / (seg + np.roll(seg, 1))
     print(f'perfil {z.min():.1f} a {z.max():.1f} m, rampa {100 * grade.min():.1f}% a {100 * grade.max():.1f}%; '
@@ -640,6 +665,13 @@ def main():
     scenery['buildings'], scenery['skyline'] = edificios(pasta, epsg, ORIGEM, P, largura, folga, tab, z, pit, gx, gy, agua.reshape(ny, nx), rel, s, E,
                                                          np.round(zt, 2).reshape(ny, nx))
     scenery['landmarks'] = marcos(pasta, epsg, ORIGEM, dem)
+    # De onde a praca da cabeceira se ve da volta (track-surface.js landmarkView: nenhuma placa na frente do monumento).
+    for m in scenery['landmarks']:
+        if m['kind'] == 'monumento_hercilio_luz':
+            k = int(np.argmin(np.hypot(P[:, 0] - m['x'], P[:, 1] - m['y'])))
+            lat = (m['x'] - P[k, 0]) * E[k, 0] + (m['y'] - P[k, 1]) * E[k, 1]
+            m['lap'] = {'s': round(float(s[k]), 1), 'side': 1 if lat > 0 else -1, 'd': round(float(abs(lat)), 1),
+                        'edge_d': round(float(abs(lat) - largura[k] / 2), 1)}
     scenery['bridges'] = pontes_cena(P, s, L, via, z, largura, osm_local(pasta, ORIGEM, epsg), dem, ORIGEM)
     gp.solo(NOME, pasta, epsg, np.r_[ORIGEM, 0.0], 1.0, gx, gy)
     if '--sem-aneis' not in sys.argv:
@@ -718,6 +750,17 @@ MORRO_DA_CRUZ = {'pico': (-27.59012, -48.53262, 285.0),
                  'torres': [(-27.58907, -48.53386), (-27.59011, -48.53323), (-27.59036, -48.53345), (-27.58715, -48.53371),
                             (-27.58802, -48.53377), (-27.58822, -48.53379), (-27.59141, -48.53362), (-27.59212, -48.53360),
                             (-27.58958, -48.53319), (-27.58903, -48.53343), (-27.58773, -48.53380), (-27.58735, -48.53385)]}
+# A praca na cabeceira insular da Hercilio Luz (pedido da equipe, 24/10/2026: "faltou a estatua e o mirantezinho"): o
+# Monumento a Hercilio Luz (OSM no 1763818745, historic=memorial, memorial=statue; inscricao "A Hercilio Luz / O povo de
+# Santa Catharina / 29-05-1860 - 20-10-1924") no meio do jardim em leque, e o mirante de pergola branca em arco na beira da
+# praca, do lado da baia (OSM via 164776332, area de estar; tourism=viewpoint no 1763818766). O centro e o do anel de
+# caminho do OSM em volta do monumento (via 164776331; o no da estatua fica a 0,7 m dele), onde o jogo desenha o jardim
+# em leque, que vem do OSM; na ortofoto 2016 do GeoFloripa o pedestal fica ~4 m a sudoeste (o desenho da praca no OSM e
+# deslocado, o resto da cidade do jogo segue o OSM). Da ortofoto, o giro e o arco: o pedestal quadrado com a frente para
+# nordeste (para a Alameda e o Parque da Luz, de onde se chega), a pergola contornando o monumento entre 13,2 e 16,9 m
+# dele. Os dois sao abertos: se anda em volta deles e sob a pergola (o jogo poe os solidos).
+PRACA_CABECEIRA = {'centro': (-27.5936329, -48.5616387), 'frente_graus': 56.3, 'pedestal_m': 3.6,
+                   'pergola_raios_m': (13.2, 16.9), 'pergola_graus': (202.5, 257.0)}
 
 
 def poligono_osm(o, tipo, oid):
@@ -762,6 +805,27 @@ def marcos(pasta, epsg, origem, dem):
         torres.append([round(tx - origem[0], 1), round(ty - origem[1], 1)])
     out.append({'kind': 'morro_da_cruz', 'name': 'Morro da Cruz', 'x': round(px - origem[0], 1), 'y': round(py - origem[1], 1),
                 'ele': ele, 'towers': torres})
+    # A praca da cabeceira: o contorno e o que a cidade deixa livre (quiosques, barracas, arvores, moveis): o redondo do
+    # jardim em volta do pedestal (6,5 m) e a faixa do arco da pergola com a frente dela; abertos, sem buraco na zona de
+    # passeio (o pedestal em si: w x d).
+    c = PRACA_CABECEIRA
+    mx, my = para.transform(c['centro'][1], c['centro'][0])
+    mx, my = mx - origem[0], my - origem[1]
+    chao = round(float(dem(np.array([mx]), np.array([my]))[0]), 2)
+    frente = math.radians(c['frente_graus'])
+    canto = [(mx + 6.5 * math.cos(frente + k * math.pi / 4), my + 6.5 * math.sin(frente + k * math.pi / 4)) for k in range(9)]
+    out.append({'kind': 'monumento_hercilio_luz', 'name': 'Monumento a Hercílio Luz', 'x': round(mx, 2), 'y': round(my, 2),
+                'w': c['pedestal_m'], 'd': c['pedestal_m'], 'heading': round(frente, 4), 'ground': chao, 'open': True,
+                'inscription': ['A HERCÍLIO LUZ', 'O POVO DE SANTA CATHARINA', '29-05-1860 · 20-10-1924'],
+                'outline': np.round(canto, 2).tolist()})
+    r0, r1 = c['pergola_raios_m']
+    a0, a1 = (math.radians(g) for g in c['pergola_graus'])
+    arco = np.linspace(a0, a1, 24)
+    anel = ([(mx + math.cos(a) * (r0 - 2.5), my + math.sin(a) * (r0 - 2.5)) for a in arco]
+            + [(mx + math.cos(a) * (r1 + .8), my + math.sin(a) * (r1 + .8)) for a in arco[::-1]])
+    out.append({'kind': 'mirante_cabeceira', 'name': 'Mirante da cabeceira da Ponte Hercílio Luz', 'x': round(mx, 2),
+                'y': round(my, 2), 'radii': [r0, r1], 'angles': [round(a0, 4), round(a1, 4)], 'ground': chao, 'open': True,
+                'outline': np.round(anel + anel[:1], 2).tolist()})
     print(f'marcos: {", ".join(m["kind"] for m in out)}')
     return out
 

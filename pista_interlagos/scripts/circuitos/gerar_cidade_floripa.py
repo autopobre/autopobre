@@ -194,12 +194,17 @@ class Cidade:
         self.retangulos = out
         self.predios_u = unary_union(out)
         # Marcos com modelo proprio (rodoviaria, TICEN, mercado...): o contorno do OSM.
-        marcos = []
+        # Os abertos (o monumento e o mirante da cabeceira da Hercilio Luz) so afastam moveis, arvores e barracas: o chao da
+        # praca continua sob eles e a zona de passeio passa por eles (o jogo poe os solidos de cada um).
+        marcos, fechados = [], []
         for m in self.base['scenery']['landmarks']:
             if 'outline' in m and m['kind'] != 'parque_da_luz':
                 marcos.append(Polygon(m['outline']).buffer(1.0))
-        self.marcos = unary_union(marcos)
+                if not m.get('open'):
+                    fechados.append(marcos[-1])
+        self.marcos, self.marcos_fechados = unary_union(marcos), unary_union(fechados)
         self.ocupado = unary_union([self.predios_u, self.marcos])
+        self.ocupado_chao = unary_union([self.predios_u, self.marcos_fechados])
         self.ocupado_t = STRtree([g for g in (list(self.ocupado.geoms) if hasattr(self.ocupado, 'geoms') else [self.ocupado])])
         log(f'predios desenhados: {len(out)}; marcos {len(marcos)}')
 
@@ -375,7 +380,7 @@ class Cidade:
         costa = self.costa_linhas()
         terra_costa = unary_union([LineString(c).buffer(COSTA_CALCADAO, cap_style='flat', single_sided=True) for c in costa]) if costa else Polygon()
         mar_u = self.mar_poligono()
-        tirar = unary_union([estrada, self.ocupado, mar_u])
+        tirar = unary_union([estrada, self.ocupado_chao, mar_u])
         calcada = unary_union(calc + ped).difference(tirar)
         verde = unary_union(verdes + [pracas_u.difference(unary_union(ped_praca + ped))]).difference(tirar)
         # Pracas: os caminhos dentro delas e as areas de pedestre; o calcadao: a faixa de terra junto da costa.
@@ -387,8 +392,8 @@ class Cidade:
                 A = gf.linha_via(self.o, w)
                 if len(A) >= 2:
                     ciclo.append(LineString(A).buffer(1.3, cap_style='flat'))
-        ciclovia = unary_union(ciclo).difference(unary_union([estrada, self.ocupado, mar_u])).buffer(-.5).buffer(.5) if ciclo else Polygon()
-        estacion = unary_union(estac).difference(unary_union([estrada, self.ocupado, mar_u, calcada])) if estac else Polygon()
+        ciclovia = unary_union(ciclo).difference(unary_union([estrada, self.ocupado_chao, mar_u])).buffer(-.5).buffer(.5) if ciclo else Polygon()
+        estacion = unary_union(estac).difference(unary_union([estrada, self.ocupado_chao, mar_u, calcada])) if estac else Polygon()
         self.calcada, self.praca, self.verde, self.ciclovia, self.estacionamento, self.ilhas = calcada, praca, verde, ciclovia, estacion, ilhas_u
         self.mar_u = mar_u
         self.costa = costa
@@ -720,7 +725,7 @@ class Cidade:
         self.faixa_passeio, self.fora_boxes, self.areas_passeio = faixa, fora_boxes, {}
         # Os predios como o jogo os desenha (as pegadas reais, edificios3d) e os marcos com modelo proprio.
         pegadas = [Polygon(np.array(e[3], float).reshape(-1, 2)).buffer(0) for e in self.edificios_l]
-        cheio = unary_union([unary_union([g for g in pegadas if not g.is_empty]), self.marcos])
+        cheio = unary_union([unary_union([g for g in pegadas if not g.is_empty]), self.marcos_fechados])
         S = a[:, 0]
         arvore = cKDTree(a[:, 1:3])
 
@@ -869,7 +874,7 @@ class Cidade:
         predios = unary_union(pols)
         fachada = prep(predios.buffer(.9))
         perto_predio, longe_predio = prep(predios.buffer(6)), prep(predios.buffer(20))
-        marcos = [Polygon(m['outline']).buffer(0) for m in d['scenery']['landmarks'] if m.get('outline') and m['kind'] != 'parque_da_luz']
+        marcos = [Polygon(m['outline']).buffer(0) for m in d['scenery']['landmarks'] if m.get('outline') and m['kind'] != 'parque_da_luz' and not m.get('open')]
         marco = prep(unary_union(marcos).buffer(1.5)) if marcos else None
         pista = prep(self.faixa_passeio.buffer(1.5))
         orla = prep(self.mar_liso.buffer(1.2 + 1.5))

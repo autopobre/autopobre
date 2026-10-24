@@ -331,6 +331,78 @@ def aplainar_ruas(Z, passo, dist, fixo=None, sigma=8.0, borda=8.0, corte=1.0, vo
     return Z1 + np.where(beira, peso, 0.0) * plano(Z1, lisa | beira, beira), peso
 
 
+def curva_vertical_minima(z, ds, raio, rampa=None, fechado=True, alcance=150.0, voltas=60, raio_borda=250.0):
+    """O perfil sem curvas verticais (lombadas e baixadas) mais fechadas que `raio` m, o mais perto possivel do medido
+    (usuario, 24/10/2026, na Alameda Adolfo Konder de Floripa: "um desnivel acentuado que no mundo real nao tem, ta todo
+    mundo capotando ali"): onde o levantamento inventa um vale ou um calombo de metros numa rua (o MDT fotogrametrico sob
+    as copas de uma alameda), so fica a forma suave. `raio`: um por estacao (inf onde nao vale). Minimos quadrados: cada
+    estacao perto da sua altura, e a segunda diferenca paga onde passa do limite, o peso dela subindo a cada passada (ate
+    `voltas`) ate caber. Mexe so numa janela de `alcance` m em volta das estacoes com limite (as duas ultimas de cada ponta
+    presas): o resto do perfil fica exatamente como estava; na janela, fora delas, nenhuma curva fica mais fechada do que
+    era nem que `raio_borda` m (a emenda espalha). `rampa` (m/m): sem passar dessa rampa (a do corte e aterro).
+    `fechado`: o perfil da volta (a janela pode passar da linha de chegada)."""
+    z = np.asarray(z, float)
+    n = len(z)
+    raio = np.broadcast_to(np.asarray(raio, float), (n,))
+    out = z.copy()
+    limitado = np.isfinite(raio)
+    if not limitado.any():
+        return out
+    r = int(math.ceil(alcance / ds))
+    janela = maximum_filter1d(limitado.astype(float), 2 * r + 1, mode='wrap' if fechado else 'constant') > 0
+    if janela.all():
+        trechos = [np.arange(n)]
+    else:
+        # Trechos continuos da janela; num perfil fechado o que passa da linha de chegada fica inteiro.
+        i0 = int(np.flatnonzero(~janela)[0]) + 1 if fechado else 0
+        ordem = (np.arange(n) + i0) % n
+        trechos, atual = [], []
+        for i in ordem:
+            if janela[i]:
+                atual.append(i)
+            elif atual:
+                trechos.append(np.array(atual))
+                atual = []
+        if atual:
+            trechos.append(np.array(atual))
+    for idx in trechos:
+        m = len(idx)
+        volta_inteira = m == n and fechado
+        z0 = z[idx]
+        preso = np.zeros(m, bool)
+        if not volta_inteira:
+            preso[[0, 1, -2, -1]] = True
+        W = np.where(preso, 1e8, 1.0)
+        # Segunda diferenca centrada em cada estacao (com vizinhas na janela) e primeira entre vizinhas.
+        cen = np.arange(m) if volta_inteira else np.arange(1, m - 1)
+        D2 = np.zeros((len(cen), m))
+        D2[np.arange(len(cen)), (cen - 1) % m] = 1
+        D2[np.arange(len(cen)), cen] = -2
+        D2[np.arange(len(cen)), (cen + 1) % m] = 1
+        # Na janela, fora das estacoes com limite, a curva nao fica mais fechada do que era (nem que `raio_borda`): sem isso
+        # o trecho limitado sai reto e as pontas dele viram quinas.
+        lim2 = np.where(limitado[idx[cen]], ds * ds / np.where(limitado, raio, 1.0)[idx[cen]],
+                        np.maximum(np.abs(D2 @ z0), ds * ds / raio_borda))
+        ant = np.arange(m) if volta_inteira else np.arange(m - 1)
+        D1 = np.zeros((len(ant), m))
+        D1[np.arange(len(ant)), ant] = -1
+        D1[np.arange(len(ant)), (ant + 1) % m] = 1
+        lim1 = np.full(len(ant), np.inf if rampa is None else rampa * ds)
+        p2, p1 = np.zeros(len(cen)), np.zeros(len(ant))
+        zz = z0.copy()
+        for _ in range(voltas):
+            v2 = np.abs(D2 @ zz) > lim2 * 1.02
+            v1 = np.abs(D1 @ zz) > lim1 * 1.005
+            if not v2.any() and not v1.any():
+                break
+            p2[v2] = np.maximum(p2[v2] * 3, 1.0)
+            p1[v1] = np.maximum(p1[v1] * 3, 1.0)
+            A = np.diag(W) + D2.T @ (p2[:, None] * D2) + D1.T @ (p1[:, None] * D1)
+            zz = np.linalg.solve(A, W * z0)
+        out[idx] = zz
+    return out
+
+
 def curvatura(P, janela=10.0):
     T, _ = quadro(P)
     rumo = np.unwrap(np.arctan2(T[:, 1], T[:, 0]))
