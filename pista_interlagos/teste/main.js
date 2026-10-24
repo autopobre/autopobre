@@ -57,7 +57,7 @@ import {ManualGearbox,AutoShift} from './manual-gearbox.js';
 import {BrakeReverse} from './brake-reverse.js';
 import {setupSettings} from './settings.js';
 import {CarAudio} from './car-audio.js?v=20260913-immersive';
-import {PlayerPreferences,CAMERA_MODES,LAPS} from './player-preferences.js';
+import {PlayerPreferences,CAMERA_MODES,LAPS,LINE_MODES} from './player-preferences.js';
 import {createSky,SUN_DIRECTION} from './sky.js';
 import {weatherProfile,weatherCaption,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,drawWeather,chosenWeather,rainOdds,raceMonth,rainFor,EFFECT_LIGHT,STAND_LIGHTS,TIMES_OF_DAY,RAIN_LEVELS,nextTimeOfDay,nextRainLevel,weatherName} from './weather.js';
 import {createCinematic,SMEAR_CARS,compileInSlices} from './cinematic.js';
@@ -114,6 +114,7 @@ import {PerfProbe,freezeStatic,splitByCells,cullBoxes,farMerge} from './perf-pro
 import {RaceAction,ActionNotice} from './race-action.js';
 import {GhostRecorder,loadGhost,saveGhost} from './ghost-lap.js';
 import {GhostCar} from './ghost-car.js';
+import {DrivingLineView} from './driving-line-view.js';
 import {carContact} from './contact-shadows.js';
 import {prepareWheels,setTyreDetail} from './car-wheels.js';
 import {createSpeedEffects,releaseWakeCars} from './speed-particles.js';
@@ -285,7 +286,7 @@ let renderer;
 // The scene's big parts by name, for the cost of each (perf-probe.js; interlagosGraficos.cost/hide).
 const perfProbe=new PerfProbe({renderer:()=>renderer,scene,parts:()=>[['carro do jogador',carRoot],['rivais',immersive?.visual?.root],['cenário',landscape?.root],['beira da pista',trackside?.root],['bandeiras',flags?.root],['guard-rails',roadRails?.root],['zebras',roadCurbs],['postes das árvores',treeField?.points],['efeitos de velocidade',speedFx?.root],['chuva',rain?.root],['refletores',floods?.root],['marcas de pneu',skidMarks?.mesh],['fumaça',tyreSmoke?.mesh],['fantasma',ghostCar.root],['lago',lakeContact?.mesh]]});
 // (A circuit's small street things, root.userData.noReflection: poles and paint are not worth their draws in the car's paint.)
-let carReflections=null;const probeAt=new THREE.Vector3(),reflectionHide=()=>[carRoot,ghostCar.root,tyreSmoke?.mesh,lakeContact?.mesh,treeField?.points,speedFx?.root,...circuitExtras.filter(e=>e.root.userData.noReflection).map(e=>e.root)];
+let carReflections=null;const probeAt=new THREE.Vector3(),reflectionHide=()=>[carRoot,ghostCar.root,lineView.root,tyreSmoke?.mesh,lakeContact?.mesh,treeField?.points,speedFx?.root,...circuitExtras.filter(e=>e.root.userData.noReflection).map(e=>e.root)];
 const camera=new THREE.PerspectiveCamera(58,innerWidth/innerHeight,.1,6500);
 const orbit=new OrbitControls(camera,$('view'));
 const ORBIT_MAX_DISTANCE=45;
@@ -510,6 +511,28 @@ function toggleGhost(){
  else{preferences.update({ghost:true});text=`Fantasma ligado · sua melhor volta, ${fmt(lap.time)} · ${keyName('KeyG')} desliga`;}
  status(text);setTimeout(()=>{if($('status').textContent===text)status('');},4500);ghostHud();
 }
+// Linha ideal (O, the Linha buttons, the race settings): the way round the circuit drawn on the asphalt, coloured by
+// what the pedals should do there (driving-line.js lays it for the car being raced, driving-line-view.js draws it):
+// the whole lap, only round the corners, or off. At the wheel in a race and in the recon lap; not on foot, in the box,
+// past the flag's sheet, in the arena or in the track's story, nor while the recon lap watches another car.
+const lineView=new DrivingLineView();scene.add(lineView.root);
+function updateDrivingLine(){
+ const mode=preferences.values.drivingLine;
+ const racing=mode!=='desligada'&&ready&&sessionStarted&&!!data&&!circuit.arena&&!intro.active&&!pitstop?.opened&&raceResults.root.hidden&&!trackHistory.active&&!immersive?.onFoot()&&!walker?.active&&!watchedRival()&&(immersive.active?['starting','grid','race'].includes(immersive.state.phase):!immersive.freeResultReady);
+ if(!racing){lineView.hide();return;}
+ lineView.show(data,car,{mode,weatherGrip:car.weatherGrip??1,light:weather.time==='noite'?.5:weather.time==='fim_de_tarde'?.8:1,heightAt:(x,y,i)=>car.sample(x,y,i).z});
+}
+function lineHud(){const on=preferences.values.drivingLine!=='desligada';for(const id of ['lineButton','touchLine']){$(id).classList.toggle('active',on);$(id).setAttribute('aria-pressed',String(on));}}
+// O: completa, só nas curvas, desligada, and round again; the words say what the colours mean.
+function cycleDrivingLine(){
+ if(!ready||!sessionStarted)return;
+ const next=LINE_MODES[(LINE_MODES.indexOf(preferences.values.drivingLine)+1)%LINE_MODES.length];preferences.update({drivingLine:next});$('drivingLine').value=next;
+ const key=keyName('KeyO'),text=next==='desligada'?`Linha ideal desligada · ${key} liga de novo`:`Linha ideal${next==='curvas'?' só nas curvas':''} · verde acelera, amarelo segura, vermelho freia · ${key} ${next==='completa'?'deixa só nas curvas':'desliga'}`;
+ status(text);setTimeout(()=>{if($('status').textContent===text)status('');},4500);lineHud();
+}
+$('drivingLine').value=preferences.values.drivingLine;
+$('drivingLine').onchange=()=>{preferences.update({drivingLine:$('drivingLine').value});lineHud();};
+lineHud();
 function initializeRenderer(){
  if(renderer)return;
  // The screen's own antialiasing serves the Simples film look; it is fixed when the page loads.
@@ -1534,7 +1557,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  // A watched rival is posed by immersive.update below: its camera follows after that.
  updateOpenings(paused?0:dt);updateCar(dt);if(!watchedRival())updateCamera(dt);const dash=cockpit.update(car,paused?0:dt,heard===car?carAudio.state:null),phoneArrived=dash.phoneArrived;if(phoneArrived)carAudio.notifyPhone();fuscaBody.update(dash.speed,dash.rpm,(immersive?.active?immersive.state.fuel:immersive?.freeFuel??12)/(immersive?.tank??12));driver.look(pilotLook());driver.update(car,paused?0:dt,{command:driveCommand,impact:frameImpact,phoneArrived});gamepad.bump(actionImpact);frameImpact=0;lapBanner(paused?0:dt);lastHud+=dt;if(lastHud>.07){hud();lastHud=0;}
  if(immersive?.visual)immersive.visual.renderAhead=renderAhead();immersive?.update(paused?0:dt,camera);if(watchedRival())updateCamera(dt);
- syncDamage();pitstop?.update(paused?0:dt,camera,sessionStarted&&!paused);updateGhost(dt);
+ syncDamage();pitstop?.update(paused?0:dt,camera,sessionStarted&&!paused);updateGhost(dt);updateDrivingLine();
  // Out of the car anywhere (free-walk.js): F at the box hands the stop to the pit (out to its café there); the race leaving
  // its running phase puts him back in at once; then the walk and its camera.
  if(walker){
@@ -1991,6 +2014,7 @@ document.addEventListener('keydown',e=>{
  if(e.code==='KeyV')cycleLivery();
  // On foot only the keyboard's G turns the ghost.
  if(e.code==='KeyG'&&(e.isTrusted||!immersive.onFoot()))toggleGhost();
+ if(e.code==='KeyO')cycleDrivingLine();
 if(e.code==='KeyK')toggleHeadlights();
 if(e.code==='KeyJ')toggleWipers();
  if(e.code==='KeyY')cycleWeather('time');
@@ -2010,6 +2034,7 @@ $('cockpitButton').onclick=()=>{if(ready)setCameraMode(mode==='cockpit'?'chase':
 $('skinButton').onclick=cycleLivery;
 $('watchButton').onclick=()=>watchNext(1);
 $('ghostButton').onclick=$('touchGhost').onclick=toggleGhost;
+$('lineButton').onclick=$('touchLine').onclick=cycleDrivingLine;
 $('touchExit').onclick=()=>{if(walker?.active)walker.getIn();else toggleWalk();};$('touchLights').onclick=toggleHeadlights;$('touchWipers').onclick=toggleWipers;
 async function beginRace(restart=false,tour=false,story=preferences.values.immersive){
  if(loading)return;
@@ -2231,7 +2256,7 @@ function clearCircuit(){
  if(car)delete car.condition;
  // The grid's reflection goes with its circuit; the cars wear the sky's map until the next one.
  carReflections?.clearCircuit();
- const keepRoots=new Set([carRoot,ghostCar.root,skidMarks?.mesh,tyreSmoke?.mesh,rain?.root,sun,sun.target,sky?.dome]);
+ const keepRoots=new Set([carRoot,ghostCar.root,lineView.root,skidMarks?.mesh,tyreSmoke?.mesh,rain?.root,sun,sun.target,sky?.dome]);
  for(const root of [...scene.children])if(!root.isLight&&!keepRoots.has(root)){scene.remove(root);retired.push(root);}
  const collect=roots=>{const geometries=new Set(),materials=new Set(),textures=new Set();for(const root of roots)root?.traverse(o=>{if(o.geometry)geometries.add(o.geometry);for(const m of o.material?(Array.isArray(o.material)?o.material:[o.material]):[]){materials.add(m);for(const value of Object.values(m))if(value?.isTexture)textures.add(value);}});return {geometries,materials,textures};};
  const keep=collect([...keepRoots]),old=collect(retired);
@@ -2502,6 +2527,8 @@ async function loadCircuit(){
   ghostInfo:()=>{const lap=currentGhost();return {enabled:preferences.values.ghost,lap:lap?{time:lap.time,samples:lap.n,pilot:lap.pilot}:null,onTrack:ghostOnTrack,visible:ghostCar.root.visible,opacity:ghostCar.opacity,
    position:ghostCar.body.position.toArray(),pose:{...ghostPose},plate:ghostCar.plateText,plateAt:ghostCar.plate.position.toArray(),triangles:ghostCar.triangles,savedAt:ghostSavedAt,gap:$('ghostGap').textContent,time:$('ghostTime').textContent,
    recorder:{lapStart:ghostRecorder.lapStart,clean:ghostRecorder.clean,samples:ghostRecorder.values.length/7,progress:ghostRecorder.progress}};},
+  // The driving line (O): its mode, the line laid for the car (lap times of its own model), and the stretch ahead.
+  drivingLineInfo:()=>({mode:preferences.values.drivingLine,...lineView.info()}),
   // The rivals' levels of detail (immersive-visuals.js detailLevel): how many show each; lod {near, far} sets them (a test).
   rivalLod:lod=>{const v=immersive.visual;if(lod)v.setCarDetail(lod);const shown={detailed:0,light:0,distant:0};for(const o of v.rivals){if(!o.visible)continue;const u=o.userData;shown[u.far?.visible?'distant':u.mid?.visible?'light':'detailed']++;}return {...v.lod,...shown};},
   rivalDrivers:()=>immersive.visual.rivals.map(o=>o.userData.driver?{...o.userData.driver.info(),shown:o.userData.detail.visible&&o.visible}:null),

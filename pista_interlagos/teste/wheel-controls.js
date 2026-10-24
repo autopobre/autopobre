@@ -25,6 +25,7 @@ export const ROLES=Object.freeze({
  starter:{kind:'button',label:'Partida, segurando',keys:['KeyI']},
  reset:{kind:'button',label:'Reposicionar / reboque',keys:['KeyR']},
  ghost:{kind:'button',label:'Fantasma',keys:['KeyG']},
+ drivingLine:{kind:'button',label:'Linha ideal',keys:['KeyO']},
  lights:{kind:'button',label:'Faróis',keys:['KeyK']},
  horn:{kind:'button',label:'Buzina',keys:['KeyH']},
  wipers:{kind:'button',label:'Limpador',keys:['KeyJ']}

@@ -33,7 +33,7 @@ with sync_playwright() as p:
     page.click('#settingsButton')
     page.click('#tab-controls')
     rows = page.evaluate("document.querySelectorAll('#keyBindings .keys-row').length")
-    assert rows == 40, rows
+    assert rows == 41, rows
     assert page.text_content(slot('acelerar')) == 'W' and page.text_content(slot('acelerar', 1)) == '↑'
     step('list', rows)
     if SHOTS:

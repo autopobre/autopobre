@@ -9,6 +9,8 @@ export const PREFERENCES_KEY='opala99-preferences-v1';
 export const LAPS=Object.freeze({min:1,max:20,standard:3});
 // 'far' is the old high Perseguição; chase and close ride low behind the car (camera-rig.js).
 export const CAMERA_MODES=Object.freeze(['chase','close','far','hood','cockpit','tv','aerial','orbit']);
+// The driving line's modes, in the order O goes round them.
+export const LINE_MODES=Object.freeze(['desligada','completa','curvas']);
 const liveries=['assinaturas_omp','seiva_danilo'];
 export function normalizePreferences(value){
  const source=value&&typeof value==='object'?value:{};
@@ -53,6 +55,8 @@ export function normalizePreferences(value){
   rain:rainChoice(source.rain),
   // The ghost of the pilot's best lap on the circuit (G, ghost-lap.js): off unless turned on.
   ghost:typeof source.ghost==='boolean'?source.ghost:false,
+  // The driving line on the asphalt (O, driving-line.js): the whole lap, only round the corners, or off unless picked.
+  drivingLine:LINE_MODES.includes(source.drivingLine)?source.drivingLine:'desligada',
   // Xbox / PlayStation controller (gamepad-controls.js): how the left stick steers, and the shake on impacts.
   padSteering:['suave','normal','direta'].includes(source.padSteering)?source.padSteering:'normal',
   padRumble:typeof source.padRumble==='boolean'?source.padRumble:true,

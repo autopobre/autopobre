@@ -28,6 +28,7 @@ export const PAD_ACTIONS=Object.freeze([
  {id:'partida',place:'car',name:'Partida',note:'segure, dosando o acelerador',code:'KeyI',buttons:[4]},
  {id:'resgate',place:'car',name:'Reposicionar ou pedir reboque',note:'',code:'KeyR',buttons:[8]},
  {id:'freioSegurado',place:'car',name:'Freio de mão segurado',note:'só enquanto segura, o jeito do drift · no reconhecimento, ver outro piloto',code:'KeyN',buttons:[]},
+ {id:'linha',place:'car',name:'Linha ideal',note:'completa, só nas curvas ou desligada',code:'KeyO',buttons:[]},
  {id:'limpador',place:'car',name:'Limpador de para-brisa',note:'na garoa e na chuva, liga e desliga',code:'KeyJ',buttons:[]},
  {id:'pintura',place:'car',name:'Trocar a pintura',note:'',code:'KeyV',buttons:[]},
  {id:'horario',place:'car',name:'Mudar o horário',note:'dia, fim de tarde, noite',code:'KeyY',buttons:[]},

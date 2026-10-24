@@ -2,7 +2,7 @@
 #arenaUi{display:none}
 body.arena-mode #arenaUi{display:block}
 /* The race's lap, position, fuel and slope readings mean nothing on the arena's floor. */
-body.arena-mode #timing,body.arena-mode #fuelGauge,body.arena-mode .sensors,body.arena-mode #lapBanner,body.arena-mode #ghostButton,body.arena-mode #touchGhost{display:none!important}
+body.arena-mode #timing,body.arena-mode #fuelGauge,body.arena-mode .sensors,body.arena-mode #lapBanner,body.arena-mode #ghostButton,body.arena-mode #touchGhost,body.arena-mode #lineButton,body.arena-mode #touchLine{display:none!important}
 
 #arenaHud{position:absolute;top:26px;left:50%;transform:translateX(-50%);min-width:300px;padding:12px 22px 12px;text-align:center;background:var(--glass);border:1px solid #fff2;border-radius:10px;pointer-events:none;z-index:3;transition:border-color .2s,box-shadow .2s}
 #arenaHud .arena-drift{display:flex;align-items:baseline;justify-content:center;gap:12px}

@@ -28,6 +28,7 @@ export const KEY_ACTIONS=Object.freeze([
  {id:'olharTras',group:'visual',name:'Olhar para trás',note:'segure, na câmera interna',codes:['KeyB']},
  {id:'pintura',group:'visual',name:'Trocar a pintura',note:'',codes:['KeyV']},
  {id:'fantasma',group:'visual',name:'Fantasma',note:'o Opala da sua melhor volta na pista, para estudar e tentar bater; liga e desliga',codes:['KeyG']},
+ {id:'linha',group:'visual',name:'Linha ideal',note:'o trajeto recomendado no asfalto: verde acelera, amarelo segura, vermelho freia; troca entre completa, só nas curvas e desligada',codes:['KeyO']},
  {id:'farois',group:'visual',name:'Faróis de milha',note:'à noite e na chuva, liga e desliga; no Modo História o piloto acende',codes:['KeyK']},
  {id:'limpador',group:'visual',name:'Limpador de para-brisa',note:'na garoa e na chuva, liga e desliga; no Modo Corrida já larga ligado',codes:['KeyJ']},
  {id:'horario',group:'visual',name:'Mudar o horário',note:'durante a corrida: dia, fim de tarde, noite',codes:['KeyY']},
