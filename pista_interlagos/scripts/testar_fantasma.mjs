@@ -6,19 +6,19 @@ import * as THREE from '../teste/node_modules/three/build/three.module.js';
 import {TestCar,steerLimit,wrap,clamp} from '../teste/physics.js';
 import {RaceField} from '../teste/race-field.js';
 import {branchGeometries,branchPoint} from '../teste/branch-lane.js';
-import {GhostRecorder,GhostLap,encodeGhost,decodeGhost,saveGhost,loadGhost,readGhosts,ghostMaxTime,GHOST_KEY,GHOST_LIMIT,GHOST_RATE,GHOST_MAX_TIME,GHOST_LONGEST,GHOST_SAMPLES,GHOST_MIN_RATE,GHOST_BUDGET} from '../teste/ghost-lap.js';
+import {GhostRecorder,GhostLap,encodeGhost,decodeGhost,saveGhost,loadGhost,readGhosts,ghostMaxTime,inferBrakes,thinGhost,GHOST_KEY,GHOST_LIMIT,GHOST_RATE,GHOST_MAX_TIME,GHOST_LONGEST,GHOST_SAMPLES,GHOST_MIN_RATE,GHOST_BUDGET} from '../teste/ghost-lap.js';
 const data=JSON.parse(fs.readFileSync(new URL('../dados/pista.json',import.meta.url))),L=data.meta.reconstructed_xy_m;
 const memory=(limit=Infinity)=>{const values=new Map();return {values,getItem:k=>values.get(k)??null,setItem(k,v){if(v.length>limit)throw new Error('QuotaExceededError');values.set(k,v);}};};
 
 // Two laps alone on track with the recon lap's racecraft: the first from the grid, the second flying.
-// Every step's real pose is kept to check the replay against it.
+// Every step's real pose is kept to check the replay against it, and its brake (the pedal past .05, as the lamps).
 const car=new TestCar(data);car.resetGrid();const field=new RaceField(data,{seed:3});field.reset(car.surface.s,{grid:true,entrants:[]});
 // The game asks the recorder at every step, the countdown's too: the grid lap is seen from its first instant.
 const recorder=new GhostRecorder(),laps=[],truth=[];recorder.step(car,true);
 for(let step=0;step<120*400&&laps.length<2;step++){
- car.step(field.heroInput(car,1/120),1/120);field.step(car,1/120,3);
- const lap=recorder.step(car,true);if(lap)laps.push(lap);
- const p=car.pose(0);truth.push({lapStart:car.lapStart,t:car.clock-car.lapStart,x:p.x,y:p.y,z:p.z,heading:car.heading,pitch:car.pitch,roll:car.roll});
+ const command=field.heroInput(car,1/120);car.step(command,1/120);field.step(car,1/120,3);
+ const lap=recorder.step(car,true,command.brake);if(lap)laps.push(lap);
+ const p=car.pose(0);truth.push({lapStart:car.lapStart,t:car.clock-car.lapStart,x:p.x,y:p.y,z:p.z,heading:car.heading,pitch:car.pitch,roll:car.roll,brake:command.brake>.05});
 }
 assert.equal(laps.length,2,'both laps that counted were recorded');assert.equal(car.laps,2);
 const [first,second]=laps;
@@ -42,6 +42,11 @@ assert.ok(Math.hypot(replay.poseAt(-2).x-flying[0].x,replay.poseAt(-2).y-flying[
 let level=0;for(const s of flying.filter((_,i)=>i%240===0)){const k=Math.floor(s.t*GHOST_RATE),at=replay.poseAt(k/GHOST_RATE).progress;level=Math.max(level,Math.abs(replay.timeAt(at)-k/GHOST_RATE));}
 assert.ok(level<1e-6,'the lap is level with itself');
 assert.ok(replay.timeAt(L/2)-replay.timeAt(L/4)>0&&replay.timeAt(-50)===0&&replay.timeAt(L*2)===second.time);
+// The brake lights: the lap keeps the instants the pedal went on and off, and the replay is braking exactly when the
+// car was; dark before the clock runs and after the line.
+assert.ok(second.brakes.length>=20&&second.brakes.every((b,i)=>b>=0&&b<second.time&&(!i||b>second.brakes[i-1])),`${second.brakes.length} brake switches kept`);
+assert.ok(!replay.brakesInferred&&flying.every(s=>replay.brakeAt(s.t)===s.brake),'the replay brakes when the car braked');
+assert.ok(flying.some(s=>s.brake)&&flying.some(s=>!s.brake)&&!replay.brakeAt(-1)&&!replay.brakeAt(second.time+1));
 
 // Stored as 16-bit steps: ~40 kB a lap, back within 6 mm and 1e-4 rad.
 const encoded=encodeGhost(second),text=JSON.stringify(encoded),decoded=decodeGhost(JSON.parse(text));
@@ -50,6 +55,24 @@ assert.equal(decoded.n,replay.n);assert.equal(decoded.time,second.time);
 let drift=0;for(let i=0;i<decoded.values.length;i++){const f=i%7;drift=Math.max(drift,Math.abs(decoded.values[i]-second.values[i])*(f>=3&&f<=5?100:1));}
 assert.ok(drift<.006,`quantization drift ${drift}`);
 for(const broken of [{...encoded,v:2},{...encoded,n:encoded.n+1},{...encoded,data:encoded.data.slice(8)},{...encoded,time:-1},{...encoded,start:[1,2]},{...encoded,data:'@@@'},null,'x'])assert.equal(decodeGhost(broken),null);
+// The brake's switches go along in hundredths (b): back within 5 ms; a b that is not whole hundredths within the lap,
+// rising, makes it no lap.
+assert.ok(Array.isArray(encoded.b)&&encoded.b.length===second.brakes.length&&!decoded.brakesInferred&&decoded.brakes.every((b,i)=>Math.abs(b-second.brakes[i])<=.005+1e-9),'brake switches saved');
+assert.ok(flying.filter(s=>second.brakes.every(b=>Math.abs(b-s.t)>.01)).every(s=>decoded.brakeAt(s.t)===s.brake),'saved, the replay still brakes when the car braked');
+for(const b of [[1,-5],[20,10],[1.5],'10',[0,Math.round(second.time*100)+50],Array(5000).fill(0)])assert.equal(decodeGhost({...encoded,b}),null,`b ${JSON.stringify(b).slice(0,30)} is no lap`);
+// A lap saved before the brake was kept (no b, as every ghost until now): it still loads and replays, its brake read back
+// from its speed and slope (inferBrakes): it agrees with the car's pedal nearly all the time and lights nearly every
+// braking zone, at 20 samples a second and thinned to 5 (there a tap shorter than 0.6 s may fall between samples).
+const before={...encoded};delete before.b;const old=decodeGhost(JSON.parse(JSON.stringify(before)));
+assert.ok(old&&old.brakesInferred&&old.n===decoded.n&&old.time===second.time,'an old lap still loads');
+const zones=[];for(const s of flying){if(s.brake&&!(zones.at(-1)?.open))zones.push({a:s.t,b:s.t,open:true});else if(s.brake)zones.at(-1).b=s.t;else if(zones.at(-1)?.open)zones.at(-1).open=false;}
+const inferred={};
+for(const [name,lap] of [['20',old],['5',new GhostLap({...thinGhost(second,4),brakes:null})]]){
+ const agree=flying.filter(s=>lap.brakeAt(s.t)===s.brake).length/flying.length,big=zones.filter(z=>z.b-z.a>=(name==='5'?.6:.3)),found=big.filter(z=>flying.some(s=>s.t>=z.a&&s.t<=z.b&&lap.brakeAt(s.t)));
+ inferred[name]={agree,found:found.length,zones:big.length};
+ assert.ok(lap.brakesInferred&&agree>.93&&found.length>=big.length-2,`inferred brake at ${name}/s: agrees ${(agree*100).toFixed(1)}%, ${found.length}/${big.length} zones`);
+}
+assert.deepEqual(inferBrakes(Float64Array.from([0,0,0,0,0,0,0,10,0,0,0,0,0,10]),20,.05),[],'a car at a steady speed never brakes');
 // A lap from elsewhere: data longer than its samples, or a car 10 000 km away or turned 1e6 rad, is no lap.
 for(const broken of [{...encoded,data:encoded.data+'AAAA'},{...encoded,data:encoded.data+'A'.repeat(1e6)},{...encoded,start:[1e9,...encoded.start.slice(1)]},{...encoded,start:[...encoded.start.slice(0,3),1e10,...encoded.start.slice(4)]}])assert.equal(decodeGhost(broken),null);
 const jump={...second,values:Float64Array.from(second.values)};jump.values[7*10]+=400;assert.equal(encodeGhost(jump),null,'a 400 m jump in 1/20 s is no lap');
@@ -150,7 +173,9 @@ let longLap=null,longReport=null;
 }
 
 // The shell: a pose of the replay places it as main.js places the player's car from TestCar.pose.
-globalThis.document??={createElement:()=>({width:0,height:0,getContext:()=>null})};
+// (A canvas whose 2D context does nothing: the plate and the brake lights' maps draw into it.)
+const noop=new Proxy(function(){},{get:(target,key)=>key==='createRadialGradient'||key==='createLinearGradient'?()=>({addColorStop(){}}):noop,apply:()=>undefined});
+globalThis.document??={createElement:()=>({width:0,height:0,getContext:()=>noop})};
 const {GhostCar}=await import('../teste/ghost-car.js');
 const template=new THREE.Group(),box=new THREE.Mesh(new THREE.BoxGeometry(4.6,1.4,1.8)),hidden=new THREE.Mesh(new THREE.BoxGeometry(1,1,1)),inner=new THREE.Mesh(new THREE.BoxGeometry(1,1,1).toNonIndexed());
 box.position.y=.7;hidden.visible=false;inner.userData.interno=true;template.add(box,hidden,inner,new THREE.Mesh(new THREE.PlaneGeometry(1,1).toNonIndexed()));
@@ -169,5 +194,22 @@ const fusca=new THREE.Group();fusca.add(new THREE.Mesh(new THREE.BoxGeometry(4,1
 assert.equal(detailed.model,'opala','building another model keeps the one shown');detailed.use('fusca');detailed.detail(80);
 assert.ok(detailed.has('fusca')&&detailed.model==='fusca'&&detailed.near.visible&&detailed.triangles===12&&!detailed.shells.get('opala').near.visible&&!detailed.shells.get('opala').far.visible);
 detailed.use('kombi');assert.equal(detailed.model,'fusca','a model never built keeps the one shown');detailed.use('opala');assert.equal(detailed.triangles,14);
+// Brake lights: the Opala's lenses and halos (on its distant profile too), another model's own tail lamps lit (a halo per
+// side), all dark until the lap brakes, faded with the ghost; each rides its shell (shown and hidden with it).
+{
+ const lamps=new GhostCar(),opala=new THREE.Group(),fusca=new THREE.Group(),red=new THREE.MeshStandardMaterial({name:'Lanterna_fusca'});
+ opala.add(new THREE.Mesh(new THREE.BoxGeometry(4.6,1.4,1.8)));fusca.add(new THREE.Mesh(new THREE.BoxGeometry(3.8,1.3,1.5)));
+ for(const z of [-.55,.55]){const lamp=new THREE.Mesh(new THREE.SphereGeometry(.05),red);lamp.position.set(-1.72,.45,z);fusca.add(lamp);}
+ lamps.build(opala,new THREE.BoxGeometry(4.6,1.4,1.8).toNonIndexed(),'opala');lamps.build(fusca,null,'fusca');
+ const o=lamps.shells.get('opala').lights,f=lamps.shells.get('fusca').lights;
+ assert.ok(o.length===2&&o[0].parent===lamps.shells.get('opala').near&&o[1].parent===lamps.shells.get('opala').far&&o[1].position.length()>.3,'the Opala lights on its shell and its distant profile');
+ assert.ok(f.length===1&&f[0].children.length===2&&f[0].parent===lamps.shells.get('fusca').near,'the Fusca lights its own lamps');
+ const halo=f[0].children[1].geometry;halo.computeBoundingBox();assert.ok(halo.boundingBox.max.x<-1.7&&halo.boundingBox.min.z<-.4&&halo.boundingBox.max.z>.4,'a halo behind each Fusca lamp');
+ assert.ok([...o,...f].every(g=>!g.visible),'dark until the lap brakes');
+ lamps.setBrake(true);assert.ok(lamps.braking&&[...o,...f].every(g=>g.visible));lamps.setOpacity(.5);
+ assert.ok(lamps.lensMaterial.opacity===.8&&lamps.haloMaterial.opacity===.5&&lamps.lampMaterial.opacity===.8,'faded with the ghost');
+ lamps.setBrake(false);assert.ok([...o,...f].every(g=>!g.visible));
+ const order=[...o[0].children,...f[0].children].map(m=>m.renderOrder);assert.ok(order.every(r=>r>21),'drawn after the shell (its depth pass hides them from ahead)');
+}
 
-console.log(`Ghost lap passed: laps ${first.time.toFixed(2)} s (grid) and ${second.time.toFixed(2)} s recorded whole, replay within ${(worst*100).toFixed(1)} cm, ${(text.length/1000).toFixed(1)} kB a lap, one per pilot/circuit/mode/car, faster replaces, oldest out, autopilot and late laps left out, shell placed as the car; a Pampulha lap of ${longReport.time.toFixed(0)} s (${longReport.onBranch.toFixed(1)} s on the avenue branch) saved at ${longReport.rate} a second in ${longReport.kB.toFixed(1)} kB, replay within ${(longReport.worst*100).toFixed(1)} cm, all ghosts within ${GHOST_BUDGET/1e6} M characters.`);
+console.log(`Ghost lap passed: brake lights replay ${second.brakes.length} switches (old laps read back from the speed: ${(inferred['20'].agree*100).toFixed(1)}% at 20/s, ${(inferred['5'].agree*100).toFixed(1)}% at 5/s, ${inferred['20'].found}/${inferred['20'].zones} zones); laps ${first.time.toFixed(2)} s (grid) and ${second.time.toFixed(2)} s recorded whole, replay within ${(worst*100).toFixed(1)} cm, ${(text.length/1000).toFixed(1)} kB a lap, one per pilot/circuit/mode/car, faster replaces, oldest out, autopilot and late laps left out, shell placed as the car; a Pampulha lap of ${longReport.time.toFixed(0)} s (${longReport.onBranch.toFixed(1)} s on the avenue branch) saved at ${longReport.rate} a second in ${longReport.kB.toFixed(1)} kB, replay within ${(longReport.worst*100).toFixed(1)} cm, all ghosts within ${GHOST_BUDGET/1e6} M characters.`);

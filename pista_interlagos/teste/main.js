@@ -477,19 +477,21 @@ function currentGhost(){
 }
 // After each physics step: a lap that counts, driven whole by the pilot (not the recon lap's autopilot
 // nor the coast after the flag), becomes his ghost when it beats the one saved; the next lap races it.
-function recordGhost(){
+// command: the step's, whose brake the ghost's brake lights replay.
+function recordGhost(command){
  const driving=sessionStarted&&!automatic&&!immersive.recordAssisted&&!immersive.finishing&&(immersive.active?immersive.state.phase==='race':!immersive.freeFinished);
- const lap=ghostRecorder.step(car,driving),key=lap&&ghostOwner();
+ const lap=ghostRecorder.step(car,driving,command?.brake??0),key=lap&&ghostOwner();
  if(key?.pilot&&saveGhost(pilotStorage(),{...key,lap})){ghostKey='';ghostSavedAt=car.lapStart;}
 }
 // Each frame: the ghost where its lap was at this point of the lap being driven. It waits at its
 // start until the clock runs, fades out once its lap is over, and fades near the camera and the
-// Opala (in the cockpit it would fill the windscreen). Hidden off the track: menus, box, podium.
+// Opala (in the cockpit it would fill the windscreen). Hidden off the track: menus, box, podium. Its brake
+// lights come on where its lap braked.
 function updateGhost(dt){
  const lap=preferences.values.ghost?currentGhost():null;
  const racing=!!lap&&sessionStarted&&!intro.active&&!pitstop?.opened&&raceResults.root.hidden&&(immersive.active?['starting','grid','race'].includes(immersive.state.phase):!immersive.freeResultReady);
  ghostOnTrack=racing;if(!racing){ghostCar.setOpacity(0);return;}
- const t=car.clock-car.lapStart+renderAhead();ghostOnTrack=t<lap.time+.8;lap.poseAt(t,ghostPose);ghostCar.place(ghostPose);ghostCar.update(paused?0:dt);
+ const t=car.clock-car.lapStart+renderAhead();ghostOnTrack=t<lap.time+.8;lap.poseAt(t,ghostPose);ghostCar.place(ghostPose);ghostCar.setBrake(lap.brakeAt(t));ghostCar.update(paused?0:dt);
  const near=camera.position.distanceTo(ghostCar.body.position),apart=Math.hypot(ghostPose.x-car.x,ghostPose.y-car.y);ghostCar.detail(near);
  ghostCar.setOpacity(clamp(1-(t-lap.time)/.8,0,1)*clamp((near-2.5)/4,0,1)*(.3+.7*clamp((apart-1.5)/4,0,1)));
  ghostCar.setPlate(fmt(lap.time));
@@ -1526,7 +1528,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  const heard=watchedRival()?.car??car;
  if(automatic&&!paused&&(mobile?.throttle||mobile?.brake||mobile?.steering||gamepad.driving||wheel.driving))takeWheel();
  if(arenaMode?.demo&&!paused&&(mobile?.throttle||mobile?.brake||mobile?.steering||gamepad.driving||wheel.driving))arenaMode.stopDemo('VOCÊ ASSUMIU O CARRO');
- if(!paused&&!frozen){if(automatic)immersive.recordAssisted=true;accumulator+=dt*fallView.timeScale;while(accumulator>=1/120){const command=automatic?pilot(1/120):arenaMode?.demo?arenaMode.demoCommand():input(1/120);if(outOfFuel()){command.throttle=0;command.reverse=0;}if(car.fall)Object.assign(command,{throttle:0,brake:0,left:0,right:0,reverse:0,handbrake:0});walker?.drive(command,{wait:!!(pitstop?.opened||pitstop?.willOpen())});if(!(walker?.active?false:pitstop?.beforeStep(command,1/120))&&!immersive?.step(command,1/120)){const before=Math.hypot(car.vx,car.vy);arenaMode?.beforeStep();car.step(command,1/120);const impact=Math.max(car.wallImpactSpeed??0,car.crashImpactSpeed??0,before-Math.hypot(car.vx,car.vy));arenaMode?.step(1/120,impact,{handbrake:!!command.handbrake,latched:!!mobile?.handbrake});if(impact>4){if(heard===car)carAudio.effect('collision');if(!car.fall)immersive?.wallImpact(impact);frameImpact=Math.max(frameImpact,impact);}const heardBefore=Math.hypot(heard.vx,heard.vy);immersive?.stepFree(1/120,command);if(heard!==car&&Math.max(heard.wallImpactSpeed??0,heard.crashImpactSpeed??0,heardBefore-Math.hypot(heard.vx,heard.vy))>4)carAudio.effect('collision');}lakeContact?.step(car,1/120);futebol?.step(car,1/120);skidMarks.update(car,command,1/120);recordGhost();accumulator-=1/120;if(!immersive.active&&immersive.freeResultReady&&!multiplayer?.holdResults()){menu(true);break;}}}
+ if(!paused&&!frozen){if(automatic)immersive.recordAssisted=true;accumulator+=dt*fallView.timeScale;while(accumulator>=1/120){const command=automatic?pilot(1/120):arenaMode?.demo?arenaMode.demoCommand():input(1/120);if(outOfFuel()){command.throttle=0;command.reverse=0;}if(car.fall)Object.assign(command,{throttle:0,brake:0,left:0,right:0,reverse:0,handbrake:0});walker?.drive(command,{wait:!!(pitstop?.opened||pitstop?.willOpen())});if(!(walker?.active?false:pitstop?.beforeStep(command,1/120))&&!immersive?.step(command,1/120)){const before=Math.hypot(car.vx,car.vy);arenaMode?.beforeStep();car.step(command,1/120);const impact=Math.max(car.wallImpactSpeed??0,car.crashImpactSpeed??0,before-Math.hypot(car.vx,car.vy));arenaMode?.step(1/120,impact,{handbrake:!!command.handbrake,latched:!!mobile?.handbrake});if(impact>4){if(heard===car)carAudio.effect('collision');if(!car.fall)immersive?.wallImpact(impact);frameImpact=Math.max(frameImpact,impact);}const heardBefore=Math.hypot(heard.vx,heard.vy);immersive?.stepFree(1/120,command);if(heard!==car&&Math.max(heard.wallImpactSpeed??0,heard.crashImpactSpeed??0,heardBefore-Math.hypot(heard.vx,heard.vy))>4)carAudio.effect('collision');}lakeContact?.step(car,1/120);futebol?.step(car,1/120);skidMarks.update(car,command,1/120);recordGhost(command);accumulator-=1/120;if(!immersive.active&&immersive.freeResultReady&&!multiplayer?.holdResults()){menu(true);break;}}}
  if(car.cliff&&!paused&&!frozen)playerFall(trackFall(car,dt*fallView.timeScale));
  // Any car meeting the ground below the wall goes up (the player's, a rival's): heard from afar, fainter.
  if(explosions&&!paused&&!frozen){
@@ -2530,9 +2532,9 @@ async function loadCircuit(){
   rivalParts:()=>{const rival=immersive.visual.rivals[0],names=[],shown=new Set();let meshes=0;rival?.traverse(o=>{names.push(o.name);if(!o.isMesh)return;meshes++;let seen=true;for(let q=o;q&&q!==rival;q=q.parent)if(!q.visible&&q!==rival.userData.detail)seen=false;if(seen)for(const m of [o.material].flat())shown.add(m.name);});return {motor:names.includes('Motor_CONJUNTO'),tanque:names.includes('Tanque_combustivel_CONJUNTO'),meshes,materials:[...shown],numbers:names.filter(n=>n.startsWith('Numero_')).length};},
   driverInfo:()=>driver.info(),
   // The ghost (G): the lap it replays, where it is drawn and how see-through, and the lap being recorded.
-  ghostInfo:()=>{const lap=currentGhost();return {enabled:preferences.values.ghost,lap:lap?{time:lap.time,samples:lap.n,pilot:lap.pilot}:null,onTrack:ghostOnTrack,visible:ghostCar.root.visible,opacity:ghostCar.opacity,
+  ghostInfo:()=>{const lap=currentGhost();return {enabled:preferences.values.ghost,lap:lap?{time:lap.time,samples:lap.n,pilot:lap.pilot,brakes:lap.brakes.length,brakesInferred:lap.brakesInferred}:null,onTrack:ghostOnTrack,visible:ghostCar.root.visible,opacity:ghostCar.opacity,braking:ghostCar.braking,
    position:ghostCar.body.position.toArray(),pose:{...ghostPose},plate:ghostCar.plateText,plateAt:ghostCar.plate.position.toArray(),triangles:ghostCar.triangles,savedAt:ghostSavedAt,gap:$('ghostGap').textContent,time:$('ghostTime').textContent,
-   recorder:{lapStart:ghostRecorder.lapStart,clean:ghostRecorder.clean,samples:ghostRecorder.values.length/7,progress:ghostRecorder.progress}};},
+   recorder:{lapStart:ghostRecorder.lapStart,clean:ghostRecorder.clean,samples:ghostRecorder.values.length/7,progress:ghostRecorder.progress,brakes:ghostRecorder.brakes.length,braking:ghostRecorder.braking}};},
   // The driving line (O): its mode, the line laid for the car (lap times of its own model), and the stretch ahead.
   drivingLineInfo:()=>({mode:preferences.values.drivingLine,...lineView.info()}),
   // The rivals' levels of detail (immersive-visuals.js detailLevel): how many show each; lod {near, far} sets them (a test).

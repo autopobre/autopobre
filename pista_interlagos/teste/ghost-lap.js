@@ -5,7 +5,9 @@ import {cleanName} from './lap-records.js';
 // lap and try to beat it. A lap is sampled 20 times a second from the physics, between its 1/120 s
 // steps: the model's origin, the body's three angles and how far along the track it is (the gap on
 // the timing panel). Saved in this browser at about 40 kB a lap: centimetres and 1e-4 rad, stored
-// as 16-bit steps from one sample to the next.
+// as 16-bit steps from one sample to the next. Beside them, the instants the brake went on and off
+// (brakes: seconds into the lap, saved in hundredths as b), to light the ghost's brake lights; a lap
+// saved before them (no b) has them read back from its speed (inferBrakes).
 export const GHOST_KEY='autopobre-ghosts-v1';
 export const GHOST_RATE=20;
 // Laps kept in this browser (pilots × circuits × modes, the oldest saved goes first), and the
@@ -24,10 +26,13 @@ export const GHOST_SAMPLES=3600,GHOST_MIN_RATE=4,GHOST_BUDGET=1200000;
 const FIELDS=7,SCALE=[100,100,100,1e4,1e4,1e4,100],BOUND=[1e5,1e5,1e5,1e4,1e4,1e4,1e5];
 const wrap=a=>Math.atan2(Math.sin(a),Math.cos(a));
 const MODES=['normal','immersive'];
+// The brake counts as on past this (brake-lights.js BRAKE_ON, the real car's lamps); the most switches a lap may
+// keep (a lap of the Pampulha, 9 minutes, brakes some 60 times).
+const BRAKING=.05,BRAKE_TOGGLES=4000;
 
 export class GhostRecorder {
  constructor(rate=GHOST_RATE){this.rate=rate;this.reset();}
- reset(){this.lapStart=null;this.values=[];this.last=null;this.next=0;this.clean=false;this.progress=null;this.maxTime=GHOST_MAX_TIME;}
+ reset(){this.lapStart=null;this.values=[];this.last=null;this.next=0;this.clean=false;this.progress=null;this.maxTime=GHOST_MAX_TIME;this.brakes=[];this.braking=false;}
  // The car now, continuous with the state before (angles and track distance unwrapped); the
  // first state of a lap measures from the line, negative still behind it on the grid.
  state(car){
@@ -37,25 +42,28 @@ export class GhostRecorder {
  }
  // After each physics step. driving: the pilot drives this step (not the recon lap's autopilot,
  // nor the coast after the flag). Returns the lap just completed when it counts and the pilot
- // drove all its time ({time, rate, values}), else null: steps with the clock stopped (the 3-2-1,
+ // drove all its time ({time, rate, values, brakes}), else null: steps with the clock stopped (the 3-2-1,
  // the story's paddock) do not matter, and the step onto the line is his even when the flag it
  // brings ends the driving. A car put back on the grid (clock run back) or a crossing taken back
- // (multiplayer) starts the recording over.
- step(car,driving=true){
+ // (multiplayer) starts the recording over. brake: the pedal this step (0-1), for the brake lights.
+ step(car,driving=true,brake=0){
   const t=car.clock-car.lapStart;
   if(car.lapStart!==this.lapStart||!this.last||t<this.last.t-1e-9){
    const crossed=!!this.last&&car.lapStart>this.lapStart&&car.lastLapValid===true&&!car.lastLapFell&&Math.abs(car.lastLap-(car.lapStart-this.lapStart))<1e-6;
    const lap=crossed?this.finish(car,car.lastLap):null;
-   this.begin(car,t);return lap;
+   this.begin(car,t,brake);return lap;
   }
   if(!driving&&t>this.last.t||t>this.maxTime)this.clean=false;
-  this.advance(t,this.state(car),t+1e-9);return null;
+  this.advance(t,this.state(car),t+1e-9);
+  if(brake>BRAKING!==this.braking){this.braking=!this.braking;if(this.brakes.length<BRAKE_TOGGLES)this.brakes.push(t);else this.clean=false;}
+  return null;
  }
  // A lap is recorded from its first instant: a crossing starts one at 0; a car put back at rest
  // between two frames is seen one step later, still where it stood. The steps that follow say
  // whether the pilot drove it.
- begin(car,t){
+ begin(car,t,brake=0){
   this.lapStart=car.lapStart;this.values=[];this.last=null;this.next=1;this.maxTime=ghostMaxTime(car.data.meta.reconstructed_xy_m);
+  this.braking=brake>BRAKING;this.brakes=this.braking?[0]:[];
   const v=this.state(car);this.clean=t<1/120+1e-6;if(this.clean)this.values.push(...v);
   this.last={t,v};this.progress=v[6];
  }
@@ -70,7 +78,7 @@ export class GhostRecorder {
   if(time>this.maxTime)this.clean=false;
   const v=this.state(car);this.advance(time,v,time-1e-9);
   if(!this.clean)return null;
-  this.values.push(...v);return {time,rate:this.rate,values:Float64Array.from(this.values)};
+  this.values.push(...v);return {time,rate:this.rate,values:Float64Array.from(this.values),brakes:this.brakes.filter(b=>b<time)};
  }
 }
 
@@ -78,8 +86,11 @@ export class GhostRecorder {
 // two samples the pose runs on a cubic (Hermite, its slopes from the neighbours either side, by time):
 // a long lap kept at 4 or 5 samples a second (8 m apart at speed) still rounds its corners.
 export class GhostLap {
- constructor({time,rate,values}){
+ // brakes: the instants the brake went on and off (seconds, rising); none given (a lap saved before them), read
+ // back from the lap's speed (brakesInferred).
+ constructor({time,rate,values,brakes=null}){
   this.time=time;this.rate=rate;this.values=values;this.n=values.length/FIELDS;
+  this.brakesInferred=!brakes;this.brakes=Float64Array.from(brakes??inferBrakes(values,rate,time));
   // The farthest along the track up to each sample: a spin or a stretch in reverse never takes the gap back.
   this.reach=new Float64Array(this.n);let far=-Infinity;for(let k=0;k<this.n;k++)this.reach[k]=far=Math.max(far,values[k*FIELDS+6]);
  }
@@ -98,12 +109,43 @@ export class GhostLap {
   // (The distance along the track stays straight between samples, as timeAt reads it.)
   out.x=curve(0);out.y=curve(1);out.z=curve(2);out.heading=curve(3);out.pitch=curve(4);out.roll=curve(5);out.progress=v[a+6]+(v[b+6]-v[a+6])*u;return out;
  }
+ // Whether the brake was on t seconds into the lap (off before the clock runs and after the line).
+ brakeAt(t){
+  const b=this.brakes;if(!(t>=0&&t<this.time)||!b.length)return false;
+  let lo=0,hi=b.length;while(lo<hi){const m=(lo+hi)>>1;if(b[m]<=t)lo=m+1;else hi=m;}return lo%2===1;
+ }
  // When the lap got this far from the line (metres): the gap is the time now minus this.
  timeAt(progress){
   const r=this.reach,n=this.n;if(!(progress>r[0]))return 0;if(progress>=r[n-1])return this.time;
   let lo=0,hi=n-1;while(hi-lo>1){const m=(lo+hi)>>1;if(r[m]>=progress)hi=m;else lo=m;}
   const t0=this.sampleTime(lo),t1=this.sampleTime(hi),span=r[hi]-r[lo];return t0+(t1-t0)*(span>0?(progress-r[lo])/span:1);
  }
+}
+
+// The brake read back from a lap's samples alone (laps saved before the brake was kept): the deceleration that the
+// slope and lifting off (rolling, air and the engine holding the car, as a speed's own: INFER.c0 + c2 v^2) do not
+// explain, past INFER.on m/s^2 until it falls under INFER.off, over a speed smoothed across INFER.smooth s; gaps
+// shorter than INFER.gap s closed, flashes shorter than INFER.minOn dropped. Against laps driven with the brake known
+// (the recon lap's racecraft on five circuits, at 20 and 5 samples a second) it agrees 96-98% of the time and finds
+// nearly every braking zone; a stop against a wall or out on the grass still lights it.
+const INFER={on:2.6,off:1.2,minOn:.2,gap:.15,smooth:.2,c0:.25,c2:.00045,g:9.81};
+export function inferBrakes(values,rate,time){
+ const n=values.length/FIELDS,at=k=>k>=n-1?time:k/rate,mid=[];
+ for(let k=0;k+1<n;k++){
+  const a=k*FIELDS,b=a+FIELDS,dt=at(k+1)-at(k);if(!(dt>0))continue;
+  const d=Math.hypot(values[b]-values[a],values[b+1]-values[a+1],values[b+2]-values[a+2]);
+  mid.push({t:(at(k)+at(k+1))/2,v:d/dt,sin:d>1e-3?(values[b+2]-values[a+2])/d:0});
+ }
+ const w=Math.max(1,Math.round(INFER.smooth*rate/2)),speed=mid.map((_,i)=>{let s=0,c=0;for(let j=Math.max(0,i-w);j<=Math.min(mid.length-1,i+w);j++){s+=mid[j].v;c++;}return s/c;});
+ const runs=[];let start=null;
+ for(let i=0;i<mid.length;i++){
+  const i0=Math.max(0,i-1),i1=Math.min(mid.length-1,i+1),dt=mid[i1].t-mid[i0].t;
+  const brake=dt>0?-(speed[i1]-speed[i0])/dt-INFER.g*mid[i].sin-INFER.c0-INFER.c2*speed[i]*speed[i]:0;
+  if(start===null&&brake>INFER.on)start=Math.max(0,mid[i].t-.5/rate);else if(start!==null&&brake<INFER.off){runs.push([start,mid[i].t]);start=null;}
+ }
+ if(start!==null)runs.push([start,time]);
+ const merged=[];for(const r of runs){const last=merged.at(-1);if(last&&r[0]-last[1]<INFER.gap)last[1]=r[1];else merged.push(r);}
+ return merged.filter(([a,b])=>b-a>=INFER.minOn).flatMap(([a,b])=>[a,Math.min(time,b)]).slice(0,BRAKE_TOGGLES);
 }
 
 function toBase64(bytes){let text='';for(let i=0;i<bytes.length;i+=0x8000)text+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));return btoa(text);}
@@ -122,7 +164,10 @@ export function encodeGhost(lap,samples=GHOST_SAMPLES){
  const n=lap.values.length/FIELDS;if(!Number.isInteger(n)||n<2||!(lap.time>0)||!Number.isInteger(lap.rate))return null;
  const ds=[1,2,4,5,10].filter(d=>d===1||lap.rate%d===0&&lap.rate/d>=GHOST_MIN_RATE);
  let i=ds.findIndex(d=>Math.floor((n-2)/d)+2<=samples);if(i<0)i=ds.length-1;
- for(;i>=0;i--){const packed=packGhost(thinGhost(lap,ds[i]));if(packed)return packed;}
+ // The brake's switches in hundredths of a second (a lap recorded before them has none: the replay reads them back).
+ const b=Array.isArray(lap.brakes)?lap.brakes.map(x=>Math.round(x*100)):null;
+ if(b&&(b.length>BRAKE_TOGGLES||b.some((x,j)=>!(x>=0&&x<=lap.time*100+1)||j&&x<b[j-1])))return null;
+ for(;i>=0;i--){const packed=packGhost(thinGhost(lap,ds[i]));if(packed)return b?{...packed,b}:packed;}
  return null;
 }
 function packGhost(lap){
@@ -136,14 +181,16 @@ function packGhost(lap){
 // before the data is unpacked, only numbers within BOUND come out, and anything else is no lap.
 export function decodeGhost(entry){
  try{
-  const {v,time,rate,n,start,data}=entry??{};
+  const {v,time,rate,n,start,data,b}=entry??{};
   if(v!==1||!Number.isInteger(rate)||rate<1||rate>120||!Number.isInteger(n)||n<2||!(time>0&&time<=GHOST_LONGEST)||(n-2)/rate>=time+1e-6||time>(n-1)/rate+1e-6)return null;
   if(!Array.isArray(start)||start.length!==FIELDS||!start.every(Number.isSafeInteger)||typeof data!=='string')return null;
   const size=(n-1)*FIELDS*2;if(data.length!==4*Math.ceil(size/3))return null;
   const bytes=fromBase64(data);if(bytes.length!==size)return null;
   const view=new DataView(bytes.buffer),q=[...start],values=new Float64Array(n*FIELDS);
   for(let i=0;i<n*FIELDS;i++){const f=i%FIELDS;if(i>=FIELDS)q[f]+=view.getInt16((i-FIELDS)*2,true);values[i]=q[f]/SCALE[f];if(!(Math.abs(values[i])<=BOUND[f]))return null;}
-  return new GhostLap({time,rate,values});
+  // The brake's switches (none: a lap saved before them): whole hundredths within the lap, never going back.
+  if(b!==undefined&&(!Array.isArray(b)||b.length>BRAKE_TOGGLES||!b.every((x,j)=>Number.isSafeInteger(x)&&x>=0&&x<=time*100+1&&(!j||x>=b[j-1]))))return null;
+  return new GhostLap({time,rate,values,brakes:b?b.map(x=>x/100):null});
  }catch{return null;}
 }
 

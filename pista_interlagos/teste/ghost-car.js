@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {shutOpenings} from './car-openings.js';
+import {brakeLightParts,FAR_OFFSET} from './brake-lights.js';
 // The ghost Opala (ghost-lap.js replays the lap): the player's model as one see-through shell, cyan,
 // brighter where its skin turns away from the camera, with faint bands running up it. It is drawn
 // twice, after the other see-through things: first only into the depth buffer, then in colour where
@@ -8,7 +9,11 @@ import {shutOpenings} from './car-openings.js';
 // casts no shadow and touches nothing. Beyond NEAR metres from the camera the distant rivals'
 // profile takes its place, as their own detail does (a few hundred triangles, not the model's).
 // Its lap time is on a plate on the rear bumper (no label over the roof: it hid the road ahead).
+// Its brake lights come on where the lap braked (setBrake): the Opala's lit lenses and halos of brake-lights.js, the
+// Fusca's own lamps lit with a halo on each, as the real cars show them, faded with the ghost.
 const NEAR=45;
+// The models' tail lamp material (the Opala's own lamps are covered by brake-lights.js's lenses instead).
+const LAMP_MATERIALS=['Lanterna_vermelha','Lanterna_fusca'];
 // The plate, a Mercosul one a quarter larger (40 x 13 cm) to be read from a few car lengths back:
 // metres in the car frame, centred on the bumper's face (the Opala's under its tail lamps, the
 // Fusca's blade), just behind the rearmost skin found there on each model.
@@ -59,24 +64,59 @@ export class GhostCar {
   this.plateTexture=new THREE.CanvasTexture(this.plateCanvas);this.plateTexture.colorSpace=THREE.SRGBColorSpace;this.plateTexture.anisotropy=8;
   this.plate=new THREE.Mesh(new THREE.PlaneGeometry(PLATE.w,PLATE.h).rotateY(-Math.PI/2),new THREE.MeshBasicMaterial({map:this.plateTexture,transparent:true,depthWrite:false}));
   this.plate.name='Fantasma_placa';this.plate.position.set(0,PLATE.y,0);this.plate.renderOrder=22;this.body.add(this.plate);
+  // The brake lights: brake-lights.js's lens map, glow and colours, see-through (opacity follows the ghost's); drawn
+  // after the shell, where its depth pass leaves them (from ahead the shell hides them). Two draws, only while lit.
+  const {lensMaterial,haloMaterial}=brakeLightParts();this.braking=false;
+  this.lensMaterial=new THREE.MeshBasicMaterial({name:'Fantasma_luz_de_freio',map:lensMaterial.map,color:lensMaterial.color.clone(),transparent:true,depthWrite:false,opacity:0});
+  this.haloMaterial=new THREE.MeshBasicMaterial({name:'Fantasma_luz_de_freio_halo',map:haloMaterial.map,color:haloMaterial.color.clone(),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0});
+  // A lamp of the model itself, lit: its own red, as bright (the Fusca's emissive 7 in fusca.js).
+  this.lampMaterial=new THREE.MeshBasicMaterial({name:'Fantasma_lanterna_acesa',color:new THREE.Color().setRGB(4,.12,.05),transparent:true,depthWrite:false,opacity:0});
  }
  // The shell from the player's model as loaded, its hinged parts shut and wheels at rest (main.js
  // builds it with the body untilted, as the rivals are cloned): one geometry, in the car's own frame.
  // far: the distant profile's geometry (immersive-visuals.js farProxy), in the same frame. The first
  // model built is shown until use() picks another.
  build(template,far=null,model='opala'){
-  const root=template.clone(true);shutOpenings(root);root.updateMatrixWorld(true);const parts=[];
+  const root=template.clone(true);shutOpenings(root);root.updateMatrixWorld(true);const parts=[],lamps=[];
   root.traverse(o=>{
    if(!o.isMesh||o.isInstancedMesh||o.isSkinnedMesh||o.userData.interno)return;for(let q=o;q;q=q.parent)if(!q.visible)return;
    const g=new THREE.BufferGeometry();g.setAttribute('position',floats(o.geometry.attributes.position));
    if(o.geometry.attributes.normal)g.setAttribute('normal',floats(o.geometry.attributes.normal));else g.computeVertexNormals();
    g.setIndex(o.geometry.index?Array.from(o.geometry.index.array):[...Array(o.geometry.attributes.position.count).keys()]);
    parts.push(g.applyMatrix4(o.matrixWorld));
+   if([o.material].flat().some(m=>LAMP_MATERIALS.includes(m?.name)))lamps.push(parts.at(-1).clone());
   });
   const geometry=mergeGeometries(parts,false);parts.forEach(g=>g.dispose());if(!geometry)return false;
   geometry.computeBoundingSphere();
   const near=this.shell(geometry,`Fantasma_${model}`),distant=far?this.shell(far,`Fantasma_${model}_distante`):null;
-  this.shells.set(model,{near,far:distant,triangles:geometry.index.count/3,plateX:rearmost(geometry)-PLATE.gap});this.use(this.model??model);return true;
+  const lights=this.brakeLights(model,lamps,near,distant);lamps.forEach(g=>g.dispose());
+  this.shells.set(model,{near,far:distant,lights,triangles:geometry.index.count/3,plateX:rearmost(geometry)-PLATE.gap});this.use(this.model??model);return true;
+ }
+ // A shell's brake lights (hidden until setBrake): the Opala's are brake-lights.js's lenses and halos over its lamps
+ // (on the distant profile too, where that module puts a distant rival's); another model's are its own tail lamps
+ // (lamps: their geometry, car frame) lit, a halo behind each (one per side). Each group rides its shell, so it shows
+ // and hides with it.
+ brakeLights(model,lamps,near,distant){
+  const {lens,halo}=brakeLightParts(),groups=[];
+  const group=(parent,name,meshes,offset=null)=>{const g=new THREE.Group();g.name=name;g.visible=this.braking;if(offset)g.position.set(...offset);
+   for(const [geometry,material,order] of meshes){const m=new THREE.Mesh(geometry,material);m.renderOrder=order;m.castShadow=m.receiveShadow=false;g.add(m);}
+   parent.add(g);groups.push(g);};
+  if(model==='opala'||!lamps.length){
+   const meshes=[[lens,this.lensMaterial,22],[halo,this.haloMaterial,23]];
+   group(near,`Fantasma_${model}_freio`,meshes);if(distant)group(distant,`Fantasma_${model}_distante_freio`,meshes,FAR_OFFSET);
+  }else{
+   const lit=mergeGeometries(lamps,false);
+   // A halo behind each side's lamps (the brake-lights.js glow, a little larger round a single round lamp).
+   const sides=[-1,1].map(s=>{const box=new THREE.Box3(),p=new THREE.Vector3();for(const g of lamps){const a=g.attributes.position;for(let i=0;i<a.count;i++){p.fromBufferAttribute(a,i);if(Math.sign(p.z)===s)box.expandByPoint(p);}}return box;}).filter(b=>!b.isEmpty());
+   const halos=mergeGeometries(sides.map(b=>{const c=b.getCenter(new THREE.Vector3()),size=Math.max(.3,1.8*Math.max(b.max.y-b.min.y,b.max.z-b.min.z));return new THREE.PlaneGeometry(size,size).rotateY(-Math.PI/2).translate(b.min.x-.02,c.y,c.z);}),false);
+   group(near,`Fantasma_${model}_freio`,[[lit,this.lampMaterial,22],...(halos?[[halos,this.haloMaterial,23]]:[])]);
+  }
+  return groups;
+ }
+ // The recorded lap's brake now (ghost-lap.js brakeAt): its lamps lit or not.
+ setBrake(on){
+  on=!!on;if(on===this.braking)return;this.braking=on;
+  for(const s of this.shells.values())for(const g of s.lights)g.visible=on;
  }
  has(model){return this.shells.has(model);}
  // The shell of the car raced now (a model not built yet keeps the one shown).
@@ -99,7 +139,10 @@ export class GhostCar {
   forward.set(ch*cp,-sp,-sh*cp);up.set(ch*cr*sp+sh*sr,cr*cp,-(sh*cr*sp-ch*sr));side.crossVectors(forward,up).normalize();
   this.body.position.set(p.x,p.z,-p.y);this.body.quaternion.setFromRotationMatrix(basis.makeBasis(forward,up,side));
  }
- setOpacity(value){this.opacity=value;this.shellMaterial.uniforms.opacity.value=value;this.plate.material.opacity=Math.min(1,value*1.6);this.root.visible=value>.01;}
+ setOpacity(value){
+  this.opacity=value;this.shellMaterial.uniforms.opacity.value=value;this.plate.material.opacity=Math.min(1,value*1.6);this.root.visible=value>.01;
+  this.lensMaterial.opacity=this.lampMaterial.opacity=Math.min(1,value*1.6);this.haloMaterial.opacity=value;
+ }
  update(dt){this.shellMaterial.uniforms.time.value=(this.shellMaterial.uniforms.time.value+dt)%1000;}
  // The lap time on the plate: white, the blue band on top reading FANTASMA where a real one reads BRASIL.
  setPlate(text){

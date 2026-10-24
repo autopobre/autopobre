@@ -9,7 +9,7 @@ import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 export const TAIL_LAMPS=Object.freeze([[-2.17,-.66],[-2.187,-.47],[-2.187,.47],[-2.17,.66]].map(([x,z])=>Object.freeze({x,z})));
 export const LAMP_Y=.6835;
 // The distant rival (immersive-visuals farProxy) carries its lamps higher and further back.
-const FAR_OFFSET=Object.freeze([-.215,.27,0]);
+export const FAR_OFFSET=Object.freeze([-.215,.27,0]);
 export const BRAKE_ON=.05;
 // Tail lights (weather.js: night, rain): the lamps glow dimly all the time and brighten under braking. on: the
 // rivals' (main.js applyWeather); the player's car follows its own light switch (headlights.js), set(brake, lit).
@@ -55,6 +55,8 @@ function parts(){
 }
 // The geometries and materials every car's lamps share (kept when one car is thrown away).
 export const sharedBrakeLights=()=>shared?[shared.lens,shared.halo,shared.lensMaterial,shared.haloMaterial,shared.tailMaterial,shared.tailHaloMaterial]:[];
+// The lamps' parts themselves (the ghost car lights its own copies, see-through: ghost-car.js).
+export const brakeLightParts=()=>parts();
 // A car's brake lights; far: placed for the distant rival's simple body (true: the Opala's, or the
 // offset from the Opala's lamps for another body, fusca.js FUSCA_PROFILE.lamps). set(brake, lit) shows them: bright
 // while braking, dim while the tail lights are on (lit, the rivals' TAIL_LIGHTS.on unless given).
