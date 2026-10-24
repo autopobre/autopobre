@@ -126,8 +126,9 @@ export function createInterlagosPit(data,roadSurface,textures,labels=undefined){
   const map=canvasTexture((ctx,w,h)=>{ctx.fillStyle='#62786a';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#d6d9cc';ctx.lineWidth=h*.16;for(let k=-1;k<3;k++){ctx.beginPath();ctx.moveTo(0,k*h/2+h*.1);ctx.lineTo(w/2,k*h/2+h*.45);ctx.lineTo(w,k*h/2+h*.1);ctx.stroke();}},128,128);
   map.wrapS=map.wrapT=THREE.RepeatWrapping;
   const positions=[],uvs=[],indices=[];let k=0;
-  // From the lane's entry to the nose of the pit wall (the stations' end on a reversed block).
-  for(let s=rev?pit.wall_nose:0;s<=(rev?end:pit.wall_nose);s+=2){const p=lerp(s),from=p[c.lo],to=p[c.lane_lo]-.05;if(to-from<.2&&k===0)continue;
+  // From the lane's entry to the nose of the pit wall (the stations' end on a reversed block). Where the lane's paving
+  // stops at its own edge (a measured lane, gerar_pista.py), the gore is the gap out to the lap's edge.
+  for(let s=rev?pit.wall_nose:0;s<=(rev?end:pit.wall_nose);s+=2){const p=lerp(s),to=p[c.lane_lo]-.05,from=p[c.lo]<p[c.lane_lo]-.05||c.gap===undefined?p[c.lo]:p[c.lane_lo]-p[c.gap];if(to-from<.2&&k===0)continue;
    for(const d of [from,Math.max(from,to)]){const v=at(p,d,.044);positions.push(v.x,v.y,v.z);uvs.push((d-to)/3,s/3);}
    if(k){const b=(k-1)*2;indices.push(b,b+2,b+1,b+1,b+2,b+3);}k++;}
   const gore=new THREE.Mesh(geometryFrom(positions,uvs,indices),mat('Zebrado_entrada_boxes',0xffffff,{map,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
@@ -180,7 +181,11 @@ export function createInterlagosPit(data,roadSurface,textures,labels=undefined){
   const board=(text,sub,bg,fg)=>canvasTexture((ctx,w,h)=>{ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);ctx.fillStyle=fg;ctx.textAlign='center';ctx.font='bold 92px sans-serif';ctx.fillText(text,w/2,h*.47);ctx.font='bold 46px sans-serif';ctx.fillText(sub,w/2,h*.82);},512,256);
   const place=(map,s,d,height,w,h,name)=>{const p=lerp(s),o=at(p,d);const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map,side:THREE.DoubleSide}));m.position.set(o.x,p[c.z]+height,o.z);m.rotation.y=Math.atan2(p[c.ty],p[c.tx])+facing;m.name=name;root.add(m);
    const pole=new THREE.Mesh(new THREE.BoxGeometry(.12,height-h/2,.12),metal);pole.position.set(o.x,p[c.z]+(height-h/2)/2,o.z);pole.castShadow=true;root.add(pole);};
-  place(board('PIT','ENTRADA DOS BOXES','#12463b','#fff6c9'),entry(6),lerpHi(entry(6))+1.4,2.6,2.2,1.1,'Placa_entrada_boxes');
+  // A measured lane crosses the lap from its centreline: its outer wall starts only once the lane is off the asphalt
+  // (gerar_pista.py), and the board stands just ahead of that wall's end, off the lap too.
+  const outerEnds=pit.walls.filter(w=>w.name==='Muro_externo_boxes').flatMap(w=>[w.points[0],w.points.at(-1)]).map(q=>nearestS(q[0],q[1]));
+  const outerStart=outerEnds.length?(rev?Math.max(...outerEnds):Math.min(...outerEnds)):entry(6),signS=rev?Math.min(entry(6),outerStart+3):Math.max(entry(6),outerStart-3);
+  place(board('PIT','ENTRADA DOS BOXES','#12463b','#fff6c9'),signS,lerpHi(signS)+1.4,2.6,2.2,1.1,'Placa_entrada_boxes');
   place(board('60','LIMITE NO PIT LANE','#ffffff','#b0161d'),limitStart+before(4),lerpHi(limitStart+before(4))+.8,2.4,1.6,.8,'Placa_limite_60');
   place(board('FIM','LIMITE DE VELOCIDADE','#ffffff','#1b2a2c'),limitEnd-before(2),lerpHi(limitEnd-before(2))+.8,2.4,1.6,.8,'Placa_fim_limite');
   function lerpHi(s){return lerp(s)[c.hi];}

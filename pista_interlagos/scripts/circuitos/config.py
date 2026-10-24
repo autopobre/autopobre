@@ -322,6 +322,9 @@ CIRCUITOS = {
         # Do predio ate a saida o pit lane corre colado a reta atras de um muro continuo (imagem); a medida, com a faixa pintada
         # na largura da pista, o deixava encostar nela: a folga minima vale ate 70 m antes da saida.
         'trecho_folga_boxes_s': (330, 745),
+        # A entrada do pit fica do lado de fora da curva 11: o muro dos boxes nasce onde a faixa ja esta a 4 m da pista (com
+        # o 1 m de sempre a ponta ficava a 1,8 m da borda, de frente para quem abre a curva); antes dela, o zebrado.
+        'muro_boxes_ponta_m': 4.0,
         # Numa fazenda, entre cafezais, laranjais, eucaliptos e a reserva de mata: sem a cidade no horizonte.
         'horizonte': 'rural',
         # Trechos de asfalto fora do traçado de competicao (vias OSM highway=raceway), desenhados e fechados.

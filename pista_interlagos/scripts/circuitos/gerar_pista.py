@@ -690,7 +690,7 @@ def main():
                          fonte=x.get('fonte_boxes', 'Pit lane: OSM (way 628049496) refinado sobre imagem aérea de 2025; '
                                                     'garagens sob a cobertura, medidas nos transectos.'),
                          garagens_s=boxes['garagens_s'], lado=c.get('lado_boxes', 1), folga_min=c.get('folga_minima_boxes_m'),
-                         trecho_folga=c.get('trecho_folga_boxes_s'))
+                         trecho_folga=c.get('trecho_folga_boxes_s'), ponta_folga=c.get('muro_boxes_ponta_m', 1.0))
     elif x.get('pit_sintetico'):
         cfg = dict(x['pit_sintetico'])
         if cfg.get('garagens'):
@@ -859,7 +859,7 @@ def projetar_main_s(pxy, pt, superficie, L):
 
 
 def completar_pit(pxy, pw_lo, pw_hi, pz, pbank, main_s, gap, garagens, superficie, fonte, entry_open, wall_nose, wall_end, L,
-                  muro_trechos, reverso=False):
+                  muro_trechos, reverso=False, gap_bruto=None):
     """Bloco do pit no formato de Interlagos: estacoes ao longo da faixa com as garagens do lado
     positivo (a esquerda de quem anda no sentido das estacoes). Com os boxes a direita da pista
     (Brasilia) as estacoes chegam do fim para o comeco da faixa (reverso): o bloco fica girado de
@@ -922,6 +922,15 @@ def completar_pit(pxy, pw_lo, pw_hi, pz, pbank, main_s, gap, garagens, superfici
         walls.append({'name': 'Muro_boxes', 'points': poly(muro_off, a, b, esp), 'height': 1.05, 'fence': 2.6, 'fence_side': -1})
     # O muro externo para 20 m antes da ponta da saida (a faixa volta para a pista) e 6 m da entrada.
     a0, a1 = (20, end - 6) if reverso else (6, end - 20)
+    if gap_bruto is not None:
+        # Um eixo medido (OSM) nasce no meio da pista e a cruza em diagonal ate correr ao lado dela: o muro externo so onde
+        # a faixa inteira ja saiu do asfalto da volta (Velocitta: na entrada ele ficava 1,2 m dentro da pista).
+        na_pista = gap_bruto < 0
+        antes, depois = np.flatnonzero(na_pista & (ps < g0)), np.flatnonzero(na_pista & (ps > g1))
+        if len(antes):
+            a0 = max(a0, float(ps[min(antes[-1] + 1, len(ps) - 1)]))
+        if len(depois):
+            a1 = min(a1, float(ps[depois[0] - 1]))
     walls += [{'name': 'Muro_externo_boxes', 'points': poly(externo, a0, s99 - bay / 2, .4), 'height': 1.0, 'fence': 0},
               {'name': 'Muro_externo_boxes', 'points': poly(externo, s99 + bay / 2, a1, .4), 'height': 1.0, 'fence': 0},
               {'name': 'Box99_paredes', 'points': [qq + [.3] for qq in box_walls], 'height': 5.2, 'fence': 0},
@@ -1066,10 +1075,11 @@ def main_s_monotono(ps, main_s, lat, pt, T, k, L):
 
 
 def montar_pit(pxy, pw, xy, z, E, T, bank, largura, s, L, superficie, vias_dem, origem, base, escala, fonte, garagens_s,
-               lado=1, folga_min=None, trecho_folga=None):
+               lado=1, folga_min=None, trecho_folga=None, ponta_folga=1.0):
     """Pit lane medido (Cascavel, Brasilia): perfil do relevo, juntando-se ao plano da pista nas
     pontas. lado: 1 com os boxes a esquerda da pista no sentido da corrida, -1 a direita. trecho_folga: s do pit lane
-    (da entrada) onde a folga minima vale alem das garagens (Velocitta: do predio dos boxes ate a saida)."""
+    (da entrada) onde a folga minima vale alem das garagens (Velocitta: do predio dos boxes ate a saida). ponta_folga: folga
+    ate a pista (m) onde nasce o muro dos boxes na entrada."""
     # Reamostra a cada 2 m.
     ps0 = np.r_[0, np.cumsum(np.linalg.norm(np.diff(pxy, axis=0), axis=1))]
     ps = np.arange(0, ps0[-1] + 1e-6, DS)
@@ -1077,7 +1087,8 @@ def montar_pit(pxy, pw, xy, z, E, T, bank, largura, s, L, superficie, vias_dem, 
     pw = np.interp(ps, ps0, pw)
     pt, pl = quadro(pxy, fechado=False)
     k, main_s, lat, z_main = superficie(pxy)
-    gap = np.maximum(0, lado * lat - pw / 2 - largura[k] / 2)
+    gap_bruto = lado * lat - pw / 2 - largura[k] / 2
+    gap = np.maximum(0, gap_bruto)
     if folga_min:
         # Plataforma do muro diante das garagens, como no ECPA e em Chapeco: a banca da equipe do Box 99
         # pede o muro de 3,4 m a 0,6 m de cada via. Onde a faixa medida corre mais perto da pista ela se
@@ -1091,7 +1102,8 @@ def montar_pit(pxy, pw, xy, z, E, T, bank, largura, s, L, superficie, vias_dem, 
         pxy = pxy + (lado * falta)[:, None] * E[k]
         pt, pl = quadro(pxy, fechado=False)
         k, main_s, lat, z_main = superficie(pxy)
-        gap = np.maximum(0, lado * lat - pw / 2 - largura[k] / 2)
+        gap_bruto = lado * lat - pw / 2 - largura[k] / 2
+        gap = np.maximum(0, gap_bruto)
         print(f'pit lane afastado ate {falta.max():.2f} m da pista diante das garagens (folga minima {folga_min} m)')
     # Perfil: relevo suavizado; onde corre a menos de 12 m da pista segue o plano dela.
     zd = vias_dem(pxy[:, 0] / escala + origem[0], pxy[:, 1] / escala + origem[1]) - base
@@ -1109,6 +1121,13 @@ def montar_pit(pxy, pw, xy, z, E, T, bank, largura, s, L, superficie, vias_dem, 
     muro_idx = np.flatnonzero(muro & (ps > abertura))
     trechos = np.split(muro_idx, np.flatnonzero(np.diff(muro_idx) > 2) + 1)
     muro_trechos = [(ps[t[0]], ps[t[-1]]) for t in trechos if len(t) and (ps[t[-1]] - ps[t[0]]) > 30 and gap[t].min() < 8]
+    if muro_trechos and ponta_folga > 1.0:
+        # A ponta do muro so onde a faixa ja se afastou ponta_folga da pista (Velocitta: a entrada fica do lado de fora da
+        # curva 11 e, com 1 m, a ponta ficava a 1,8 m da borda, de frente para quem abre a curva); antes dela, o zebrado.
+        a, b = muro_trechos[0]
+        longe = (ps >= a) & (ps <= b) & (gap >= ponta_folga)
+        if longe.any():
+            muro_trechos[0] = (float(ps[np.argmax(longe)]), b)
     wall_nose = muro_trechos[0][0] if muro_trechos else abertura
     wall_end = muro_trechos[-1][1] if muro_trechos else ps[-1] - 40
     print(f'pit lane {ps[-1]:.0f} m: entra em s={main_s[0]:.0f}, volta em s={main_s[-1]:.0f}; garagens {g0:.0f}-{g1:.0f} m; '
@@ -1117,14 +1136,14 @@ def montar_pit(pxy, pw, xy, z, E, T, bank, largura, s, L, superficie, vias_dem, 
         # Boxes a direita: as estacoes vao da saida para a entrada, com as garagens a esquerda delas
         # (meia volta do bloco; o caimento troca de sinal com o eixo lateral).
         fim = float(ps[-1])
-        pxy, pz, pbank, main_s, gap = pxy[::-1], pz[::-1], -pbank[::-1], main_s[::-1], gap[::-1]
+        pxy, pz, pbank, main_s, gap, gap_bruto = pxy[::-1], pz[::-1], -pbank[::-1], main_s[::-1], gap[::-1], gap_bruto[::-1]
         lo, hi = -hi[::-1], -lo[::-1]
         g0, g1 = fim - g1, fim - g0
         # Mesmo sentido de antes: wall_nose do lado da entrada, wall_end do lado da saida.
         abertura, wall_nose, wall_end = fim - abertura, fim - wall_nose, fim - wall_end
         muro_trechos = [(fim - b, fim - a) for a, b in reversed(muro_trechos)]
     return completar_pit(pxy, lo, hi, pz, pbank, main_s, gap, (g0, g1), superficie, fonte, abertura, wall_nose, wall_end, L,
-                         muro_trechos, reverso=lado < 0)
+                         muro_trechos, reverso=lado < 0, gap_bruto=gap_bruto)
 
 
 def predio_sentinel2(pasta, epsg, P, E, reta_ini, reta_n, lado):
