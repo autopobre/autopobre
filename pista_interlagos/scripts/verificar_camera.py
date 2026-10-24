@@ -10,7 +10,7 @@ Screens: <pasta>/camera_*.png (default renders/camera); report in dados/validaca
 import json, math, sys, time
 from pathlib import Path
 import browser_config  # noqa: F401  headless + in-page pointer lock
-from browser_config import browser_executable, browser_args, open_menu, wait_js, wait_race_start, choose_race
+from browser_config import browser_executable, browser_args, open_menu, wait_js, wait_race_start, choose_race, start_race
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,7 +93,7 @@ def race(browser, w, h, level='alto', mobile=False, circuit='interlagos', **pref
     press('#start')
     if page.is_visible('#cars'):
         press('#carsNext')
-    press('#soloRace')
+    start_race(page, '#soloRace', mobile)
     wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused', timeout=180000)
     page.evaluate('interlagos.skipIntro()'); wait_race_start(page)
     wait_js(page, '!interlagosGraficos.info().compiling', timeout=60000)

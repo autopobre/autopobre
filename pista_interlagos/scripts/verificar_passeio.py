@@ -16,7 +16,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from browser_config import browser_executable, browser_args, wait_js
+from browser_config import browser_executable, browser_args, wait_js, start_race
 
 PORTA = sys.argv[1] if len(sys.argv) > 1 else '8883'
 URL = f'http://127.0.0.1:{PORTA}/pista_interlagos/teste/'
@@ -94,7 +94,7 @@ def abrir(page, circuito):
     if page.is_visible('#cars'):
         page.click('#carsNext')
     wait_js(page, "!document.querySelector('#soloRace').disabled")
-    page.click('#soloRace')
+    start_race(page, '#soloRace')
     wait_js(page, 'window.interlagos?.ready&&!interlagos.state?.paused', timeout=300000)
     page.evaluate('interlagos.skipIntro?.()')
     page.wait_for_timeout(4000)

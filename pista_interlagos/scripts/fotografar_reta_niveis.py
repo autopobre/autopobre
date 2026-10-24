@@ -10,7 +10,7 @@ import json, math, sys, time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import browser_config  # noqa: F401  headless + in-page pointer lock
-from browser_config import browser_executable, browser_args, open_menu, wait_js, wait_race_start
+from browser_config import browser_executable, browser_args, open_menu, wait_js, wait_race_start, start_race
 from playwright.sync_api import sync_playwright
 
 PORT = sys.argv[1]
@@ -68,7 +68,7 @@ with sync_playwright() as p:
         if page.is_visible('#cars'):
             page.click('#carsNext')
         t1 = time.monotonic()
-        page.click('#soloRace')
+        start_race(page, '#soloRace')
         wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused', timeout=180000)
         t_load = time.monotonic() - t1
         page.evaluate('interlagos.skipIntro()')

@@ -9,7 +9,7 @@ overalls bought; the end of the story starts the season again. Then the first ca
 Usage, from the repo root, with the local server running (INTERLAGOS_URL for another port):
   python pista_interlagos/scripts/verificar_carreira.py [pasta_das_fotos]
 """
-from browser_config import browser_executable, browser_args, wait_js, open_menu, GAME_URL
+from browser_config import browser_executable, browser_args, wait_js, open_menu, GAME_URL, start_race
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 import json, os, sys
@@ -44,7 +44,7 @@ def start_season(page):
     if not page.is_visible('#tracks'):
         if page.is_visible('#pilotName') and not page.input_value('#pilotName'): page.fill('#pilotName', 'Piloto teste')
         page.click('#storyStart')
-    page.click('#championshipStart')
+    start_race(page, '#championshipStart')
     wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused')
     page.evaluate(HOOK); wait_js(page, "fixtureMode.state.phase==='crowd'")
     page.evaluate('interlagos.skipIntro?.()')
@@ -153,7 +153,7 @@ def phone(browser):
     page.fill('#pilotName', 'Piloto teste'); page.tap('#storyStart')
     wait_js(page, "!document.querySelector('#championshipStart').disabled")
     shot(page, '20_celular_pistas')
-    page.tap('#championshipStart')
+    start_race(page, '#championshipStart', tap=True)
     wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused')
     page.evaluate(HOOK); wait_js(page, "fixtureMode.state.phase==='crowd'"); page.evaluate('interlagos.skipIntro?.()')
     frames(page)

@@ -17,7 +17,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from browser_config import browser_executable, browser_args, wait_js, wait_race_start
+from browser_config import browser_executable, browser_args, wait_js, wait_race_start, start_race, race_mode
 
 PORT = sys.argv[1] if len(sys.argv) > 1 else '8799'
 URL = f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
@@ -83,6 +83,7 @@ with sync_playwright() as p:
     page.click('#start')
     page.click('#carsNext')
     assert page.get_attribute('#tracks', 'data-mode') == 'corrida'
+    race_mode(page, 'championship')
     assert page.get_attribute('[data-championship-calendar="todas"]', 'aria-selected') == 'true'
     assert page.locator('#championshipCalendar li').count() == len(ROUNDS)
     # Old Stock 2026: eight dated rounds, Interlagos twice in a row; Brasília opens it.
@@ -91,9 +92,9 @@ with sync_playwright() as p:
     assert page.locator('#championshipCalendar li').count() == 8 and '21 e 22 MAR' in season and '19 e 20 DEZ' in season, season
     assert page.inner_text('#championshipCalendar li:nth-child(2) span') == page.inner_text('#championshipCalendar li:nth-child(3) span') == 'Interlagos - SP'
     if brasilia:
-        assert page.is_enabled('#championshipStart') and page.inner_text('#championshipStart').startswith('Começar campeonato')
+        assert page.is_enabled('#championshipStart') and page.text_content('#championshipStart').startswith('Começar campeonato')
     else:
-        assert page.is_disabled('#championshipStart') and 'Brasília' in page.inner_text('#championshipStart') and 'em breve' in season, season
+        assert page.is_disabled('#championshipStart') and 'Brasília' in page.text_content('#championshipStart') and 'em breve' in season, season
     page.screenshot(path=str(ROOT / 'renders/campeonato_oldstock2026.png'))
     page.reload(wait_until='domcontentloaded')
     wait_js(page, "window.interlagos&&!document.querySelector('#start').disabled")
@@ -104,23 +105,23 @@ with sync_playwright() as p:
     page.keyboard.press('ArrowLeft')
     assert page.get_attribute('[data-championship-calendar="todas"]', 'aria-selected') == 'true'
     assert page.evaluate("document.activeElement.dataset.championshipCalendar") == 'todas'
-    assert page.inner_text('#championshipStart').startswith('Começar campeonato')
-    page.click('#championshipStart')
+    assert page.text_content('#championshipStart').startswith('Começar campeonato')
+    start_race(page, '#championshipStart')
     finish_round(page, 0)
     assert page.inner_text('#resultsContinue') == 'Próxima etapa: Cascavel →'
     page.screenshot(path=str(ROOT / 'renders/campeonato_etapa1.png'))
     # Leave, reload: the championship resumes at round 2.
     page.click('#resultsMainMenu')
     wait_js(page, "!document.querySelector('#tracks').classList.contains('hidden')")
-    assert page.inner_text('#championshipStart') == 'Correr a etapa 2 →', page.inner_text('#championshipStart')
+    assert page.text_content('#championshipStart') == 'Correr a etapa 2 →', page.text_content('#championshipStart')
     assert page.locator('#championshipCalendar li.done').count() == 1 and page.is_visible('#championshipTableButton')
     page.screenshot(path=str(ROOT / 'renders/campeonato_pistas.png'))
     page.reload(wait_until='domcontentloaded')
     wait_js(page, "window.interlagos&&!document.querySelector('#start').disabled")
     page.click('#start')
     page.click('#carsNext')
-    assert page.inner_text('#championshipStart') == 'Correr a etapa 2 →'
-    page.click('#championshipStart')
+    assert page.text_content('#championshipStart') == 'Correr a etapa 2 →'
+    start_race(page, '#championshipStart')
     for k in range(1, len(ROUNDS)):
         finish_round(page, k)
         if k < len(ROUNDS) - 1:
@@ -139,7 +140,7 @@ with sync_playwright() as p:
     page.click('#championshipClose')
     page.click('#resultsMainMenu')
     wait_js(page, "!document.querySelector('#tracks').classList.contains('hidden')")
-    assert page.inner_text('#championshipStart') == 'Novo campeonato →'
+    assert page.text_content('#championshipStart') == 'Novo campeonato →'
     assert 'encerrado' in page.inner_text('#championshipStatus')
 
     # Modo História: a championship of its own.
@@ -147,9 +148,9 @@ with sync_playwright() as p:
     page.click('#carsBack')
     page.click('#storyStart')
     assert page.get_attribute('#tracks', 'data-mode') == 'historia' and 'MODO HISTÓRIA' in page.inner_text('#championshipKicker')
-    assert page.inner_text('#championshipStart').startswith('Começar campeonato'), page.inner_text('#championshipStart')
+    assert page.text_content('#championshipStart').startswith('Começar campeonato'), page.text_content('#championshipStart')
     page.screenshot(path=str(ROOT / 'renders/campeonato_historia_pistas.png'))
-    page.click('#championshipStart')
+    start_race(page, '#championshipStart')
     # Round 1 (Brasília) finished at the flag: points on the sheet, then the podium.
     story_round(page, STORY_ROUNDS[0])
     page.evaluate('interlagos.car.laps=fixture.storyLaps')
@@ -184,7 +185,7 @@ with sync_playwright() as p:
     wait_js(page, "!document.querySelector('#tracks').classList.contains('hidden')")
     assert page.get_attribute('#tracks', 'data-mode') == 'historia'
     calendar = page.inner_text('#championshipCalendar')
-    assert 'DSQ' in calendar and 'DNF' in calendar and page.inner_text('#championshipStart') == 'Correr a etapa 3 →', calendar
+    assert 'DSQ' in calendar and 'DNF' in calendar and page.text_content('#championshipStart') == 'Correr a etapa 3 →', calendar
     page.screenshot(path=str(ROOT / 'renders/campeonato_historia_calendario.png'))
     page.click('#championshipTableButton')
     wait_js(page, "document.querySelector('#championshipDialog').open")
@@ -196,7 +197,7 @@ with sync_playwright() as p:
     page.click('#tracksBack')
     page.click('#start')
     page.click('#carsNext')
-    assert page.inner_text('#championshipStart') == 'Novo campeonato →'
+    assert page.text_content('#championshipStart') == 'Novo campeonato →'
     report['historia'] = {'calendar': calendar.split('\n'), 'player': player_row}
     browser.close()
 assert not errors, errors

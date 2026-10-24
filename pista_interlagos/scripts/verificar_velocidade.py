@@ -23,7 +23,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import browser_config  # noqa: F401  headless + in-page pointer lock
-from browser_config import GAME_URL, browser_args, browser_executable, open_menu, wait_js, wait_race_start
+from browser_config import GAME_URL, browser_args, browser_executable, open_menu, wait_js, wait_race_start, start_race
 from PIL import Image, ImageChops
 from playwright.sync_api import sync_playwright
 
@@ -117,7 +117,7 @@ def start(browser, level):
     page.click('#start')
     if page.is_visible('#cars'):
         page.click('#carsNext')
-    page.click('#singleRace')
+    start_race(page, '#singleRace')
     wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused', timeout=180000)
     page.evaluate('interlagos.skipIntro()')
     wait_race_start(page)

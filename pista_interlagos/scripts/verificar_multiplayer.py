@@ -33,7 +33,7 @@ import tempfile
 import threading
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import browser_executable, browser_args, wait_js
+from browser_config import browser_executable, browser_args, wait_js, start_race
 
 ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
 PORT = ARGS[0] if ARGS else '8799'
@@ -99,7 +99,7 @@ def guest_window(context, host, pages, name, car=None):
     wait_js(page, f"window.interlagosSala?.info().role==='guest'&&interlagosSala.info().number==={PILOTS[name][1]!r}", timeout=60000)
     # Let in: on the car screen, picking a car; not waiting for any race yet.
     wait_js(page, "!document.querySelector('#cars').classList.contains('hidden')&&interlagosCarros.info().guest?.admitted", timeout=30000)
-    assert page.inner_text('#carsNext').startswith('Aguardar início da corrida'), page.inner_text('#carsNext')
+    assert page.text_content('#carsNext').startswith('Aguardar início da corrida'), page.text_content('#carsNext')
     assert not page.evaluate('interlagosSala.info().waiting')
     return page
 
@@ -204,7 +204,7 @@ def race_room(context, host, pages):
     wait_js(host, "document.querySelector('#mpRoom .mp-status').textContent.includes('1 de 1 convidado aguardando')", timeout=10000)
     host.screenshot(path=str(SHOTS / '1_anfitriao_pistas.png'))
     guest.screenshot(path=str(SHOTS / '1_convidado_espera.png'))
-    host.click('#singleRace')
+    start_race(host, '#singleRace')
 
     # Corrida única waits on the grid, the Largar button showing, until the host gives the start.
     wait_js(host, "interlagosSala.info().phase==='waiting'&&!document.querySelector('#mpStart').hidden", timeout=240000)

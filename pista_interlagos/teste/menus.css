@@ -1,0 +1,556 @@
+/* The menus' paddock look (2026-10, after geracoes_jogo/v08_menus_exploracao's board 04, "Paddock integrado"): the opening,
+   the car and track screens and the settings with no boxes round their buttons. Words, small icons, arrows, thin open
+   rules and the racing yellow sit on the scene; the choice made is yellow, underlined. Everything here hangs from the
+   page's menus-paddock class (index.html; main.js drops it for the settings' Menus clássicos box), so taking it away
+   leaves the menus as the older stylesheets draw them. Type and colours follow the board's technical sheet (tecnica/
+   especificacao.md): Barlow Condensed for the big leaning calls, Inter for the titles, Roboto Condensed for the rest
+   (all SIL Open Font License, assets/fontes). */
+@font-face{font-family:'Roboto Condensed';font-style:normal;font-weight:400 700;font-display:swap;src:url('./assets/fontes/roboto-condensed-400-700.woff2') format('woff2')}
+@font-face{font-family:'Inter';font-style:normal;font-weight:700 800;font-display:swap;src:url('./assets/fontes/inter-700-800.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-style:italic;font-weight:600;font-display:swap;src:url('./assets/fontes/barlow-condensed-600i.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-style:italic;font-weight:800;font-display:swap;src:url('./assets/fontes/barlow-condensed-800i.woff2') format('woff2')}
+
+/* The new parts are the paddock look's own: the classic menus never show them. */
+html:not(.menus-paddock) :is(.menu-steps,.car-thumbs-row,.race-modes,.track-hero){display:none!important}
+html:not(.menus-paddock) .opening-brand figcaption b{font-weight:inherit}
+html:not(.menus-paddock) .settings-sources{display:none}
+/* The settings' way back to the menus of before, in both looks (its footer). */
+.classic-menus{display:inline-flex;align-items:center;gap:7px;margin:0;font-size:11px;font-weight:600;color:#c9d3c4;white-space:nowrap;cursor:pointer;user-select:none}
+.classic-menus input{width:15px;height:15px;margin:0;accent-color:#f4ce39;cursor:pointer}
+
+.menus-paddock{
+ --mp-ink:#f3f2e8;--mp-dim:#c6cbc7;--mp-faint:#8e9893;--mp-yellow:#f8dc38;--mp-hot:#fff36a;--mp-rule:#dceee33b;--mp-shade:#071313;
+ --mp-display:'Barlow Condensed','Arial Narrow',Impact,sans-serif;--mp-head:'Inter','Segoe UI',Arial,sans-serif;--mp-text:'Roboto Condensed','Arial Narrow',Arial,sans-serif;
+ /* Line icons (24 px, stroked) used as masks: they take the text's colour. */
+ --mp-i-person:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='3.6'/%3E%3Cpath d='M4.5 20c.8-4 3.8-6 7.5-6s6.7 2 7.5 6'/%3E%3C/svg%3E");
+ --mp-i-book:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 5.5c2.5-1 5.5-.9 8 .5 2.5-1.4 5.5-1.5 8-.5V19c-2.5-1-5.5-.9-8 .5-2.5-1.4-5.5-1.5-8-.5zM12 6v13.5M6.5 9.5h3M6.5 13h3M14.5 9.5h3M14.5 13h3'/%3E%3C/svg%3E");
+ --mp-i-drift:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 15l1.6-4.2c.3-.8 1-1.3 1.9-1.3h9c.9 0 1.6.5 1.9 1.3L20 15v3H4zM7.3 9.5l1.5-2.6h6.4l1.5 2.6M2 21c1.7-.7 3.4-.7 5.2 0M9.5 21.5c1.4-.5 2.8-.5 4.2 0'/%3E%3Ccircle cx='8' cy='14.5' r='1'/%3E%3Ccircle cx='16' cy='14.5' r='1'/%3E%3C/svg%3E");
+ --mp-i-history:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3 4.5v4h4M12 7.5V12l3 2'/%3E%3C/svg%3E");
+ --mp-i-restart:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 12a8 8 0 1 1-2.4-5.7M20 4v4.5h-4.5'/%3E%3C/svg%3E");
+ --mp-i-flag:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 21V4M5 4h13l-2.5 4L18 12H5'/%3E%3C/svg%3E");
+ --mp-i-opala:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 15.5v-2.4c0-.7.5-1.3 1.2-1.5l3.3-.9 2.6-3.1h6.6l2.9 3 2 .5c.8.2 1.4.8 1.4 1.6v2.8zM6.5 10.9h12.3M11.8 7.6v3.3'/%3E%3Ccircle cx='6.8' cy='15.8' r='1.7'/%3E%3Ccircle cx='17.2' cy='15.8' r='1.7'/%3E%3C/svg%3E");
+ --mp-i-fusca:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 16c0-4.6 3.9-8.6 9.5-8.6s9.5 4 9.5 8.6zM7.5 11.6h9M12 7.4v4.2'/%3E%3Ccircle cx='7.2' cy='16.2' r='1.8'/%3E%3Ccircle cx='16.8' cy='16.2' r='1.8'/%3E%3C/svg%3E");
+ --mp-i-helmet:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 14.5a8.5 8.5 0 0 1 17 0V18H8.5a5 5 0 0 1-5-3.5zM12 9.7h8.2M12 9.7v4.5h8.5'/%3E%3C/svg%3E");
+ --mp-i-watch:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='13.5' r='7'/%3E%3Cpath d='M12 10v3.5l2.5 1.5M9.5 3h5M12 3v3.5'/%3E%3C/svg%3E");
+ --mp-i-duel:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8.5' r='2.8'/%3E%3Ccircle cx='16.5' cy='8.5' r='2.8'/%3E%3Cpath d='M2.5 19c.5-3 2.7-5 5.5-5s5 2 5.5 5M14.5 14.2c.6-.1 1.3-.2 2-.2 2.8 0 5 2 5.5 5'/%3E%3C/svg%3E");
+ --mp-i-trophy:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 4h8v5a4 4 0 0 1-8 0zM8 6H4.5c0 3 1.5 4.5 3.8 4.6M16 6h3.5c0 3-1.5 4.5-3.8 4.6M12 13v4M8.5 20h7M10 17h4'/%3E%3C/svg%3E");
+ --mp-i-laps:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18.5 3v4h-4M5.5 21v-4h4'/%3E%3C/svg%3E");
+ --mp-i-sun:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3Cpath d='M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4'/%3E%3C/svg%3E");
+ --mp-i-cloud:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 18h10a4 4 0 0 0 .6-8A6 6 0 0 0 6.2 9.6 4.2 4.2 0 0 0 7 18z'/%3E%3C/svg%3E");
+ --mp-i-gear:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 5v14M12 5v14M18 5v7H6'/%3E%3Ccircle cx='6' cy='4.5' r='1.4'/%3E%3Ccircle cx='12' cy='4.5' r='1.4'/%3E%3Ccircle cx='18' cy='4.5' r='1.4'/%3E%3C/svg%3E");
+ --mp-chevron:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='%23f3ecdc' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.5 1.8 6 6.2l4.5-4.4'/%3E%3C/svg%3E");
+ --mp-check:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23171c15' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5 6.5 11.5 12.5 4.5'/%3E%3C/svg%3E");
+ /* The checkered flag, drawn: a yellow-and-clear chequer leaning forward. */
+ --mp-chequer:conic-gradient(var(--mp-yellow) 0 25%,transparent 0 50%,var(--mp-yellow) 0 75%,transparent 0) 0 0/.36em .3em;
+}
+.menus-paddock :is(#menu,#cars,#tracks,#visual,#historias,#settings){font-family:var(--mp-text)}
+.menus-paddock :is(#menu,#cars,#tracks,#visual,#historias,#settings) :focus-visible{outline:2px solid var(--mp-yellow);outline-offset:4px}
+.menus-paddock :is(#menu,#cars,#tracks,#visual,#historias,#settings) [hidden]{display:none!important}
+
+/* ---------- Shared pieces ---------- */
+/* Steps on top of the car and track screens: 1 Início · 2 Carro · 3 Pista, the current yellow and underlined. */
+.menus-paddock .menu-steps{display:flex;align-items:center;gap:clamp(16px,2.4vw,34px)}
+.menus-paddock .menu-steps button{position:relative;display:inline-flex;align-items:baseline;gap:8px;margin:0;padding:6px 0 8px;border:0;border-radius:0;background:none;color:var(--mp-dim);font:400 18px/1 var(--mp-text);letter-spacing:.01em;cursor:pointer}
+.menus-paddock .menu-steps button b{font:italic 600 17px/1 var(--mp-display);color:var(--mp-faint)}
+.menus-paddock .menu-steps button:hover{color:var(--mp-ink)}
+.menus-paddock .menu-steps button[aria-current=step]{color:var(--mp-yellow);font-weight:700;cursor:default}
+.menus-paddock .menu-steps button[aria-current=step] b{color:var(--mp-yellow)}
+.menus-paddock .menu-steps button[aria-current=step]::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--mp-yellow)}
+/* The screens' titles: the mode's kicker, then the question. */
+.menus-paddock :is(#cars,#tracks,#visual,#historias) .tracks-kicker{font:600 11px/1.3 var(--mp-text);letter-spacing:.2em;color:var(--mp-yellow);text-transform:uppercase}
+.menus-paddock :is(#cars,#tracks,#visual,#historias) .tracks-head h2{margin:4px 0 0;font:800 clamp(24px,2.3vw,36px)/1.05 var(--mp-head);letter-spacing:-.025em;color:var(--mp-ink);text-shadow:0 2px 14px #000a}
+/* The pilot, top right: a person and the name. */
+.menus-paddock :is(#carsPilot,#tracksPilot,#visualPilot,#historiasPilot){display:flex;align-items:center;gap:9px;margin:0;font:500 19px/1.2 var(--mp-text);color:var(--mp-ink);text-shadow:0 1px 6px #000c}
+.menus-paddock :is(#carsPilot,#tracksPilot,#visualPilot,#historiasPilot):not(:empty)::before{content:'';flex:none;width:20px;height:20px;background:currentColor;-webkit-mask:var(--mp-i-person) center/contain no-repeat;mask:var(--mp-i-person) center/contain no-repeat}
+/* The car and track screens share their top: the steps, the pilot level with them on the right, the kicker and the
+   title under them, at the same places on both (user, 10-24). */
+.menus-paddock :is(#carsPilot,#tracksPilot){align-self:start;margin-top:4px}
+.menus-paddock :is(#cars,#tracks) .menu-steps{align-self:start}
+/* Back buttons: bare words with their arrow. */
+.menus-paddock :is(#carsBack,#tracksBack,#visualBack,#historiasBack){width:auto;margin:0;padding:6px 0;border:0;border-radius:0;background:none;color:var(--mp-dim);font:500 19px/1 var(--mp-text);white-space:nowrap}
+.menus-paddock :is(#carsBack,#tracksBack,#visualBack,#historiasBack):hover{color:var(--mp-ink)}
+/* The way on (Escolher a pista, Largar, Correr a etapa): big leaning yellow words over an open stripe, no box. */
+.menus-paddock :is(#carsNext,#singleRace,#soloRace,#duelRace,#championshipStart){position:relative;display:flex;flex-direction:column;align-items:flex-end;gap:4px;width:auto;margin:0;padding:4px 4px 16px 0;border:0;border-radius:0;
+ background:none!important;box-shadow:none;color:var(--mp-yellow);text-align:right;white-space:nowrap;cursor:pointer;transition:color .15s}
+.menus-paddock :is(#carsNext,#singleRace,#soloRace,#duelRace) .mode-label,.menus-paddock #championshipStart{font:italic 800 clamp(32px,3.3vw,50px)/1 var(--mp-display);letter-spacing:.005em;text-transform:uppercase;text-shadow:0 2px 18px #000c}
+.menus-paddock :is(#carsNext,#singleRace,#soloRace,#duelRace) .mode-label::before,.menus-paddock #championshipStart::before{content:'';display:inline-block;width:.78em;height:.6em;margin:0 .32em .06em 0;vertical-align:baseline;background:var(--mp-chequer);transform:skewX(-14deg)}
+.menus-paddock :is(#carsNext,#singleRace,#soloRace,#duelRace) small{display:block;margin:0;font:400 15px/1.35 var(--mp-text);color:var(--mp-dim);opacity:1;white-space:normal;text-transform:none;text-shadow:0 1px 6px #000c}
+.menus-paddock :is(#carsNext,#singleRace,#soloRace,#duelRace,#championshipStart)::after{content:'';pointer-events:none;position:absolute;right:0;bottom:2px;width:calc(100% + 60px);height:3px;background:linear-gradient(90deg,transparent,var(--mp-yellow) 38%);transform:skewX(-50deg);transform-origin:right bottom}
+.menus-paddock :is(#carsNext,#singleRace,#soloRace,#duelRace,#championshipStart):hover:not(:disabled){color:var(--mp-hot)}
+.menus-paddock :is(#carsNext,#singleRace,#soloRace,#duelRace,#championshipStart):disabled{opacity:.55;cursor:progress}
+.menus-paddock #tracks #championshipStart:disabled{background:none;color:var(--mp-faint);cursor:default}
+/* Bare selects: the value, a small chevron, a thin rule under it. */
+.menus-paddock :is(#tracks,#settings,#cars) select{-webkit-appearance:none;appearance:none;width:auto;min-width:0;margin:0;padding:4px 24px 5px 0;border:0;border-bottom:1px solid var(--mp-rule);border-radius:0;
+ background:transparent var(--mp-chevron) right 2px center/12px 8px no-repeat;color:var(--mp-ink);font:500 18px/1.3 var(--mp-text);letter-spacing:0;text-transform:none;cursor:pointer}
+.menus-paddock :is(#tracks,#settings,#cars) select:hover:not(:disabled){border-bottom-color:var(--mp-yellow)}
+.menus-paddock :is(#tracks,#settings,#cars) select:disabled{opacity:.6;cursor:default}
+.menus-paddock :is(#tracks,#settings,#cars) option{background:#0d1614;color:var(--mp-ink)}
+
+/* ---------- Opening ---------- */
+.menus-paddock #menu{padding:clamp(22px,4vh,48px) 6vw;
+ background-image:linear-gradient(90deg,#050a0af7,#050a0ad6 22%,#050a0a3d 47%,transparent 64%),linear-gradient(0deg,#050a0ab3,transparent 26%),url('./assets/abertura/abertura_stevan_opala99.jpg?v=20261002-omp-q6');background-position:center}
+.menus-paddock #menu article{width:min(520px,100%)}
+.menus-paddock #menu .opening-brand{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:16px;align-items:start;margin:0 0 clamp(14px,3vh,30px)}
+.menus-paddock #menu .opening-brand>img:not(.old-stock-opening){grid-column:1/-1;width:min(420px,100%);margin:0 0 10px -8px}
+.menus-paddock #menu .old-stock-opening{display:none}
+.menus-paddock #menu .opening-brand figcaption{grid-column:1/-1;grid-row:2;margin:0;max-width:330px;font-size:16px;line-height:1.45;color:var(--mp-dim);text-shadow:0 1px 6px #000c}
+.menus-paddock #menu .opening-brand figcaption b{display:block;margin-bottom:3px;font:800 20px/1.25 var(--mp-head);letter-spacing:-.01em;color:var(--mp-ink)}
+/* The pilot under the tagline, where it always was (user, 10-24): "Piloto:" and the name on a thin line. */
+.menus-paddock #menu:not(.in-session):not(.race-finished) #pilotPicker{position:relative;display:flex;align-items:center;gap:10px;margin:0 0 clamp(10px,2.4vh,24px)}
+.menus-paddock #menu #pilotLabel{display:flex;align-items:center;gap:9px;margin:0;font:500 19px/1 var(--mp-text);color:var(--mp-ink);text-shadow:0 1px 6px #000c}
+.menus-paddock #menu #pilotLabel::before{content:'';width:21px;height:21px;background:currentColor;-webkit-mask:var(--mp-i-person) center/contain no-repeat;mask:var(--mp-i-person) center/contain no-repeat}
+.menus-paddock #menu #pilotLabel::after{content:':';margin-left:-9px}
+.menus-paddock #menu .pilot-fields{flex-wrap:nowrap;gap:8px}
+.menus-paddock #menu :is(#pilotName,#pilotSelect){width:210px;min-height:0;height:auto;margin:0;padding:4px 2px 5px;border:0;border-bottom:1.5px solid #f3ecdc55;border-radius:0;background:transparent;color:var(--mp-ink);font:500 19px/1.2 var(--mp-text);box-shadow:none;text-shadow:0 1px 6px #000c}
+.menus-paddock #menu #pilotSelect{-webkit-appearance:none;appearance:none;padding-right:22px;background:transparent var(--mp-chevron) right 2px center/12px 8px no-repeat}
+.menus-paddock #menu #pilotSelect option{background:#0d1614;color:var(--mp-ink)}
+.menus-paddock #menu #pilotName::placeholder{color:#f3ecdc8c;font-weight:500}
+.menus-paddock #menu :is(#pilotName,#pilotSelect):focus{outline:0;border-bottom-color:var(--mp-yellow)}
+.menus-paddock #menu #pilotMessage{position:absolute;top:calc(100% + 4px);left:0;width:max-content;max-width:420px;margin:0;font-size:14px;color:#ffc2b4}
+/* The modes: one lit in big leaning yellow with the chequered flag and a line running out under it, the others a list
+   with open rules. Modo Corrida (paused: Voltar à pista) is lit unless the pointer or the keyboard is on another choice,
+   which then takes the light (user, 10-24). Lit, any choice has the same height, so the list's lines stay put under the
+   pointer: the lit one grows upwards from its own bottom line. No gap between choices (no margins): a pointer resting
+   in one lit nothing, the light went back to Modo Corrida, the list moved and the pointer lit it again, round and round. */
+.menus-paddock #menu .menu-modes{display:flex;flex-direction:column;margin:0}
+.menus-paddock #menu .menu-modes button{position:relative;display:flex;align-items:center;gap:15px;width:100%;margin:0;padding:15px 0;border:0;border-bottom:1px solid var(--mp-rule);border-radius:0;background:none;box-shadow:none;
+ color:var(--mp-ink);font:500 26px/1.15 var(--mp-text);text-align:left;white-space:nowrap;text-shadow:0 1px 8px #000c;transition:color .15s}
+.menus-paddock #menu .menu-modes button::before{content:'';flex:none;width:31px;height:31px;background:currentColor;-webkit-mask:var(--icon,var(--mp-i-flag)) center/contain no-repeat;mask:var(--icon,var(--mp-i-flag)) center/contain no-repeat;opacity:.92}
+.menus-paddock #menu .menu-modes button::after{content:'';position:absolute;left:0;bottom:6px;width:calc(100% + 18vw);height:3px;background:linear-gradient(90deg,var(--mp-yellow) 0 45%,#f8dc3800);
+ transform:skewX(-40deg) scaleX(0);transform-origin:left bottom;pointer-events:none;transition:transform .22s ease-out}
+.menus-paddock #menu #storyStart{--icon:var(--mp-i-book)}
+.menus-paddock #menu #driftStart{--icon:var(--mp-i-drift)}
+.menus-paddock #menu #historiasStart{--icon:var(--mp-i-history)}
+.menus-paddock #menu #restartRace{--icon:var(--mp-i-restart)}
+.menus-paddock #menu #leaveRace{--icon:var(--mp-i-flag)}
+/* Lit: Modo Corrida or Voltar à pista by default... */
+.menus-paddock #menu .menu-modes :is(#start,#resume){margin-bottom:0;padding:4px 0 28px;border-bottom-color:transparent;color:var(--mp-yellow);font:italic 800 clamp(38px,3.8vw,56px)/1 var(--mp-display);letter-spacing:.005em;text-transform:uppercase;text-shadow:0 3px 22px #000b}
+.menus-paddock #menu .menu-modes :is(#start,#resume)::before{width:.82em;height:.62em;background:var(--mp-chequer);-webkit-mask:none;mask:none;opacity:1;transform:skewX(-14deg)}
+.menus-paddock #menu .menu-modes :is(#start,#resume)::after{transform:skewX(-40deg) scaleX(1)}
+.menus-paddock #menu #start:disabled{opacity:.7}
+/* No arrows after the opening's choices (user, 10-24): the light says which one goes. */
+.menus-paddock #menu .menu-arrow{display:none}
+/* ...or the choice under the pointer or the keyboard (screens that can point: a tap leaves no hover behind). */
+@media(hover:hover){
+ .menus-paddock #menu .menu-modes:has(button:is(:hover,:focus-visible):not(:disabled)) :is(#start,#resume):not(:hover,:focus-visible){margin-bottom:0;padding:15px 0;border-bottom-color:var(--mp-rule);color:var(--mp-ink);font:500 26px/1.15 var(--mp-text);letter-spacing:normal;text-transform:none;text-shadow:0 1px 8px #000c}
+ .menus-paddock #menu .menu-modes:has(button:is(:hover,:focus-visible):not(:disabled)) :is(#start,#resume):not(:hover,:focus-visible)::before{width:31px;height:31px;background:currentColor;-webkit-mask:var(--icon,var(--mp-i-flag)) center/contain no-repeat;mask:var(--icon,var(--mp-i-flag)) center/contain no-repeat;opacity:.92;transform:none}
+ .menus-paddock #menu .menu-modes:has(button:is(:hover,:focus-visible):not(:disabled)) :is(#start,#resume):not(:hover,:focus-visible)::after{transform:skewX(-40deg) scaleX(0)}
+ .menus-paddock #menu .menu-modes button:is(:hover,:focus-visible):not(:disabled){margin-bottom:0;padding:4px 0 28px;border-bottom-color:transparent;color:var(--mp-yellow);font:italic 800 clamp(38px,3.8vw,56px)/1 var(--mp-display);letter-spacing:.005em;text-transform:uppercase;text-shadow:0 3px 22px #000b;outline:0}
+ .menus-paddock #menu .menu-modes button:is(:hover,:focus-visible):not(:disabled)::before{width:.82em;height:.62em;background:var(--mp-chequer);-webkit-mask:none;mask:none;opacity:1;transform:skewX(-14deg)}
+ .menus-paddock #menu .menu-modes button:is(:hover,:focus-visible):not(:disabled)::after{transform:skewX(-40deg) scaleX(1)}
+ .menus-paddock #menu .menu-modes button:hover:not(:disabled){color:var(--mp-hot)}
+}
+/* Config, Recordes (and Tela cheia): icons and words at the foot. */
+.menus-paddock body:not(.touch-device) #menu .menu-tools{display:flex;flex-wrap:wrap;gap:8px 30px;margin:clamp(14px,3vh,30px) 0 0}
+.menus-paddock body:not(.touch-device) #menu .menu-tools button{display:flex;align-items:center;gap:9px;width:auto;margin:0;padding:6px 0;border:0;border-radius:0;background:none;color:var(--mp-ink);font:500 19px/1 var(--mp-text);text-shadow:0 1px 6px #000c}
+.menus-paddock body:not(.touch-device) #menu .menu-tools button:hover{color:var(--mp-hot)}
+.menus-paddock body:not(.touch-device) #menu .menu-tools .menu-tool-icon{width:21px;height:21px;color:var(--mp-yellow)}
+.menus-paddock #menu article>a{display:none}
+.menus-paddock #menu .dev-credit{color:var(--mp-faint)}
+/* The race footer's Opções opens the same settings as Config: it stays out while the menu shows. */
+.menus-paddock body:has(#menu:not(.hidden)) #menuButton{display:none}
+/* Paused, or at the flag: what runs, then the way back in big and the other choices in the list. */
+.menus-paddock #menu:is(.in-session,.race-finished) article>.eyebrow{font:600 12px/1.3 var(--mp-text);letter-spacing:.2em;color:var(--mp-yellow);text-transform:uppercase}
+.menus-paddock #menu:is(.in-session,.race-finished) article>h1{margin:0 0 clamp(16px,3vh,28px);font:800 clamp(34px,3.8vw,54px)/1.05 var(--mp-head);letter-spacing:-.025em;color:var(--mp-ink);text-shadow:0 2px 16px #000c}
+.menus-paddock #menu.race-finished #raceResult{padding:16px 0 14px;background:none;border:0;border-top:10px solid transparent;border-image:repeating-linear-gradient(90deg,var(--mp-ink) 0 10px,transparent 10px 20px) 10;font:700 21px/1.45 var(--mp-text);color:var(--mp-ink)}
+.menus-paddock #finishingOrder{padding:0;background:none;border:0;border-top:1px solid var(--mp-rule);font-size:13px}
+.menus-paddock #finishingOrder li{border-bottom-color:var(--mp-rule)}
+
+/* ---------- Car screen ---------- */
+.menus-paddock #cars{padding:clamp(16px,3vh,30px) 4vw clamp(12px,2.4vh,24px)}
+.menus-paddock #cars.live{background:linear-gradient(180deg,#050a09e6 0,#050a0980 15%,transparent 30%,transparent 58%,#050a09b8 80%,#050a09f0 100%)}
+.menus-paddock .cars-shell{position:relative;width:100%;max-width:1720px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-rows:auto auto auto minmax(0,1fr) auto;
+ grid-template-areas:"steps steps pilot" "title plate plate" "models plate plate" "stage stage stage" "thumbs back go";gap:clamp(6px,1.3vh,14px) 0}
+.menus-paddock #cars :is(.cars-head,.cars-foot){display:contents}
+.menus-paddock #cars .menu-steps{grid-area:steps}
+.menus-paddock #carsPilot{grid-area:pilot;justify-self:end}
+.menus-paddock #cars .tracks-title{grid-area:title;justify-self:start}
+.menus-paddock #cars .car-models-row{grid-area:models}
+.menus-paddock #carStage{grid-area:stage}
+.menus-paddock #cars .car-thumbs-row{grid-area:thumbs;align-self:end;justify-self:start;display:flex;align-items:center;gap:2px;min-width:0;max-width:100%;margin-bottom:12px}
+/* The car's plate at the top right, under the pilot (user, 10-24): its number, driver, car and season, right-aligned. */
+.menus-paddock #cars .car-plate{grid-area:plate;align-self:start;justify-self:end;min-width:0;max-width:min(820px,50vw);margin-top:4px;text-align:right}
+/* Back sits at the foot, beside the way on. */
+.menus-paddock #carsBack{grid-area:back;align-self:end;margin:0 clamp(20px,2.4vw,40px) 34px 24px}
+.menus-paddock #cars .cars-go{grid-area:go;align-self:end}
+/* Behind the screen's words, wherever the turning view puts the garage's busy parts (user, 10-24): a faint dark cloud,
+   transparency only (no blur), its edges fading out round and wide so nobody sees a box; the garage shows through. */
+.menus-paddock #cars :is(.tracks-title,.car-plate){position:relative}
+.menus-paddock #cars :is(.tracks-title,.car-plate)::before{content:'';position:absolute;z-index:-1;pointer-events:none;border-radius:999px;background:#050a0975;box-shadow:0 0 64px 40px #050a0975}
+/* The left block: the steps, the kicker, the title and, under it, the model tabs. */
+.menus-paddock #cars .tracks-title::before{inset:-22px 0 -64px -16px}
+/* The car's plate, the pilot over it. */
+.menus-paddock #cars .car-plate::before{inset:-26px -6px -8px -10px}
+@media(max-height:520px){.menus-paddock #cars :is(.tracks-title,.car-plate)::before{box-shadow:0 0 30px 18px #050a0975}.menus-paddock #cars .tracks-title::before{inset:-8px 0 -30px -6px}.menus-paddock #cars .car-plate::before{inset:-12px 0 -4px -6px}}
+
+/* Opala · Fusca · Visual: words with their icons, the chosen yellow and underlined. */
+.menus-paddock .car-models-row{display:flex;align-items:center;gap:clamp(18px,2.6vw,38px)}
+.menus-paddock .car-models{gap:clamp(18px,2.6vw,38px);padding:0;border:0;border-radius:0;background:none}
+.menus-paddock :is(.car-models button,.car-visual-tab){position:relative;display:inline-flex;align-items:center;gap:9px;margin:0;padding:6px 0 9px;border:0;border-radius:0;background:none!important;box-shadow:none!important;color:var(--mp-ink);font:500 20px/1 var(--mp-text);text-shadow:0 1px 6px #000c}
+.menus-paddock :is(.car-models button,.car-visual-tab)::before{content:'';flex:none;width:26px;height:26px;background:currentColor;-webkit-mask:var(--icon) center/contain no-repeat;mask:var(--icon) center/contain no-repeat}
+.menus-paddock .car-models [data-model=opala]{--icon:var(--mp-i-opala)}
+.menus-paddock .car-models [data-model=fusca]{--icon:var(--mp-i-fusca)}
+.menus-paddock .car-visual-tab{--icon:var(--mp-i-helmet)}
+.menus-paddock :is(.car-models button,.car-visual-tab) small{margin-left:2px;font-size:12px;font-weight:500;color:var(--mp-faint);opacity:1}
+.menus-paddock :is(.car-models button,.car-visual-tab):hover{color:var(--mp-hot)}
+.menus-paddock .car-models button[aria-selected=true]{color:var(--mp-yellow)}
+.menus-paddock .car-models button[aria-selected=true]::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--mp-yellow)}
+/* The stage's arrows: bare chevrons. Zoom and Parar de girar: small words and signs. */
+.menus-paddock .car-arrow{width:64px;height:120px;margin-top:-60px;border:0;border-radius:0;background:none;box-shadow:none;color:var(--mp-ink);font:200 104px/1 var(--mp-text);text-shadow:0 2px 16px #000c;opacity:.85}
+.menus-paddock .car-arrow span{margin:-14px 0 0}
+.menus-paddock .car-arrow:hover{background:none;color:var(--mp-yellow);opacity:1;transform:scale(1.06)}
+.menus-paddock .car-zoom{gap:14px;align-items:center}
+.menus-paddock .car-still{height:auto;padding:0;border:0;border-radius:0;background:none;font:500 16px/1 var(--mp-text);color:var(--mp-dim);text-shadow:0 1px 6px #000c}
+.menus-paddock .car-still:hover{color:var(--mp-ink)}
+.menus-paddock .car-zoom button{width:30px;height:30px;border:0;border-radius:0;background:none;color:var(--mp-ink);font:300 28px/1 var(--mp-text);text-shadow:0 1px 6px #000c}
+.menus-paddock .car-zoom button:hover{color:var(--mp-yellow)}
+/* The strip: the grid's cars in small pictures on a thin baseline, in the middle; the one shown lit and underlined. */
+.menus-paddock #cars{--thumb:clamp(92px,7.6vw,150px)}
+.menus-paddock .car-thumbs{display:flex;gap:6px;width:calc(var(--thumb)*6 + 30px);min-width:0;max-width:100%;margin:0;padding:0 0 3px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;border-bottom:1px solid var(--mp-rule);
+ -webkit-mask-image:linear-gradient(90deg,transparent,#000 18px,#000 calc(100% - 18px),transparent);mask-image:linear-gradient(90deg,transparent,#000 18px,#000 calc(100% - 18px),transparent)}
+.menus-paddock .thumbs-arrow{flex:none;width:40px;height:72px;margin:0;padding:0;border:0;border-radius:0;background:none;color:var(--mp-ink);font:200 54px/1 var(--mp-text);text-shadow:0 2px 10px #000c;cursor:pointer}
+.menus-paddock .thumbs-arrow span{display:block;margin-top:-8px}
+.menus-paddock .thumbs-arrow:hover:not(:disabled){color:var(--mp-yellow)}
+.menus-paddock .thumbs-arrow:disabled{opacity:.22;cursor:default}
+.menus-paddock .car-thumbs::-webkit-scrollbar{display:none}
+.menus-paddock .car-thumbs{cursor:grab;user-select:none}.menus-paddock .car-thumbs.dragging{cursor:grabbing}.menus-paddock .car-thumbs.dragging button{pointer-events:none}
+.menus-paddock .car-thumbs>:first-child{margin-left:auto}.menus-paddock .car-thumbs>:last-child{margin-right:auto}
+.menus-paddock .car-thumbs button{position:relative;flex:none;display:flex;flex-direction:column;align-items:center;width:var(--thumb);margin:0;padding:0 0 9px;border:0;border-radius:0;background:none;color:var(--mp-faint);opacity:.62;cursor:pointer;transition:opacity .15s,transform .15s}
+.menus-paddock .car-thumbs img{display:block;width:100%;height:auto;aspect-ratio:2;filter:drop-shadow(0 4px 6px #0009)}
+.menus-paddock .car-thumbs span{font:italic 600 13px/1 var(--mp-display);letter-spacing:.02em}
+.menus-paddock .car-thumbs button:hover{opacity:1;color:var(--mp-ink)}
+.menus-paddock .car-thumbs button[aria-selected=true]{opacity:1;color:var(--mp-yellow);transform:translateY(-2px)}
+.menus-paddock .car-thumbs button[aria-selected=true]::after{content:'';position:absolute;left:18%;right:18%;bottom:-3px;height:3px;background:var(--mp-yellow)}
+.menus-paddock .car-thumbs button.taken{opacity:.22;filter:grayscale(1);cursor:not-allowed}
+/* The foot: the car's number in big, its driver, car and season; the way on to the tracks at the right. */
+.menus-paddock .car-plate{align-items:center;gap:18px}
+.menus-paddock #carNumber{min-width:0;padding:0;border:0;border-radius:0;background:none;color:var(--mp-ink);font:italic 800 clamp(44px,4vw,64px)/.9 var(--mp-display);letter-spacing:-.01em;text-shadow:0 3px 18px #000c}
+.menus-paddock .car-plate h3{font:800 clamp(22px,2vw,32px)/1.05 var(--mp-head);letter-spacing:-.02em;color:var(--mp-ink);text-shadow:0 2px 14px #000c}
+.menus-paddock #carName{margin-top:4px;font:500 18px/1.2 var(--mp-text);color:var(--mp-yellow)}
+.menus-paddock .car-plate p{font-size:15px;color:var(--mp-dim)}
+.menus-paddock .cars-go{flex:0 0 auto;align-items:flex-end}
+.menus-paddock #cars .car-note{background:none;padding:0;font-size:12px;color:var(--mp-dim);text-align:right}
+.menus-paddock #carsNext[aria-pressed=true]{color:#e2fb57}
+.menus-paddock #carsNext[aria-pressed=true]::before{position:absolute;left:-18px;top:.5em}
+
+/* ---------- Track screen ---------- */
+/* One page: steps and title on the left over the list of circuits; the chosen one in big on the right, then the
+   race's mode, its settings and, at the foot, the way back and Largar. */
+.menus-paddock #tracks{padding:clamp(16px,3vh,30px) 4vw clamp(12px,2.6vh,26px);background:#060b0a}
+.menus-paddock #tracks::before{content:'';position:fixed;inset:-24px;z-index:-1;pointer-events:none;
+ background:linear-gradient(90deg,#050a09f2 0,#050a09cc 32%,#050a0999 70%,#050a09b8 100%),url('./assets/abertura/abertura_stevan_opala99.jpg?v=20261002-omp-q6') center/cover;filter:blur(10px) saturate(.85)}
+.menus-paddock #tracks .tracks-shell{position:relative;width:100%;max-width:1720px;height:100%;min-height:600px;margin:0 auto;display:grid;
+ grid-template-columns:minmax(270px,360px) minmax(0,1fr) auto;grid-template-rows:auto auto minmax(0,1fr) auto auto auto;
+ grid-template-areas:"steps pilot pilot" "title hero hero" "list hero hero" "list modes modes" "list set set" "list back go";column-gap:clamp(28px,4.5vw,80px);row-gap:0}
+.menus-paddock #tracks :is(.tracks-head,.tracks-body,.tracks-pick,.tracks-side){display:contents}
+.menus-paddock #tracks .menu-steps{grid-area:steps;margin-bottom:clamp(6px,1.3vh,14px)}
+.menus-paddock #tracksPilot{grid-area:pilot;justify-self:end}
+.menus-paddock #tracks .tracks-title{grid-area:title}
+.menus-paddock #tracksBack{grid-area:back;justify-self:end;align-self:end;margin:0 clamp(20px,2.4vw,40px) 26px 0}
+/* The circuits: an open list, each with its outline; the chosen one yellow with an arrow. */
+.menus-paddock #tracks .track-cards{grid-area:list;display:flex;flex-direction:column;gap:0;min-height:0;margin-top:clamp(12px,2.4vh,26px);padding-right:8px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#f3ecdc38 transparent;
+ -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 26px),transparent);mask-image:linear-gradient(180deg,#000 calc(100% - 26px),transparent)}
+.menus-paddock #tracks .track-cards button{display:grid;grid-template-columns:62px minmax(0,1fr);grid-template-rows:auto auto;column-gap:14px;align-items:center;flex:none;min-height:0;margin:0;padding:11px 2px;
+ border:0;border-bottom:1px solid var(--mp-rule);border-radius:0;background:none;box-shadow:none;color:var(--mp-ink);text-align:left;transition:color .15s}
+.menus-paddock #tracks .track-cards svg{grid-row:1/3;width:62px;height:34px;margin:0}
+.menus-paddock #tracks .track-cards path{stroke-width:3.4}
+.menus-paddock #tracks .track-cards b{grid-column:2;font:500 21px/1.15 var(--mp-text);color:inherit}
+.menus-paddock #tracks .track-cards span{grid-column:2;margin:1px 0 0;font-size:15px;color:var(--mp-faint)}
+.menus-paddock #tracks .track-cards :is(small,em){display:none}
+.menus-paddock #tracks .track-cards button:hover{background:none;border-color:var(--mp-rule);color:var(--mp-hot)}
+.menus-paddock #tracks .track-cards button[aria-pressed=true]{background:none;box-shadow:none;border-bottom-color:var(--mp-yellow);color:var(--mp-yellow)}
+.menus-paddock #tracks .track-cards button[aria-pressed=true] b{font-size:22px;font-weight:700}
+
+/* The chosen circuit in big: its outline across the right, name, place, figures, the best lap, then its story. */
+.menus-paddock #tracks .track-detail{grid-area:hero;position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:0;margin:0;padding:clamp(8px,2vh,24px) clamp(20px,2.6vw,48px) clamp(22px,3.4vh,40px);border:0;border-radius:0;background:none;overflow:hidden}
+.menus-paddock .track-photo{position:absolute;inset:0;z-index:-1;pointer-events:none;opacity:0;background:center 58%/cover no-repeat;transition:opacity .6s ease;
+ -webkit-mask-image:radial-gradient(ellipse 72% 82% at 62% 46%,#000 38%,transparent 100%);mask-image:radial-gradient(ellipse 72% 82% at 62% 46%,#000 38%,transparent 100%)}
+.menus-paddock .track-photo.shown{opacity:1;animation:mp-push 26s ease-in-out infinite alternate}
+.menus-paddock .track-photo::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,#050a09b8 0,#050a0940 38%,transparent 56%),linear-gradient(0deg,#050a09b3 0,transparent 36%)}
+@keyframes mp-push{from{transform:scale(1.02) translateX(0)}to{transform:scale(1.1) translateX(-1.5%)}}
+@media(prefers-reduced-motion:reduce){.menus-paddock .track-photo.shown{animation:none}}
+.menus-paddock .track-hero-round{position:relative;margin:0 0 6px;font:600 13px/1.3 var(--mp-text);letter-spacing:.2em;color:var(--mp-yellow);text-transform:uppercase}
+.menus-paddock .track-hero-round:empty{display:none}
+.menus-paddock .track-hero svg{position:absolute;top:50%;right:2%;width:min(50%,620px);height:min(76%,400px);transform:translateY(-50%);opacity:.95;filter:drop-shadow(0 0 14px #f3ecdc55) drop-shadow(0 4px 20px #000)}
+.menus-paddock .track-hero path{fill:none;stroke:var(--mp-ink);stroke-width:1.9;stroke-linejoin:round;stroke-linecap:round}
+.menus-paddock .track-hero h3{position:relative;margin:0;font:800 clamp(38px,4vw,64px)/1 var(--mp-head);letter-spacing:-.03em;color:var(--mp-ink);text-shadow:0 3px 20px #000c}
+.menus-paddock #trackHeroPlace{position:relative;margin:6px 0 0;font-size:20px;color:var(--mp-dim)}
+.menus-paddock .track-stats{position:relative;display:flex;flex-wrap:wrap;gap:6px 0;margin:clamp(10px,2vh,18px) 0 0;padding:0;list-style:none}
+.menus-paddock .track-stats li{padding:0 18px;border-left:1px solid var(--mp-rule);font:500 19px/1.3 var(--mp-text);color:var(--mp-ink)}
+.menus-paddock .track-stats li:first-child{padding-left:0;border-left:0}
+.menus-paddock .track-hero-best{position:relative;margin:8px 0 0;font:700 20px/1.3 var(--mp-text);color:var(--mp-yellow);font-variant-numeric:tabular-nums}
+.menus-paddock .track-hero-best:empty{display:none}
+.menus-paddock #tracks .track-detail>p{position:relative;max-width:760px;margin:clamp(10px,1.8vh,16px) 0 0;font-size:16px;line-height:1.45}
+.menus-paddock #tracks #circuitDescription{display:none}
+.menus-paddock #tracks #circuitIntro{max-width:min(620px,52%);color:var(--mp-dim)}
+.menus-paddock #tracks #circuitSource{position:relative;max-width:760px;margin-top:6px;font-size:11px;color:var(--mp-faint)}
+.menus-paddock #tracks #historyStart{position:relative;align-self:flex-start;margin:12px 0 0;padding:4px 0;border:0;border-radius:0;background:none;color:var(--mp-yellow);font:600 16px/1.2 var(--mp-text);box-shadow:none}
+.menus-paddock #tracks #historyStart small{color:var(--mp-dim);font-weight:500}
+.menus-paddock #tracks #historyStart:hover{color:var(--mp-hot)}
+/* The race's mode: Corrida única · Treino solo · 1x1 · Campeonato, the one picked yellow and underlined. */
+.menus-paddock #tracks .race-modes{grid-area:modes;display:flex;flex-wrap:wrap;align-items:center;gap:4px clamp(20px,3vw,46px);padding:12px 0 8px;border-top:1px solid var(--mp-rule)}
+.menus-paddock #tracks .race-modes::before,.menus-paddock #tracks .tracks-side-head .tracks-kicker{content:'Modo de corrida';flex:1 0 100%;margin:0 0 4px;font:600 11px/1.3 var(--mp-text);letter-spacing:.2em;color:var(--mp-faint);text-transform:uppercase}
+.menus-paddock #tracks .race-modes button{position:relative;display:inline-flex;align-items:center;gap:9px;margin:0;padding:6px 0 9px;border:0;border-radius:0;background:none;color:var(--mp-ink);font:500 21px/1 var(--mp-text);white-space:nowrap}
+.menus-paddock #tracks .race-modes button::before{content:'';flex:none;width:23px;height:23px;background:currentColor;-webkit-mask:var(--icon) center/contain no-repeat;mask:var(--icon) center/contain no-repeat}
+.menus-paddock #tracks .race-modes [data-race=single]{--icon:var(--mp-i-flag)}
+.menus-paddock #tracks .race-modes [data-race=solo]{--icon:var(--mp-i-watch)}
+.menus-paddock #tracks .race-modes [data-race=duel]{--icon:var(--mp-i-duel)}
+.menus-paddock #tracks .race-modes [data-race=championship]{--icon:var(--mp-i-trophy)}
+.menus-paddock #tracks .race-modes button:hover{color:var(--mp-hot)}
+.menus-paddock #tracks .race-modes button[aria-selected=true]{color:var(--mp-yellow)}
+.menus-paddock #tracks .race-modes button[aria-selected=true]::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--mp-yellow)}
+.menus-paddock #tracks[data-mode=historia] .race-modes{display:none}
+/* The race's settings: each a small caption over its value. */
+.menus-paddock #tracks .tracks-side-head{grid-area:set;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:flex-start;gap:8px clamp(18px,2.6vw,42px);padding:6px 0 12px}
+.menus-paddock #tracks .tracks-laps{position:relative;display:grid;grid-template-columns:auto auto;grid-template-rows:auto auto;column-gap:8px;align-items:center;flex:0 0 auto;margin:0;
+ font:600 11px/1.3 var(--mp-text);letter-spacing:.14em;color:var(--mp-faint);text-transform:uppercase}
+.menus-paddock #tracks .tracks-laps::before{content:'';grid-row:1/3;width:22px;height:22px;background:var(--mp-dim);-webkit-mask:var(--icon,var(--mp-i-laps)) center/contain no-repeat;mask:var(--icon,var(--mp-i-laps)) center/contain no-repeat}
+.menus-paddock #tracks .tracks-laps:has(#tracksTime){--icon:var(--mp-i-sun)}
+.menus-paddock #tracks .tracks-laps:has(#tracksRain){--icon:var(--mp-i-cloud)}
+.menus-paddock #tracks .tracks-laps:has(#tracksAiLevel){--icon:var(--mp-i-duel)}
+.menus-paddock #tracks .tracks-laps:has(#tracksGearbox){--icon:var(--mp-i-gear)}
+.menus-paddock #tracks .tracks-laps select{grid-column:2;font-size:18px}
+/* At the foot, only the start of the race picked (main.js RACE_STARTS): Largar. */
+.menus-paddock #tracks .tracks-modes{grid-area:go;display:flex;flex-direction:column;align-items:flex-end;align-self:end;justify-self:end;gap:6px;min-width:280px}
+.menus-paddock #tracks .race-extras{display:contents}
+.menus-paddock #tracks:not([data-race=single]) #singleRace,.menus-paddock #tracks:not([data-race=solo]) #soloRace,.menus-paddock #tracks:not([data-race=duel]) .duel-card{display:none}
+.menus-paddock #tracks .duel-card{display:flex;flex-direction:column;align-items:flex-end;gap:4px;border:0;border-radius:0;background:none;overflow:visible}
+.menus-paddock #tracks .duel-card #duelRace{flex:none;height:auto}
+/* The 1x1's rival, beside its tab at the end of the mode row (main.js showRaceMode moves it there). */
+.menus-paddock #tracks .race-modes .duel-pick{display:inline-flex;align-items:center;gap:9px;margin:0 0 0 -18px;padding:0 0 3px;border:0;font:600 12px/1 var(--mp-text);letter-spacing:.14em;color:var(--mp-faint);text-transform:uppercase}
+.menus-paddock #tracks:not([data-race=duel]) .race-modes .duel-pick{display:none}
+.menus-paddock #tracks .race-modes .duel-pick span::after{content:':'}
+.menus-paddock #tracks .duel-pick select{flex:none;font-size:19px;color:var(--mp-yellow)}
+.menus-paddock #duelSwatch{width:18px;height:12px;border-radius:2px}
+/* Campeonato: the calendar takes the big area; its start goes to the foot like the other races'. */
+.menus-paddock #tracks[data-mode=corrida]:not([data-race=championship]) #championshipPanel,.menus-paddock #tracks[data-mode=corrida][data-race=championship] :is(.track-detail,.tracks-modes),.menus-paddock #tracks[data-mode=historia] .tracks-modes{display:none}
+.menus-paddock #tracks #championshipPanel{grid-area:hero;display:flex;flex-direction:column;min-height:0;margin:0;padding:clamp(8px,2vh,22px) 0 12px;border:0;border-radius:0;background:none;box-shadow:none;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#f3ecdc38 transparent}
+.menus-paddock #championshipPanel .tracks-kicker{margin:0}
+.menus-paddock #championshipPanel h3{margin:6px 0 10px;font:800 clamp(28px,2.8vw,42px)/1.05 var(--mp-head);letter-spacing:-.025em;color:var(--mp-ink)}
+.menus-paddock .championship-tabs{gap:clamp(16px,2.4vw,34px);margin:10px 0 2px;padding:0;border:0;border-radius:0;background:none;align-self:flex-start}
+.menus-paddock .championship-tabs button{position:relative;flex:none;padding:6px 0 9px;border:0;border-radius:0;background:none!important;box-shadow:none!important;color:var(--mp-dim);font:600 16px/1 var(--mp-text)}
+.menus-paddock .championship-tabs button:hover{color:var(--mp-ink)}
+.menus-paddock .championship-tabs button[aria-selected=true]{color:var(--mp-yellow)}
+.menus-paddock .championship-tabs button[aria-selected=true]::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--mp-yellow)}
+.menus-paddock #championshipCalendar{grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:0 34px;margin:4px 0 12px}
+.menus-paddock #championshipCalendar li{padding:7px 0;border-bottom:1px solid var(--mp-rule);font-size:14px;color:var(--mp-ink)}
+.menus-paddock #championshipCalendar b{width:auto;height:auto;border-radius:0;background:none!important;box-shadow:none!important;color:var(--mp-faint);font:italic 600 16px/1 var(--mp-display)}
+.menus-paddock #championshipCalendar li.done b{color:#7bd49c}
+.menus-paddock #championshipCalendar li.next b,.menus-paddock #championshipCalendar li.next span{color:var(--mp-yellow)}
+.menus-paddock #championshipCalendar em{color:var(--mp-dim)}
+.menus-paddock #championshipStatus{margin:0 0 10px;font-size:15px;line-height:1.5;color:var(--mp-dim)}
+.menus-paddock #championshipMini{padding:0;background:none;border-radius:0}
+.menus-paddock #championshipMini li{border-bottom:1px solid var(--mp-rule);font-size:13px;padding:5px 0;color:var(--mp-ink)}
+.menus-paddock #tracks #championshipStart{position:absolute;right:0;bottom:0;display:block;width:auto;max-width:calc(100% - 420px);white-space:normal}
+.menus-paddock .championship-tools{gap:26px;margin-top:4px}
+/* The season's start stands at the foot's right: the way back goes to the foot's left. */
+.menus-paddock #tracks[data-race=championship] #tracksBack{justify-self:start;margin-left:0}
+.menus-paddock .championship-tools button{flex:none;padding:4px 0;border:0;border-radius:0;background:none!important;color:var(--mp-dim);font:600 14px/1.2 var(--mp-text);text-decoration:underline;text-decoration-color:var(--mp-rule);text-underline-offset:5px}
+.menus-paddock .championship-tools button:hover{color:var(--mp-ink)}
+.menus-paddock .championship-tools button[data-armed]{color:#ffb19c;text-decoration-color:#ffb19c}
+/* Modo História: the season picks the track (user, 10-24): its calendar standing on the left in place of the list, the
+   round to come in big on the right (main.js renderTracks), the career under it, then the settings and the start. */
+.menus-paddock #tracks[data-mode=historia] .tracks-shell{grid-template-columns:minmax(280px,380px) minmax(0,1fr) auto;grid-template-rows:auto auto auto minmax(0,1fr) auto auto;
+ grid-template-areas:"steps pilot pilot" "title hero hero" "career hero hero" "champ hero hero" "champ set set" "champ back go"}
+.menus-paddock #tracks[data-mode=historia] :is(.tracks-side,.tracks-pick){display:contents}
+.menus-paddock #tracks[data-mode=historia] .track-cards,.menus-paddock #tracks[data-mode=historia] .track-detail>:is(p,small,button){display:none}
+.menus-paddock #tracks[data-mode=historia] .tracks-side-head{grid-area:set}
+.menus-paddock #tracks[data-mode=historia] #championshipPanel{grid-area:champ;margin-top:clamp(8px,2vh,22px);padding-top:0}
+.menus-paddock #tracks[data-mode=historia] #championshipPanel h3{font-size:clamp(20px,1.7vw,26px)}
+.menus-paddock #tracks[data-mode=historia] #championshipCalendar{grid-template-columns:1fr;gap:0}
+.menus-paddock #tracks[data-mode=historia] #championshipCalendar li{padding:10px 0;font-size:16px}
+.menus-paddock #tracks[data-mode=historia] #championshipCalendar li.next{border-bottom-color:var(--mp-yellow)}
+.menus-paddock #tracks[data-mode=historia] #championshipCalendar li.next span{font-weight:700}
+/* The career, the story's heart (user, 10-24): first in the main column, before the season's dates; the wallet in big,
+   the wife's, the team's and the crowd's mood in bars, then the challenge on the way. */
+.menus-paddock #tracks #storyCareer{grid-area:career;display:block;margin:clamp(10px,2.2vh,24px) 0 0;padding:0 0 clamp(10px,2vh,18px);border:0;border-bottom:1px solid var(--mp-rule);border-radius:0;background:none}
+.menus-paddock #storyCareer>.tracks-kicker{margin:0 0 8px}
+.menus-paddock #storyCareer .career-wallet{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 8px;font:500 16px/1.2 var(--mp-text);letter-spacing:0;color:var(--mp-ink);text-transform:none}
+.menus-paddock #storyCareer .career-wallet span{font:inherit;letter-spacing:inherit;color:inherit;text-transform:none}
+.menus-paddock #storyCareer .career-wallet b{font:italic 800 clamp(34px,2.8vw,44px)/1 var(--mp-display);letter-spacing:0;color:var(--mp-yellow);text-shadow:0 2px 14px #000c}
+.menus-paddock #storyCareer .career-bar{grid-template-columns:76px 1fr 46px;gap:12px;margin:9px 0;font:500 16px/1.2 var(--mp-text);color:var(--mp-ink)}
+.menus-paddock #storyCareer .career-bar i{height:8px;border-radius:0;background:#f3f2e81f}
+.menus-paddock #storyCareer .career-bar b{border-radius:0;background:var(--mp-yellow)}
+.menus-paddock #storyCareer .career-bar[data-low=true] b{background:#ff7a5c}
+.menus-paddock #storyCareer .career-bar em{font:700 16px/1 var(--mp-text);color:var(--mp-ink);font-variant-numeric:tabular-nums}
+.menus-paddock #storyCareer p{margin:10px 0 0;font-size:15px;line-height:1.45;color:var(--mp-dim)}
+
+/* ---------- The other screens of the menus: Visual and História das Corridas take the type and the bare buttons. ---------- */
+.menus-paddock :is(#visual,#historias) .tracks-head{gap:20px}
+.menus-paddock #visual .visual-foot button:not(.primary){background:none;border:0;color:var(--mp-dim);font:600 15px var(--mp-text)}
+.menus-paddock #visual .visual-foot .primary{background:none;border:0;color:var(--mp-yellow);font:italic 800 32px/1 var(--mp-display);text-transform:uppercase}
+
+/* ---------- Settings ---------- */
+.menus-paddock #settings{width:min(1060px,94vw);border:1px solid #f3ecdc1c;border-radius:6px;background:#080e0d;color:var(--mp-ink);box-shadow:0 30px 120px #000d}
+.menus-paddock #settings::backdrop{background:#030807cc;backdrop-filter:blur(10px)}
+.menus-paddock .settings-shell{background:radial-gradient(ellipse at 100% 0,#f4ce3914,transparent 46%),linear-gradient(180deg,#0c1513,#080e0d)}
+.menus-paddock .settings-header{gap:22px;padding:24px 34px 20px;border-bottom:1px solid var(--mp-rule)}
+.menus-paddock .settings-mark{width:auto;height:auto;padding:0 4px;border-radius:0;background:none;color:var(--mp-yellow);font:italic 800 58px/.9 var(--mp-display);transform:none}
+.menus-paddock #settings .settings-kicker{font:600 11px/1.3 var(--mp-text);letter-spacing:.2em;color:var(--mp-yellow)}
+.menus-paddock .settings-header h2{margin:2px 0 0;font:italic 800 clamp(34px,3.4vw,46px)/1 var(--mp-display);letter-spacing:.005em;text-transform:uppercase;color:var(--mp-ink)}
+.menus-paddock .settings-header>button{border:0;background:none;color:var(--mp-dim);font-size:22px}
+.menus-paddock .settings-header>button:hover{color:var(--mp-yellow)}
+/* The tabs: a list of numbered words, the open one yellow with a bar at its side. */
+.menus-paddock .settings-tabs{padding:22px 18px 22px 26px;background:none;border-right:1px solid var(--mp-rule)}
+.menus-paddock .settings-tabs button{position:relative;gap:12px;margin:0 0 2px;padding:12px 6px;border:0;border-radius:0;background:none;color:var(--mp-faint);font:italic 600 15px/1 var(--mp-display)}
+.menus-paddock .settings-tabs b{font:500 19px/1.1 var(--mp-text);color:var(--mp-dim)}
+.menus-paddock .settings-tabs button:hover b{color:var(--mp-ink)}
+.menus-paddock .settings-tabs button[aria-selected=true]{background:none;border:0;color:var(--mp-yellow)}
+.menus-paddock .settings-tabs button[aria-selected=true] b{color:var(--mp-yellow);font-weight:700}
+.menus-paddock .settings-tabs button[aria-selected=true]::before{content:'';position:absolute;left:-14px;top:9px;bottom:9px;width:3px;background:var(--mp-yellow)}
+.menus-paddock .settings-tabs p{color:var(--mp-faint);font:italic 600 17px/1.35 var(--mp-display)}
+.menus-paddock .settings-content{padding:26px 36px 30px}
+.menus-paddock .settings-content h3{margin:6px 0 8px;font:800 30px/1.1 var(--mp-head);letter-spacing:-.025em;color:var(--mp-ink)}
+.menus-paddock .settings-content p{font-size:16px;line-height:1.5;color:var(--mp-dim)}
+.menus-paddock .settings-content .choices{gap:16px 34px;flex-wrap:wrap}
+.menus-paddock .settings-content .choices label{flex:1 1 140px;font:600 11px/1.3 var(--mp-text);letter-spacing:.14em;color:var(--mp-faint);text-transform:uppercase}
+.menus-paddock .settings-content .choices select{display:block;width:100%;margin-top:6px;padding:6px 24px 7px 0;font-size:16px}
+.menus-paddock .settings-content .weather-choices label{max-width:none}
+/* The on/off choices: open rows with a rule, a yellow box ticked when on. */
+.menus-paddock #settings .immersive-choice{margin:0;padding:15px 0 15px 34px;position:relative;border:0;border-bottom:1px solid var(--mp-rule);border-radius:0;background:none;color:var(--mp-ink);font:500 19px/1.35 var(--mp-text)}
+.menus-paddock #settings .immersive-choice:first-of-type{border-top:1px solid var(--mp-rule)}
+.menus-paddock #settings .immersive-choice small{display:block;margin:4px 0 0;font:400 15px/1.45 var(--mp-text);color:var(--mp-dim)}
+.menus-paddock #settings :is(.immersive-choice,.classic-menus) input[type=checkbox]{-webkit-appearance:none;appearance:none;flex:none;width:20px;height:20px;margin:0;border:1.5px solid #f3ecdc80;border-radius:2px;background:transparent center/14px no-repeat;cursor:pointer}
+.menus-paddock #settings .immersive-choice input[type=checkbox]{position:absolute;left:0;top:16px}
+.menus-paddock #settings :is(.immersive-choice,.classic-menus) input[type=checkbox]:checked{border-color:var(--mp-yellow);background-color:var(--mp-yellow);background-image:var(--mp-check)}
+.menus-paddock #settings .immersive-choice:hover input{border-color:var(--mp-yellow)}
+.menus-paddock #settings .grid-roster{border:0;border-bottom:1px solid var(--mp-rule);border-radius:0;padding:14px 0}
+.menus-paddock #settings .grid-roster summary{color:var(--mp-yellow);font-weight:600}
+.menus-paddock .settings-content .settings-note{padding:12px 0 0;background:none;border:0;border-radius:0;font-size:13px;color:var(--mp-faint)}
+.menus-paddock #settings .audio-controls input[type=range]{accent-color:var(--mp-yellow)}
+.menus-paddock #settings .audio-controls button,.menus-paddock #settings :is(#keysReset,#padReset,#padClear,#wheelForget,#wheelStepSkip,#wheelStepSkipLever,#wheelStepCancel,#graphicsRestore){border:0;border-bottom:1px solid var(--mp-rule);border-radius:0;background:none;padding:6px 0;color:var(--mp-ink);font:600 14px var(--mp-text)}
+.menus-paddock #settings .audio-controls button:hover,.menus-paddock #settings :is(#keysReset,#padReset,#padClear,#wheelForget,#graphicsRestore):hover{color:var(--mp-yellow);border-bottom-color:var(--mp-yellow)}
+.menus-paddock #settings :is(.tour-start,.wheel-actions .wheel-primary){padding:6px 0 10px;border:0;border-bottom:2px solid var(--mp-yellow);border-radius:0;background:none;color:var(--mp-yellow);font:italic 800 26px/1 var(--mp-display);text-transform:uppercase}
+.menus-paddock #settings :is(.tour-start,.wheel-actions .wheel-primary):hover{color:var(--mp-hot)}
+.menus-paddock #settings .keys-actions{background:linear-gradient(#0a121100,#0a1211 14px)}
+.menus-paddock #settings .graphics-level{border-radius:0;background:none;border:0;border-bottom:1px solid var(--mp-rule);box-shadow:none}
+.menus-paddock #settings .graphics-level[aria-checked=true]{box-shadow:inset 0 -3px var(--mp-yellow)}
+/* The foot: saved, the credits, the way back to the menus of before, then the way on. */
+.menus-paddock .settings-footer{gap:20px;padding:16px 34px;border-top:1px solid var(--mp-rule);background:none}
+.menus-paddock .settings-footer>span{font-size:12px;color:var(--mp-faint)}
+.menus-paddock #settings .classic-menus{font:600 13px/1 var(--mp-text);color:var(--mp-ink)}
+.menus-paddock #settings .settings-sources{font:500 13px/1.2 var(--mp-text);color:var(--mp-dim);text-decoration:underline;text-decoration-color:var(--mp-rule);text-underline-offset:4px;white-space:nowrap}
+.menus-paddock #settings .settings-sources:hover{color:var(--mp-yellow)}
+.menus-paddock .settings-footer{flex-wrap:wrap;justify-content:flex-end;row-gap:10px}
+.menus-paddock #settings .settings-footer button{padding:6px 0;border:0;border-radius:0;background:none;color:var(--mp-ink);font:600 15px/1 var(--mp-text)}
+.menus-paddock #settings .settings-footer button:hover{color:var(--mp-hot)}
+.menus-paddock #settings :is(#settingsBack,#settingsResume){position:relative;padding:4px 2px 10px 0;color:var(--mp-yellow);font:italic 800 25px/1 var(--mp-display);text-transform:uppercase}
+.menus-paddock #settings :is(#settingsBack,#settingsResume)::after{content:'';position:absolute;right:0;bottom:2px;width:calc(100% + 24px);height:2px;background:linear-gradient(90deg,transparent,var(--mp-yellow) 30%);transform:skewX(-50deg);transform-origin:right bottom}
+
+/* ---------- Narrower windows: the track screen stacks, the car screen's foot wraps ---------- */
+@media(max-width:1100px) and (min-height:521px){
+ .menus-paddock #tracks .tracks-shell{height:auto;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:none;
+  grid-template-areas:"steps pilot" "title title" "list list" "hero hero" "modes modes" "set set" "back go"}
+ .menus-paddock #tracks[data-mode=historia] .tracks-shell{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"steps pilot" "title title" "career career" "hero hero" "champ champ" "set set" "back go"}
+ .menus-paddock #tracks .track-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));column-gap:24px;max-height:none;-webkit-mask-image:none;mask-image:none;overflow:visible}
+ .menus-paddock #tracks .track-detail{min-height:260px}
+ .menus-paddock #tracks #championshipStart{max-width:60%}
+ .menus-paddock #carsBack{right:auto;left:0;bottom:auto;top:clamp(56px,9vh,80px)}
+}
+/* ---------- Phones in landscape: everything on one screen, smaller ---------- */
+@media(max-height:520px){
+ .menus-paddock #menu{padding:8px max(20px,env(safe-area-inset-right)) 8px max(20px,env(safe-area-inset-left))}
+ .menus-paddock #menu article{width:min(330px,46vw)}
+ .menus-paddock #menu .opening-brand{margin-bottom:4px}
+ .menus-paddock #menu .opening-brand figcaption{font-size:11px}
+ .menus-paddock #menu .opening-brand figcaption b{font-size:14px}
+ .menus-paddock #menu:not(.in-session):not(.race-finished) #pilotPicker{margin-bottom:4px}
+ .menus-paddock #menu #pilotLabel{font-size:14px}
+ .menus-paddock #menu :is(#pilotName,#pilotSelect){width:150px;font-size:16px}
+ .menus-paddock #menu .menu-modes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px}
+ .menus-paddock #menu .menu-modes button{min-height:0;padding:8px 0;font-size:13px;gap:8px}
+ .menus-paddock #menu .menu-modes button::before{width:18px;height:18px}
+ .menus-paddock #menu .menu-modes :is(#start,#resume){grid-column:1/-1;margin:0 0 2px;padding:2px 0 10px;font-size:32px}
+ .menus-paddock #menu .menu-modes :is(#start,#resume)::before{content:'';margin:0}
+ .menus-paddock #menu .menu-modes button::after{bottom:3px;height:2px}
+ .menus-paddock .touch-device #menu .menu-tools{display:flex;gap:4px 18px;margin-top:6px}
+ .menus-paddock .touch-device #menu .menu-tools button{flex-direction:row;width:auto;min-height:36px;padding:4px 0;border:0;background:none;font-size:12px;gap:6px;color:var(--mp-ink)}
+ .menus-paddock .touch-device #menu .menu-tools .menu-tool-icon{width:17px;height:17px}
+ .menus-paddock :is(#start,#resume)::before{width:.7em}
+ .menus-paddock #menu:is(.in-session,.race-finished) article>h1{font-size:26px;margin-bottom:8px}
+ /* Car screen. */
+ .menus-paddock #cars{padding:6px max(14px,env(safe-area-inset-right)) 6px max(14px,env(safe-area-inset-left))}
+ .menus-paddock .cars-shell{gap:4px}
+ .menus-paddock #cars .cars-head{gap:2px 12px}
+ .menus-paddock #cars .tracks-title .tracks-kicker{display:none}
+ .menus-paddock :is(#cars,#tracks) .tracks-head h2{font-size:18px}
+ .menus-paddock .menu-steps{gap:14px}
+ .menus-paddock .menu-steps button{padding:3px 0 5px;font-size:12px}.menus-paddock .menu-steps button b{font-size:13px}
+ .menus-paddock :is(#carsPilot,#tracksPilot){font-size:12px}
+ .menus-paddock :is(#carsPilot,#tracksPilot)::before{width:15px;height:15px}
+ .menus-paddock :is(.car-models button,.car-visual-tab){padding:3px 0 5px;font-size:13px}
+ .menus-paddock :is(.car-models button,.car-visual-tab)::before{width:18px;height:18px}
+ .menus-paddock :is(.car-models button,.car-visual-tab) small{display:none}
+ .menus-paddock .car-arrow{width:40px;height:80px;margin-top:-40px;font-size:64px}
+ .menus-paddock #cars{--thumb:58px}
+ .menus-paddock .car-still{font-size:12px}.menus-paddock .car-zoom button{width:26px;height:26px;font-size:22px}
+ .menus-paddock .car-thumbs button{padding-bottom:5px}
+ .menus-paddock .car-thumbs{width:calc(var(--thumb)*5 + 24px)}
+ .menus-paddock .thumbs-arrow{width:24px;height:40px;font-size:34px}
+ .menus-paddock #cars .car-thumbs-row{margin-bottom:4px}
+ .menus-paddock .car-thumbs span{display:none}
+ .menus-paddock #carNumber{font-size:30px}
+ .menus-paddock .car-plate{gap:10px}
+ .menus-paddock .car-plate h3{font-size:16px}
+ .menus-paddock #carName{font-size:11px}
+ .menus-paddock #carsBack{margin:0 12px 10px;font-size:12px}
+ .menus-paddock :is(#carsNext,#singleRace,#soloRace,#duelRace) .mode-label,.menus-paddock #championshipStart{font-size:24px}
+ .menus-paddock :is(#carsNext,#singleRace,#soloRace,#duelRace) small{font-size:10px}
+ .menus-paddock :is(#carsNext,#singleRace,#soloRace,#duelRace,#championshipStart){padding-bottom:8px}
+ /* Track screen. */
+ .menus-paddock #tracks{padding:6px max(14px,env(safe-area-inset-right)) 6px max(14px,env(safe-area-inset-left))}
+ .menus-paddock #tracks .tracks-shell{min-height:0;grid-template-columns:minmax(170px,230px) minmax(0,1fr) auto;column-gap:18px}
+ .menus-paddock #tracks .menu-steps{margin-bottom:7px}
+ .menus-paddock #tracks .tracks-title .tracks-kicker{display:none}
+ .menus-paddock #tracks .track-cards{margin-top:4px}
+ .menus-paddock #tracks .track-cards button{grid-template-columns:38px minmax(0,1fr);column-gap:8px;padding:5px 0}
+ .menus-paddock #tracks .track-cards svg{width:38px;height:22px}
+ .menus-paddock #tracks .track-cards b,.menus-paddock #tracks .track-cards button[aria-pressed=true] b{font-size:13px}
+ .menus-paddock #tracks .track-cards span{display:none}
+ .menus-paddock #tracks .track-detail{padding:2px 14px 10px}
+ .menus-paddock .track-hero svg{width:42%;height:80%}
+ .menus-paddock .track-hero h3{font-size:24px}
+ .menus-paddock #trackHeroPlace{font-size:12px;margin-top:2px}
+ .menus-paddock .track-stats{margin-top:4px}.menus-paddock .track-stats li{padding:0 8px;font-size:11px}
+ .menus-paddock .track-hero-best{font-size:12px;margin-top:2px}
+ .menus-paddock #tracks .track-detail>p,.menus-paddock #tracks #circuitSource{display:none}
+ .menus-paddock #tracks #historyStart{margin-top:4px;font-size:12px}.menus-paddock #tracks #historyStart small{display:none}
+ .menus-paddock #tracks .race-modes{padding:4px 0 2px;gap:2px 14px}
+ .menus-paddock #tracks .race-modes::before,.menus-paddock #tracks .tracks-side-head .tracks-kicker{display:none}
+ .menus-paddock #tracks .race-modes button{padding:4px 0 6px;font-size:12px;gap:5px}
+ .menus-paddock #tracks .race-modes button::before{width:15px;height:15px}
+ .menus-paddock #tracks .tracks-side-head{gap:4px 14px;padding:2px 0 4px}
+ .menus-paddock #tracks .tracks-laps{font-size:8px;column-gap:5px}
+ .menus-paddock #tracks .tracks-laps::before{width:14px;height:14px}
+ .menus-paddock #tracks .tracks-laps select,.menus-paddock #tracks .duel-pick select{padding:2px 16px 3px 0;font-size:12px;background-size:9px 6px}
+ .menus-paddock #tracksBack{margin:0 10px 10px 0;font-size:12px}
+ .menus-paddock #tracks .tracks-modes{min-width:0}
+ .menus-paddock #tracks #championshipPanel{padding-top:2px}
+ .menus-paddock #championshipPanel h3{display:none}
+ .menus-paddock .championship-tabs button{font-size:12px;padding:3px 0 5px}
+ .menus-paddock #championshipCalendar{grid-template-columns:none;gap:0 6px;margin:2px 0 4px}
+ .menus-paddock #championshipCalendar li{padding:3px 0;border:0;font-size:10px}
+ .menus-paddock #championshipStatus{font-size:11px;margin-bottom:4px}
+ .menus-paddock .championship-tools button{font-size:11px}
+ .menus-paddock #tracks #championshipStart{max-width:55%}
+ .menus-paddock #tracks #storyCareer{margin-top:4px;padding-bottom:4px}
+ .menus-paddock #tracks[data-mode=historia] #championshipCalendar{grid-template-columns:none;gap:0 10px}
+ .menus-paddock #tracks[data-mode=historia] #championshipCalendar li{padding:3px 0;font-size:10px;border:0}
+ .menus-paddock #storyCareer .career-wallet{margin-bottom:2px;font-size:11px}.menus-paddock #storyCareer .career-wallet b{font-size:22px}
+ .menus-paddock #storyCareer .career-bar{grid-template-columns:52px 1fr 34px;margin:3px 0;font-size:11px}.menus-paddock #storyCareer .career-bar em{font-size:11px}
+ .menus-paddock #storyCareer p{margin-top:3px;font-size:10px}
+ /* Settings. */
+ .menus-paddock .settings-header{padding:10px 18px}
+ .menus-paddock .settings-mark{font-size:34px}
+ .menus-paddock .settings-header h2{font-size:26px}
+ .menus-paddock .settings-content{padding:14px 18px}
+ .menus-paddock .settings-content h3{font-size:20px}
+ .menus-paddock .settings-tabs{padding:12px 10px 12px 18px}
+ .menus-paddock .settings-tabs button{padding:8px 4px;gap:8px}
+ .menus-paddock .settings-tabs b{font-size:14px}
+ .menus-paddock .settings-tabs .tab-long{display:none}.menus-paddock .settings-tabs .tab-short{display:inline}
+ .menus-paddock .settings-tabs button[aria-selected=true]::before{left:-10px}
+ .menus-paddock .settings-footer{padding:8px 18px;gap:10px}
+ .menus-paddock #settings :is(#settingsBack,#settingsResume){font-size:18px}
+}
+@media(prefers-reduced-motion:reduce){.menus-paddock :is(#menu .menu-modes button,.car-thumbs button,#carsNext,#singleRace,#soloRace,#duelRace,#championshipStart){transition:none}}

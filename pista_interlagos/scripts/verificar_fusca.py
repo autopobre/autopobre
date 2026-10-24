@@ -13,7 +13,7 @@ import json
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import browser_executable,browser_args,wait_js,wait_race_start,choose_race
+from browser_config import browser_executable,browser_args,wait_js,wait_race_start,choose_race, start_race
 
 PORT=sys.argv[1] if len(sys.argv)>1 else '8799'
 URL=f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
@@ -86,7 +86,7 @@ with sync_playwright() as p:
  # The 1x1's rival among the Copa Fusca's drivers: Fischer unless picked, the 99 Cristiano in Moraes's seat.
  duel=page.eval_on_selector_all('#duelRival option','o=>o.map(e=>e.value)');assert sorted(duel)==sorted([n for n in FUSCAS if n!='33']),duel
  assert '#20 Arthur Fischer' in page.inner_text('#duelRaceDetail'),page.inner_text('#duelRaceDetail')
- page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
+ start_race(page, '#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
  page.evaluate(HOOK);page.wait_for_timeout(400)
  field=page.evaluate(FIELD);cars=page.evaluate(CARS);print(json.dumps({'field':field,'cars':cars},ensure_ascii=False),flush=True)
  assert cars['raceModel']=='fusca' and cars['raceCar']=='33' and not cars['opalaShown'] and cars['painted']=='99',cars
@@ -142,7 +142,7 @@ with sync_playwright() as p:
  # The Fusca 99: Cristiano's car, the player in it and the Copa Fusca's other 14; the 99's paint button is the Opala's, so it hides.
  page.click('#tracksBack');page.click('#start');wait_js(page,"(i=>i.live&&i.model==='fusca')(interlagosCarros.info())")
  page.evaluate("interlagosCarros.pick('99')");page.click('#carsNext');assert 'Fusca #99' in page.inner_text('#tracksPilot')
- page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000);page.wait_for_timeout(600)
+ start_race(page, '#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000);page.wait_for_timeout(600)
  own=page.evaluate(CARS);field99=page.evaluate(FIELD)
  assert own['raceModel']=='fusca' and own['raceCar']=='99' and own['fusca']['number']=='99' and not own['skin'] and not own['touchSkin'] and not own['opalaShown'],own
  assert field99['rivals']==[n for n in FUSCAS if n!='99'] and not field99['opala99Shown'] and field99['models']==['fusca']*14,field99

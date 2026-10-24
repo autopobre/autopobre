@@ -16,7 +16,7 @@ from io import BytesIO
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import browser_config  # noqa: F401  headless + in-page pointer lock
-from browser_config import browser_executable, browser_args, open_menu, wait_js, wait_race_start
+from browser_config import browser_executable, browser_args, open_menu, wait_js, wait_race_start, start_race
 from playwright.sync_api import sync_playwright
 from PIL import Image, ImageChops, ImageFilter, ImageStat
 
@@ -98,7 +98,7 @@ with sync_playwright() as p:
         page.click('#start')
         if page.is_visible('#cars'):
             page.click('#carsNext')
-        page.click('#duelRace')
+        start_race(page, '#duelRace')
         wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused', timeout=180000)
         page.evaluate('interlagos.skipIntro()')
         wait_js(page, "!document.querySelector('#raceCountdown').hidden", timeout=30000)

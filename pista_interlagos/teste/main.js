@@ -138,6 +138,10 @@ if(window.top!==window.self){
 installKeyBindings(playerKeys);
 const touchDevice=matchMedia('(pointer:coarse)').matches||navigator.maxTouchPoints>0;let mobile;
 const preferences=new PlayerPreferences();
+// The menus' look: the paddock restyle of 2026-10 (menus.css; index.html opens with it), unless the settings' Menus
+// clássicos box brings back the boxes and filled buttons of before.
+const paddockMenus=()=>document.documentElement.classList.contains('menus-paddock');
+document.documentElement.classList.toggle('menus-paddock',!preferences.values.classicMenus);
 let circuit=selectedCircuit(preferences.values.circuit,window.location.search);
 preferences.update({circuit:circuit.id});
 // Screens while no race runs: the opening (pilot, then Modo Corrida or Modo História) or the
@@ -158,6 +162,25 @@ function showCircuitSelection(){
  $('historyStart').hidden=!HISTORIES[circuit.id];
  document.querySelector('#menu article>p').textContent=circuit.intro;
  for(const button of document.querySelectorAll('[data-circuit]'))button.setAttribute('aria-pressed',String(button.dataset.circuit===circuit.id));
+ showHero(circuit.id);
+}
+// The circuit in big beside the list (paddock look): its outline, name, place and figures, as its card has them, and its
+// best lap; round, the season's round it races (Modo História shows the round to come, not a pick).
+function showHero(id,round=''){
+ const card=document.querySelector(`.track-cards [data-circuit="${id}"]`);if(!card)return;
+ const [length,...place]=card.querySelector('span').textContent.split(' · ');
+ $('trackHeroPath').setAttribute('d',card.querySelector('path').getAttribute('d'));$('trackHeroName').textContent=card.querySelector('b').textContent;$('trackHeroPlace').textContent=place.join(' · ');
+ $('trackHeroStats').replaceChildren(...[length,...card.querySelector('small').textContent.split(' · ')].map(text=>Object.assign(document.createElement('li'),{textContent:text})));
+ $('trackHeroRound').textContent=round;$('trackHeroBest').textContent=document.querySelector(`[data-best="${id}"]`)?.textContent??'';
+}
+// Behind it, the circuit seen from the air at the golden hour (scripts/gerar_fotos_pistas.py), faded in once it has
+// loaded; only asked for when the track screen shows. A circuit without one (not in CIRCUIT_SCENES, the same list as
+// publicacao.py's) keeps the plain backdrop.
+const CIRCUIT_SCENES=new Set(['interlagos','cascavel','piracicaba','chapeco','brasilia','goiania','guaratiba','velocitta','chapada','floripa','minhocao','pampulha','curvelo']);
+let heroPhoto=null;
+function showCircuitPhoto(id){
+ if(heroPhoto===id)return;heroPhoto=id;const layer=$('trackPhoto'),img=new Image();layer.classList.remove('shown');if(!CIRCUIT_SCENES.has(id))return;
+ img.onload=()=>{if(heroPhoto!==id)return;layer.style.backgroundImage=`url("${img.src}")`;layer.classList.add('shown');};img.src=`./assets/circuitos/cenas/${id}.webp`;
 }
 showCircuitSelection();
 function selectCircuit(id){
@@ -171,6 +194,8 @@ let projectMap;
 $('livery').value=preferences.values.livery;
 $('camera').value=preferences.values.camera;
 $('carDamage').checked=preferences.values.damage;
+$('classicMenus').checked=preferences.values.classicMenus;
+$('classicMenus').onchange=()=>{preferences.update({classicMenus:$('classicMenus').checked});document.documentElement.classList.toggle('menus-paddock',!preferences.values.classicMenus);updateMenuLabels();showRaceMode();carSelect.show();};
 // Damage and wear: Modo Corrida's setting; always on in Modo História, whose career counts on it (the team's
 // morale makes the knocks harder or softer, story-career.js), with the car's condition on screen (pitstop.js).
 // Applied when what it should be changes (the mode, the setting) or a circuit's pit stop is built (force).
@@ -1701,29 +1726,33 @@ function updateMenuLabels(){
  document.querySelector('#menu .eyebrow').textContent=finished?'BANDEIRADA / RESULTADO FINAL':`${immersive?.active?'MODO HISTÓRIA':'MODO CORRIDA'} · ${championshipRace?`${championshipRace.championship.info.label} · ETAPA ${championshipRace.round+1}/${championshipRace.championship.total}`:freeRaceTitle()} / PAUSA`;
  // Opening: Modo Corrida or Modo História. Paused: back to the track, restart, change track.
  // A finished single race can be run again; a scored championship round goes on from the result sheet.
- $('start').hidden=$('storyStart').hidden=$('driftStart').hidden=$('historiasStart').hidden=sessionStarted;$('carsVisual').hidden=menuMode==='historia';if(!$('start').disabled)$('start').textContent='Modo Corrida →';
+ $('start').hidden=$('storyStart').hidden=$('driftStart').hidden=$('historiasStart').hidden=sessionStarted;$('carsVisual').hidden=menuMode==='historia';if(!$('start').disabled)menuLabel($('start'),'Modo Corrida →');
  $('resume').hidden=!resume;$('leaveRace').hidden=!sessionStarted;$('leaveRace').textContent=circuit.arena?'Sair da arena':'Trocar de pista';
- $('restartRace').hidden=!(resume||finished&&!scored&&!multiplayer?.guest());$('restartRace').textContent=finished?'Correr novamente →':immersive?.practice?'Recomeçar treino':'Recomeçar corrida';
+ $('restartRace').hidden=!(resume||finished&&!scored&&!multiplayer?.guest());menuLabel($('restartRace'),finished?'Correr novamente →':immersive?.practice?'Recomeçar treino':'Recomeçar corrida');
  // The track screen races in the mode chosen at the opening.
  const story=menuMode==='historia',laps=raceLaps(circuit.id,preferences.values.laps);
  $('tracks').dataset.mode=menuMode;$('tracksTitle').textContent=story?'Sua temporada na Old Stock.':'Onde vamos acelerar hoje?';document.querySelector('.tracks-side-head .tracks-kicker').textContent=story?'SUA TEMPORADA':'NA PISTA ESCOLHIDA';if(!$('championshipReset').dataset.armed)$('championshipReset').textContent=story?'Recomeçar história':'Recomeçar campeonato';$('tracksMode').textContent=story?'MODO HISTÓRIA · AUTO-POBRE RACING':menuModel()==='fusca'?'MODO CORRIDA · COPA FUSCA':'MODO CORRIDA · OLD STOCK RACE';
- $('singleRace').querySelector('.mode-label').textContent=loading&&pendingMode==='single'?'Carregando circuito…':'Corrida única →';
- $('singleRaceDetail').textContent=`Só esta pista · ${laps} volta${laps>1?'s':''}${story?' · vaquinha, boxes e o sonho da Blazer':' contra 14 adversários'}`;
+ // The paddock look names the race in its mode row: each start button says Largar, its line what it races.
+ const paddock=paddockMenus(),go=paddock?'Largar →':null;
+ $('singleRace').querySelector('.mode-label').textContent=loading&&pendingMode==='single'?'Carregando circuito…':go??'Corrida única →';
+ $('singleRaceDetail').textContent=`${paddock?'Corrida única':'Só esta pista'} · ${laps} volta${laps>1?'s':''}${story?' · vaquinha, boxes e o sonho da Blazer':' contra 14 adversários'}`;
  // Modo Corrida's solo practice and 1x1 (the story's track screen hides them: pistas.css).
  const myModel=menuModel(),myCar=menuCar(),rival=carEntry(duelRivalFor(myCar,chosenDuel(myModel),myModel),myModel);
- $('soloRace').querySelector('.mode-label').textContent=loading&&pendingMode==='solo'?'Carregando circuito…':'Treino solo →';
- $('duelRace').querySelector('.mode-label').textContent=loading&&pendingMode==='duel'?'Carregando circuito…':'Corrida 1x1 →';
+ $('soloRace').querySelector('.mode-label').textContent=loading&&pendingMode==='solo'?'Carregando circuito…':go??'Treino solo →';
+ $('duelRace').querySelector('.mode-label').textContent=loading&&pendingMode==='duel'?'Carregando circuito…':go??'Corrida 1x1 →';
  $('duelRaceDetail').textContent=`Você contra #${rival.number} ${rival.shortName} · ${laps} volta${laps>1?'s':''}`;
  $('duelSwatch').style.setProperty('--body',cssColor(rival.color));$('duelSwatch').style.setProperty('--stripe',cssColor(rival.stripe));
  const pick=$('duelRival'),field=fieldRoster(myCar,myModel);if(pick.options.length!==field.length||field.some((e,i)=>pick.options[i].value!==e.number))pick.replaceChildren(...field.map(e=>new Option('',e.number)));
  for(const option of pick.options){const entry=carEntry(option.value,myModel);option.textContent=`#${entry.number} ${entry.shortName}${entry.number===ACE_NUMBER&&preferences.values.aceKoyzinho?' · Indestrutível':''}`;}
- $('duelRival').value=rival.number;showLaps();$('tracksBack').textContent=carScreen()?'← Carro':'← Início';
+ $('duelRival').value=rival.number;showLaps();$('tracksBack').textContent=carScreen()?'← Carro':'← Início';renderSteps();showRaceMode();
  if(loading&&pendingMode==='championship')$('championshipStart').textContent=`Etapa ${championshipFor().round+1}: carregando ${circuit.name}…`;
  $('settingsResume').hidden=!sessionStarted||(!immersive?.active&&immersive?.freeResultReady);$('settingsRestart').hidden=$('settingsResume').hidden;
  $('settingsBack').textContent=sessionStarted?'Sair para a escolha de pista →':screen==='tracks'?'Voltar à escolha de pista →':'Voltar ao início →';
  $('raceResult').hidden=immersive?.active||!immersive?.freeResultReady;if(!immersive?.active&&immersive?.freeResultReady)$('raceResult').textContent=`Bandeirada! ${immersive.freePosition}º de ${immersive.fieldSize} · ${immersive.freeTotalLaps} volta${immersive.freeTotalLaps>1?'s':''} · ${fmt(immersive.finishTime??car.clock)}`;
  if(!loading&&screen==='tracks'&&!sessionStarted)renderTracks();
 }
+// A menu choice's words, its closing arrow apart: the paddock look leaves the opening's arrows out (menus.css).
+function menuLabel(button,text){const [,words,arrow]=text.match(/^(.*?)( →)?$/);button.replaceChildren(arrow?words+' ':words,...arrow?[Object.assign(document.createElement('span'),{className:'menu-arrow',textContent:'→'})]:[]);}
 // The free race under way as the pause menu names it: a single race, the solo practice (its laps and
 // best so far) or the 1x1 and its rival.
 function freeRaceTitle(){
@@ -1778,12 +1807,12 @@ function updateScreens(){
  if(tracks)renderTracks();if(cars)openCarScreen();
 }
 // A multiplayer guest back at the opening no longer waits for the host's race (multiplayer.js wait).
-function showScreen(name){screen=name;if(name==='opening')multiplayer?.wait(false);if(name==='historias')renderHistorias();updateScreens();updateMenuLabels();if(name==='tracks')$('singleRace').focus({preventScroll:true});if(name==='cars')$('carsNext').focus({preventScroll:true});if(name==='visual')openVisualScreen();}
+function showScreen(name){screen=name;if(name==='opening')multiplayer?.wait(false);if(name==='historias')renderHistorias();updateScreens();updateMenuLabels();if(name==='tracks')raceStart().focus({preventScroll:true});if(name==='cars')$('carsNext').focus({preventScroll:true});if(name==='visual')openVisualScreen();}
 // Who races, as the track and car screens show it: the pilot and, in Modo Corrida, the car.
 const pilotLine=()=>[pilotPicker.profiles.selected&&`Piloto: ${pilotPicker.profiles.selected}`,menuMode==='corrida'&&`${MODEL_NAMES[menuModel()]} #${menuCar()}`].filter(Boolean).join(' · ');
 // Modo Corrida's car screen (car-select.js): the studio needs the renderer and the car's model, both
 // kept for the race. A multiplayer guest does not pick the track: its button waits for the host's race.
-const carSelect=new CarSelect({root:$('cars'),values:{opala:preferences.values.car,fusca:preferences.values.fuscaCar},model:preferences.values.carModel,carRoot,quality:()=>graphics.values.reflections,
+const carSelect=new CarSelect({root:$('cars'),values:{opala:preferences.values.car,fusca:preferences.values.fuscaCar},model:preferences.values.carModel,carRoot,quality:()=>graphics.values.reflections,livery:()=>$('livery').value,fill:()=>paddockMenus()?.9:.76,
  onModel:model=>{preferences.update({carModel:model});updateMenuLabels();if(model==='fusca')fuscaInStudio();},
  onPick:(number,model)=>{preferences.update({[model==='fusca'?'fuscaCar':'car']:number});multiplayer?.choose(number);updateMenuLabels();if(ready)showRoster();},onNext:()=>{if(multiplayer?.guest())multiplayer.wait();else if(menuMode==='drift')beginArena();else showScreen('tracks');},onBack:()=>showScreen('opening'),
  still:preferences.values.carStill,onStill:carStill=>preferences.update({carStill})});
@@ -1800,7 +1829,7 @@ function openCarScreen(){
 // browser (pilot-look.js); opened from the car screen (Visual, after the Opala and Fusca tabs: Modo Corrida and the
 // arena; user, 2026-10-20) and back there. The story always races Stevan's own look (pilotLook), and has no car screen.
 const lookStore=new LookStore();let lookFrom='opening';
-const lookSelect=new LookSelect({root:$('visual'),store:lookStore,pilot:()=>pilotPicker.profiles.selected,onBack:()=>showScreen(lookFrom)});
+const lookSelect=new LookSelect({root:$('visual'),store:lookStore,pilot:()=>pilotPicker.profiles.selected,onBack:()=>showScreen(lookFrom),quality:()=>graphics.values.reflections});
 function openVisual(from){if(sessionStarted||loading||from==='opening'&&!pilotPicker.commit())return;lookFrom=from;showScreen('visual');}
 function openVisualScreen(){lookSelect.show();$('visualDone').focus({preventScroll:true});try{initializeRenderer();}catch(err){console.error(err);lookSelect.failed();}}
 $('carsVisual').onclick=()=>openVisual('cars');
@@ -1815,7 +1844,9 @@ window.interlagosCarros={info:()=>({...carSelect.info(),raceCar,painted:carLiver
  // The screen's pixel density now (the garage draws sharper than the race: studioDensity).
  pixelRatio:renderer?.getPixelRatio()??null,studioRatio:studioView.saved===null?null:studioView.ratio}),
  // Takes a car of the tab shown as the arrows would (a taken one only gets the room's note); gives the car chosen after it.
- pick:number=>{carSelect.pick(String(number));return carSelect.value;}};
+ pick:number=>{carSelect.pick(String(number));return carSelect.value;},
+ // The car shown, alone on a see-through ground (car-select.js snapshot): the strip's pictures (gerar_miniaturas_carros.py).
+ snapshot:options=>renderer?carSelect.studio.snapshot(renderer,options):null};
 // The track screen: the pilot, each circuit's best lap and the championship panel.
 function renderTracks(){
  const pilot=pilotPicker.profiles.selected||'';$('tracksPilot').textContent=pilotLine();
@@ -1823,6 +1854,9 @@ function renderTracks(){
   const lap=trackRecords(pilotStorage(),slot.dataset.best,'normal',pilot,8).lap,mine=lap.find(r=>r.me);
   slot.textContent=mine?`Seu recorde · ${mine.time}`:lap[0]?`Recorde · ${lap[0].time}`:'';
  }
+ // Modo História's season picks the track: the round to come in big (the first before the season starts, the last once it is over).
+ const season=menuMode==='historia'?championshipFor():null,rounds=season?.schedule,k=rounds?Math.min(season.round,rounds.length-1):0,next=rounds?.[k];
+ const hero=next?.circuit??circuit.id;showHero(hero,next?`Etapa ${k+1} de ${rounds.length}${next.date?` · ${next.date}`:''}`:'');showCircuitPhoto(hero);showRaceMode();
  renderChampionshipPanel($('tracks'),championshipFor());renderStoryCareer();
 }
 // Modo História's career (story-career.js) as this browser keeps it: read for the track screen, and
@@ -2223,6 +2257,36 @@ $('storyStart').onclick=()=>chooseMode('historia');
 $('driftStart').onclick=()=>chooseMode('drift');
 $('pilotName').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('start').disabled){e.preventDefault();$(menuMode==='historia'?'storyStart':'start').click();}});
 $('tracksBack').onclick=()=>{if(!loading)showScreen(carScreen()?'cars':'opening');};
+// The steps on top of the car and track screens (the paddock look, menus.css): Início, Carro (Modo Corrida and the
+// arena), then Pista, Temporada (Modo História) or Arena; the screen shown is the current step, the others go there
+// (onwards from the car screen as its own button does: a room's guest waits, the arena opens).
+function renderSteps(){
+ const last=menuMode==='drift'?['arena','Arena']:['tracks',menuMode==='historia'?'Temporada':'Pista'],steps=[['opening','Início'],...carScreen()?[['cars','Carro']]:[],last],key=steps.flat().join()+screen;
+ for(const nav of document.querySelectorAll('.menu-steps')){
+  if(nav.dataset.key===key)continue;nav.dataset.key=key;
+  nav.replaceChildren(...steps.map(([step,label],i)=>{const b=document.createElement('button');b.type='button';b.dataset.step=step;b.innerHTML=`<b>${i+1}</b> ${label}`;if(step===screen)b.setAttribute('aria-current','step');return b;}));
+ }
+}
+for(const nav of document.querySelectorAll('.menu-steps'))nav.onclick=e=>{
+ const step=e.target.closest('[data-step]')?.dataset.step;if(!step||step===screen||loading||sessionStarted)return;
+ if(step==='opening'||step==='cars')showScreen(step);else if(screen==='cars')$('carsNext').click();
+};
+// The track screen's mode row (paddock look): Corrida única, Treino solo, 1x1 or Campeonato, kept for the next visit.
+// The screen then shows that race's start button (Largar) and what it needs: the 1x1's rival, the championship's
+// calendar. Modo História races only its season. The classic menus show every start button, as before.
+const RACE_STARTS={single:'singleRace',solo:'soloRace',duel:'duelRace',championship:'championshipStart'};
+const raceMode=()=>menuMode==='historia'?'championship':preferences.values.raceMode;
+function showRaceMode(){
+ const mode=raceMode();$('tracks').dataset.race=mode;
+ for(const tab of $('raceModes').querySelectorAll('[data-race]')){const on=tab.dataset.race===mode;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;}
+ // The 1x1's rival right after its tab, the row's last (user, 10-24); the classic menus keep it under the 1x1's button.
+ const pick=document.querySelector('.duel-pick'),home=paddockMenus()?$('raceModes'):document.querySelector('.duel-card');if(pick.parentElement!==home)home.append(pick);
+}
+function pickRaceMode(mode,focus=false){if(sessionStarted||loading||!RACE_STARTS[mode])return;preferences.update({raceMode:mode});showRaceMode();if(focus)$('raceModes').querySelector(`[data-race="${mode}"]`).focus();}
+for(const tab of $('raceModes').querySelectorAll('[data-race]'))tab.onclick=()=>pickRaceMode(tab.dataset.race);
+$('raceModes').addEventListener('keydown',e=>{const step={ArrowLeft:-1,ArrowRight:1}[e.key];if(!step||!e.target.closest('[role=tab]'))return;e.preventDefault();const modes=[...$('raceModes').querySelectorAll('[data-race]')].map(tab=>tab.dataset.race);pickRaceMode(modes[(modes.indexOf(raceMode())+step+modes.length)%modes.length],true);});
+// The button that starts the race the track screen offers first: the mode's Largar (paddock look), or Corrida única.
+const raceStart=()=>$(paddockMenus()?RACE_STARTS[raceMode()]:menuMode==='historia'?'championshipStart':'singleRace');
 // For the browser checks: a Modo História race on the chosen circuit outside the season (players race
 // only the Old Stock championship in the story), and the career's cards read through (the wife paid).
 window.interlagosHistoria={

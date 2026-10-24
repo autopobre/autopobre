@@ -24,6 +24,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from PIL import Image, ImageStat
 from playwright.sync_api import sync_playwright
+from browser_config import start_race
 from browser_config import (
     GAME_URL, browser_args, browser_executable, open_menu, wait_js, wait_race_start,
 )
@@ -128,7 +129,7 @@ def begin_duel(page):
     page.click('#start')
     if page.is_visible('#cars'):
         page.click('#carsNext')
-    page.click('#duelRace')
+    start_race(page, '#duelRace')
     wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused', timeout=180000)
     page.evaluate('interlagos.skipIntro()')
     wait_race_start(page)

@@ -16,7 +16,7 @@ if hasattr(sys.stdout, 'reconfigure'):
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import browser_config  # noqa: F401  (headless + in-page pointer lock)
-from browser_config import GAME_URL, browser_executable, browser_args, open_menu, wait_js, wait_race_start, pause_race
+from browser_config import GAME_URL, browser_executable, browser_args, open_menu, wait_js, wait_race_start, pause_race, start_race
 from playwright.sync_api import sync_playwright
 
 PORT = sys.argv[1] if len(sys.argv) > 1 else None
@@ -102,7 +102,7 @@ with sync_playwright() as p:
     r = reflections(page)
     check('studio_lends_its_map', r['owner'] == 'estudio' and r['envSource'] == 'outro', r)
     page.screenshot(path=str(OUT / 'estudio.png'))
-    page.click('#carsNext'); page.click('#singleRace')
+    page.click('#carsNext'); start_race(page, '#singleRace')
     wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused', timeout=180000)
     page.evaluate('interlagos.skipIntro()'); wait_race_start(page, timeout=60000)
     wait_js(page, '!interlagosGraficos.info().compiling', timeout=60000)

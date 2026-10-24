@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import browser_executable,browser_args,wait_js,wait_race_start
+from browser_config import browser_executable,browser_args,wait_js,wait_race_start, start_race
 
 PORT=sys.argv[1] if len(sys.argv)>1 else '8799'
 URL=f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
@@ -25,7 +25,10 @@ with sync_playwright() as p:
  page.on('pageerror',lambda e:(errors.append(str(e)),print(str(e),flush=True)))
  page.goto(URL+'?intro=0',wait_until='domcontentloaded');wait_js(page,"window.interlagos&&!document.querySelector('#start').disabled")
  page.fill('#pilotName','Piloto 1x1');page.click('#start');page.click('#carsNext');wait_js(page,"!document.querySelector('#tracks').classList.contains('hidden')")
- assert page.is_visible('#soloRace') and page.is_visible('#duelRace') and page.is_visible('#duelRival') and page.is_visible('#tracksLaps')
+ # The mode row offers both; the 1x1 shows its rival beside its start (Largar).
+ assert page.is_visible('#raceModes [data-race="solo"]') and page.is_visible('#raceModes [data-race="duel"]') and page.is_visible('#tracksLaps')
+ page.click('#raceModes [data-race="duel"]')
+ assert page.is_visible('#duelRace') and page.is_visible('#duelRival') and not page.is_visible('#singleRace')
  assert page.input_value('#tracksLaps')=='3' and page.input_value('#duelRival')=='73' and '#73' in page.inner_text('#duelRaceDetail')
  assert page.locator('#duelRival option').count()==14
  # Laps on the track screen: the same preference as the race settings, both ways.
@@ -49,7 +52,7 @@ with sync_playwright() as p:
  page.click('#tracksBack');page.click('#start');page.click('#carsNext')
 
  # 1x1 against #19 at Interlagos: two cars, the rival on pole, the player beside him.
- page.click('#duelRace');wait_js(page,"interlagos.ready&&interlagos.circuit==='interlagos'&&!interlagos.state.paused")
+ start_race(page, '#duelRace');wait_js(page,"interlagos.ready&&interlagos.circuit==='interlagos'&&!interlagos.state.paused")
  page.evaluate(HOOK);page.wait_for_timeout(300)
  duel=page.evaluate(FIELD);print(json.dumps({'duel':duel}),flush=True)
  assert duel['lineup']==['19'] and duel['rivals']==['19'] and duel['size']==2 and duel['laps']==3 and duel['shown']==['19'],duel
@@ -64,7 +67,7 @@ with sync_playwright() as p:
  page.evaluate('interlagos.immersiveInfo();fixture.onMainMenu();true');wait_js(page,"!document.querySelector('#tracks').classList.contains('hidden')")
 
  # Solo practice: nobody else, no position, no lap total, no flag, a full tank.
- page.click('#soloRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused")
+ start_race(page, '#soloRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused")
  page.wait_for_timeout(300);solo=page.evaluate(FIELD);print(json.dumps({'solo':solo}),flush=True)
  assert solo['lineup']==[] and solo['rivals']==[] and solo['size']==1 and solo['laps']=='inf' and solo['shown']==[],solo
  assert solo['positionHidden'] and solo['lap']=='1' and 'TREINO SOLO' in solo['session'],solo
@@ -81,7 +84,7 @@ with sync_playwright() as p:
  page.click('#leaveRace');wait_js(page,"!document.querySelector('#tracks').classList.contains('hidden')")
 
  # Corrida única after them: the whole grid again, the player at the back.
- page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused");page.wait_for_timeout(300)
+ start_race(page, '#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused");page.wait_for_timeout(300)
  full=page.evaluate(FIELD);assert full['lineup'] is None and full['size']==15 and len(full['shown'])==14 and full['position']=='15º / 15' and 'PISTA LIVRE' in full['session'],full
  result['single']={'size':full['size'],'position':full['position']}
  page.evaluate('interlagos.immersiveInfo();fixture.onMainMenu();true')

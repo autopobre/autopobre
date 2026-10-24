@@ -38,7 +38,7 @@ with sync_playwright() as p:
     page.fill('#pilotName', 'Piloto Drift')
     page.click('#driftStart')
     wait_js(page, "!document.querySelector('#cars').classList.contains('hidden')")
-    assert 'ARENA DE DRIFT' in page.inner_text('#carsMode') and 'Entrar na arena' in page.inner_text('#carsNext')
+    assert 'ARENA DE DRIFT' in page.inner_text('#carsMode') and 'Entrar na arena' in page.text_content('#carsNext')
     page.click('#carsNext')
     wait_js(page, "interlagos.ready&&interlagos.circuit==='arena'&&interlagos.arenaInfo()&&document.querySelector('#menu').classList.contains('hidden')", 240000)
     page.wait_for_timeout(1500)

@@ -12,7 +12,7 @@ import os
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import GAME_URL, browser_executable, browser_args, open_menu, wait_js, wait_race_start
+from browser_config import GAME_URL, browser_executable, browser_args, open_menu, wait_js, wait_race_start, start_race
 
 BASE = os.environ.get('INTERLAGOS_URL', GAME_URL)
 ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
@@ -55,7 +55,7 @@ def start(browser, circuit, level, overrides=None):
     page.click('#start')
     if page.is_visible('#cars'):
         page.click('#carsNext')
-    page.click('#soloRace')   # Treino solo: the track to ourselves
+    start_race(page, '#soloRace')   # Treino solo: the track to ourselves
     wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused', timeout=180000)
     page.evaluate('interlagos.skipIntro()')
     wait_race_start(page)

@@ -15,7 +15,7 @@ MODULES = (
     'sea-water.js', 'street-walls.js', 'floripa-bridges.js', 'floripa-landmarks.js', 'minhocao-structures.js', 'minhocao-landmarks.js', 'pampulha-estadios.js', 'pampulha-igrejinha.js', 'pampulha-fauna.js', 'pampulha-guanabara.js', 'pampulha-niemeyer.js', 'pampulha-orla.js', 'pampulha-barragem.js', 'pampulha-parques.js', 'pampulha-pontes.js', 'pampulha-futebol.js', 'futebol.css', 'flying-saucer.js', 'branch-layout.js', 'branch-scenery.js', 'branch-lane.js', 'closed-roads.js',
     'city-map.js', 'city-crowd.js', 'city-buildings.js', 'city-streets.js', 'street-closures.js', 'city-cars.js', 'city-furniture.js', 'beira-mar.js', 'city-life.js', 'city-traffic.js', 'city-race.js',
     'race-results.js', 'race-results.css', 'lap-records.js', 'ghost-lap.js', 'ghost-car.js', 'driving-line.js', 'driving-line-view.js', 'championship.js', 'championship-board.js', 'pistas.css',
-    'race-roster.js', 'car-select.js', 'look-select.js', 'pilot-look.js', 'visual.css', 'car-garage.js', 'car-livery.js', 'fusca.js', 'fusca-cockpit.js', 'carros.css',
+    'race-roster.js', 'car-select.js', 'look-select.js', 'visual-shop.js', 'pilot-look.js', 'visual.css', 'car-garage.js', 'car-livery.js', 'fusca.js', 'fusca-cockpit.js', 'carros.css',
     'car-finish.js', 'car-reflections.js',
     "sound-effects.js", "game-music.js", "recorded-music.js", "race-field.js", "crash-parts.js", "settings.js", "settings.css", 'graphics-settings.js', 'graphics-panel.js', 'debug-overlay.js', 'perf-probe.js', 'car-lod.js', 'graficos.css', "mobile-controls.js", "mobile.css", "gamepad-controls.js", "wheel-controls.js", "wheel-panel.js", "key-bindings.js", "keys-panel.js", "pad-bindings.js", "pad-panel.js", "manual-gearbox.js", "brake-reverse.js",
     'main.js', 'player-preferences.js', 'physics.js', 'camera-return.js', 'car-audio.js', 'engine-loops.js', 'tyre-sounds.js', 'car-horn.js', 'sound-tuning.js', 'car-openings.js', 'cockpit.js', 'cockpit-materials.js', 'cockpit-instruments.js', 'cockpit-rear.js', 'cockpit-equipment.js',
@@ -26,7 +26,7 @@ MODULES = (
     'sun-light.js', 'car-shadow.js',
     'contact-shadows.js', 'car-wheels.js',
     'race-action.js', 'verge-vegetation.js', 'skid-marks.js', 'track-surface.js', 'tyre-smoke.js', 'speed-particles.js', 'kerb-contact.js', 'side-mirrors.js', 'brake-lights.js', 'sky.js', 'weather.js', 'rain-climate.js', 'headlights.js', 'rain.js', 'windscreen-rain.js', 'floodlights.js', 'cinematic.js', 'sponsors.js', 'trackside.js', 'trackside-flags.js', 'tv-camera.js', 'intro-cinematic.js', 'landscape.js', 'lake-contact.js', 'lake-waves.js', 'tree-contact.js',
-    'style.css', 'immersive.css', 'abertura.css', 'index.html', 'sobre.html',
+    'style.css', 'immersive.css', 'abertura.css', 'menus.css', 'index.html', 'sobre.html',
     'favicon.svg', 'favicon.ico', 'apple-touch-icon.png',
 )
 # The multiplayer test room is published only under /dev/ (preparar_publicacao.py --multiplayer);
@@ -53,7 +53,10 @@ ASSETS = (
     'circuitos/pampulha_medio_relevo.bin', 'circuitos/pampulha_longe_relevo.bin',
     'circuitos/floripa_cidade.png',
     'opala99_assinaturas_omp.glb', 'opala99_seiva_danilo.glb', 'fusca_v2.glb',
-    'abertura/desclassificado_v1.jpg', 'abertura/abertura_stevan_opala99.jpg', 'abertura/logo_auto_pobre_racing.webp',
+    'abertura/desclassificado_v1.jpg', 'abertura/abertura_stevan_opala99.jpg', 'abertura/logo_auto_pobre_racing_v2.webp',
+    # The menus' type (menus.css): Roboto Condensed, Inter and Barlow Condensed, each under the SIL Open Font License.
+    'fontes/roboto-condensed-400-700.woff2', 'fontes/inter-700-800.woff2', 'fontes/barlow-condensed-600i.woff2', 'fontes/barlow-condensed-800i.woff2',
+    'fontes/OFL_roboto_condensed.txt', 'fontes/OFL_inter.txt', 'fontes/OFL_barlow.txt',
     'piloto/capacete_publico.jpg', 'piloto/referencia_frente.jpg',
     # A história de Interlagos (historia-midia.js): pictures from Wikimedia Commons, credits in historia/creditos.txt.
     'historia/historia_aerea_1.jpg', 'historia/historia_aerea_2.jpg', 'historia/historia_brabham1977_1.jpg', 'historia/historia_emerson_1.jpg',
@@ -81,6 +84,15 @@ ASSETS = (
     'texturas/interior/chapa_xadrez_rough.jpg', 'texturas/interior/couro_painel_diff.jpg',
     'texturas/interior/couro_painel_nor_gl.jpg', 'texturas/interior/couro_painel_rough.jpg', 'texturas/interior/creditos.txt',
 )
+# The car screen's strip: a picture of each car of both grids (scripts/gerar_miniaturas_carros.py), the 99 in both paints.
+CAR_THUMBS = {
+    'opala': ('99', '73', '00', '7', '64', '2', '19', '51', '93', '312', '70', '9', '74', '88', '42'),
+    'fusca': ('20', '86', '77', '29', '18', '3', '33', '5', '99', '39', '11', '4', '9', '79', '49'),
+}
+ASSETS += tuple(f'carros/miniaturas/{model}_{number}.webp' for model, numbers in CAR_THUMBS.items() for number in numbers) + ('carros/miniaturas/opala_99_seiva.webp',)
+# The track screen's picture of each circuit at the golden hour (scripts/gerar_fotos_pistas.py).
+CIRCUIT_SCENES = ('interlagos', 'cascavel', 'piracicaba', 'chapeco', 'brasilia', 'goiania', 'guaratiba', 'velocitta', 'chapada', 'floripa', 'minhocao', 'pampulha', 'curvelo')
+ASSETS += tuple(f'circuitos/cenas/{circuit}.webp' for circuit in CIRCUIT_SCENES)
 THREE = (
     'build/three.module.js', 'build/three.core.js',
     'examples/jsm/loaders/GLTFLoader.js', 'examples/jsm/controls/OrbitControls.js',

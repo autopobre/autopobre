@@ -182,7 +182,7 @@ float boardNoise(float x){float i=floor(x),f=fract(x);return mix(boardHash(i),bo
 export async function createTrackBranding(data){
  const loader=new THREE.TextureLoader(),[oldStock,game,omp,rtj,eletric,doorDriver,doorPassenger]=await Promise.all([
   loader.loadAsync('./assets/branding/old_stock_preparada_v1.jpg'),
-  loader.loadAsync('./assets/abertura/logo_auto_pobre_racing.webp'),
+  loader.loadAsync('./assets/abertura/logo_auto_pobre_racing_v2.webp'),
   loader.loadAsync('./assets/branding/patrocinio_omp_v1.webp'),
   loader.loadAsync('./assets/branding/patrocinio_rtj_v1.webp'),
   loader.loadAsync('./assets/branding/patrocinio_eletric_v1.webp'),

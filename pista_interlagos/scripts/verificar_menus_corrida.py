@@ -84,7 +84,7 @@ with sync_playwright() as p:
         check('track screen: Câmbio, automatic by default', page.input_value('#tracksGearbox') == 'automatico' and page.input_value('#gearbox') == 'automatico')
         page.select_option('#tracksGearbox', 'manual')
         check('picked there, the gearbox is saved and Controles follows', saved().get('gearbox') == 'manual' and page.input_value('#gearbox') == 'manual')
-        page.locator('.tracks-side').screenshot(path=str(SHOTS / 'pistas_adversarios_cambio.png'))
+        page.locator('.tracks-side-head').screenshot(path=str(SHOTS / 'pistas_adversarios_cambio.png'))
         page.set_viewport_size({'width': 844, 'height': 390})
         page.wait_for_timeout(400)
         page.screenshot(path=str(SHOTS / 'pistas_celular_deitado.png'))

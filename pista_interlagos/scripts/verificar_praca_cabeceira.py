@@ -18,7 +18,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 import browser_config  # noqa: F401  (headless e a trava do mouse dentro da pagina, antes de qualquer pagina)
-from browser_config import browser_executable, browser_args, wait_js
+from browser_config import browser_executable, browser_args, wait_js, start_race
 
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 PORTA = args[0] if args else '8881'
@@ -88,7 +88,7 @@ with sync_playwright() as p:
     if page.is_visible('#cars'):
         page.click('#carsNext')
     wait_js(page, "!document.querySelector('#soloRace').disabled")
-    page.click('#soloRace')
+    start_race(page, '#soloRace')
     wait_js(page, 'window.interlagos?.ready&&!interlagos.state?.paused', timeout=400000)
     page.evaluate('interlagos.skipIntro?.();true')
     page.wait_for_timeout(4000)

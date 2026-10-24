@@ -6,7 +6,7 @@ view (key 5). Honours INTERLAGOS_URL (default: the 8799 server); screenshots in 
 import json
 import os
 from pathlib import Path
-from browser_config import browser_executable, browser_args, wait_js, open_menu, wait_race_start, GAME_URL
+from browser_config import browser_executable, browser_args, wait_js, open_menu, wait_race_start, GAME_URL, start_race
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,7 +32,7 @@ def race_in(browser, number):
     wait_js(page, "interlagosCarros.info().live", timeout=180000)
     page.evaluate(f"interlagosCarros.pick('{number}')")
     page.click('#carsNext')
-    page.click('#singleRace')
+    start_race(page, '#singleRace')
     wait_js(page, 'interlagos.ready&&!interlagos.state.paused', timeout=240000)
     info = page.evaluate("()=>({luizao:interlagos.cockpitInfo().luizao,raceCar:interlagosCarros.info().raceCar,tank:document.querySelector('#fuelTank').textContent,bar:+document.querySelector('#fuelBar').max})")
     wait_race_start(page)

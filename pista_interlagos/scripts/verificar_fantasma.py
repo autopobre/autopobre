@@ -10,7 +10,7 @@ import json
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import browser_executable,browser_args,wait_js,wait_race_start,pause_race,choose_race
+from browser_config import browser_executable,browser_args,wait_js,wait_race_start,pause_race,choose_race, start_race
 
 PORT=sys.argv[1] if len(sys.argv)>1 else '8799'
 URL=f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
@@ -56,7 +56,7 @@ with sync_playwright() as p:
  page.on('pageerror',lambda e:(errors.append(str(e)),print(str(e),flush=True)))
  page.goto(URL+'?intro=0',wait_until='domcontentloaded');wait_js(page,"window.interlagos&&!document.querySelector('#start').disabled")
  page.fill('#pilotName',PILOT);page.click('#start');page.click('#carsNext');wait_js(page,"!document.querySelector('#tracks').classList.contains('hidden')")
- page.click('#soloRace');wait_js(page,"interlagos.ready&&interlagos.circuit==='interlagos'&&!interlagos.state.paused")
+ start_race(page, '#soloRace');wait_js(page,"interlagos.ready&&interlagos.circuit==='interlagos'&&!interlagos.state.paused")
 
  # No lap yet: G only says so, and the ghost stays off.
  page.keyboard.press('KeyG');page.wait_for_timeout(200);g=info(page)

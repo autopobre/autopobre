@@ -14,7 +14,7 @@ import json
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import browser_executable,browser_args,wait_js,wait_race_start
+from browser_config import browser_executable,browser_args,wait_js,wait_race_start, start_race, race_mode
 
 PORT=sys.argv[1] if len(sys.argv)>1 else '8799'
 URL=f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
@@ -52,7 +52,7 @@ def car_screen(page,name):
  assert fit['left']['left']>=st['left']-1 and fit['right']['right']<=st['right']+1 and st['top']<fit['left']['top']<fit['left']['bottom']<st['bottom'],fit
  assert fit['detail']=='Com o Opala #73 · corrida única, treino, 1x1 ou campeonato',fit['detail']
  assert fit['width'] and fit['scroll']<=2,fit
- assert page.inner_text('#carsNext').startswith('Escolher a pista')
+ assert page.text_content('#carsNext').startswith('Escolher a pista')
  return fit
 
 with sync_playwright() as p:
@@ -64,7 +64,7 @@ with sync_playwright() as p:
  result['carros']=car_screen(page,'copa_fusca_carros.png')
 
  # Modo Corrida: three calendars; the Copa Fusca and its eleven rounds.
- page.click('#carsNext');assert page.is_visible('#tracks') and page.get_attribute('#tracks','data-mode')=='corrida'
+ page.click('#carsNext');assert page.is_visible('#tracks') and page.get_attribute('#tracks','data-mode')=='corrida';race_mode(page,'championship')
  tabs=page.locator('#championshipTabs [role=tab]').all_inner_texts();assert tabs==['Todas as pistas','Old Stock 2026','Copa Fusca 2026'],tabs
  page.click(CUP);assert page.get_attribute(CUP,'aria-selected')=='true'
  rounds=page.locator('#championshipCalendar li');assert rounds.count()==11
@@ -74,8 +74,8 @@ with sync_playwright() as p:
  status=page.inner_text('#championshipStatus');assert status.startswith('11 etapas de Fusca'),status
  if not page.evaluate("import('./circuits.js').then(m=>Object.hasOwn(m.CIRCUITS,'goiania'))"):
   soon=page.locator('#championshipCalendar li.soon');assert soon.count()==1 and 'em breve' in soon.inner_text(),soon.all_inner_texts()
-  assert page.is_disabled('#championshipStart') and page.inner_text('#championshipStart')=='Em breve: Goiânia',page.inner_text('#championshipStart')
- result['copa']={'status':status,'start':page.inner_text('#championshipStart')}
+  assert page.is_disabled('#championshipStart') and page.text_content('#championshipStart')=='Em breve: Goiânia',page.text_content('#championshipStart')
+ result['copa']={'status':status,'start':page.text_content('#championshipStart')}
  shot(page,'copa_fusca_pistas.png')
  # The arrows walk the three tabs.
  page.focus(CUP);page.keyboard.press('ArrowRight');assert page.get_attribute('[data-championship-calendar="todas"]','aria-selected')=='true'
@@ -97,10 +97,10 @@ with sync_playwright() as p:
  page=context.new_page();page.set_default_timeout(240000);watch(page)
  opening(page,'Piloto copa')
  assert page.evaluate("import('./circuits.js').then(m=>Object.hasOwn(m.CIRCUITS,'goiania'))")
- page.click('#start');page.click('#carsNext');page.click(CUP)
- assert page.locator('#championshipCalendar li.soon').count()==0 and page.is_enabled('#championshipStart') and page.inner_text('#championshipStart').startswith('Começar campeonato')
+ page.click('#start');page.click('#carsNext');race_mode(page,'championship');page.click(CUP)
+ assert page.locator('#championshipCalendar li.soon').count()==0 and page.is_enabled('#championshipStart') and page.text_content('#championshipStart').startswith('Começar campeonato')
  assert 'Opala #73' in page.inner_text('#tracksPilot'),page.inner_text('#tracksPilot')
- page.click('#championshipStart')
+ start_race(page, '#championshipStart')
  wait_js(page,"interlagos.ready&&interlagos.circuit==='interlagos'&&!interlagos.state.paused",timeout=240000)
  page.evaluate('interlagos.skipIntro?.()')
  session=page.inner_text('header .session');assert 'COPA FUSCA 2026 · ETAPA 1/11' in session,session
@@ -124,8 +124,8 @@ with sync_playwright() as p:
  shot(page,'copa_fusca_resultado.png')
  # Back on the track screen: round 2 next; a single race goes back to the car screen's Opala.
  page.click('#resultsMainMenu');wait_js(page,"!document.querySelector('#tracks').classList.contains('hidden')")
- assert page.inner_text('#championshipStart')=='Correr a etapa 2 →',page.inner_text('#championshipStart')
- page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
+ assert page.text_content('#championshipStart')=='Correr a etapa 2 →',page.text_content('#championshipStart')
+ start_race(page, '#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
  cars=page.evaluate("()=>interlagosCarros.info()");assert cars['raceModel']=='opala' and cars['opalaShown'],cars
  session=page.inner_text('header .session');assert 'COPA FUSCA' not in session,session
  context.close()
@@ -135,7 +135,7 @@ with sync_playwright() as p:
  small=phone.new_page();small.set_default_timeout(180000);watch(small)
  opening(small,'Piloto celular');small.tap('#start')
  result['celular']=car_screen(small,'copa_fusca_carros_celular.png')
- small.tap('#carsNext');small.tap(CUP)
+ small.tap('#carsNext');race_mode(small,'championship',tap=True);small.tap(CUP)
  fit=small.evaluate("""()=>{const r=s=>document.querySelector(s).getBoundingClientRect(),panel=r('.championship-panel'),tabs=r('#championshipTabs');
   return {width:document.documentElement.scrollWidth<=innerWidth,tabs:tabs.toJSON(),panel:panel.toJSON(),rounds:[...document.querySelectorAll('#championshipCalendar li')].map(li=>li.getBoundingClientRect().width)}}""")
  shot(small,'copa_fusca_pistas_celular.png')

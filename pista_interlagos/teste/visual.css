@@ -1,5 +1,5 @@
-/* The Visual screen (look-select.js): the pilot on a turntable in a small studio, drawn by the game's canvas behind this
-   screen's open middle, and the panel of picks beside it (under it on a phone held upright). */
+/* The Visual screen (look-select.js): the pilot on the fitting podium of the team's racewear store (visual-shop.js), drawn
+   by the game's canvas behind this screen's open middle, and the panel of picks beside it (under it on a phone held upright). */
 body.visual-open>:not(#view):not(#visual):not(#rotatePhone):not(dialog){visibility:hidden!important}
 #visual{z-index:30;align-items:stretch;justify-content:center;padding:22px 4vw;overflow:auto;backdrop-filter:none;
  background:radial-gradient(ellipse at 35% 55%,#20403a 0,#10231f 48%,#060d0c 100%)}

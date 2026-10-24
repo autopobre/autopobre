@@ -11,6 +11,8 @@ export const LAPS=Object.freeze({min:1,max:20,standard:3});
 export const CAMERA_MODES=Object.freeze(['chase','close','far','hood','cockpit','tv','aerial','orbit']);
 // The driving line's modes, in the order O goes round them.
 export const LINE_MODES=Object.freeze(['desligada','completa','curvas']);
+// The track screen's mode row: each picks which start button (Largar) the screen shows.
+export const RACE_MODES=Object.freeze(['single','solo','duel','championship']);
 const liveries=['assinaturas_omp','seiva_danilo'];
 export function normalizePreferences(value){
  const source=value&&typeof value==='object'?value:{};
@@ -63,7 +65,11 @@ export function normalizePreferences(value){
   // Câmbio (the Controles tab): automatic unless the player shifts the gears (manual-gearbox.js).
   gearbox:['automatico','manual'].includes(source.gearbox)?source.gearbox:'automatico',
   // A racing wheel's full lock in the game, in degrees from one side to the other (wheel-controls.js).
-  wheelLock:WHEEL_LOCKS.includes(source.wheelLock)?source.wheelLock:WHEEL_LOCK_DEFAULT
+  wheelLock:WHEEL_LOCKS.includes(source.wheelLock)?source.wheelLock:WHEEL_LOCK_DEFAULT,
+  // The menus as they were before the 2026-10 restyle (menus.css), boxes and filled buttons: off unless picked.
+  classicMenus:typeof source.classicMenus==='boolean'?source.classicMenus:false,
+  // The track screen's race picked in its mode row (Corrida única, Treino solo, 1x1, Campeonato), kept for the next visit.
+  raceMode:RACE_MODES.includes(source.raceMode)?source.raceMode:'single'
  };
 }
 function browserStorage(){try{return globalThis.localStorage;}catch{return null;}}

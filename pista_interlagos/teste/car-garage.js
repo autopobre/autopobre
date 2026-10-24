@@ -24,13 +24,13 @@ const rng=seed=>()=>(seed=seed*16807%2147483647)/2147483647;
 const box=(w,h,d)=>new THREE.BoxGeometry(w,h,d),cyl=(r,h,s=16,top=r,open=false)=>new THREE.CylinderGeometry(top,r,h,s,1,open);
 const along=g=>g.rotateZ(Math.PI/2),across=g=>g.rotateX(Math.PI/2);
 // Vertex colours (linear, as THREE.Color gives them); k>1 glows past white in the HDR picture (LEDs, light boxes).
-function paint(geometry,color,k=1){
+export function paint(geometry,color,k=1){
  const g=geometry.index?geometry.toNonIndexed():geometry;if(g.attributes.uv)g.deleteAttribute('uv');
  const c=new THREE.Color(color).multiplyScalar(k),n=g.attributes.position.count,a=new Float32Array(n*3);
  for(let i=0;i<n;i++){a[i*3]=c.r;a[i*3+1]=c.g;a[i*3+2]=c.b;}g.setAttribute('color',new THREE.BufferAttribute(a,3));return g;
 }
 // One object's parts by finish, in its own frame (+x toward the room, y up), placed together by Parts.place.
-class Kit{
+export class Kit{
  constructor(){this.parts={paint:[],metal:[],matte:[],glow:[]};}
  add(kind,geometry,color,pos=[0,0,0],k=1){this.parts[kind].push(paint(geometry.translate(...pos),color,k));return this;}
  p(g,c,pos){return this.add('paint',g,c,pos);}
@@ -38,7 +38,7 @@ class Kit{
  r(g,c,pos){return this.add('matte',g,c,pos);}
  g(g,c,pos,k=3){return this.add('glow',g,c,pos,k);}
 }
-class Parts{
+export class Parts{
  constructor(materials){this.M=materials;this.lists=new Map();}
  add(material,geometry){if(!this.lists.has(material))this.lists.set(material,[]);this.lists.get(material).push(geometry);}
  place(kit,x,z,y=0,turn=0){for(const [kind,list] of Object.entries(kit.parts))if(list.length){const g=mergeGeometries(list,false);g.rotateY(turn).translate(x,y,z);this.add(this.M[kind],g);}}
@@ -81,7 +81,7 @@ function floorMap(){
  },2048,Math.round(2048*D/W));
 }
 // Fine flake and scratches repeated every couple of metres (the floor shader mixes it in), so the floor holds up close.
-function grainMap(){
+export function grainMap(){
  return canvasTexture((ctx,w,h)=>{
   const r=rng(29);ctx.fillStyle='#808080';ctx.fillRect(0,0,w,h);
   for(let i=0;i<9000;i++){const v=r()<.5?40+r()*50:160+r()*70;ctx.fillStyle=`rgba(${v|0},${v|0},${v|0},${.25+r()*.4})`;const s=1+r()*2;ctx.fillRect(r()*w,r()*h,s,s);}
@@ -325,7 +325,7 @@ class Screens{
 // as much as it reflects of the room the studio drew upside down under it first (car-select.js): more at grazing
 // angles (Fresnel), less where the flecks break the coat. Drawn on the screen with the screen's own programs: a
 // reflection picture of its own needed every material compiled once more (seconds on the first visit).
-function floorMaterial(map,grain){
+export function floorMaterial(map,grain){
  const uniforms={mirror:{value:0},grain:{value:grain}};
  const material=new THREE.MeshStandardMaterial({name:'Piso_epoxi_garagem',map,roughness:.34,metalness:0,envMapIntensity:.9,transparent:true});
  material.onBeforeCompile=shader=>{
@@ -379,7 +379,7 @@ export function createGarage(){
  parts.place(trophies(L.trophies.w),G.wall,L.trophies.z);
  const sign=new Kit();sign.r(box(.05,L.logo.h+.42,L.logo.w+.7),0x0e1012,[.025,0,0]).g(box(.012,.025,L.logo.w+.66),0xf3f6ff,[.055,L.logo.h/2+.19,0],3).g(box(.012,.025,L.logo.w+.66),0xf3f6ff,[.055,-L.logo.h/2-.19,0],3);parts.place(sign,G.wall,L.logo.z,L.logo.y);
  const halo=new THREE.Mesh(new THREE.PlaneGeometry(L.logo.w*1.35,L.logo.h*1.5).rotateY(Math.PI/2),new THREE.MeshBasicMaterial({name:'Logo_brilho',map:haloMap(),transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));halo.position.set(G.wall+.06,L.logo.y,L.logo.z);root.add(halo);
- const logoMap=new THREE.TextureLoader().load('./assets/abertura/logo_auto_pobre_racing.webp');logoMap.colorSpace=THREE.SRGBColorSpace;logoMap.anisotropy=8;
+ const logoMap=new THREE.TextureLoader().load('./assets/abertura/logo_auto_pobre_racing_v2.webp');logoMap.colorSpace=THREE.SRGBColorSpace;logoMap.anisotropy=8;
  const logo=new THREE.Mesh(new THREE.PlaneGeometry(L.logo.w,L.logo.h).rotateY(Math.PI/2),new THREE.MeshBasicMaterial({name:'Logo_garagem',map:logoMap,transparent:true,depthWrite:false,color:new THREE.Color(1.3,1.3,1.3)}));logo.position.set(G.wall+.07,L.logo.y,L.logo.z);logo.renderOrder=1;root.add(logo);
  const {desk:deskKit,chair}=desk(L.desk.len);parts.place(deskKit,G.wall,L.desk.z);parts.place(chair,G.wall+1.45,L.desk.z+.45,0,.5);
  parts.place(safety(),G.wall,-12.6);

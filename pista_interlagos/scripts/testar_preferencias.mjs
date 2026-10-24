@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import {PlayerPreferences,PREFERENCES_KEY} from '../teste/player-preferences.js';
 const data=new Map(),storage={getItem:key=>data.get(key),setItem:(key,value)=>data.set(key,value)};
 let preferences=new PlayerPreferences(storage);
-assert.deepEqual(preferences.values,{immersive:true,livery:'assinaturas_omp',camera:'chase',circuit:'interlagos',damage:false,aceKoyzinho:false,aiLevel:'facil',retirements:true,classicInterior:false,graphics:{level:'auto',overrides:{}},debugOverlay:'off',debugCorner:'auto',duelRival:'73',fuscaDuelRival:'20',car:'99',fuscaCar:'99',carModel:'opala',carStill:false,laps:3,timeOfDay:'dia',rain:'seco',ghost:false,drivingLine:'desligada',padSteering:'normal',padRumble:true,gearbox:'automatico',wheelLock:270});
+assert.deepEqual(preferences.values,{immersive:true,livery:'assinaturas_omp',camera:'chase',circuit:'interlagos',damage:false,aceKoyzinho:false,aiLevel:'facil',retirements:true,classicInterior:false,graphics:{level:'auto',overrides:{}},debugOverlay:'off',debugCorner:'auto',duelRival:'73',fuscaDuelRival:'20',car:'99',fuscaCar:'99',carModel:'opala',carStill:false,laps:3,timeOfDay:'dia',rain:'seco',ghost:false,drivingLine:'desligada',padSteering:'normal',padRumble:true,gearbox:'automatico',wheelLock:270,classicMenus:false,raceMode:'single'});
 preferences.update({immersive:false,livery:'seiva_danilo',camera:'cockpit'});
 preferences=new PlayerPreferences(storage);
-assert.deepEqual(preferences.values,{immersive:false,livery:'seiva_danilo',camera:'cockpit',circuit:'interlagos',damage:false,aceKoyzinho:false,aiLevel:'facil',retirements:true,classicInterior:false,graphics:{level:'auto',overrides:{}},debugOverlay:'off',debugCorner:'auto',duelRival:'73',fuscaDuelRival:'20',car:'99',fuscaCar:'99',carModel:'opala',carStill:false,laps:3,timeOfDay:'dia',rain:'seco',ghost:false,drivingLine:'desligada',padSteering:'normal',padRumble:true,gearbox:'automatico',wheelLock:270});
+assert.deepEqual(preferences.values,{immersive:false,livery:'seiva_danilo',camera:'cockpit',circuit:'interlagos',damage:false,aceKoyzinho:false,aiLevel:'facil',retirements:true,classicInterior:false,graphics:{level:'auto',overrides:{}},debugOverlay:'off',debugCorner:'auto',duelRival:'73',fuscaDuelRival:'20',car:'99',fuscaCar:'99',carModel:'opala',carStill:false,laps:3,timeOfDay:'dia',rain:'seco',ghost:false,drivingLine:'desligada',padSteering:'normal',padRumble:true,gearbox:'automatico',wheelLock:270,classicMenus:false,raceMode:'single'});
 preferences.update({circuit:'curvelo'});
 assert.equal(new PlayerPreferences(storage).values.circuit,'curvelo');
 preferences.update({circuit:'../../private'});
@@ -49,7 +49,7 @@ preferences.update({classicInterior:true});assert.equal(new PlayerPreferences(st
 preferences.update({classicInterior:'yes'});assert.equal(new PlayerPreferences(storage).values.classicInterior,false);
 for(const corrupted of ['{"damage":1}','{"realisticWater":1}','{"graphics":["ultra"]}','not json','null','[]','42','{"immersive":"false","livery":"../../private","camera":"bad"}','{"circuit":{"toString":42}}']){
  data.set(PREFERENCES_KEY,corrupted);
- assert.deepEqual(new PlayerPreferences(storage).values,{immersive:true,livery:'assinaturas_omp',camera:'chase',circuit:'interlagos',damage:false,aceKoyzinho:false,aiLevel:'facil',retirements:true,classicInterior:false,graphics:{level:'auto',overrides:{}},debugOverlay:'off',debugCorner:'auto',duelRival:'73',fuscaDuelRival:'20',car:'99',fuscaCar:'99',carModel:'opala',carStill:false,laps:3,timeOfDay:'dia',rain:'seco',ghost:false,drivingLine:'desligada',padSteering:'normal',padRumble:true,gearbox:'automatico',wheelLock:270});
+ assert.deepEqual(new PlayerPreferences(storage).values,{immersive:true,livery:'assinaturas_omp',camera:'chase',circuit:'interlagos',damage:false,aceKoyzinho:false,aiLevel:'facil',retirements:true,classicInterior:false,graphics:{level:'auto',overrides:{}},debugOverlay:'off',debugCorner:'auto',duelRival:'73',fuscaDuelRival:'20',car:'99',fuscaCar:'99',carModel:'opala',carStill:false,laps:3,timeOfDay:'dia',rain:'seco',ghost:false,drivingLine:'desligada',padSteering:'normal',padRumble:true,gearbox:'automatico',wheelLock:270,classicMenus:false,raceMode:'single'});
 }
 const denied=new PlayerPreferences({getItem(){throw Error('blocked')},setItem(){throw Error('blocked')}});
 assert.doesNotThrow(()=>denied.update({immersive:false,camera:'orbit'}));
@@ -92,5 +92,9 @@ preferences.update({padRumble:'off'});assert.equal(new PlayerPreferences(storage
 // Câmbio: automatic unless the player picks manual; a wheel's full lock 270° unless one of the listed.
 preferences.update({gearbox:'manual'});assert.equal(new PlayerPreferences(storage).values.gearbox,'manual');
 for(const bad of ['manual ','auto',true,null])assert.equal((preferences.update({gearbox:bad}),new PlayerPreferences(storage).values.gearbox),'automatico',`gearbox ${bad} falls back to automatico`);
+// The menus' look (menus.css) and the track screen's race mode: kept, anything else falls back to the defaults.
+preferences.update({classicMenus:true,raceMode:'duel'});assert.equal(new PlayerPreferences(storage).values.classicMenus,true);assert.equal(new PlayerPreferences(storage).values.raceMode,'duel');
+for(const bad of ['sim',1,null])assert.equal((preferences.update({classicMenus:bad}),new PlayerPreferences(storage).values.classicMenus),false,`classicMenus ${bad} falls back to false`);
+for(const bad of ['grid','',null])assert.equal((preferences.update({raceMode:bad}),new PlayerPreferences(storage).values.raceMode),'single',`raceMode ${bad} falls back to single`);
 for(const wheelLock of [180,540,900,270]){preferences.update({wheelLock});assert.equal(new PlayerPreferences(storage).values.wheelLock,wheelLock);}
 for(const bad of ['540',1080,0,null])assert.equal((preferences.update({wheelLock:bad}),new PlayerPreferences(storage).values.wheelLock),270,`wheelLock ${bad} falls back to 270`);

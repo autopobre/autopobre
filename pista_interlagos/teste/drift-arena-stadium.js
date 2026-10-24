@@ -378,7 +378,7 @@ function membraneMaterial(){
 
 async function loadImages(){
  const loader=new THREE.ImageLoader(),get=url=>loader.loadAsync(url).catch(()=>null);
- const [game,omp,rtj,eletric,doorDriver,doorPassenger]=await Promise.all(['./assets/abertura/logo_auto_pobre_racing.webp','./assets/branding/patrocinio_omp_v1.webp','./assets/branding/patrocinio_rtj_v1.webp','./assets/branding/patrocinio_eletric_v1.webp','./assets/branding/apoiadores_porta_motorista_v1.jpg','./assets/branding/apoiadores_porta_passageiro_v1.jpg'].map(get));
+ const [game,omp,rtj,eletric,doorDriver,doorPassenger]=await Promise.all(['./assets/abertura/logo_auto_pobre_racing_v2.webp','./assets/branding/patrocinio_omp_v1.webp','./assets/branding/patrocinio_rtj_v1.webp','./assets/branding/patrocinio_eletric_v1.webp','./assets/branding/apoiadores_porta_motorista_v1.jpg','./assets/branding/apoiadores_porta_passageiro_v1.jpg'].map(get));
  return {game,omp,rtj,eletric,doorDriver,doorPassenger};
 }
 

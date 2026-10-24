@@ -46,6 +46,8 @@ class Studio {
   this.still=false;this.yaw=-.55;this.handUntil=0;this.time=0;this.car=null;this.shown=null;this.wanted=null;this.next=null;this.template=null;this.fusca=null;this.environment=null;
   this.zoom=this.zoomTo=1;this.zoomMax=2;this.elevation=this.elevationTo=VIEW.elevation;this.offset=new THREE.Vector3();this.offsetTo=new THREE.Vector3();
   this.box=new THREE.Box3(new THREE.Vector3(-2.4,0,-.95),new THREE.Vector3(2.4,1.45,.95));this.view=null;this.lens=1;this.distance=0;
+  // fill: how much of the stage's width the car's 5 m take (CarSelect's fill option).
+  this.fill=()=>.76;
  }
  // The garage is built the first time the screen draws (the story never shows it) and its lights baked into the
  // map the paint reflects.
@@ -83,11 +85,12 @@ class Studio {
   if(!this.garage)this.setup(renderer);setCarEnvironment(this.environment,'estudio');
   if(this.wanted!==this.shown&&!this.next)this.build(renderer);
   if(!this.car)return false;
-  this.time+=dt;this.zoom+=(this.zoomTo-this.zoom)*ease;if(!this.still&&this.time>this.handUntil)this.yaw+=dt*.32/Math.pow(Math.max(1,this.zoom),.6);this.turntable.rotation.y=this.yaw;
+  this.time+=dt;this.zoom+=(this.zoomTo-this.zoom)*ease;// Clockwise seen from above (user, 10-24): the yaw goes down.
+  if(!this.still&&this.time>this.handUntil)this.yaw-=dt*.32/Math.pow(Math.max(1,this.zoom),.6);this.turntable.rotation.y=this.yaw;
   this.garage.update(dt);
   const size=renderer.getSize(new THREE.Vector2()),W=size.x,H=size.y,c=this.camera,half=Math.tan(degToRad(VIEW.fov/2));
   // Far enough for the car (about 5 m seen three-quarters on, 1.6 m high) to fill most of the stage, clear of the arrows on its sides.
-  const d=clamp(Math.max(5*H/(2*half*.76*Math.max(1,rect.width)),1.7*H/(2*half*.66*Math.max(1,rect.height))),4.3,40);
+  const d=clamp(Math.max(5*H/(2*half*this.fill()*Math.max(1,rect.width)),1.7*H/(2*half*.66*Math.max(1,rect.height))),4.3,40);
   this.zoomMax=Math.max(1,d/VIEW.near)*VIEW.lens;this.zoomTo=clamp(this.zoomTo,VIEW.out,this.zoomMax);
   const want=d/this.zoom;let dist=Math.max(VIEW.near,want);this.lens=dist/want;
   this.offset.lerp(this.offsetTo,ease);const target=this.offset.clone();target.y+=VIEW.height;
@@ -112,6 +115,49 @@ class Studio {
   undo();renderer.setRenderTarget(saved.target);renderer.autoClear=saved.autoClear;
   return true;
  }
+ // A picture of the car shown, alone (the garage hidden) on a see-through ground, for the screen's strip of cars
+ // (scripts/gerar_miniaturas_carros.py): seen front three-quarters on, drawn twice in a corner of the canvas, over
+ // black and over white, whose difference gives each pixel's cover (the canvas has no alpha); drawn at scale times
+ // the size and shrunk, for smooth edges whatever the antialias. Gives PNG and WebP data URLs, or null.
+ snapshot(renderer,{width=320,height=160,yaw=-1.6,elevation=.16,scale=2}={}){
+  if(!this.car||!this.garage)return null;
+  const W=width*scale,H=height*scale,canvas=renderer.domElement,ratio=renderer.getPixelRatio();if(canvas.width<W||canvas.height<H)return null;
+  const saved={yaw:this.turntable.rotation.y,viewport:renderer.getViewport(new THREE.Vector4()),scissor:renderer.getScissor(new THREE.Vector4()),test:renderer.getScissorTest(),target:renderer.getRenderTarget(),autoClear:renderer.autoClear,background:this.scene.background};
+  const hidden=[this.garage.root,this.garage.deck];for(const o of hidden)o.visible=false;
+  this.turntable.rotation.y=yaw;this.world.updateMatrixWorld(true);
+  // The camera along the studio's own line, moved until the car fills the picture with a small margin.
+  // Only what shows: the model carries hidden parts (the 99's own livery, the far copies) that would shrink it.
+  const box=new THREE.Box3(),part=new THREE.Box3();this.car.traverseVisible(o=>{if(!o.isMesh)return;o.geometry.boundingBox??o.geometry.computeBoundingBox();box.union(part.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld));});
+  const center=box.getCenter(new THREE.Vector3()),c=new THREE.PerspectiveCamera(22,W/H,.05,120);
+  const dir=new THREE.Vector3(Math.cos(elevation)*Math.cos(VIEW.azimuth),Math.sin(elevation),Math.cos(elevation)*Math.sin(VIEW.azimuth));
+  const corners=[0,1,2,3,4,5,6,7].map(i=>new THREE.Vector3(i&1?box.max.x:box.min.x,i&2?box.max.y:box.min.y,i&4?box.max.z:box.min.z));
+  let dist=box.getSize(new THREE.Vector3()).length()*2;const target=center.clone();
+  for(let i=0;i<4;i++){
+   c.position.copy(target).addScaledVector(dir,dist);c.lookAt(target);c.updateMatrixWorld();
+   const p=corners.map(v=>v.clone().project(c)),x=[Math.min(...p.map(v=>v.x)),Math.max(...p.map(v=>v.x))],y=[Math.min(...p.map(v=>v.y)),Math.max(...p.map(v=>v.y))];
+   const right=new THREE.Vector3().setFromMatrixColumn(c.matrixWorld,0),up=new THREE.Vector3().setFromMatrixColumn(c.matrixWorld,1),half=Math.tan(THREE.MathUtils.degToRad(c.fov/2))*dist;
+   target.addScaledVector(right,(x[0]+x[1])/2*half*c.aspect).addScaledVector(up,(y[0]+y[1])/2*half);
+   dist*=Math.max((x[1]-x[0])/2/.94,(y[1]-y[0])/2/.9);
+  }
+  c.position.copy(target).addScaledVector(dir,dist);c.lookAt(target);c.updateMatrixWorld();
+  const shots=[],undo=screenLook(renderer);renderer.setRenderTarget(null);renderer.autoClear=true;renderer.setViewport(0,0,W/ratio,H/ratio);renderer.setScissor(0,0,W/ratio,H/ratio);renderer.setScissorTest(true);
+  for(const ground of [0x000000,0xffffff]){
+   this.scene.background=new THREE.Color(ground);renderer.render(this.scene,c);
+   const copy=document.createElement('canvas');copy.width=W;copy.height=H;const ctx=copy.getContext('2d',{willReadFrequently:true});
+   ctx.drawImage(canvas,0,canvas.height-H,W,H,0,0,W,H);shots.push(ctx.getImageData(0,0,W,H));
+  }
+  undo();renderer.setViewport(saved.viewport);renderer.setScissor(saved.scissor);renderer.setScissorTest(saved.test);renderer.setRenderTarget(saved.target);renderer.autoClear=saved.autoClear;
+  this.scene.background=saved.background;this.turntable.rotation.y=saved.yaw;for(const o of hidden)o.visible=true;this.world.updateMatrixWorld(true);
+  // Over black a pixel is cover·colour, over white cover·colour + (1 - cover).
+  const [dark,light]=shots,out=new ImageData(W,H);
+  for(let i=0;i<out.data.length;i+=4){
+   const cover=1-((light.data[i]-dark.data[i])+(light.data[i+1]-dark.data[i+1])+(light.data[i+2]-dark.data[i+2]))/765;
+   for(let k=0;k<3;k++)out.data[i+k]=cover>.004?Math.min(255,dark.data[i+k]/cover):0;out.data[i+3]=Math.round(THREE.MathUtils.clamp(cover,0,1)*255);
+  }
+  const big=document.createElement('canvas');big.width=W;big.height=H;big.getContext('2d').putImageData(out,0,0);
+  const small=document.createElement('canvas');small.width=width;small.height=height;const s=small.getContext('2d');s.imageSmoothingQuality='high';s.drawImage(big,0,0,width,height);
+  return {png:small.toDataURL('image/png'),webp:small.toDataURL('image/webp',.86)};
+ }
  // A drag: sideways turns the car (and holds its own turn a while), up and down tilts the camera.
  turn(dx,dy=0){this.yaw+=dx*.009;this.elevationTo+=dy*.006;this.handUntil=this.time+2.5;}
  // Where the pointer (page pixels) meets the car's box, in the scene; null off the car.
@@ -133,13 +179,14 @@ class Studio {
 }
 // root: the #cars screen. values: the chosen car's number in each model's field ({opala, fusca}); model: the tab
 // shown ('opala' or 'fusca'). onPick(number, model), onModel(model) (main.js then loads the Fusca's model:
-// setFusca), onNext(), onBack(); still and onStill(still): the Parar de girar box, kept by main.js; quality() gives the Gráficos tab's car reflections (the garage floor's follow them).
+// setFusca), onNext(), onBack(); still and onStill(still): the Parar de girar box, kept by main.js; quality() gives the Gráficos tab's car reflections (the garage floor's follow them);
+// livery() the Pintura chosen, whose 99 the strip of cars shows; fill() how much of the stage's width the car takes.
 // In a multiplayer room (setRoom) the arrows pass over the cars other pilots have (the note says whose they are),
 // and everyone races the Opala (the tabs hide).
 export class CarSelect {
- constructor({root,values={},model=CAR_MODEL_DEFAULT,carRoot,onPick,onModel,onNext,onBack,still=false,onStill,quality=()=>'pista'}){
+ constructor({root,values={},model=CAR_MODEL_DEFAULT,carRoot,onPick,onModel,onNext,onBack,still=false,onStill,quality=()=>'pista',livery=()=>null,fill=()=>.76}){
   this.root=root;this.model=CAR_MODELS.includes(model)?model:CAR_MODEL_DEFAULT;
-  this.values=Object.fromEntries(CAR_MODELS.map(m=>[m,carEntry(values[m],m)?values[m]:PLAYER_CAR_DEFAULT]));this.onPick=onPick;this.onModel=onModel;this.quality=quality;this.studio=new Studio(carRoot);this.live=false;
+  this.values=Object.fromEntries(CAR_MODELS.map(m=>[m,carEntry(values[m],m)?values[m]:PLAYER_CAR_DEFAULT]));this.onPick=onPick;this.onModel=onModel;this.quality=quality;this.livery=livery;this.studio=new Studio(carRoot);this.studio.fill=fill;this.live=false;
   this.room=null;this.taken=new Map();this.asked=null;this.guest=null;this.failure=null;this.tell('');
   const $=id=>root.querySelector('#'+id);this.stage=$('carStage');this.status=$('carStageStatus');this.tabs=$('carModels');this.note=root.querySelector('.car-note');
   for(const tab of this.tabs.querySelectorAll('[data-model]'))tab.onclick=()=>this.setModel(tab.dataset.model);
@@ -148,6 +195,19 @@ export class CarSelect {
   const box=$('carStill');box.checked=this.studio.still=!!still;box.onchange=()=>{this.studio.still=box.checked;onStill?.(box.checked);};
   $('carLeft').onclick=()=>this.step(-1);$('carRight').onclick=()=>this.step(1);
   $('carsNext').onclick=()=>onNext();$('carsBack').onclick=()=>onBack();
+  // The strip under the stage (paddock look, menus.css): the tab's grid in small pictures, a click takes that car.
+  this.thumbs=$('carThumbs');this.thumbs.onclick=e=>{const b=e.target.closest('[data-car]');if(b&&performance.now()-this.dragged>250)this.pick(b.dataset.car);};
+  // Dragged with the mouse, the strip slides (user, 10-24; fingers scroll it natively); a drag picks no car.
+  let drag=null;this.dragged=-1e9;
+  this.thumbs.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button===0)drag={x:e.clientX,left:this.thumbs.scrollLeft,moved:false,id:e.pointerId};});
+  this.thumbs.addEventListener('pointermove',e=>{if(drag?.id!==e.pointerId)return;const dx=e.clientX-drag.x;
+   if(!drag.moved&&Math.abs(dx)>5){drag.moved=true;this.thumbs.setPointerCapture(e.pointerId);this.thumbs.classList.add('dragging');}
+   if(drag.moved)this.thumbs.scrollLeft=drag.left-dx;});
+  const drop=e=>{if(drag?.id!==e.pointerId)return;if(drag.moved){this.thumbs.classList.remove('dragging');this.dragged=performance.now();}drag=null;};
+  this.thumbs.addEventListener('pointerup',drop);this.thumbs.addEventListener('pointercancel',drop);
+  // Its arrows bring the next or the previous strip's worth of cars into sight (the car shown stays as it is).
+  this.thumbArrows=[...root.querySelectorAll('.thumbs-arrow')];for(const b of this.thumbArrows)b.onclick=()=>this.thumbs.scrollBy({left:Number(b.dataset.dir)*this.thumbs.clientWidth*.84,behavior:'smooth'});
+  this.thumbs.addEventListener('scroll',()=>this.thumbEnds(),{passive:true});
   // Dragging the stage turns the car and tilts the view; two fingers pinch closer or farther, as the mouse wheel does,
   // towards what is under them; the +/− buttons and keys zoom on the stage's middle; a double click or tap goes up
   // close to that spot and back.
@@ -244,8 +304,28 @@ export class CarSelect {
    next.dataset.label=label+hint;const span=document.createElement('span'),small=document.createElement('small');span.className='mode-label';span.textContent=label;small.id='carsNextDetail';small.textContent=hint;
    next.replaceChildren(span,...hint?[small]:[]);
   }
-  this.stageLine();
+  this.stageLine();this.strip(entry);
  }
+ // The strip of the grid's cars: pictures made from the game's own cars (gerar_miniaturas_carros.py), the 99 in the
+ // Pintura chosen (livery()), the car shown marked, the ones other pilots have in a room greyed. Kept in sight: the
+ // strip scrolls to the car shown when it does not fit.
+ strip(entry){
+  const model=this.model,choices=rosterOf(model).choices,seiva=this.livery?.()==='seiva_danilo',key=`${model}:${seiva}`;
+  if(this.thumbs.dataset.key!==key){
+   this.thumbs.dataset.key=key;
+   this.thumbs.replaceChildren(...choices.map(c=>{
+    const b=document.createElement('button'),img=document.createElement('img'),n=document.createElement('span');
+    b.type='button';b.dataset.car=c.number;b.setAttribute('role','option');b.title=`#${c.number} · ${c.name}`;
+    img.alt='';img.draggable=false;img.loading='lazy';img.decoding='async';img.width=160;img.height=80;img.src=`./assets/carros/miniaturas/${model}_${c.number}${seiva&&model==='opala'&&c.number==='99'?'_seiva':''}.webp`;img.onerror=()=>img.remove();
+    n.textContent='#'+c.number;b.append(img,n);return b;
+   }));
+  }
+  for(const b of this.thumbs.children){const on=b.dataset.car===entry.number;b.setAttribute('aria-selected',String(on));b.tabIndex=on?0:-1;b.classList.toggle('taken',this.taken.has(b.dataset.car));
+   if(on&&this.thumbs.scrollWidth>this.thumbs.clientWidth)this.thumbs.scrollTo({left:b.offsetLeft-(this.thumbs.clientWidth-b.offsetWidth)/2,behavior:'smooth'});}
+  this.thumbEnds();
+ }
+ // An arrow rests (greyed) at its end of the strip.
+ thumbEnds(){const t=this.thumbs,max=t.scrollWidth-t.clientWidth-2;for(const b of this.thumbArrows)b.disabled=Number(b.dataset.dir)<0?t.scrollLeft<=2:t.scrollLeft>=max;}
  // Every frame while the screen shows (main.js): the studio on the page's canvas.
  // The stage's line while it has no picture: the model loading, then the garage and the car being prepared.
  stageLine(){

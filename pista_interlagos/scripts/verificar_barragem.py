@@ -19,7 +19,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from browser_config import browser_executable, browser_args, wait_js
+from browser_config import browser_executable, browser_args, wait_js, start_race
 
 args = [a for a in sys.argv[1:] if not a.startswith('--')]
 PORTA = args[0] if args else '8896'
@@ -116,7 +116,7 @@ def abrir(page, circuito):
     if page.is_visible('#cars'):
         page.click('#carsNext')
     wait_js(page, "!document.querySelector('#soloRace').disabled")
-    page.click('#soloRace')
+    start_race(page, '#soloRace')
     wait_js(page, 'window.interlagos?.ready&&!interlagos.state?.paused', timeout=300000)
     page.evaluate('interlagos.skipIntro?.();true')
     page.wait_for_timeout(4000)

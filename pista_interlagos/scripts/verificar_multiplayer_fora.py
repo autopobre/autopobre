@@ -17,7 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import browser_executable, browser_args, wait_js, choose_race
+from browser_config import browser_executable, browser_args, wait_js, choose_race, start_race
 
 PORT = sys.argv[1] if len(sys.argv) > 1 else '8799'
 URL = f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
@@ -71,7 +71,7 @@ def check(context, host):
     host.evaluate("interlagosCarros.pick('73')")
     wait_js(host, "interlagosSala.info().number==='73'", timeout=10000)
     host.click('#carsNext')
-    host.click('#singleRace')
+    start_race(host, '#singleRace')
     wait_js(host, "interlagosSala.info().phase==='waiting'", timeout=240000)
     guest_id = guest.evaluate('interlagosSala.info().id')
     wait_js(host, f"interlagosSala.info().ready.includes({guest_id!r})", timeout=240000)

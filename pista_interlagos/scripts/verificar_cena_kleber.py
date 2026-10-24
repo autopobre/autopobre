@@ -9,7 +9,7 @@ and a deadline missed. Screenshots of every line go to the given folder.
 Usage, from the repo root, with the local server running (INTERLAGOS_URL for another port):
   python pista_interlagos/scripts/verificar_cena_kleber.py [pasta_das_fotos] [circuito]
 """
-from browser_config import browser_executable, browser_args, wait_js, open_menu, GAME_URL
+from browser_config import browser_executable, browser_args, wait_js, open_menu, GAME_URL, start_race
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 import json, os, sys
@@ -50,7 +50,7 @@ with sync_playwright() as p:
             page.evaluate(f"window.interlagosHistoria.race&&(document.querySelector('[data-circuit=\"{CIRCUIT}\"]')?.click(),true)")
             page.evaluate('window.interlagosHistoria.race()')
         else:
-            page.click('#championshipStart')
+            start_race(page, '#championshipStart')
         wait_js(page, 'window.interlagos?.ready&&!interlagos.state.paused')
         page.evaluate(HOOK); wait_js(page, "fixtureMode.state.phase==='crowd'")
         page.evaluate('interlagos.skipIntro?.()'); frames(page)

@@ -58,7 +58,7 @@ export function createBox99({pit,c,lerp,at,root,obstacles,textures,people,crowd,
   fridge:std('Geladeira_bebidas',0xffffff,{map:art.fridgeDoor(),roughness:.2,metalness:.1}),
   poster:std('Cartaz_corrida',0xffffff,{map:art.racePoster(),roughness:.8}),
   opening:std('Quadro_abertura',0xffffff,{map:image('./assets/abertura/abertura_stevan_opala99.jpg?v=20261002-omp-q6'),roughness:.6}),
-  logo:std('Banner_logo_box99',0xffffff,{map:image('./assets/abertura/logo_auto_pobre_racing.webp'),transparent:true,roughness:.7,...decal}),
+  logo:std('Banner_logo_box99',0xffffff,{map:image('./assets/abertura/logo_auto_pobre_racing_v2.webp'),transparent:true,roughness:.7,...decal}),
   screen:new THREE.MeshBasicMaterial({name:'Monitores_cronometragem',map:art.timingScreen(rows,'CRONOMETRAGEM · '+(labels?.track??'INTERLAGOS'))}),
  };
  const addc=(color,g,x,d,y=0,turn=0,absolute=false)=>add(M.props,paint(g,color),x,d,y,turn,absolute);

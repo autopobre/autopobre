@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
-from browser_config import browser_executable,browser_args,wait_js,wait_race_start,choose_race
+from browser_config import browser_executable,browser_args,wait_js,wait_race_start,choose_race, start_race
 
 PORT=sys.argv[1] if len(sys.argv)>1 else '8799'
 URL=f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
@@ -71,7 +71,7 @@ with sync_playwright() as p:
  for _ in range(4):page.mouse.wheel(0,-240);page.wait_for_timeout(60)
  page.wait_for_timeout(1000);zoom=page.evaluate(CARS);assert zoom['zoom']>1.6 and zoom['distance']<8,zoom
  # (A drag holds the turn for 2.5 s, the one above was just now; up close it turns slower.)
- page.wait_for_timeout(2600);yaw=page.evaluate(CARS)['yaw'];page.wait_for_timeout(1000);assert page.evaluate(CARS)['yaw']>yaw+.06,'the car keeps turning up close'
+ page.wait_for_timeout(2600);yaw=page.evaluate(CARS)['yaw'];page.wait_for_timeout(1000);assert page.evaluate(CARS)['yaw']<yaw-.06,'the car keeps turning (clockwise) up close'
  page.screenshot(path=str(RENDERS/'carros_zoom.png'))
  assert page.evaluate("document.querySelector('#cars').scrollTop")==0
  page.click('#carZoomOut');assert page.evaluate(CARS)['zoomTo']<zoom['zoomTo']/1.3
@@ -91,7 +91,7 @@ with sync_playwright() as p:
  page.check('#carStill');page.wait_for_timeout(2700);yaw=page.evaluate(CARS)['yaw'];page.wait_for_timeout(800)
  assert page.evaluate(CARS)['still'] and page.evaluate(CARS)['yaw']==yaw and page.evaluate("JSON.parse(localStorage.getItem('opala99-preferences-v1')).carStill")
  page.screenshot(path=str(RENDERS/'carros_parado.png'))
- page.uncheck('#carStill');page.wait_for_timeout(500);assert page.evaluate(CARS)['yaw']>yaw and not page.evaluate("JSON.parse(localStorage.getItem('opala99-preferences-v1')).carStill")
+ page.uncheck('#carStill');page.wait_for_timeout(500);assert page.evaluate(CARS)['yaw']<yaw and not page.evaluate("JSON.parse(localStorage.getItem('opala99-preferences-v1')).carStill")
 
  # On to the tracks: the car named there, the way back leads to it, the 1x1 is against the 99 now.
  page.click('#carsNext');assert page.is_visible('#tracks') and not page.is_visible('#cars')
@@ -105,7 +105,7 @@ with sync_playwright() as p:
  page.keyboard.press('Escape');assert page.is_visible('#cars');page.keyboard.press('Enter');assert page.is_visible('#tracks')
 
  # Corrida única in #73: Stevan Gaipo races the 99 in Konrad's seat, the player's Opala is orange.
- page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
+ start_race(page, '#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
  page.evaluate(HOOK);page.wait_for_timeout(400)
  field=page.evaluate(FIELD);cars=page.evaluate(CARS);print(json.dumps({'field':field,'cars':cars},ensure_ascii=False),flush=True)
  assert '73' not in field['rivals'] and '99' in field['rivals'] and len(field['rivals'])==14,field
@@ -151,7 +151,7 @@ with sync_playwright() as p:
  # Back to Modo Corrida in the 99.
  page.click('#tracksBack');page.click('#start');wait_js(page,"interlagosCarros.info().live");page.click('#carLeft');wait_js(page,"interlagosCarros.info().built==='99'")
  page.wait_for_timeout(400);page.screenshot(path=str(RENDERS/'carros_99_depois.png'))
- page.click('#carsNext');page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
+ page.click('#carsNext');start_race(page, '#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
  back=page.evaluate(FIELD);own=page.evaluate(CARS)
  assert '99' not in back['rivals'] and '73' in back['rivals'] and not back['opala99Shown'] and back['me']=='99',back
  assert own['painted']=='99' and own['decals']==0 and own['skin'] and own['touchSkin'],own
@@ -161,7 +161,7 @@ with sync_playwright() as p:
 
  # #73 again on the same circuit: Stevan's Opala 99 is built again from the model in the new paint.
  page.click('#tracksBack');wait_js(page,"interlagosCarros.info().live");page.click('#carRight');wait_js(page,"interlagosCarros.info().built==='73'")
- page.click('#carsNext');page.click('#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
+ page.click('#carsNext');start_race(page, '#singleRace');wait_js(page,"interlagos.ready&&!interlagos.state.paused",timeout=240000)
  again=page.evaluate(CARS);field2=page.evaluate(FIELD)
  assert again['raceCar']=='73' and again['livery']==other and again['stevanCurrent'] is True,again
  i99=field2['rivals'].index('99');assert field2['seats'][i99]=='99',field2

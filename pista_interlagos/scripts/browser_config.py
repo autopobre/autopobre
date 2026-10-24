@@ -114,13 +114,35 @@ def race_options(page, camera=None, livery=None, tap=False):
     press('#settingsClose')
 
 
+# The track screen's start buttons. In the paddock look (menus.css) only the race picked in the mode row (#raceModes:
+# Corrida única, Treino solo, 1x1, Campeonato) shows its own start (Largar); the classic menus show them all.
+RACE_MODES = {'#singleRace': 'single', '#soloRace': 'solo', '#duelRace': 'duel', '#championshipStart': 'championship'}
+
+
+def race_mode(page, mode, tap=False):
+    """Pick a race in the track screen's mode row (single, solo, duel, championship): the paddock look then shows
+    its start and what goes with it (the championship's calendar and tabs). Nothing to pick in the classic menus."""
+    page.wait_for_selector('#tracks', state='visible')
+    if page.is_visible('#raceModes'):
+        (page.tap if tap else page.click)(f'#raceModes [data-race="{mode}"]')
+
+
+def start_race(page, button, tap=False):
+    """Press one of the track screen's starts (#singleRace, #soloRace, #duelRace, #championshipStart), picking its
+    mode in the row first when the screen shows another."""
+    page.wait_for_selector('#tracks', state='visible')
+    if not page.is_visible(button):
+        race_mode(page, RACE_MODES[button], tap)
+    (page.tap if tap else page.click)(button)
+
+
 def choose_race(page, story=False, championship=False, tap=False):
     """From the opening or the track screen, start a race without waiting for it to load.
 
     The opening picks the mode: #start (Modo Corrida) or #storyStart (Modo História). Modo Corrida
     shows the car screen first (#cars; #carsNext keeps the car chosen there), then both open the
     track screen, where #singleRace is Corrida única and #championshipStart the championship of
-    that mode. A track or car screen of the other mode goes back to the opening (#tracksBack, which
+    that mode (start_race picks the mode in the row first). A track or car screen of the other mode goes back to the opening (#tracksBack, which
     in Modo Corrida leads to the car screen, then #carsBack) to choose again."""
     press = page.tap if tap else page.click
     if page.is_visible('#tracks') and page.get_attribute('#tracks', 'data-mode') != ('historia' if story else 'corrida'):
@@ -137,7 +159,7 @@ def choose_race(page, story=False, championship=False, tap=False):
         wait_js(page, "!document.querySelector('#championshipStart').disabled")
         page.evaluate('window.interlagosHistoria.race()')
     else:
-        press('#championshipStart' if championship else '#singleRace')
+        start_race(page, '#championshipStart' if championship else '#singleRace', tap)
 
 
 def enter_track(page, pilot='Piloto teste', timeout=120000, tap=False, story=False, championship=False):

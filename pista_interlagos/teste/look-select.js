@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {createPeople,dressPerson,OUTFITS,Idler,IDLE_KINDS} from './pit-crew.js';
 import {createHelmet} from './driver-helmet.js';
 import {compileInSlices} from './cinematic.js';
+import {createShop,SHOP} from './visual-shop.js';
 import {GENDERS,SUIT_COLORS,GLOVE_COLORS,HAIR_STYLES,HAIR_COLORS,BEARDS,HELMET_DESIGNS,HELMET_COLORS,VISORS,LOOK_DEFAULT,normalizeLook,lookOutfit,lookKey,nameOf} from './pilot-look.js';
 // The Visual screen (#visual; user, 2026-10-20: "nova tela de criação de skin, em uma versão simplificada"): the pilot
 // stands on a turntable in a small studio, helmet in hand, and the panel beside picks the suit's colour, man or woman, the
@@ -13,7 +14,8 @@ import {GENDERS,SUIT_COLORS,GLOVE_COLORS,HAIR_STYLES,HAIR_COLORS,BEARDS,HELMET_D
 // waits a while and then goes back. The wheel (or a pinch) zooms in and out towards what is under the pointer (user,
 // 2026-10-20); a double click, or another part of the panel, frames the part again.
 // The studio is drawn by the game's renderer on the page's canvas, through the screen's open middle (visual.css), as the
-// car screen's garage is (car-select.js).
+// car screen's garage is (car-select.js); round the pilot stands the team's racewear store (visual-shop.js; user,
+// 2026-10-24: "ele ficou parado ali sozinho"), its fitting mirror and floor reflecting it on computers' Alto and Ultra.
 const css=hex=>'#'+hex.toString(16).padStart(6,'0');
 // Who is shown standing still: glances, weight from leg to leg, the free (left) hand to the brow or the wrist.
 IDLE_KINDS.visual??={look:4,shift:3,tap:.6,wrist:1,brow:.5,chin:.4};
@@ -21,7 +23,15 @@ IDLE_KINDS.visual??={look:4,shift:3,tap:.6,wrist:1,brow:.5,chin:.4};
 // Girar, how far round from the front the pilot swings while it does (radians; 0 turns him all the way round).
 const FOCUS=Object.freeze({
  corpo:{y:.98,height:2.15,swing:0},maos:{y:.9,height:1.05,swing:.7},cabeca:{y:1.64,height:.62,swing:.8},capacete:{y:1.66,height:.66,swing:.8}});
-const VIEW=Object.freeze({fov:30,elevation:.1,platform:.07});
+const VIEW=Object.freeze({fov:30,elevation:.1,platform:SHOP.deck});
+// The store's mirrors by the Gráficos tab's car reflections: the fitting mirror always (the store drawn again only in its
+// rectangle: cheap, and a mirror showing no pilot looks wrong); the floor (the whole store again) on computers' Alto and
+// Ultra only, as the garage floor (car-select.js FLOOR_MIRROR). Unknown: the fitting mirror alone.
+const MIRRORS=Object.freeze({ceu:{wall:true,floor:false},pista:{wall:true,floor:false},dinamico:{wall:true,floor:true},dinamico_hd:{wall:true,floor:true}});
+const NO_MIRRORS=Object.freeze({wall:false,floor:false});
+// The car reflections chosen, when main.js does not say (quality): read from the Gráficos hook now and then.
+function graphicsReflections(){const now=performance.now();if(now-graphicsReflections.at>2000){graphicsReflections.at=now;try{graphicsReflections.value=globalThis.interlagosGraficos?.info?.().values?.reflections??null;}catch{graphicsReflections.value=null;}}return graphicsReflections.value;}
+graphicsReflections.at=-Infinity;graphicsReflections.value=null;
 const SPIN_KEY='autopobre-visual-girar';
 // Zoom: from a little farther than the part's frame to 4 times closer; the camera never nearer the pilot's middle than NEAR m.
 const ZOOM=Object.freeze({out:.75,in:4,near:.42});
@@ -35,32 +45,47 @@ function canvasTexture(size,paint){const c=document.createElement('canvas');c.wi
 const radial=(stops,size=256)=>canvasTexture(size,(ctx,s)=>{const g=ctx.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);for(const [at,color] of stops)g.addColorStop(at,color);ctx.fillStyle=g;ctx.fillRect(0,0,s,s);});
 class LookStudio {
  constructor(){
-  this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(VIEW.fov,1,.05,60);
-  this.scene.background=canvasTexture(512,(ctx,s)=>{const g=ctx.createRadialGradient(s*.5,s*.42,0,s*.5,s*.5,s*.75);g.addColorStop(0,'#33403f');g.addColorStop(.55,'#172120');g.addColorStop(1,'#070b0b');ctx.fillStyle=g;ctx.fillRect(0,0,s,s);});
-  this.scene.add(new THREE.HemisphereLight(0xdfe8ee,0x2b2620,1.1));
-  const key=new THREE.DirectionalLight(0xfff1dc,2.4);key.position.set(3,4,2.2);const rim=new THREE.DirectionalLight(0xbfd8ff,1.6);rim.position.set(-3,2.6,-2.5);const fill=new THREE.DirectionalLight(0xffffff,.55);fill.position.set(2,1,-3);
-  this.scene.add(key,rim,fill);
-  // The floor's pool of light, the platform and its soft shadow, a ring lit in the suit's colour.
-  const pool=new THREE.Mesh(new THREE.CircleGeometry(4,48).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({map:radial([[0,'#4a5654'],[.35,'#232c2b'],[1,'#0a0f0f']]),depthWrite:false}));
-  const platform=new THREE.Mesh(new THREE.CylinderGeometry(.62,.66,VIEW.platform,48),new THREE.MeshStandardMaterial({color:0x22282a,roughness:.55,metalness:.2}));platform.position.y=VIEW.platform/2;
-  this.ring=new THREE.Mesh(new THREE.TorusGeometry(.64,.008,6,64).rotateX(Math.PI/2),new THREE.MeshBasicMaterial({color:0xd82125}));this.ring.position.y=VIEW.platform;
+  this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(VIEW.fov,1,.05,60);this.scene.background=new THREE.Color(0x0b100e);
+  // world: all but the background, the lights with it (their targets too), drawn again reflected for the mirrors
+  // (visual-shop.js draw). As many lights of each kind as the car screen's garage (car-garage.js garageLights): the
+  // store's materials then take the garage's programs, built already. The hemisphere's light high up, so that it stays
+  // overhead in the fitting mirror. The rim from behind outlines the pilot against the alcove behind him (user, 2026-10-24:
+  // "contraste pra destacar o personagem"); it lights nothing of the store that faces the camera, and stands higher than
+  // any reflection of the floor the camera sees (lower, it shone in the polished floor as a glare).
+  this.world=new THREE.Group();this.world.matrixAutoUpdate=false;this.scene.add(this.world);
+  const sky=new THREE.HemisphereLight(0xdfe8ee,0x2b2620,1.05);sky.position.set(0,100,0);
+  const key=new THREE.DirectionalLight(0xfff1dc,2.4);key.position.set(3,4,2.2);const rim=new THREE.DirectionalLight(0xc6dcff,2.1);rim.position.set(-3.6,2.7,-.9);
+  this.world.add(sky,key,rim,key.target,rim.target);
+  // The pilot's soft shadow on the podium (the store, round him, is made on the first frame: build).
   const shadow=new THREE.Mesh(new THREE.CircleGeometry(.5,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({map:radial([[0,'rgba(0,0,0,.7)'],[.55,'rgba(0,0,0,.35)'],[1,'rgba(0,0,0,0)']],128),transparent:true,depthWrite:false}));shadow.position.y=VIEW.platform+.002;
-  this.scene.add(pool,platform,this.ring,shadow);
-  this.turntable=new THREE.Group();this.turntable.position.y=VIEW.platform;this.scene.add(this.turntable);
-  this.people=createPeople();this.person=null;this.helmet=null;this.idler=null;this.ready=false;this.preparing=null;
+  this.world.add(shadow);
+  this.turntable=new THREE.Group();this.turntable.position.y=VIEW.platform;this.world.add(this.turntable);
+  this.people=createPeople();this.person=null;this.helmet=null;this.idler=null;this.ready=false;this.preparing=null;this.shop=null;this.timing=null;this.mirrors=NO_MIRRORS;
   this.look=null;this.shownKey=null;this.focus='corpo';this.spin=false;this.yaw=0;this.handUntil=0;this.time=0;this.target=new THREE.Vector3(0,FOCUS.corpo.y,0);this.height=FOCUS.corpo.height;this.helmetOn=0;
   // zoom and pan (m: across the screen, up) ease towards their ...To; both start again with each part framed.
   this.zoom=this.zoomTo=1;this.pan=new THREE.Vector2();this.panTo=new THREE.Vector2();
  }
- // The pilot and his helmet, made the first time the screen draws; then the programs, a few at a time (the page answers).
+ // The pilot, his helmet and the store round him, made the first time the screen draws (a step at a time); the store's
+ // lights baked into the map the suit, the helmets and the glass reflect; then the programs, a few at a time (the page
+ // answers). timing: how long each took (ms), for the checks.
  async build(renderer){
+  const t0=performance.now();
   this.person=this.people.person(OUTFITS.driver,{shadows:false});this.person.name='Piloto_visual';
   this.turntable.add(this.person);this.idler=new Idler(this.person,'visual',{hands:[true,false],seed:.37});
   this.helmet=await createHelmet();this.helmet.root.name='Capacete_visual';
   this.hand=new THREE.Group();this.person.userData.rig.limbs[1].hand.add(this.hand);
   this.onHead=new THREE.Group();this.onHead.position.set(.004,.103,0);this.person.userData.rig.head.add(this.onHead);
-  this.hand.add(this.helmet.root);this.placeHelmet(false);this.dress(true);
+  this.hand.add(this.helmet.root);this.placeHelmet(false);
+  const t1=performance.now();
+  // (A breath between the steps: each its own task, the page answering in between.)
+  const breath=()=>new Promise(done=>setTimeout(done,0));let bake=0;
+  try{this.shop=await createShop({people:this.people});this.world.add(this.shop.root);this.turntable.add(this.shop.deck);this.world.updateMatrixWorld(true);await breath();
+   bake=performance.now();this.scene.environment=this.shop.bake(renderer);bake=performance.now()-bake;}
+  catch(err){console.warn(err);if(this.shop){this.shop.root.removeFromParent();this.shop.deck.removeFromParent();}this.shop=null;}
+  this.dress(true);await breath();
+  const t2=performance.now();
   await compileInSlices(renderer,this.scene,this.camera,()=>null,()=>screenLook(renderer)).catch(err=>console.warn(err));
+  const t3=performance.now();this.timing={start:Math.round(t0),pilot:Math.round(t1-t0),store:Math.round(t2-t1),bake:Math.round(bake),compile:Math.round(t3-t2),total:Math.round(t3-t0),programs:renderer.info.programs?.length??null};
   this.ready=true;
  }
  // In the hand, gripped by its crown, hanging at his hip facing ahead (the forearm hangs .58 rad forward: the hand's
@@ -72,9 +97,10 @@ class LookStudio {
  dress(force=false){
   const key=lookKey(this.look);if(!force&&key===this.shownKey)return;this.shownKey=key;
   dressPerson(this.person,this.look?lookOutfit(this.look):OUTFITS.driver);this.helmet.look(this.look);
-  this.ring.material.color.setHex(this.look?lookOutfit(this.look).top:OUTFITS.driver.top);
+  this.shop?.accent(this.look?lookOutfit(this.look).top:OUTFITS.driver.top);
  }
- render(renderer,dt,rect){
+ // mirrors: whether the store's fitting mirror and floor reflect it for real ({wall, floor}: MIRRORS).
+ render(renderer,dt,rect,mirrors=NO_MIRRORS){
   if(!this.preparing)this.preparing=this.build(renderer);
   if(!this.ready)return false;
   this.time+=dt;this.dress();
@@ -98,7 +124,8 @@ class LookStudio {
   c.position.set(Math.cos(VIEW.elevation)*dist,target.y+Math.sin(VIEW.elevation)*dist,0);c.lookAt(target);
   c.aspect=W/H;c.setViewOffset(W,H,W/2-(rect.left+rect.width/2),H/2-(rect.top+rect.height*.5),W,H);c.updateProjectionMatrix();c.updateMatrixWorld();
   const saved={target:renderer.getRenderTarget(),autoClear:renderer.autoClear},undo=screenLook(renderer);
-  renderer.setRenderTarget(null);renderer.autoClear=true;renderer.render(this.scene,c);
+  renderer.setRenderTarget(null);renderer.autoClear=true;this.mirrors=mirrors;
+  if(this.shop)this.shop.draw(renderer,this.scene,this.world,c,mirrors);else renderer.render(this.scene,c);
   undo();renderer.setRenderTarget(saved.target);renderer.autoClear=saved.autoClear;
   return true;
  }
@@ -118,10 +145,11 @@ class LookStudio {
  resetZoom(){this.zoomTo=1;this.panTo.set(0,0);}
 }
 // root: the #visual screen. store: the looks (pilot-look.js LookStore); pilot(): whose look is shown and kept; onBack():
-// the Voltar and Pronto buttons.
+// the Voltar and Pronto buttons; quality(): the Gráficos tab's car reflections, which set the store's mirrors (read from
+// the page's Gráficos hook when not given).
 export class LookSelect {
- constructor({root,store,pilot,onBack}){
-  this.root=root;this.store=store;this.pilot=pilot;this.studio=new LookStudio();this.live=false;this.editing={...LOOK_DEFAULT};
+ constructor({root,store,pilot,onBack,quality=graphicsReflections}){
+  this.root=root;this.store=store;this.pilot=pilot;this.quality=quality;this.studio=new LookStudio();this.live=false;this.editing={...LOOK_DEFAULT};
   const $=id=>root.querySelector('#'+id);this.stage=$('visualStage');this.status=$('visualStageStatus');this.panel=$('visualPanel');this.state=$('visualState');this.reset=$('visualDefault');
   $('visualBack').onclick=()=>onBack();$('visualDone').onclick=()=>onBack();
   const spin=$('visualSpin');try{spin.checked=globalThis.localStorage?.getItem(SPIN_KEY)==='1';}catch{}this.studio.spin=spin.checked;
@@ -194,13 +222,14 @@ export class LookSelect {
  failed(){this.status.hidden=false;this.status.textContent='Seu navegador não conseguiu desenhar o piloto em 3D. As escolhas valem do mesmo jeito.';}
  // Draws the studio in the stage's rectangle; the screen's dark backdrop gives way once the pilot shows.
  render(renderer,dt){
-  const rect=this.stage.getBoundingClientRect(),drawn=rect.width>0&&rect.height>0&&this.studio.render(renderer,dt,rect);
+  const rect=this.stage.getBoundingClientRect(),drawn=rect.width>0&&rect.height>0&&this.studio.render(renderer,dt,rect,MIRRORS[this.quality?.()]??MIRRORS.pista);
   if(drawn!==this.live){this.live=drawn;this.root.classList.toggle('live',drawn);this.status.hidden=drawn;}
   return drawn;
  }
  info(){
   const s=this.studio;
   return {live:this.live,ready:s.ready,focus:s.focus,spin:s.spin,zoom:s.zoomTo,helmetOn:!!s.helmetOn,look:this.store.get(this.pilot()),pilot:this.pilot(),shown:s.shownKey,yaw:s.yaw,
-   outfit:s.person?.userData.outfit??null,helmet:s.helmet?.info()??null,headShown:s.person?.userData.head.visible??null};
+   outfit:s.person?.userData.outfit??null,helmet:s.helmet?.info()??null,headShown:s.person?.userData.head.visible??null,
+   store:s.shop?{...s.shop.info(),timing:s.timing}:null};
  }
 }

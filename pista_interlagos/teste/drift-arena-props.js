@@ -82,7 +82,7 @@ export class ArenaProps{
   const plane=new THREE.PlaneGeometry(ARENA.halfLength*2,ARENA.halfWidth*2).rotateX(-Math.PI/2);plane.translate(0,FLOOR_Y+.004,0);
   this.paint=new THREE.Mesh(plane,this.materials.paint);this.paint.name='Pintura_piso_arena';this.paint.receiveShadow=true;this.paint.renderOrder=1;this.root.add(this.paint);
   this.matrix=new THREE.Matrix4();this.quat=new THREE.Quaternion();this.euler=new THREE.Euler(0,0,0,'YXZ');this.pos=new THREE.Vector3();this.one=new THREE.Vector3(1,1,1);
-  this.logo=new Image();this.logo.onload=()=>{if(this.layout)this.drawPaint(this.layout);};this.logo.src='./assets/abertura/logo_auto_pobre_racing.webp';
+  this.logo=new Image();this.logo.onload=()=>{if(this.layout)this.drawPaint(this.layout);};this.logo.src='./assets/abertura/logo_auto_pobre_racing_v2.webp';
   this.marker=new THREE.Mesh(new THREE.RingGeometry(.9,1,48).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x37e0ff,transparent:true,opacity:.85,depthTest:false,fog:false}));
   this.marker.renderOrder=5;this.marker.visible=false;this.marker.name='Selecao_editor';this.root.add(this.marker);
  }
