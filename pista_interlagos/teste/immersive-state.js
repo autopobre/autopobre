@@ -1,6 +1,6 @@
 import {GRID_SIZE} from './race-roster.js';
 import {TANK,burnRate} from './fuel.js';
-import {fanCount,eatEnergy,loadCareer,newCareer,applyRace,reviseRace,firstsCards,moraleCards,repairBill,repairPerPoint,repairCards,divorce,divorceCards,pensionCards,challengeCards,answerExpense,releaseBlazer as blazerOut,buyOpala as opalaBought,overReason,lineCard,prizeFor,giftScale,expenseScale,SNAG_COST,INTRO_LINES,CHALLENGES,BLAZER_AFTER,BLAZER_GOAL} from './story-career.js';
+import {fanCount,eatEnergy,vaquinhaWhole,repairCar,evenCar,carHealth,carPoints,loadCareer,newCareer,applyRace,reviseRace,firstsCards,moraleCards,repairBill,repairPerPoint,repairCards,divorce,divorceCards,pensionCards,challengeCards,answerExpense,releaseBlazer as blazerOut,buyOpala as opalaBought,overReason,lineCard,prizeFor,expenseScale,SNAG_COST,INTRO_LINES,CHALLENGES,BLAZER_AFTER,BLAZER_GOAL} from './story-career.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const FANS=[
  {name:'Dona Cida',taste:'família',hint:'Vim com os netos. Adoro uma história de família.',gift:42},
@@ -16,7 +16,7 @@ export const FANS=[
  {name:'Juninho do kart',taste:'corrida',hint:'Um dia ainda corro de Opala também!',gift:37},
  {name:'Mari do megafone',taste:'corrida',hint:'Grito mais alto que o motor. Me faz rir!',gift:41}
 ];
-// The vaquinha's whole at 50% morale: what the first six supporters give (ImmersiveState gift).
+// The vaquinha's whole at 50% morale in a race of up to 8 laps: what the first six supporters give (ImmersiveState gift).
 const VAQUINHA=FANS.slice(0,6).reduce((sum,f)=>sum+f.gift,0);
 export const JOKES=[
  {topic:'família',text:'Lá em casa eu sou o piloto. Minha esposa escolhe o destino, a filha escolhe a música e o boleto pisa no acelerador.'},
@@ -40,14 +40,14 @@ export class ImmersiveState {
  // profile: the wallet (fund), the Blazer (released), the races run and the career (story-career.js).
  // A profile from before the career keeps its race count; its savings and Blazer start over with it.
  // A Blazer taken out before the challenges after it (Central #16): the next one's deadline starts now.
- constructor(profile={}){profile=profile&&typeof profile==='object'?profile:{};const counter=v=>Number.isFinite(v)&&v>=0?Math.min(v,Number.MAX_SAFE_INTEGER):0,career=!!profile.career;this.profile={fund:career?counter(profile.fund):0,released:career&&profile.released===true,races:Math.floor(counter(profile.races)),career:loadCareer(profile.career)};this.entry=COSTS.entry;this.tank=TANK;this.scene=null;this.active=false;this.phase='off';this.revision=0;this.sounds=[];
+ constructor(profile={}){profile=profile&&typeof profile==='object'?profile:{};const counter=v=>Number.isFinite(v)&&v>=0?Math.min(v,Number.MAX_SAFE_INTEGER):0,career=!!profile.career;this.profile={fund:career?counter(profile.fund):0,released:career&&profile.released===true,races:Math.floor(counter(profile.races)),career:loadCareer(profile.career)};this.entry=COSTS.entry;this.tank=TANK;this.raceFuel=this.baseFuel=null;this.scene=null;this.active=false;this.phase='off';this.revision=0;this.sounds=[];
   const c=this.profile.career;if(this.profile.released&&c.blazerAt===null){c.blazerAt=c.races;if(c.challenge===BLAZER_AFTER)c.since=c.races;}}
  emitSound(name,options={}){if(this.sounds.length<64)this.sounds.push({name,options});}
  takeSounds(){return this.sounds.splice(0);}
  touch(){this.revision++;}
  start(){
   this.sounds=[];this.emitSound('crowdWelcome');
-  Object.assign(this,{active:true,phase:'crowd',cash:0,raised:0,eaten:[],donors:[],fan:null,desk:false,leo:null,coffee:false,cafe:false,feedback:'',fuel:0,tankDetached:false,tankWear:0,health:1,glass:0,film:false,
+  Object.assign(this,{active:true,phase:'crowd',cash:0,raised:0,eaten:[],donors:[],fan:null,desk:false,leo:null,coffee:false,cafe:false,feedback:'',fuel:0,tankDetached:false,tankWear:0,health:carHealth(this.profile.career.car),glass:0,film:false,
    pressure:0,crank:0,flood:0,battery:1,ignitionGood:0,starter:false,ignOn:false,raceTime:0,position:GRID_SIZE,result:null,reason:'',towSnags:0,snagCost:0,repair:null,inspection:0,judging:false,inspected:false,paid:false,prize:0,savedCash:0,podiumPlace:null,disqualifiedTime:0,alert:'',alertTime:0,scene:null});
   // Before the paddock: the last race's report not seen yet, Kléber's welcome, or the end of the story; after a
   // divorce, the pension of this race (round: its championship round, ImmersiveMode.start) before the vaquinha.
@@ -57,10 +57,14 @@ export class ImmersiveState {
  disable(){this.sounds=[];this.active=false;this.phase='off';this.scene=null;this.touch();}
  // The least that opens the registration here, and what each supporter gives (by their morale).
  get minimum(){return this.entry+COSTS.leastLitres*COSTS.litre;}
- // A supporter's gift: the vaquinha as a whole is what the first six gave, scaled by the supporters' morale (giftScale),
- // whoever came: more supporters share it (each a little less), fewer split it (each a little more), so a cold crowd
- // does not end the story sooner than before (checkMoney).
- gift(index){const share=VAQUINHA/FANS.slice(0,Math.min(FANS.length,this.present)).reduce((sum,f)=>sum+f.gift,0);return Math.round(FANS[index].gift*share*giftScale(this.profile.career.morale.torcida));}
+ // The whole race's costs: the entry and the litres the team recommends for it (raceFuel, set by ImmersiveMode.start from the
+ // circuit and the laps; baseFuel: the same for 8 laps), a refill at the Box 99 included; without them, the minimum.
+ get raceCost(){return Math.ceil(this.entry+(this.raceFuel??COSTS.leastLitres)*COSTS.litre-1e-9);}
+ // The vaquinha as a whole (story-career.js vaquinhaWhole): at least the race's costs, more with the supporters' morale.
+ vaquinha(){return vaquinhaWhole(this.profile.career.morale.torcida,{base:VAQUINHA,floor:this.raceCost,extra:Math.max(0,(this.raceFuel??0)-(this.baseFuel??this.raceFuel??0))*COSTS.litre});}
+ // A supporter's gift: their share of the vaquinha, whoever came: more supporters share it (each a little less), fewer
+ // split it (each a little more). Rounded up, so the gifts never sum to less than the whole.
+ gift(index){const present=FANS.slice(0,Math.min(FANS.length,this.present)).reduce((sum,f)=>sum+f.gift,0);return Math.ceil(FANS[index].gift*this.vaquinha()/present-1e-9);}
  // The supporters in the paddock this race: the first of FANS, as many as the supporters' morale brings (fanCount).
  get present(){return fanCount(this.profile.career.morale.torcida);}
  here(index){return Number.isInteger(index)&&index>=0&&index<Math.min(FANS.length,this.present);}
@@ -124,10 +128,10 @@ export class ImmersiveState {
  // conversation, so it waits for the others and they wait for it.
  openCafe(){if(this.phase!=='crowd'||this.scene||this.desk||this.fan!==null||this.leo||this.cafe)return false;this.emitSound('paper');this.cafe=true;this.touch();return true;}
  closeCafe(){if(!this.cafe)return false;this.cafe=false;this.touch();return true;}
- // What the kitty and the wallet may spend on a snack: before the registration, never what its
- // minimum still needs, counting the gifts of the supporters who have not given yet (each gives
- // once, whenever they laugh).
- spareCash(){const coming=FANS.reduce((sum,fan,i)=>sum+(this.donors.includes(i)||!this.here(i)?0:this.gift(i)),0),reserve=this.phase==='crowd'?Math.max(0,this.minimum-coming):0;return clamp(this.cash+this.profile.fund-reserve,0,this.cash+this.profile.fund);}
+ // What the kitty and the wallet may spend on a snack: before the registration, never what the
+ // race's entry and gasoline still need (raceCost), counting the gifts of the supporters who have
+ // not given yet (each gives once, whenever they laugh).
+ spareCash(){const coming=FANS.reduce((sum,fan,i)=>sum+(this.donors.includes(i)||!this.here(i)?0:this.gift(i)),0),reserve=this.phase==='crowd'?Math.max(0,this.raceCost-coming):0;return clamp(this.cash+this.profile.fund-reserve,0,this.cash+this.profile.fund);}
  // A snack in the paddock is paid as at the pit stop: from the kitty first, then from the wallet.
  pay(cost){if(!Number.isFinite(cost)||cost<0||cost>this.spareCash()+.001)return false;const cash=Math.min(this.cash,cost);this.cash-=cash;this.profile.fund=Math.max(0,this.profile.fund-(cost-cash));this.touch();return true;}
  joke(index){
@@ -214,10 +218,12 @@ export class ImmersiveState {
  podium(){
   if(this.paid)return;this.scene=null;
   // The prize by position (story-career.js), what is left in the kitty and the strap untangled: into
-  // the wallet; then the team's repair bill out of it. The race moves the career's morale; its report
-  // (the bill's card included) shows after the inspection.
+  // the wallet; then the team's repair bill out of it, which fixes only the share it paid (repairCar): the
+  // rest goes with the car to the next race (career.car; next: its CARRO points then). The race moves the
+  // career's morale; its report (the bill's card included) shows after the inspection.
   this.prize=this.result?.status==='Desclassificado'?0:prizeFor(this.result?.position);this.snagCost=this.towSnags*SNAG_COST;this.savedCash=Math.max(0,Number.isFinite(this.cash)?this.cash:0);
   this.profile.fund=Math.max(0,this.profile.fund+this.prize+this.savedCash-this.snagCost);this.repair=repairBill(this.health,this.profile.fund,repairPerPoint(this.profile.career));this.profile.fund-=this.repair.charged;
+  const kept=repairCar(this.condition?.quality??evenCar(this.health),this.repair);this.profile.career.car=kept.car;Object.assign(this.repair,{next:carPoints(kept.car),free:kept.free});
   this.cash=0;this.profile.races++;applyRace(this.profile.career,this.result,this.repair);this.divorceIfDue();this.emitSound(this.result?.position===1&&this.result?.status!=='Desclassificado'?'podiumWin':'podiumLoss');this.paid=true;this.phase='podium';this.podiumPlace=6;this.touch();
  }
  // After a race (the summary): the Blazer out of the workshop, then the next challenge's card; at the end of all

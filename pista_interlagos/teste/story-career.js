@@ -3,6 +3,7 @@
 // Opala 99 as the big dream (Central #16), from race to race of the Old Stock season. Pure rules, no DOM: ImmersiveState keeps the career in the story profile
 // (opala99-immersive-v1, profile.career beside the wallet profile.fund) and ImmersiveMode shows
 // its cards. 50% morale is the game as it was before the career.
+import {CAR_PARTS} from './car-condition.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const MORALE=Object.freeze(['esposa','equipe','torcida']);
 export const MORALE_NAMES=Object.freeze({esposa:'Esposa',equipe:'Equipe',torcida:'Torcida'});
@@ -21,7 +22,7 @@ export const entryFor=(circuit,career=null)=>circuit==='interlagos'||career?.gea
 export const SNAG_COST=25;
 // The team's repair bill after a race (Central #14): R$ 10 for each point the CARRO bar lost, as the
 // HUD shows it; the windscreen is not on it, nor what the Box 99 fixed (and charged) during the race.
-// A wallet short of it pays what it has: the team lets the rest go (charged, below bill). With the Box 99's new tools
+// A wallet short of it pays what it has and the team fixes only that share (repairCar). With the Box 99's new tools
 // (challenge 'ferramentas', Stevan's call in #16.2) a point costs half.
 export const REPAIR_PER_POINT=10,REPAIR_WITH_TOOLS=5;
 export const repairPerPoint=career=>career?.gear.includes('ferramentas')?REPAIR_WITH_TOOLS:REPAIR_PER_POINT;
@@ -32,10 +33,33 @@ export function repairBill(health,fund,perPoint=REPAIR_PER_POINT){
  const damage=100-Math.ceil(clamp(Number.isFinite(health)?health:1,0,1)*100),bill=damage*perPoint;
  return {damage,bill,charged:Math.min(bill,Math.max(0,fund))};
 }
+// What the money paid fixes (user, 10-24): the bill's paid share of every part's damage; the rest stays on the car
+// (career.car, each part's quality) and it starts the next race that damaged. The team never sends a part out under
+// CAR_FLOOR, where the car could hardly race: that much it does free of charge (free). car: null when as new.
+export const CAR_FLOOR=.5;
+export function repairCar(quality,repair){
+ const share=repair.bill>0?clamp(repair.charged/repair.bill,0,1):1;let free=false;
+ const car=Object.fromEntries(CAR_PARTS.map(({id})=>{const q=clamp(Number.isFinite(quality?.[id])?quality[id]:1,0,1),fixed=q+(1-q)*share;if(fixed<CAR_FLOOR)free=true;return [id,Math.max(CAR_FLOOR,fixed)];}));
+ return {car:Object.values(car).every(q=>q>=.995)?null:car,free};
+}
+// The CARRO bar of a carried car (0-1, as CarCondition.health), and in points as the HUD rounds it; evenCar: every part at
+// one health (a state with no CarCondition).
+export const evenCar=health=>Object.fromEntries(CAR_PARTS.map(({id})=>[id,clamp(Number.isFinite(health)?health:1,0,1)]));
+export const carHealth=car=>car?CAR_PARTS.reduce((n,{id})=>n+(car[id]??1),0)/CAR_PARTS.length:1;
+export const carPoints=car=>Math.ceil(carHealth(car)*100-1e-9);
 // The wife's expenses cost 1.5x the standard at 0% and 0.5x at 100%; a knock damages the car on
 // the same scale with the team; the supporters' gifts go the other way round.
 export const expenseScale=morale=>1.5-clamp(morale,0,100)/100;
 export const giftScale=morale=>.5+clamp(morale,0,100)/100;
+// The vaquinha's whole (user, 10-24): never less than the race's own costs (floor: the entry and the litres the team
+// recommends for the laps chosen, a refill at the Box 99 included when the tank holds less), so even the two supporters of
+// a cold crowd pay the gasoline, on the longest circuit and in the longest race too. From 50% up it is what the first six
+// always gave (base × giftScale) plus the litres a race of more than 8 laps adds (extra), so the laps chosen leave the
+// savings as they were; under 50% it slides from there down to the floor at 0%.
+export function vaquinhaWhole(morale,{base,floor,extra=0}){
+ const m=clamp(Number.isFinite(morale)?morale:MORALE_START,0,100),half=base*giftScale(MORALE_START)+extra;
+ return Math.ceil(Math.max(floor,m>=MORALE_START?base*giftScale(m)+extra:floor+(half-floor)*m/MORALE_START)-1e-9);
+}
 // The supporters' morale also fills the paddock and the stands (user, 10-24): the paddock's six supporters at 50% (as
 // before), down to two at 0% and up to ten at 100%; the stands 15% full at 50% (where a career starts), all at 100% and
 // a handful (2%) at 0%, growing faster as the morale climbs.
@@ -306,7 +330,7 @@ export function eatEnergy(energy,id,eaten){
  const both=['cafe','pao'].every(item=>item===id||eaten.includes(item));
  return clamp(both?100:energy+(id==='doce'?ENERGY.sweet:ENERGY.one),0,100);
 }
-export const newCareer=()=>({version:1,energy:ENERGY.start,morale:Object.fromEntries(MORALE.map(k=>[k,MORALE_START])),races:0,challenge:0,since:0,expense:false,gear:[],intro:false,report:null,over:null,clock:newClock(),divorced:null,pensionFor:null,blazerAt:null,opala:false,firsts:[]});
+export const newCareer=()=>({version:1,energy:ENERGY.start,morale:Object.fromEntries(MORALE.map(k=>[k,MORALE_START])),races:0,challenge:0,since:0,expense:false,gear:[],intro:false,report:null,over:null,clock:newClock(),divorced:null,pensionFor:null,blazerAt:null,opala:false,firsts:[],car:null});
 // A saved career, checked field by field; anything unknown starts a new one.
 export function loadCareer(raw){
  const c=newCareer();if(!raw||typeof raw!=='object'||raw.version!==1)return c;
@@ -316,7 +340,8 @@ export function loadCareer(raw){
  c.gear=Array.isArray(raw.gear)?CHALLENGES.slice(0,c.challenge).map(ch=>ch.id):[];
  if(raw.report&&typeof raw.report==='object'&&Object.hasOwn(OUTCOME_TITLES,raw.report.outcome)&&MORALE.every(k=>Number.isFinite(raw.report.before?.[k])))
   c.report={race:count(raw.report.race),outcome:raw.report.outcome,position:Number.isInteger(raw.report.position)&&raw.report.position>0?raw.report.position:null,before:Object.fromEntries(MORALE.map(k=>[k,clamp(Math.round(raw.report.before[k]),0,100)])),awaiting:raw.report.awaiting==='expense'?'expense':null,
-   ...(['damage','bill','charged'].every(k=>Number.isInteger(raw.report.repair?.[k])&&raw.report.repair[k]>=0)?{repair:{damage:raw.report.repair.damage,bill:raw.report.repair.bill,charged:raw.report.repair.charged}}:{})};
+   ...(['damage','bill','charged'].every(k=>Number.isInteger(raw.report.repair?.[k])&&raw.report.repair[k]>=0)?{repair:{damage:raw.report.repair.damage,bill:raw.report.repair.bill,charged:raw.report.repair.charged,
+    ...(Number.isInteger(raw.report.repair.next)&&raw.report.repair.next>=0&&raw.report.repair.next<=100?{next:raw.report.repair.next,free:raw.report.repair.free===true}:{})}}:{})};
  c.over=Object.hasOwn(GAME_OVER,raw.over)?raw.over:null;
  c.energy=Number.isFinite(raw.energy)?clamp(Math.round(raw.energy),0,100):ENERGY.start;
  // The divorce (Central #15): the clock, the divorce itself and the race whose pension is paid.
@@ -328,6 +353,8 @@ export function loadCareer(raw){
  c.blazerAt=Number.isInteger(raw.blazerAt)&&raw.blazerAt>=0&&raw.blazerAt<=c.races?raw.blazerAt:null;c.opala=raw.opala===true&&c.challenge===CHALLENGES.length;
  // The firsts Kléber came for (firstsCards); a career from before them has none.
  c.firsts=Array.isArray(raw.firsts)?['podio','vitoria'].filter(k=>raw.firsts.includes(k)):[];
+ // The damage the money did not fix (repairCar); a career from before it has a car as new.
+ if(raw.car&&typeof raw.car==='object')c.car=repairCar(Object.fromEntries(CAR_PARTS.map(({id})=>[id,Number.isFinite(raw.car[id])?raw.car[id]:1])),{bill:1,charged:0}).car;
  if(c.report){const r=raw.report;for(const k of ['clock','clockBefore']){const v=clockOf(r[k]);if(v)c.report[k]=v;}
   if(c.divorced&&Number.isFinite(r.divorce?.taken))c.report.divorce={taken:r.divorce.taken};c.report.divorceDue=r.divorceDue===true&&!c.divorced;}
  return c;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {circuitId} from './circuits.js';
-import {TANK,burnRate,fuelScale,recommendedFuel} from './fuel.js';
+import {TANK,FUEL_LAPS,burnRate,fuelScale,recommendedFuel} from './fuel.js';
 import {RIVAL_ROSTER,GRID_SIZE} from './race-roster.js';
 import {RaceField,lapTravel} from './race-field.js';
 import {recognitionInput,sameLevel} from './physics.js';
@@ -11,7 +11,7 @@ import {ImmersiveVisuals,trackPoint} from './immersive-visuals.js';
 import {footGround} from './on-foot.js';
 import {keyName,keyText,playerKeys} from './key-bindings.js';
 import {CAFE_MENU,snackState,giveSnack,buySnack,useSnack,stepSnack,snackArms,snackHead,snackHands,showSnacks,snackLabel,snackVerb} from './pitstop.js';
-import {entryFor,enginePower,stageOf,CHALLENGES,MORALE,MORALE_NAMES,MORALE_LABELS,OUTCOME_TITLES,GAME_OVER,REFUSED,STORY_PROFILE_KEY,PENSION,OPALA_GOAL} from './story-career.js';
+import {entryFor,enginePower,carPoints,stageOf,CHALLENGES,MORALE,MORALE_NAMES,MORALE_LABELS,OUTCOME_TITLES,GAME_OVER,REFUSED,STORY_PROFILE_KEY,PENSION,OPALA_GOAL} from './story-career.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const idle={throttle:0,brake:1,left:0,right:0,handbrake:0,reverse:0},still={throttle:0,brake:0,left:0,right:0};
 const touchScreen=()=>document.body.classList.contains('touch-device');
@@ -23,6 +23,13 @@ const capital=text=>text[0].toUpperCase()+text.slice(1);
 const CAR_ACTIONS=Object.freeze({capo:open=>open?'Fechar o capô':'Abrir o capô · ver o motor',porta_malas:open=>open?'Fechar o porta-malas':'Abrir o porta-malas',porta_carona:open=>open?'Fechar a porta do carona':'Abrir a porta do carona',porta:()=>'Entrar no Opala 99'});
 // Reais as on a price tag: R$ 1.000,00.
 const money=n=>`R$ ${n.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+,)/g,'.')}`;
+// A repair bill the wallet could not pay (story-career.js repairCar): the share of the damage it fixed and the CARRO the
+// car starts the next race with; a report from before that rule (no next) had the rest forgiven.
+const repairShort=card=>{
+ if(!Number.isInteger(card.next))return 'a carteira não tinha tudo e a equipe perdoou o resto';
+ const rest=` o Opala vai para a próxima corrida com o CARRO em ${card.next}%${card.free?' (o mínimo para ele largar, a equipe fez de graça)':''}`;
+ return (card.charged>0?`com o dinheiro da carteira deu para consertar ${Math.floor(card.charged/card.bill*100)}% dos danos, e`:'a carteira estava vazia, e')+rest;
+};
 const percent=(value,goal)=>Math.max(0,Math.min(100,Math.floor(value/goal*100)));
 // The faces of the career's cards: the wife, the team, the supporters (story-career.js MORALE).
 const MORALE_ICONS=Object.freeze({esposa:'♥',equipe:'99',torcida:'★'});
@@ -195,12 +202,14 @@ export class ImmersiveMode {
  // supporters for more otherwise. updateDeskCosts follows the slider and the box.
  deskPanel(){
   const s=this.state,cash=s.cash,total=cash+s.profile.fund,ready=total>=s.minimum,litres=Math.min(s.tank,Math.floor((total-s.entry)/COSTS.litre)),least=COSTS.leastLitres,away=s.entry>COSTS.entry;
+  // A race longer than the tank (Central #17: 15 L) takes the rest at the Box 99; the vaquinha paid for it too (raceCost).
+  const recommended=recommendedFuel(circuitId(this.data.meta.id),this.storyLaps),refill=recommended-s.tank;
   const line=s.feedback||(ready?`Fechou! Com ${money(total)} dá a inscrição e até ${litres} litros de gasolina. Quanto vai no tanque?`:`Com ${money(total)} ainda não dá: é ${money(s.entry)} da inscrição e pelo menos ${least} litros de gasolina. Volta lá e pede mais um dindin pra torcida!`);
   const row=(label,value,id)=>`<dt${id?` id="${id}Label"`:''}>${label}</dt><dd${id?` id="${id}"`:''}>${value}</dd>`;
   return `<div class="social-person"><span class="social-avatar">99</span><div><span>CONVERSANDO COM</span><h2>Equipe 99 · computadores</h2></div><b>◆</b></div><div class="speech-bubble fan-speech" role="status">“${line}”</div>`
    +`<dl class="imm-budget"><dt class="imm-budget-cash">Na carteira</dt><dd class="imm-budget-cash">${money(total)}</dd>${row(away?'Inscrição · fora de Interlagos':circuitId(this.data.meta.id)!=='interlagos'?'Inscrição · Opala na carretinha':'Inscrição',money(s.entry))}${row(`Gasolina · ${money(COSTS.litre)}/L`,'','deskFuel')}`
    +`<dd class="imm-budget-wide"><input id="immLitres" type="range" min="2" max="${s.tank}" value="${this.prepLitres}" aria-label="Litros de gasolina"></dd>`
-   +`<dd class="imm-budget-wide desk-fuel-recommended">Recomendado para este circuito: <b>${recommendedFuel(circuitId(this.data.meta.id),this.storyLaps)} litros</b>.</dd>`
+   +`<dd class="imm-budget-wide desk-fuel-recommended">Recomendado para este circuito: <b>${recommended} litros</b>.${refill>0?` O tanque leva ${s.tank}: guarde ${money(Math.ceil(refill*COSTS.litre))} para completar no Box 99 no meio da corrida.`:''}</dd>`
    +`<dt><label class="imm-budget-check"><input id="immFilm" type="checkbox" ${this.prepFilm?'checked':''}> Proteção do para-brisa <small>opcional</small></label></dt><dd id="deskFilm"></dd>`
    +`<dt class="imm-budget-total">Total</dt><dd class="imm-budget-total" id="deskTotal"></dd>${row('','','deskLeft')}</dl>`
    +`<p class="desk-fuel-hint">Burnout e vazamentos gastam mais.${away?' Fora de Interlagos a inscrição inclui a cegonha, as passagens e o hotel da equipe.':''}</p>`
@@ -217,8 +226,10 @@ export class ImmersiveMode {
  // The career in the paddock (story-career.js): the wallet, the three morale bars and the challenge.
  careerBlock(){
   const s=this.state,c=s.profile.career;
-  return `<div class="career-mini"><div class="career-wallet"><span>Carteira</span><b>${money(s.profile.fund)}</b></div>${this.energyBar(c.energy)}${MORALE.map(k=>this.moraleBar(k,c.morale[k],c)).join('')}${this.goalBlock()}</div>`;
+  return `<div class="career-mini"><div class="career-wallet"><span>Carteira</span><b>${money(s.profile.fund)}</b></div>${this.energyBar(c.energy)}${c.car?this.carBar(carPoints(c.car)):''}${MORALE.map(k=>this.moraleBar(k,c.morale[k],c)).join('')}${this.goalBlock()}</div>`;
  }
+ // The damage the last repair bill could not pay, on the car for this race (career.car).
+ carBar(value){return `<div class="career-bar career-car" data-key="carro" data-low="${value<=60}"><span>Carro</span><i><b style="width:${value}%"></b></i><em>${value}%</em></div>`;}
  // The hero's energy (story-career.js ENERGY): low after a race, back up at the Tia's café.
  energyBar(value=100){return `<div class="career-bar career-energy" data-key="energia" data-low="${value<=30}"><span>Energia</span><i><b style="width:${value}%"></b></i><em>${value}%</em></div>`;
  }
@@ -252,8 +263,8 @@ export class ImmersiveMode {
    const n=scene.cards.slice(0,scene.at+1).filter(x=>x.type==='morale').length,of=scene.cards.filter(x=>x.type==='morale').length,d=card.delta;
    return `<div class="imm-eyebrow">DEPOIS DA ${card.race}ª CORRIDA · ${OUTCOME_TITLES[card.outcome].toUpperCase()} · QUADRO ${n} DE ${of}</div>${person(MORALE_ICONS[card.key],card.key,MORALE_LABELS[card.key].toUpperCase(),MORALE_NAMES[card.key])}<p class="career-text">${card.text}</p><div class="career-delta" data-sign="${Math.sign(d)}">${MORALE_LABELS[card.key]}: ${d>0?'+':''}${d}%</div>${this.moraleBar(card.key,card.value)}<small>Antes: ${card.before}% · agora: ${card.value}%</small>${card.key==='esposa'?this.wifeWarning(card):''}${next()}`;
   }
-  // The team's repair bill (story-career.js repairBill), Stevan's words; a short wallet and what the team let go.
-  if(card.type==='repair')return `<div class="imm-eyebrow">DEPOIS DA CORRIDA · DANOS NO CARRO: ${card.damage}%</div><h2 class="career-title">Custos de reparo do carro</h2><p class="career-text">Sua equipe cobrou ${money(card.charged)} para reparar os danos causados ao carro na última corrida.${card.charged<card.bill?` A conta era de ${money(card.bill)}: a carteira não tinha tudo e a equipe perdoou o resto.`:''}</p><p class="career-progress">Valor disponível na carteira: <b>${money(card.fund)}</b></p>${next()}`;
+  // The team's repair bill (story-career.js repairBill), Stevan's words; a short wallet and what the money fixed (repairShort).
+  if(card.type==='repair')return `<div class="imm-eyebrow">DEPOIS DA CORRIDA · DANOS NO CARRO: ${card.damage}%</div><h2 class="career-title">Custos de reparo do carro</h2><p class="career-text">Sua equipe cobrou ${money(card.charged)} para reparar os danos causados ao carro na última corrida.${card.charged<card.bill?` A conta era de ${money(card.bill)}: ${repairShort(card)}.`:''}</p><p class="career-progress">Valor disponível na carteira: <b>${money(card.fund)}</b></p>${next()}`;
   // The divorce (Central #15): what she took after the lawyer's visit, and the pension before each vaquinha.
   if(card.type==='divorce')return `<div class="imm-eyebrow">DEPOIS DA ${card.race}ª CORRIDA</div><h2 class="career-title career-divorce">DIVÓRCIO</h2><p class="career-text">Sua esposa levou ${money(card.taken)} da sua carteira na divisão de bens.</p><p class="career-progress">Na carteira: <b>${money(card.fund)}</b></p><p>A partir da próxima etapa, ${money(PENSION)} de pensão por mês saem da carteira antes de cada vaquinha. A torcida continua com você.</p>${next()}`;
   if(card.type==='pension'){const months=card.months?card.months.length>1?`${card.months.slice(0,-1).join(', ')} e ${card.months.at(-1)}`:card.months[0]:'o mês desta etapa';
@@ -288,7 +299,7 @@ export class ImmersiveMode {
   const changes=moves=>`<p class="report-moves">${Object.entries(moves).map(([k,d])=>`${MORALE_LABELS[k]}: ${d>0?'+':''}${d}%`).join(' · ')}</p>`;
   const parts=cards.map(card=>{
    if(card.type==='morale'){const d=card.delta;return `<section class="report-part report-morale" data-key="${card.key}"><div class="report-head"><span class="social-avatar career-avatar" data-who="${card.key}">${MORALE_ICONS[card.key]}</span><b>${MORALE_NAMES[card.key]}</b><em class="report-delta" data-sign="${Math.sign(d)}">${d>0?'+':''}${d}%</em></div><p>${card.text}</p>${this.moraleBar(card.key,card.value)}${card.key==='esposa'?this.wifeWarning(card):''}</section>`;}
-   if(card.type==='repair')return `<section class="report-part"><div class="report-head"><b>Reparo do carro</b><em>${money(card.charged)}</em></div><p>Danos de ${card.damage}%${card.charged<card.bill?`; a conta era de ${money(card.bill)} e a equipe perdoou o resto`:''}. Na carteira: ${money(card.fund)}.</p></section>`;
+   if(card.type==='repair')return `<section class="report-part${card.next<100?' report-bad':''}"><div class="report-head"><b>Reparo do carro</b><em>${money(card.charged)}</em></div><p>Danos de ${card.damage}%${card.charged<card.bill?`; a conta era de ${money(card.bill)}: ${repairShort(card)}`:''}. Na carteira: ${money(card.fund)}.</p></section>`;
    const challenge=ch(card.challenge);
    if(card.type==='challenge')return `<section class="report-part"><div class="report-head"><b>${card.fresh?'Novo desafio':'Desafio'} ${challenge.number}: ${challenge.title}</b><em>${card.fresh?`${card.left} corridas`:`falta${card.left>1?'m':''} ${card.left} corrida${card.left>1?'s':''}`}</em></div><progress max="${challenge.goal}" value="${Math.min(card.fund,challenge.goal)}"></progress><p>${percent(card.fund,challenge.goal)}% de ${money(challenge.goal)} · na carteira: ${money(card.fund)}</p>${card.fresh?`<p>${challenge.now}</p>`:''}</section>`;
    if(card.type==='done')return `<section class="report-part report-good"><div class="report-head"><b>Desafio ${challenge.number} cumprido: ${challenge.own}!</b></div><p>${challenge.done}</p>${challenge.perk?`<p class="career-perk">${challenge.perk}</p>`:''}${challenge.morale?changes(challenge.morale):''}</section>`;
@@ -378,7 +389,10 @@ export class ImmersiveMode {
  // laps (the player's setting, main.js) is taken at each start: storyLaps for the story,
  // freeTotalLaps (resetField) for the free race. Both burn at the circuit's scale (fuel.js): the
  // story's tank holds what the pilot bought at the desk, the free race starts with what it needs.
- start(){this.freeCountdown=0;this.goTime=0;this.car.condition?.reset();this.finishElapsed=null;this.finishTime=null;this.freeOrder=null;this.recordAssisted=false;this.resetVehicle();this.inCar=this.visual.inCar=false;this.storyLaps=this.laps;this.state.entry=entryFor(circuitId(this.data.meta.id),this.state.profile.career);this.state.tank=this.tank;this.car.engineScale=enginePower(this.state.profile.career);this.state.round=this.storyRound??null;this.state.start();this.state.fuelScale=fuelScale(circuitId(this.data.meta.id),this.data.meta.reconstructed_xy_m);this.visual.reset();this.near=-1;this.walkToFan=this.walkToDesk=this.walkToCafe=null;this.walkToLeo=false;this.cafe=snackState();this.leoAsked=false;this.deskInside=false;this.projectile=null;this.raceProgress=0;this.previousS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:true});this.parts.reset();this.rivals=this.field.rivals;this.debrisTimer=6;this.contactCooldown=0;this.sync();this.save();}
+ // The story's car starts with the damage the last repair bill could not pay (career.car, story-career.js
+ // repairCar); the vaquinha pays at least the race's entry and recommended litres (raceFuel).
+ start(){this.freeCountdown=0;this.goTime=0;this.car.condition?.reset();this.carryDamage();this.finishElapsed=null;this.finishTime=null;this.freeOrder=null;this.recordAssisted=false;this.resetVehicle();this.inCar=this.visual.inCar=false;this.storyLaps=this.laps;this.state.entry=entryFor(circuitId(this.data.meta.id),this.state.profile.career);this.state.tank=this.tank;this.state.raceFuel=recommendedFuel(circuitId(this.data.meta.id),this.storyLaps);this.state.baseFuel=recommendedFuel(circuitId(this.data.meta.id),FUEL_LAPS);this.car.engineScale=enginePower(this.state.profile.career);this.state.round=this.storyRound??null;this.state.start();this.state.fuelScale=fuelScale(circuitId(this.data.meta.id),this.data.meta.reconstructed_xy_m);this.visual.reset();this.near=-1;this.walkToFan=this.walkToDesk=this.walkToCafe=null;this.walkToLeo=false;this.cafe=snackState();this.leoAsked=false;this.deskInside=false;this.projectile=null;this.raceProgress=0;this.previousS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:true});this.parts.reset();this.rivals=this.field.rivals;this.debrisTimer=6;this.contactCooldown=0;this.sync();this.save();}
+ carryDamage(){const carried=this.state.profile.career.car,c=this.car.condition;if(!carried||!c)return;Object.assign(c.quality,carried);c.revision++;}
  disable(){this.car.engineScale=1;if(this.lastPhase==='starting'){this.restoreStartView();this.startSwitches(1,true);}document.body.classList.remove('start-scene');this.finishElapsed=null;this.state.disable();this.visual.restoreCamera();this.visual.root.visible=this.visual.damage.visible=false;this.carRoot.visible=true;this.panel.classList.add('hidden');this.hud.classList.add('hidden');document.getElementById('dqScreen').classList.add('hidden');document.body.classList.remove('disqualified-scene','podium-scene','tow-scene','story-cutscene','story-paddock');document.body.classList.remove('immersive-mode','immersive-stage');this.brand.innerHTML=this.baseBrand;this.controls.innerHTML=this.baseControls;document.title=this.baseTitle;this.lastPhase='off';}
  sync(){
   const s=this.state;if(s.phase===this.lastPhase)return;const previous=this.lastPhase;this.lastPhase=s.phase;this.lastUI='';

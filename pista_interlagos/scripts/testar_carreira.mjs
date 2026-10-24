@@ -4,7 +4,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {ImmersiveState,FANS,JOKES,COSTS} from '../teste/immersive-state.js';
-import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,KLEBER_LINES,FIRST_LINES,MISSED,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,SNAG_COST,outfitOf,repairBill,repairPerPoint,enginePower,ENGINE_PARTS,stageOf,BLAZER_AFTER,OPALA_GOAL,divorceStep,patienceOf,DIVORCE_LINES,PENSION,PENSION_MONTHS,GAME_OVER} from '../teste/story-career.js';
+import {OLD_STOCK_2026} from '../teste/championship.js';
+import {recommendedFuel,tankFor,FUEL_LAPS} from '../teste/fuel.js';
+import {CarCondition} from '../teste/car-condition.js';
+import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,KLEBER_LINES,FIRST_LINES,MISSED,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,SNAG_COST,outfitOf,repairBill,repairCar,carHealth,CAR_FLOOR,repairPerPoint,enginePower,ENGINE_PARTS,stageOf,BLAZER_AFTER,OPALA_GOAL,divorceStep,patienceOf,DIVORCE_LINES,PENSION,PENSION_MONTHS,GAME_OVER} from '../teste/story-career.js';
 const checks={},check=(name,value)=>{checks[name]=!!value;assert(value,name);};
 // The career's first podium and win already seen (Kléber's talks for them are checked on their own, below).
 const profileOf=(career={},fund=0)=>({fund,career:{...newCareer(),intro:true,firsts:['podio','vitoria'],...career}});
@@ -26,13 +29,25 @@ check('welcome_seen_once',!first.scene&&first.profile.career.intro&&new Immersiv
 const old=new ImmersiveState({fund:2500,released:true,races:7});check('old_savings_start_over',old.profile.fund===0&&!old.profile.released&&old.profile.races===7&&!old.profile.career.intro);
 check('bad_career_is_new',loadCareer({version:1,morale:{esposa:500,equipe:-3,torcida:'x'},challenge:99,gear:['macacao'],over:'boom'}).morale.esposa===100&&loadCareer({version:1,morale:{equipe:-3}}).morale.equipe===0&&loadCareer({version:2}).intro===false&&loadCareer({version:1,challenge:99}).challenge===CHALLENGES.length&&loadCareer({over:'boom',version:1}).over===null);
 
-// Supporters give by their morale: 50% as always, half at 0%, one and a half at 100%.
+// Supporters give by their morale: 50% as always, one and a half at 100%, and never less than the race's costs (user,
+// 10-24): at 0% the two who still come pay the entry and the gasoline (here the minimum's 4 L: no circuit set).
 const half=story({morale:{esposa:50,equipe:50,torcida:50}});check('gifts_as_before_at_half',FANS.every((f,i)=>half.gift(i)===f.gift));
 const cold=story({morale:{esposa:50,equipe:50,torcida:0}}),warm=story({morale:{esposa:50,equipe:50,torcida:100}});
-// The vaquinha's whole follows the morale as before, shared by whoever came (two at 0%, ten at 100%).
+// The vaquinha's whole, shared by whoever came (two at 0%, ten at 100%).
 const whole=s=>FANS.reduce((sum,f,i)=>sum+(s.here(i)?s.gift(i):0),0),base=FANS.slice(0,6).reduce((sum,f)=>sum+f.gift,0);
-check('supporters_morale_scales_gifts',Math.abs(whole(cold)-base*.5)<=2&&Math.abs(whole(warm)-base*1.5)<=5&&whole(half)===base);
-const mild=story({morale:{esposa:50,equipe:50,torcida:20}});mild.talk(2);mild.joke(JOKES.findIndex(j=>j.topic===FANS[2].taste));check('joke_pays_scaled_gift',mild.profile.fund===mild.gift(2)&&mild.profile.fund>0&&Math.abs(whole(mild)-base*.7)<=3);
+check('supporters_morale_scales_gifts',whole(cold)>=cold.raceCost&&whole(cold)-cold.raceCost<=2&&cold.raceCost===cold.minimum&&Math.abs(whole(warm)-base*1.5)<=5&&whole(half)===base);
+const mild=story({morale:{esposa:50,equipe:50,torcida:20}});mild.talk(2);mild.joke(JOKES.findIndex(j=>j.topic===FANS[2].taste));check('joke_pays_scaled_gift',mild.profile.fund===mild.gift(2)&&mild.profile.fund>0&&whole(mild)>whole(cold)&&whole(mild)<base);
+// The worst case on every Old Stock circuit and for any laps (1-20; the longest lap is Brasília's 5.4 km): the fewest
+// supporters pay the entry and every litre the team recommends, a refill at the Box 99 included when the tank holds less.
+const paddock=(circuit,laps,torcida)=>{const s=new ImmersiveState(profileOf({morale:{esposa:50,equipe:50,torcida}},0));s.entry=entryFor(circuit);s.tank=tankFor(circuit);s.raceFuel=recommendedFuel(circuit,laps);s.baseFuel=recommendedFuel(circuit,FUEL_LAPS);s.start();fundAll(s);return s;};
+const calendar=[...new Set(OLD_STOCK_2026.map(r=>r.circuit))],lapsRange=Array.from({length:20},(_,i)=>i+1);
+check('cold_crowd_pays_every_race',calendar.every(c=>lapsRange.every(l=>[0,3].every(m=>{const s=paddock(c,l,m);return s.present===2&&!s.scene&&s.profile.fund>=s.entry+recommendedFuel(c,l)*COSTS.litre&&s.spareCash()===s.profile.fund-s.raceCost;}))));
+const longest=paddock('brasilia',20,0);check('brasilia_twenty_laps_paid',recommendedFuel('brasilia',20)===30&&longest.tank===15&&longest.profile.fund>=150+30*COSTS.litre);
+// The laps chosen leave the savings as they were (from 50% up, what is left after the race's costs), and more morale
+// never gives less.
+const left=(c,l,m)=>{const s=paddock(c,l,m);return s.vaquinha()-s.raceCost;};
+check('laps_leave_savings_alike',calendar.every(c=>[50,80,100].every(m=>Math.abs(left(c,FUEL_LAPS,m)-left(c,20,m))<=1&&left(c,1,m)===left(c,FUEL_LAPS,m))));
+check('more_morale_more_money',calendar.every(c=>[0,10,25,40,50,60,80,100].map(m=>paddock(c,12,m).profile.fund).every((v,i,a)=>!i||v>=a[i-1]-2)));
 
 // The entry: R$ 100 at Interlagos, R$ 150 elsewhere; the kitty pays first, then the wallet.
 check('entry_home_and_away',entryFor('interlagos')===ENTRY.home&&ENTRY.home===100&&['brasilia','cascavel','chapeco','curvelo'].every(c=>entryFor(c)===150));
@@ -68,6 +83,19 @@ const dented=story();dented.health=.75;dented.glass=.6;race(dented,2);const bill
 check('repair_bill_after_supporters',types(dented)==='morale,morale,morale,repair,challenge'&&dented.scene.cards[2].key==='torcida'&&bill.damage===25&&bill.bill===250&&bill.charged===250&&bill.fund===600-250&&dented.profile.fund===350);
 const skint=story();skint.health=.5;race(skint,8);const cut=skint.scene.cards[3];
 check('short_wallet_pays_what_it_has',cut.bill===500&&cut.charged===100&&cut.fund===0&&skint.profile.fund===0);
+// What it paid fixes that share of the damage (user, 10-24): R$ 100 of 500 fix a fifth, and the next race starts there.
+check('short_wallet_fixes_its_share',cut.next===60&&!cut.free&&Math.abs(carHealth(skint.profile.career.car)-.6)<1e-9);
+readAll(skint);skint.start();check('next_race_starts_damaged',Math.abs(skint.health-.6)<1e-9&&!skint.scene);
+const carried=new ImmersiveState(JSON.parse(JSON.stringify(skint.profile)));carried.start();check('damage_survives_reload',Math.abs(carried.health-.6)<1e-9&&loadCareer({...newCareer(),car:{motor:'x',pneus:.1}}).car.pneus===CAR_FLOOR&&loadCareer({...newCareer(),car:{motor:1}}).car===null);
+// The next bill counts the old damage too; paid in full, the car is as new again.
+skint.health=.5;race(skint,1);const cleared=skint.scene.cards.find(c=>c.type==='repair');check('paid_bill_clears_the_damage',cleared.damage===50&&cleared.charged===500&&cleared.next===100&&skint.profile.career.car===null);
+readAll(skint);skint.start();check('clean_car_after_paying',skint.health===1);
+// Each part keeps its own share, and none goes out under CAR_FLOOR: below it the team works for free.
+const parts=new CarCondition();parts.damage('motor',.9);parts.damage('pneus',.3);const share=repairCar(parts.quality,{bill:200,charged:20}),halved=repairCar(parts.quality,{bill:200,charged:100});
+check('repair_share_by_part',Math.abs(share.car.motor-CAR_FLOOR)<1e-9&&share.free&&Math.abs(share.car.pneus-.73)<1e-9&&share.car.freios===1&&Math.abs(halved.car.motor-.55)<1e-9&&!halved.free);
+check('full_bill_is_a_new_car',repairCar(parts.quality,{bill:200,charged:200}).car===null&&repairCar(parts.quality,{bill:0,charged:0}).car===null);
+const wreck=story();wreck.health=0;wreck.scene=null;wreck.phase='race';wreck.fail('Carro quebrou');wreck.beginTow();while(wreck.phase==='tow')wreck.towStep({brake:1},.05);
+check('wreck_leaves_able_to_race',wreck.repair.charged===0&&wreck.repair.free&&wreck.repair.next===50&&carHealth(wreck.profile.career.car)===CAR_FLOOR);
 const billed=story();billed.health=.75;billed.scene=null;billed.phase='race';billed.finish(2);const reread=new ImmersiveState(JSON.parse(JSON.stringify(billed.profile)));reread.start();
 check('repair_bill_survives_reload',reread.scene?.kind==='report'&&reread.scene.cards.find(c=>c.type==='repair')?.charged===250&&reread.profile.fund===350);
 check('old_report_has_no_bill',loadCareer({...newCareer(),report:{race:1,outcome:'pontos',before:{esposa:50,equipe:50,torcida:50}}}).report&&!loadCareer({...newCareer(),report:{race:1,outcome:'pontos',before:{esposa:50,equipe:50,torcida:50}}}).report.repair);
@@ -99,7 +127,8 @@ const sad=story({races:6,since:6,morale:{esposa:80,equipe:5,torcida:50}});race(s
 check('game_over_at_zero',sad.profile.career.over==='equipe'&&types(sad)==='morale,morale,morale,repair,over');readAll(sad);check('game_over_waits',sad.sceneCard().type==='over'&&!sad.advanceScene());
 const ended=new ImmersiveState(JSON.parse(JSON.stringify(sad.profile)));ended.start();check('game_over_survives_reload',ended.scene?.kind==='over');
 ended.restartCareer();ended.start();check('new_story_after_the_end',!ended.profile.career.over&&ended.profile.fund===0&&ended.scene?.kind==='intro');
-const broke=new ImmersiveState(profileOf({morale:{esposa:50,equipe:50,torcida:10}},0));broke.entry=150;broke.start();check('no_money_no_story',broke.profile.career.over==='dinheiro'&&broke.scene?.kind==='over'&&GAME_OVER.dinheiro==='A carreira de piloto te levou à falência e você está fora do automobilismo.');
+// A cold crowd no longer ends it: the vaquinha always pays the race (bankruptcy keeps Stevan's words, as a safeguard).
+const broke=new ImmersiveState(profileOf({morale:{esposa:50,equipe:50,torcida:10}},0));broke.entry=150;broke.start();check('cold_crowd_still_races',!broke.profile.career.over&&!broke.scene&&broke.reachable()>=broke.raceCost&&GAME_OVER.dinheiro==='A carreira de piloto te levou à falência e você está fora do automobilismo.');
 const home=new ImmersiveState(profileOf({morale:{esposa:50,equipe:50,torcida:10}},0));home.start();check('home_entry_still_reachable',!home.profile.career.over&&!home.scene);
 
 // The divorce (Central #15). The clock by bands of the wife's morale after each race (Stevan's table), her patience
