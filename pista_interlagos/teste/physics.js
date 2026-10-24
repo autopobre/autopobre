@@ -2,7 +2,7 @@
 // pneus por eixo com limite de atrito e contato da carroceria com o chao.
 // Nao e simulacao homologada de pneus/suspensao do Old Stock.
 import {GRID_START_BACK} from './race-roster.js';
-import {pitLane,pitGeometry,locatePit,pitLimit,wallContact} from './pit-lane.js';
+import {pitLane,pitGeometry,locatePit,pitLimit} from './pit-lane.js';
 import {cliffEdge} from './cliff-edge.js';
 import {locateBranch,branchPoint,branchS,branchSpan,branchGapEnd,branchBarrier,barrierNear,lineBarrier} from './branch-lane.js';
 import {branchLayouts,stationZ} from './branch-layout.js';
@@ -594,9 +594,13 @@ export class TestCar {
   // Half through a gap: the walls' end corners against the body's sides (a corner between two of its points), and the
   // zone's solids against its nose.
   if(this.roam&&!zone&&!behind){const hit=this.roam.collide(this,null,reach,false);if(hit)this.wallImpactSpeed=Math.max(this.wallImpactSpeed,hit);}
-  // Pit wall, garage fronts and the walls along the pit exit.
+  // Pit wall, garage fronts and the walls along the pit exit, met like a branch road's (barrierHit: the body's outline,
+  // each point against the segment across from it). wallContact's box against a segment's nearest point took a joint a
+  // metre ahead of a car running beside a wall whose centre line bends (Interlagos' pit wall thickening into a platform
+  // along the exit) for the wall's face, its normal tilted toward the car's way: the speed along the wall counted as an
+  // impact and the rebound threw the car across the lane into the other wall (user, 2026-10-24: a ping-pong).
   for(let pass=0;this.pitGeo&&pass<2;pass++){
-   const hit=wallContact(this.pitGeo,this.x,this.y,this.heading,this.body);if(!hit)break;
+   const hit=barrierHit(this,this.pitGeo);if(!hit)break;
    this.wallPush(hit);
   }
   // A branch road's walls and the noses between the two ways (data.branches, forkWorld, barrierHit).
@@ -621,7 +625,7 @@ export class TestCar {
   this.stepX=this.x;this.stepY=this.y;
   this.trackLap(p,this.surface,Math.hypot(this.x-oldX,this.y-oldY),speed);
  }
- // Out of a wall met as a line (wallContact, pit-lane.js: the pit's and a branch road's), with the same rebound and
+ // Out of a wall met as a line (barrierHit: the pit's, a branch road's, the closures'), with the same rebound and
  // scrape as off the guardrails.
  wallPush(hit){
   this.x+=hit.nx*hit.depth;this.y+=hit.ny*hit.depth;
@@ -885,9 +889,12 @@ function barrierHit(car,barrier){
    if(along<0||along>len)continue;const t=px*nx+py*ny;
    if(t<w.half&&t>(w.ox||w.oy?-1.5:0)&&!(best?.depth>=w.half-t))best={depth:w.half-t,nx,ny};
   }
-  // A free end (where the wall stops short of nothing) into the box: out along the box's nearer side.
-  for(const [free,ex,ey] of [[w.free1,w.x1,w.y1],[w.free2,w.x2,w.y2]]){
-   if(!free)continue;const lx=(ex-cx)*ch+(ey-cy)*sh,ly=-(ex-cx)*sh+(ey-cy)*ch,pl=b.halfLength+w.half-Math.abs(lx),pw=b.halfWidth+w.half-Math.abs(ly);
+  // A free end (where the wall stops short of nothing) into the box: the two corners of its square end, out along the
+  // box's nearer side. (The end as one point with the box grown by the wall's half thickness made a thick wall's end a
+  // block standing that far past it: Interlagos' pit wall, a 4 m platform where it stops along the exit, pushed a car
+  // running beside it back along its own way, its whole speed an impact.)
+  for(const [free,ex,ey] of [[w.free1,w.x1,w.y1],[w.free2,w.x2,w.y2]])for(const across of free?[-w.half,w.half]:[]){
+   const qx=ex-uy*across-cx,qy=ey+ux*across-cy,lx=qx*ch+qy*sh,ly=-qx*sh+qy*ch,pl=b.halfLength-Math.abs(lx),pw=b.halfWidth-Math.abs(ly);
    if(pl<=0||pw<=0)continue;const depth=Math.min(pl,pw),k=pl<pw?-Math.sign(lx)||1:-Math.sign(ly)||1;
    if(!(best?.depth>=depth))best=pl<pw?{depth,nx:k*ch,ny:k*sh}:{depth,nx:-k*sh,ny:k*ch};
   }

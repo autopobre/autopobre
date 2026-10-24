@@ -57,9 +57,11 @@ export function pitGeometry(data){
   const p=a[i],q=a[i+1],reach=Math.max(-p[c.lo],p[c.hi],-q[c.lo],q[c.hi])+6;
   bucket(grid,Math.min(p[c.x],q[c.x])-reach,Math.min(p[c.y],q[c.y])-reach,Math.max(p[c.x],q[c.x])+reach,Math.max(p[c.y],q[c.y])+reach,i);
  }
+ // The walls' segments also as physics.js barrierHit meets them (branch-lane.js's fields): each wall's two ends free,
+ // met from either side (ox, oy 0).
  const walls=[],wallGrid=new Map();
- for(const wall of P.walls)for(let i=0;i+1<wall.points.length;i++){
-  const [x1,y1,z1,t1]=wall.points[i],[x2,y2,z2,t2]=wall.points[i+1],half=(t1+t2)/4,segment={x1,y1,x2,y2,half,name:wall.name,top:Math.max(z1,z2)+wall.height,low:wall.height<=1.15&&!wall.fence};
+ for(const wall of P.walls)for(let i=0,last=wall.points.length-2;i<=last;i++){
+  const [x1,y1,z1,t1]=wall.points[i],[x2,y2,z2,t2]=wall.points[i+1],half=(t1+t2)/4,segment={x1,y1,x2,y2,half,name:wall.name,top:Math.max(z1,z2)+wall.height,low:wall.height<=1.15&&!wall.fence,free1:i===0,free2:i===last,ox:0,oy:0};
   walls.push(segment);bucket(wallGrid,Math.min(x1,x2)-4-half,Math.min(y1,y2)-4-half,Math.max(x1,x2)+4+half,Math.max(y1,y2)+4+half,segment);
  }
  const geo={c,a,grid,walls,wallGrid,length:P.length_m,limit:P.limit,lapLength:L,entryMainS:P.entry_main_s,exitMainS:P.exit_main_s};
