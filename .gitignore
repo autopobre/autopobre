@@ -124,3 +124,7 @@ desktop.ini
 
 # The narration script for TTS tools (user, 2026-10-22: stays on the PC only).
 /geracoes_jogo/v05_historia_interlagos/NARRACAO_TTS.md
+
+# Test generations and test leftovers kept on the PC only (user, 2026-10-24).
+/geracoes_jogo/v08_menus_exploracao/
+volante_controles.png
