@@ -480,8 +480,8 @@ export class ImmersiveMode {
   if(s.phase==='podium'){
    // Space, E (the action key) or Enter: Continuar, also while the mouse turns the photo camera.
    if(this.podiumCamera&&['Space','KeyE','Enter','NumpadEnter'].includes(code)){this.action('afterPodium');return true;}
+   // The mouse is taken only by a click on the scene (user, 10-24), or by Tab; other keys leave it free.
    if(code==='Tab'){this.mouseFree=!!document.pointerLockElement;if(this.mouseFree)document.exitPointerLock();else this.captureMouse();return true;}
-   if(!['Escape','KeyP','KeyM','Enter','NumpadEnter'].includes(code))this.captureMouse();
   }
   // The start: L flips the IGN switch; I is held for the starter (input.ignition).
   if(s.phase==='starting'&&code==='KeyL'){this.action('ign');return true;}

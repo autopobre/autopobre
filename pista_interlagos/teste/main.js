@@ -2007,8 +2007,9 @@ const lapRecords=new LapRecords(circuit.id),raceResults=new RaceResults({
  // A multiplayer guest does not rerun alone: it goes back to the car screen to wait for the host's next race.
  onRestart:()=>{if(multiplayer?.guest())returnToMainMenu();else beginRace(true);},rerunLabel:()=>multiplayer?.guest()?'Aguardar a próxima corrida →':null,onSettings:openSettings,onRecords:mode=>lapRecords.open(mode),onMainMenu:returnToMainMenu,
  onNextRound:()=>{returnToMainMenu();startChampionshipRound();},onChampionship:()=>championshipDialog.open(scoredChampionship??championshipFor()),
- // Closing the sheet opens the podium: that click also gives the mouse to its free camera.
- onPodium:()=>{if(immersive){immersive.podiumCamera=true;immersive.mouseFree=false;immersive.captureMouse();}}});
+ // Closing the sheet opens the podium with the mouse free: a click on the scene gives it to the free camera
+ // (user, 10-24: only if the player clicks).
+ onPodium:()=>{if(immersive){immersive.podiumCamera=true;immersive.mouseFree=false;}}});
 const pilotPicker=new PilotPicker(),automaticRecords=new AutomaticRecords(pilotStorage()),automaticAIRecords=new AutomaticAIRecords(pilotStorage());
 $('recordsButton').onclick=()=>{lapRecords.circuit=circuit.id;lapRecords.open();};
 $('settingsButton').onclick=openSettings;
