@@ -98,6 +98,11 @@ PROFUNDIDADE_TUNEL = 7.0
 FOLGA_TUNEL = 5.8
 BOCA_NORTE = (-23.54728, -46.64752)
 RAMPA_MAX = .10
+# A descida do tabuleiro para o tunel desenhada como estrada (alinhar_descida): de DESCIDA_ANTES_M antes da boca norte
+# (depois do cruzamento sobre a Major Sertorio) ate a reta do tunel, rampas retas ligadas por curvas verticais de um
+# destes raios (m); com 400 m um carro so sai do chao numa lombada acima de 225 km/h.
+DESCIDA_ANTES_M = 190.0
+RAIOS_VERTICAIS = (400.0, 500.0, 600.0, 800.0, 1000.0)
 # As calcadas do centro (m): ficam dentro das quadras viarias do GeoSampa e aplainam junto com o leito das ruas.
 CALCADA = 3.5
 # A mata das pracas (cobertura) a menos disso do leito vira gramado: nenhum tronco no meio-fio com a copa sobre a rua.
@@ -289,6 +294,90 @@ def medir_tabuleiro(P, E, T, rel, ks, z0):
     return out
 
 
+def rampas_e_curvas(ss, pvis, R):
+    """Perfil de estrada: rampas retas entre os pontos `pvis` [(s, z), ...] e, em cada ponto interno, uma parabola de raio
+    R (curvatura 1/R) centrada nele. s e z de cada ponto podem ser colunas (casos, 1) contra as estacoes ss (1, n).
+    Devolve o perfil, as rampas e se as curvas cabem (nenhuma invade a vizinha nem passa das pontas)."""
+    S = [np.asarray(p[0], float) for p in pvis]
+    Z = [np.asarray(p[1], float) for p in pvis]
+    g = [(Z[i + 1] - Z[i]) / (S[i + 1] - S[i]) for i in range(len(S) - 1)]
+    out = Z[0] + g[0] * (ss - S[0])
+    for i in range(1, len(S) - 1):
+        out = np.where(ss >= S[i], Z[i] + g[i] * (ss - S[i]), out)
+    cabe = np.ones(np.broadcast_shapes(*[np.shape(v) for v in S + Z]), bool)
+    fim = S[0]
+    for i in range(1, len(S) - 1):
+        L = R * np.abs(g[i] - g[i - 1])
+        a = S[i] - L / 2
+        cabe &= a >= fim
+        fim = S[i] + L / 2
+        x = ss - a
+        out = np.where((x > 0) & (x < L), Z[i] + g[i - 1] * (ss - S[i]) + (g[i] - g[i - 1]) * x ** 2 / (2 * np.maximum(L, 1e-9)), out)
+    cabe &= fim <= S[-1]
+    return out, g, cabe
+
+
+def alinhar_descida(z, s, zc, i_boca, i_cons, i_sobe):
+    """A descida do Minhocao para o tunel como uma estrada de verdade (usuario, 24/10: "tanta ondulacao que os carros
+    ficam capotando"). O pavimento rastreado no MDS ondula +-0,3 m (juntas, carros, o vao de luz entre as pistas) e o teto
+    sob a Rua da Consolacao (o chao de la menos FOLGA_TUNEL) cortava um degrau no leito desenhado: lombadas de 70-90 m de
+    raio jogavam o carro no ar a 90 km/h e o vale de 45 m na entrada da galeria o derrubava. De DESCIDA_ANTES_M antes da
+    boca norte ate o fim da praca o perfil passa a ser: a tangente do tabuleiro, uma lombada, a rampa reta da descida, um
+    vale sob a Consolacao, a rampa do tunel e uma curva suave para a reta do tunel, com o mesmo raio (RAIOS_VERTICAIS) em
+    todas. Os vertices (o da lombada, na tangente do tabuleiro; o do vale; o ultimo, na reta do tunel) e o raio saem de
+    uma busca em grade: o mais perto do pavimento medido (ate a boca), sempre sob o teto do tunel."""
+    ia = i_boca - int(round(DESCIDA_ANTES_M / DS))
+    assert 0 < ia < i_boca < i_cons < i_sobe < len(z) - 1, 'a descida para o tunel nao pode passar pela linha de largada'
+    k = np.arange(ia, i_sobe + 1)
+    ss = s[k][None, :]
+    teto = np.where(k >= i_cons, zc[k] - FOLGA_TUNEL, np.inf)
+    medido = (k <= i_boca).astype(float)
+    sa, za = s[ia], z[ia]
+    ga = (z[ia + 1] - z[ia - 1]) / (s[ia + 1] - s[ia - 1])
+    # A reta do tunel desenhado, alem do degrau da Consolacao.
+    reta = (s > s[i_cons] + 40) & (s <= s[i_sobe])
+    sr, zr = s[reta] - s[reta].mean(), z[reta] - z[reta].mean()
+    gl = float(np.sum(sr * zr) / np.sum(sr * sr))
+    cl = float(z[reta].mean() - gl * s[reta].mean())
+    s3 = s[i_sobe] - 20.0
+    pontas = (s3, cl + gl * s3), (s[i_sobe] + 1.0, cl + gl * (s[i_sobe] + 1.0))
+
+    def avalia(s1, s2, z2, R):
+        zz, g, cabe = rampas_e_curvas(ss, [(sa, za), (s1, za + ga * (s1 - sa)), (s2, z2), *pontas], R)
+        ok = cabe & (np.abs(g[1]) <= RAMPA_MAX) & np.all(zz <= teto - .02, axis=1, keepdims=True)
+        return np.where(ok[:, 0], np.sum(medido * (zz - z[k]) ** 2, axis=1), np.inf)
+
+    def busca(faixas, R):
+        grade = [g_.ravel()[:, None] for g_ in np.meshgrid(*faixas, indexing='ij')]
+        custo = np.concatenate([avalia(*(g_[c:c + 20000] for g_ in grade), R) for c in range(0, len(grade[0]), 20000)])
+        j = int(np.argmin(custo))
+        return custo[j], [float(g_[j, 0]) for g_ in grade]
+
+    melhor = None
+    z_baixo = np.min(teto) - 3.0
+    for R in RAIOS_VERTICAIS:
+        custo, (s1, s2, z2) = busca((np.arange(sa + 4, s[i_boca], 4.0), np.arange(s[i_boca] - 50, s[i_cons] + 60, 4.0),
+                                     np.arange(z_baixo, z[i_boca] + 1.0, .1)), R)
+        if not np.isfinite(custo):
+            continue
+        custo, (s1, s2, z2) = busca((np.arange(s1 - 4, s1 + 4.01, 1.0), np.arange(s2 - 4, s2 + 4.01, 1.0),
+                                     np.arange(z2 - .1, z2 + .101, .02)), R)
+        if melhor is None or custo < melhor[0]:
+            melhor = (custo, s1, s2, z2, R)
+    assert melhor is not None, 'nenhuma descida cabe sob o teto do tunel'
+    custo, s1, s2, z2, R = melhor
+    zz, g, _ = rampas_e_curvas(ss, [(sa, za), (s1, za + ga * (s1 - sa)), (s2, z2), *pontas], R)
+    zz = zz[0]
+    desvio = (zz - z[k])[k <= i_boca]
+    kv = np.diff(np.r_[z[ia - 1], zz, z[i_sobe + 1]], 2) / DS ** 2
+    print(f'descida para o tunel (s {s[ia]:.0f}-{s[i_sobe]:.0f}): curvas de {R:.0f} m, rampas {100 * float(g[1]):.1f}% e '
+          f'{100 * float(g[2]):.1f}% (vale a {z2:.2f} m), desvio do medido {np.sqrt(np.mean(desvio ** 2)):.2f} m (max '
+          f'{np.abs(desvio).max():.2f}), curvatura max {1e3 * np.abs(kv).max():.2f}e-3, folga do teto {np.min(teto - zz):.2f} m')
+    z = z.copy()
+    z[k] = zz
+    return z
+
+
 def perfil(P, E, s, L, attr, rel, G, origem, epsg):
     """Perfil da volta. Nas ruas, o chao do LiDAR 2020 sob a secao (suavizado). Do pe da rampa da Ana Cintra ate a
     trincheira aberta antes da Rua da Consolacao, o pavimento MEDIDO no MDS 2020 (a rampa, o tabuleiro do Minhocao e a
@@ -346,6 +435,8 @@ def perfil(P, E, s, L, attr, rel, G, origem, epsg):
                 corte[i] = min(corte[i], corte[j_] + limite)
                 aterro[i] = max(aterro[i], aterro[j_] - limite)
     z = gaussian_filter1d((corte + aterro) / 2, 2 / DS, mode='wrap')
+    # A descida do tabuleiro ate a reta do tunel: rampas retas e curvas verticais, sem as ondas do MDS nem o degrau do teto.
+    z = alinhar_descida(z, s, zc, i_boca, i_cons, i_sobe)
     # O cruzamento: a estacao do tabuleiro sobre a Major Sertorio.
     ms = np.flatnonzero(np.isin(via, MAJOR_SERTORIO_RETA + [230628803, 424389521]))
     tab = np.flatnonzero(nivel == 'elevado')

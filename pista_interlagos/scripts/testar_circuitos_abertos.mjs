@@ -151,7 +151,13 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','guarati
   const probe=new TestCar(data);let tunnelStations=0,deepest=0;
   for(let i=0;i<n;i++){const p=a[i];if(!inTunnel(data,p[0]))continue;tunnelStations++;for(const side of [-1,1]){const d=side*(p[4]/2+.25),x=p[1]+p[9]*d,y=p[2]+p[10]*d;probe.index=i;const s=probe.sample(x,y,i);assert(Math.abs(s.z-.055-(p[3]+p[5]*d))<.05,`Minhocão: tunnel road plane out to the wall at s=${p[0]}`);}deepest=Math.max(deepest,probe.terrain(p[1]+p[9]*(p[4]/2+12),p[2]+p[10]*(p[4]/2+12))-p[3]);}
   assert(deepest>7,`Minhocão: the tunnel runs well under the plaza (${deepest.toFixed(1)} m)`);
-  out.street={decks:+decks.toFixed(0),tunnels:+tunnels.toFixed(0),crossingDz:+dz.toFixed(2),deepestUnderGround:+deepest.toFixed(1)};
+  // The way down from the deck into the tunnel is a road (gerar_minhocao.py alinhar_descida): straight grades joined by
+  // vertical curves of 400 m or more. The surveyed pavement's waves and the step the ceiling cut under the Rua da
+  // Consolação threw the cars into the air at 90 km/h and rolled them at the gallery's mouth (user, 10-24).
+  let bend=0,bendAt=0;const t0=data.meta.tunnels[0][0];
+  for(let i=3;i<n-3;i++){const s=a[i][0];if(s<t0-150||s>t0+240)continue;const k=(a[i+3][3]-2*a[i][3]+a[i-3][3])/36;if(Math.abs(k)>Math.abs(bend)){bend=k;bendAt=s;}}
+  assert(Math.abs(bend)<1/350,`Minhocão: vertical curvature ${(bend*1e3).toFixed(2)}e-3 at s=${bendAt.toFixed(0)} on the way into the tunnel`);
+  out.street={decks:+decks.toFixed(0),tunnels:+tunnels.toFixed(0),crossingDz:+dz.toFixed(2),deepestUnderGround:+deepest.toFixed(1),descentCurvature:+(bend*1e3).toFixed(2)};
  }
  // Circuito da Pampulha (imaginary street circuit round Belo Horizonte's lake): walls on both sides (open only for the
  // pit lane); one lap of 20 km (circuits.js laps, mirrored in meta.laps) in every race and championship round, never on
