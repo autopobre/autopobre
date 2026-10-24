@@ -39,6 +39,8 @@ export const SETTINGS=Object.freeze([
  S('offFrom','pefora','Trechos de pé fora a partir de','Como o de pé embaixo, para os trechos gravados de desaceleração: abaixo deste giro ficam de fora (0 = usar todos).',0,6000,100,0,'rpm'),
  S('gasFall','pefora','Tempo para o pé sair','Quanto tempo o som leva do pé embaixo para o pé fora quando você solta o acelerador.',0,1,.01,.05,'s'),
  S('revFall','pefora','Rapidez do giro ao cair','O mais rápido que o giro do som pode cair, nas trocas de marcha e ao soltar o pé.',2000,60000,500,18000,'rpm/s'),
+ S('freeFall','pefora','Giro solto: rapidez ao cair','Em ponto morto, com a embreagem pisada ou preso na largada, só o volante do motor segura o giro: depois de uma acelerada ele cai devagar ("VRUMMMM"), mais rápido no giro alto e mais suave perto da lenta. Valores menores deixam a sobra do ronco mais longa.',500,20000,100,4000,'rpm/s'),
+ S('freeGasFall','pefora','Giro solto: tempo para o pé sair','Como o "Tempo para o pé sair", mas com o motor solto: quanto o ronco de pé embaixo demora para dar lugar ao de pé fora depois da acelerada.',0,1.5,.01,.35,'s'),
  S('launch','trocas','Arrancada: rapidez do salto','Na 1ª marcha, com que rapidez o som sai da lenta para o começo do som da 1ª (ajustado em Marcha por marcha).',1000,60000,500,15000,'rpm/s'),
  S('shiftCut','trocas','Tranco da troca','Durante quanto tempo, a cada troca de marcha, o motor perde a força e soa como pé fora (a embreagem sendo pisada).',0,.6,.01,.14,'s'),
  S('shiftDip','trocas','Volume durante a troca','O volume do motor enquanto a troca acontece (1 = sem queda).',0,1.2,.01,.8),

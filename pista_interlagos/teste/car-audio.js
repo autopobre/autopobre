@@ -21,6 +21,10 @@ const ENGINE_SOUNDS={opala:{kind:'opala',bank:'loops_m3',idle:'lenta_opala'},fus
 // The engine as heard (and on the rev counter) cannot jump: the revs climb from where they were at `rise` rpm/s
 // and fall at `fall` (the car's settings: revRise, revFall, launch).
 export const heardRevs=(heard,target,dt,rise,fall)=>target>heard?Math.min(target,heard+rise*dt):Math.max(target,heard-fall*dt);
+// Revving free (neutral, the clutch down, or held at the start's countdown: command.held), nothing but the flywheel
+// slows the engine: it winds down at `rate` rpm/s from high revs and gentler toward idle (freeFall), the "VRUMMMM"
+// after a blip on the grid instead of a dry "VRU" (user, 10-24).
+export const freeRevFall=(heard,rate)=>rate*(.35+.65*clamp((heard-950)/3050,0,1));
 
 // Engine/exhaust, gearbox and tyres. The engine and tyres come from real recordings (engine-loops.js,
 // tyre-sounds.js) once they have loaded; until then, or where the browser cannot play them, synthesized.
@@ -188,27 +192,29 @@ export class CarAudio {
    while(gear<5&&speed>gear*42+1.5)gear++;
    while(gear>1&&speed<(gear-1)*42-2.5)gear--;
   }
-  // Câmbio manual (car.manualGear): the gear the player put in, at a standstill too, and neutral.
+  // Câmbio manual (car.manualGear): the gear the player put in, at a standstill too, and neutral. Held at the start
+  // (command.held: the countdown, the story's grid) the car cannot move, so the throttle revs it in neutral.
   const manual=physicsGear&&car.manualGear;
-  if(command.reverse||car.gear<0)gear='R';else if(manual&&car.gear===0)gear='N';else if(wheelspin>1&&!physicsGear)gear=1;else if(!manual&&speed<2&&!(physicsGear&&command.throttle>.05))gear='N';
+  if(command.reverse||car.gear<0)gear='R';else if(command.held||manual&&car.gear===0)gear='N';else if(wheelspin>1&&!physicsGear)gear=1;else if(!manual&&speed<2&&!(physicsGear&&command.throttle>.05))gear='N';
   if(Number.isInteger(gear)&&Number.isInteger(this.lastGear)&&gear!==this.lastGear)this.shift(gear>this.lastGear);
   if(command.engineOff)gear='N';
   this.lastGear=gear;
   const throttle=clamp(Math.max(command.throttle||0,command.reverse||0),0,1);
   const ratio=gear==='R'?150:[0,138,73,49,37,30][gear];
   // (declutched or in neutral, physics revs the engine free)
-  const target=command.engineOff?0:clamp(manual&&gear!=='R'?car.rpm+(gear==='N'?0:throttle*120):gear==='N'?950+throttle*3200:physicsGear&&gear!=='R'?car.rpm+throttle*120:950+(speed+wheelspin*3.6)*ratio+throttle*250,950,7400);
+  const target=command.engineOff?0:clamp(command.held?950+throttle*3200:manual&&gear!=='R'?car.rpm+(gear==='N'?0:throttle*120):gear==='N'?950+throttle*3200:physicsGear&&gear!=='R'?car.rpm+throttle*120:950+(speed+wheelspin*3.6)*ratio+throttle*250,950,7400);
   // Pulling away, a gear's heard revs may start at the share of the rev counter the car's settings give it
   // ("Começo do som", m<gear>From; first gear 50%: its bottom sounded odd) and climb with the wheels to the
   // upshift (engine-loops.js firstGearRevs, gearRevs; not with the clutch pedal of the manual gearbox: there the
   // player revs it); from idle in first at tuning.launch rpm/s. The throttle as heard opens over gasRise s and
-  // shuts over gasFall s.
+  // shuts over gasFall s. Revving free, the revs wind down on the flywheel (freeRevFall) and the throttle shuts over
+  // freeGasFall s.
   const k=this.tuning,ctx=this.context,now=ctx?.currentTime??null,dt=now===null||this.heardAt===null||this.heardAt===undefined?0:clamp(now-this.heardAt,0,.1);this.heardAt=now;
   const gears=car.mechanics?.gears??OPALA_GEARS,share=Number.isInteger(gear)?k[`m${gear}From`]??0:0;
-  const pulling=Number.isInteger(gear)&&share>0&&!manual&&physicsGear&&throttle>.2&&target<SHIFT_UP;
+  const pulling=Number.isInteger(gear)&&share>0&&!manual&&physicsGear&&throttle>.2&&target<SHIFT_UP,free=gear==='N'||manual&&(command.clutch??0)>.5;
   const wanted=!pulling?target:gear===1?(speed*gears[1]<SHIFT_UP?firstGearRevs(speed,gears[1],share):target):gearRevs(target,SHIFT_UP*gears[gear]/gears[gear-1],share);
-  const rpm=dt&&this.heardRpm!==null?heardRevs(this.heardRpm,wanted,dt,pulling&&gear===1?k.launch:k.revRise,k.revFall):wanted;this.heardRpm=rpm;
-  const gas=dt&&this.gas!==null?this.gas+(throttle-this.gas)*(1-Math.exp(-dt/Math.max(.005,throttle>this.gas?k.gasRise:k.gasFall))):throttle;this.gas=gas;
+  const rpm=dt&&this.heardRpm!==null?heardRevs(this.heardRpm,wanted,dt,pulling&&gear===1?k.launch:k.revRise,free?freeRevFall(this.heardRpm,k.freeFall):k.revFall):wanted;this.heardRpm=rpm;
+  const gas=dt&&this.gas!==null?this.gas+(throttle-this.gas)*(1-Math.exp(-dt/Math.max(.005,throttle>this.gas?k.gasRise:free?k.freeGasFall:k.gasFall))):throttle;this.gas=gas;
   this.state={gear,rpm,skid:car.surface.onRoad&&(speed>5||wheelspin>1)?clamp(Math.max(skid,wheelspin/20),0,1):0,throttle};
   if(!ctx)return this.state;
   const t=ctx.currentTime,param=(p,v,tau=.06)=>p.setTargetAtTime(v,t,tau);
