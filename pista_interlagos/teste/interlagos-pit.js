@@ -175,7 +175,7 @@ export function createInterlagosPit(data,roadSurface,textures,labels=undefined){
  if(fenceParts.length){const f=new THREE.Mesh(mergeGeometries(fenceParts,false),fence);f.name='Alambrado_muro_boxes';f.renderOrder=1;f.onBeforeRender=renderer=>fence.userData.onPass(renderer);root.add(f);}
  if(posts.length){const inst=new THREE.InstancedMesh(new THREE.BoxGeometry(.08,1,.08),metal,posts.length),m=new THREE.Matrix4();posts.forEach((p,i)=>{m.makeScale(1,p.h,1).setPosition(p.x,p.z,-p.y);inst.setMatrixAt(i,m);});inst.name='Postes_alambrado';inst.castShadow=true;inst.computeBoundingSphere();root.add(inst);}
  // --- Garage row, Box 99 with the Lanchonete da Tia, crew and people (pit-building.js).
- const {box}=createPitBuildings({pit,c,lerp,at,root,obstacles,textures,labels});
+ const {box,garages}=createPitBuildings({pit,c,lerp,at,root,obstacles,textures,labels});
  // --- Signs at the entry and on the pit wall.
  {
   const board=(text,sub,bg,fg)=>canvasTexture((ctx,w,h)=>{ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);ctx.fillStyle=fg;ctx.textAlign='center';ctx.font='bold 92px sans-serif';ctx.fillText(text,w/2,h*.47);ctx.font='bold 46px sans-serif';ctx.fillText(sub,w/2,h*.82);},512,256);
@@ -190,5 +190,5 @@ export function createInterlagosPit(data,roadSurface,textures,labels=undefined){
   place(board('FIM','LIMITE DE VELOCIDADE','#ffffff','#1b2a2c'),limitEnd-before(2),lerpHi(limitEnd-before(2))+.8,2.4,1.6,.8,'Placa_fim_limite');
   function lerpHi(s){return lerp(s)[c.hi];}
  }
- return {root,obstacles,box,stats:{length:pit.length_m,bays,walls:pit.walls.length,limitKmh:pit.limit.kmh,box99:!!box}};
+ return {root,obstacles,box,garages,stats:{length:pit.length_m,bays,walls:pit.walls.length,limitKmh:pit.limit.kmh,box99:!!box}};
 }

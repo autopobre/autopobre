@@ -4,9 +4,9 @@ import {structureMaterial} from './landscape.js';
 import {skyMirror} from './sky.js';
 import {RIVAL_ROSTER} from './race-roster.js';
 import {canvasTexture,garageDoors,facadeGlass,FACADE_GLASS_ROWS,tyreWall,css,pitLaneSign} from './pit-textures.js';
-import {createPeople} from './pit-crew.js';
+import {createPeople,RivalCrews} from './pit-crew.js';
 import {createBox99,tyreStacks} from './pit-box99.js';
-import {curveloPitFrame,inPitBox,garageBays,pitLane} from './pit-lane.js';
+import {curveloPitFrame,inPitBox,garageBays,teamBoxes,pitLane} from './pit-lane.js';
 import {TestCar,guardrailClearance} from './physics.js';
 import {trackPoint} from './immersive-visuals.js';
 
@@ -16,6 +16,8 @@ import {trackPoint} from './immersive-visuals.js';
 // and the people. `pit` is laid out like the Interlagos pit block: columns, stations
 // along the lane centre (d from it, garages on the positive side), garages and box99;
 // optional block (garage depth, 21 m), sink (how far walls go below the lane) and stand.
+// A team's garage is hollow behind its roller door, which rolls up for the refuelling stops of a long race (garages:
+// race-field.js pitStops, pit-crew.js RivalCrews).
 
 // Station lookup and positions on a pit block's lane plane.
 export function laneFrame(pit){
@@ -38,10 +40,34 @@ export function createPitBuildings({pit,c,lerp,at,root,obstacles,textures,labels
  const railGlass=new THREE.MeshStandardMaterial({name:'Terraco_vidro',color:0xcfe6ee,roughness:.05,metalness:.2,transparent:true,opacity:.28,depthWrite:false,side:THREE.DoubleSide});
  const steel=mat('Aco_cobertura',0xdde1e4,{metalness:.55,roughness:.38});
  const membrane=new THREE.MeshStandardMaterial({name:'Cobertura_membrana',color:0xf4f3ee,emissive:0x2c2c29,roughness:.75,side:THREE.DoubleSide});
- const parts={block:[],frames:[],doors:[],glass:[],rail:[],steel:[],canopy:[]},signs=[];
+ const parts={block:[],frames:[],doors:[],glass:[],rail:[],steel:[],canopy:[],inside:[],floor:[],gear:[],lamps:[]},signs=[];
+ // Inside the teams' garages: painted walls, the floor, the team's gear (vertex colours) and the lamps under the slab.
+ const insideWall=mat('Garagem_paredes',0xd3d5d0,{roughness:.85}),insideFloor=mat('Garagem_piso',0x7f8487,{roughness:.5,metalness:.05});
+ const gearMaterial=new THREE.MeshStandardMaterial({name:'Garagem_equipe',vertexColors:true,roughness:.6,metalness:.25}),lampMaterial=new THREE.MeshStandardMaterial({name:'Garagem_lampadas',color:0xffffff,emissive:0xfff2d8,emissiveIntensity:2.4,roughness:.4});
+ // Each roller door rolls up into its drum by doorOpen[bay] (0 shut, 1 open; doorBay -1: a door that never opens):
+ // the bottom edge rises (doorShift.x, its height) and the picture rolls up with it (doorShift.y, on the top edge's uv).
+ const doorOpen=new Float32Array(Math.max(1,bays));
+ doorMaterial.onBeforeCompile=shader=>{
+  shader.uniforms.doorOpen={value:doorOpen};
+  shader.vertexShader=shader.vertexShader.replace('#include <common>',`#include <common>
+attribute float doorBay;attribute vec2 doorShift;uniform float doorOpen[${doorOpen.length}];`).replace('#include <uv_vertex>',`#include <uv_vertex>
+float doorAmount=doorBay<0.0?0.0:doorOpen[int(doorBay+.5)];
+#ifdef USE_MAP
+vMapUv.y+=doorAmount*doorShift.y;
+#endif`).replace('#include <begin_vertex>','#include <begin_vertex>\ntransformed.y+=doorAmount*doorShift.x;');
+ };
+ doorMaterial.customProgramCacheKey=()=>`portas-enrolar-${doorOpen.length}`;
+ const rollDoor=(g,b,h)=>{const pos=g.attributes.position,uv=g.attributes.uv,n=pos.count,shift=new Float32Array(n*2),low=Math.min(...Array.from({length:n},(_,k)=>pos.getY(k)));
+  let vLow=0;for(let k=0;k<n;k++)if(pos.getY(k)-low<.01)vLow=uv.getY(k);
+  for(let k=0;k<n;k++){const bottom=pos.getY(k)-low<.01;shift[k*2]=bottom?h:0;shift[k*2+1]=bottom?0:vLow-uv.getY(k);}
+  g.setAttribute('doorBay',new THREE.BufferAttribute(new Float32Array(n).fill(b),1));g.setAttribute('doorShift',new THREE.BufferAttribute(shift,2));};
+ // The places in each team's garage for its crew (garages.garage): two spots inside, the floor and the way out.
+ const homes=new Map();
  const heading=p=>Math.atan2(p[c.ty],p[c.tx]);
  const box=(list,p,d,s,w,thick,h,z0)=>{const g=new THREE.BoxGeometry(w,h,thick),o=at(p,d);g.rotateY(heading(p));g.translate(o.x+p[c.tx]*s,p[c.z]+z0+h/2,o.z-p[c.ty]*s);list.push(g);};
- const plane=(list,p,d,w,h,z0,uv)=>{const g=new THREE.PlaneGeometry(w,h),o=at(p,d);if(uv){const a=g.attributes.uv;for(let k=0;k<a.count;k++)a.setXY(k,uv[0]+a.getX(k)*(uv[2]-uv[0]),uv[1]+a.getY(k)*(uv[3]-uv[1]));}g.rotateY(heading(p));g.translate(o.x,p[c.z]+z0+h/2,o.z);list.push(g);};
+ const plane=(list,p,d,w,h,z0,uv)=>{const g=new THREE.PlaneGeometry(w,h),o=at(p,d);if(uv){const a=g.attributes.uv;for(let k=0;k<a.count;k++)a.setXY(k,uv[0]+a.getX(k)*(uv[2]-uv[0]),uv[1]+a.getY(k)*(uv[3]-uv[1]));}g.rotateY(heading(p));g.translate(o.x,p[c.z]+z0+h/2,o.z);list.push(g);return g;};
+ // A box of the team gear in its colour (vertex colours, the whole garage gear one mesh).
+ const gearBox=(p,d,s,w,thick,h,z0,color)=>{box(parts.gear,p,d,s,w,thick,h,z0);const g=parts.gear.at(-1),k=new THREE.Color(color),n=g.attributes.position.count,rgb=new Float32Array(n*3);for(let i=0;i<n;i++)rgb.set([k.r,k.g,k.b],i*3);g.setAttribute('color',new THREE.BufferAttribute(rgb,3));};
  const place=(list,g,p,d,y)=>{const o=at(p,d);g.rotateY(heading(p));g.translate(o.x,y,o.z);list.push(g);};
  // Box 99 and the café next to it are open (floor above and back rooms only); rival
  // teams take the closed garages nearest Box 99, further away the doors are plain.
@@ -56,9 +82,27 @@ export function createPitBuildings({pit,c,lerp,at,root,obstacles,textures,labels
   const s=pit.garages[0]+(b+.5)*bay,p=lerp(s),front=(open.has(b)?b99.front:p[c.hi])+.35,hd=heading(p),base=p[c.z];
   if(open.has(b)){box(parts.block,p,front+depth/2,0,bay,depth,3,5.2);if(depth>17)box(parts.block,p,front+(16.5+depth)/2,0,bay,depth-16.5,5.2+sink,-sink);}
   else{
-   box(parts.block,p,front+depth/2,0,bay,depth,8.2+sink,-sink);plane(parts.doors,p,front-.03,bay-2.4,4.6,0,doors.uv(teams.get(b)??RIVAL_ROSTER.length));
+   const team=teams.has(b)?RIVAL_ROSTER[teams.get(b)]:null;
+   if(team){
+    // Hollow behind the door: the floor above, the back rooms (or a back wall), the side walls, a painted floor, the
+    // team's bench, tool chest and banner, a tyre stack and two lamps under the slab. Sides by the bay's own number:
+    // the bays' seeded draws below stay as they were.
+    const room=Math.min(16.5,depth-.3),side=b%2?1:-1;
+    box(parts.block,p,front+depth/2,0,bay,depth,3,5.2);
+    if(depth>17)box(parts.block,p,front+(16.5+depth)/2,0,bay,depth-16.5,5.2+sink,-sink);else box(parts.block,p,front+room+.15,0,bay,.3,5.2+sink,-sink);
+    for(const k of [-1,1])box(parts.inside,p,front+room/2,k*(bay/2-.15),.3,room,5.2+sink,-sink);
+    box(parts.inside,p,front+room-.05,0,bay-.6,.1,5.2,0);box(parts.floor,p,front+room/2,0,bay-.6,room,.12,-.1);
+    gearBox(p,front+room*.55,side*(bay/2-.75),.95,4.2,.9,0,0x5d6266);gearBox(p,front+room*.55,side*(bay/2-.75),1.05,4.3,.06,.9,0xb9bec2);
+    gearBox(p,front+room-.7,-side*(bay/2-1.4),1.7,.8,1.25,0,team.color);gearBox(p,front+room-.7,-side*(bay/2-1.4),1.72,.82,.05,1.25,0x2a2d30);
+    gearBox(p,front+room-.17,0,bay*.55,.06,.95,2.55,team.color);gearBox(p,front+room-.18,0,bay*.55,.07,.12,3.5,0xf4f1ea);
+    for(const k of [.3,.7])box(parts.lamps,p,front+room*k,0,bay*.5,.18,.06,5.1);
+    {const t=at(p,front+room-1.4);tyres.push([t.x+p[c.tx]*side*(bay/2-2.4),t.y+.035,t.z-p[c.ty]*side*(bay/2-2.4),heading(p),4]);}
+    const ux=p[c.lx],uy=p[c.ly],n=Math.hypot(ux,uy)||1,O=at(p,0),here=(along,d)=>[O.x+p[c.tx]*along+ux/n*d,-O.z+p[c.ty]*along+uy/n*d];
+    homes.set(b,{home:i=>here(i?1.3:-1.3,front+4.5),yaw:Math.atan2(-uy,-ux),ground:(x,y)=>{const d=(x-O.x)*ux/n+(y+O.z)*uy/n;return d>front-.1?p[c.z]+.02:p[c.z]+p[c.bank]*d+.05;}});
+   }else box(parts.block,p,front+depth/2,0,bay,depth,8.2+sink,-sink);
+   rollDoor(plane(parts.doors,p,front-.03,bay-2.4,4.6,0,doors.uv(teams.get(b)??RIVAL_ROSTER.length)),team?b:-1,4.6);
    box(parts.frames,p,front-.06,0,bay-2.1,.26,.2,4.6);for(const side of [-1,1])box(parts.frames,p,front-.06,side*(bay-2.25)/2,.15,.26,4.6,0);
-   const team=teams.has(b)?RIVAL_ROSTER[teams.get(b)]:null;signs.push({p,front,label:String(b+1).padStart(2,'0'),color:team?.color??0x5d666b});
+   signs.push({p,front,label:String(b+1).padStart(2,'0'),color:team?.color??0x5d666b});
    // The rival crews wait at their doors: nobody, one or a few, each where they like; tyres stacked at some.
    // #19's door always has one (Leonardo takes his place in the story paddock, immersive-visuals.js leoDoor);
    // the draw stays, so the other bays keep theirs.
@@ -74,7 +118,8 @@ export function createPitBuildings({pit,c,lerp,at,root,obstacles,textures,labels
      // A second or third one keeps the first company, turned toward them; pushed onto someone by the rules above,
      // he takes the first one's other side, or stays inside (his draw still made, so the next bays keep theirs).
      const raw=first===null?(rnd()<.5?-1:1)*(1.2+rnd()*3):first+(rnd()<.5?-1:1)*(.8+rnd()*.5);let along=fit(raw);if(crowded(along))along=fit(2*first-raw);if(kleber)along=-Math.abs(along);
-     const w=at(p,front-.45-rnd()*1.3),yaw=first===null?hd-Math.PI/2+(rnd()-.5)*1.1:hd+(along>first?Math.PI:0)+(rnd()-.5)*.6;
+     // (By the door: a rival's car stops on the working lane in front of it, refuelling, race-field.js.)
+     const w=at(p,front-.4-rnd()*.55),yaw=first===null?hd-Math.PI/2+(rnd()-.5)*1.1:hd+(along>first?Math.PI:0)+(rnd()-.5)*.6;
      const hat=rnd(),polo=rnd()<.3;
      const person={...(k===0?{name:'Porta_equipe_'+team.number}:{}),outfit:{top:polo?0xf4f1ea:team.color,bottom:pick(polo?bottoms:[0x2d3338,0x2d3338,team.color]),trim:polo?team.color:0xf4f1ea,hands:rnd()<.6?0x1b1d20:null,sleeves:polo?'short':'long',hat:hat<.55?'cap':hat<.68?'headset':null,hatColor:team.color,...look()},pose:pick(['folded','stand','ready','rest','folded']),x:w.x+p[c.tx]*along,y:w.y+.05,z:w.z-p[c.ty]*along,yaw};
      if(crowded(along))continue;
@@ -108,7 +153,9 @@ export function createPitBuildings({pit,c,lerp,at,root,obstacles,textures,labels
   place(parts.steel,new THREE.BoxGeometry(.34,.38,span+.3),p,front+mid,valley-.21);
   for(const d of [front+1.3,front+depth-1.3]){const h=valley-.4-(base+8.2);place(parts.steel,new THREE.CylinderGeometry(.15,.19,h,12),p,d,base+8.2+h/2);place(parts.steel,new THREE.BoxGeometry(.5,.12,.5),p,d,valley-.46);}
  }
- for(const [list,material,name] of [[parts.block,concrete,'Box_garagens'],[parts.frames,steel,'Box_batentes'],[parts.doors,doorMaterial,'Box_portas'],[parts.glass,glass,'Box_janelas'],[parts.rail,railGlass,'Terraco_guarda_corpo'],[parts.steel,steel,'Cobertura_estrutura'],[parts.canopy,membrane,'Box_cobertura_membrana']]){
+ for(const [list,material,name] of [[parts.block,concrete,'Box_garagens'],[parts.frames,steel,'Box_batentes'],[parts.doors,doorMaterial,'Box_portas'],[parts.glass,glass,'Box_janelas'],[parts.rail,railGlass,'Terraco_guarda_corpo'],[parts.steel,steel,'Cobertura_estrutura'],[parts.canopy,membrane,'Box_cobertura_membrana'],
+  [parts.inside,insideWall,'Garagens_paredes'],[parts.floor,insideFloor,'Garagens_piso'],[parts.gear,gearMaterial,'Garagens_equipes'],[parts.lamps,lampMaterial,'Garagens_lampadas']]){
+  if(!list.length)continue;
   const g=mergeGeometries(list,false);list.forEach(x=>x.dispose());const m=new THREE.Mesh(g,material);m.name=name;m.castShadow=m.receiveShadow=material!==railGlass;root.add(m);if(list===parts.block||list===parts.doors||list===parts.glass)obstacles.push(m);
  }
  // Garage numbers above the doors, with the team colour.
@@ -127,17 +174,32 @@ export function createPitBuildings({pit,c,lerp,at,root,obstacles,textures,labels
  if(tyres.length)root.add(tyreStacks(tyres,box99?.sidewall??tyreWall()));
  // Everyone placed for good idles there (pit-crew.js): crews, terrace, café, stand.
  const waiting=people.crowd(crowd,{name:'Pessoas_paradas_boxes',seed:2});if(waiting)root.add(waiting);
- return {box:box99?.layout??null,box99,bays};
+ // The teams' garages in a long race (race-field.js refuel): the doors of the teams racing roll up at the start (DOOR_RATE
+ // a second) and down again after it; each car's crew comes out to it at its stop.
+ const crews=new RivalCrews(people);root.add(crews.root);const boxes=teamBoxes(pit,RIVAL_ROSTER.length);
+ const garages={
+  doorOpen,crews,
+  update(dt,{field,active,camera}){
+   const racing=active&&!!field?.refuel,want=new Set(racing?field.rivals.map(r=>boxes[r.rosterIndex]?.bay).filter(b=>homes.has(b)):[]);
+   for(const b of homes.keys())doorOpen[b]+=Math.max(-dt*DOOR_RATE,Math.min(dt*DOOR_RATE,(want.has(b)?1:0)-doorOpen[b]));
+   crews.update(dt,{stops:racing?field.pitStops().filter(s=>homes.has(s.bay)):[],garage:b=>homes.get(b),camera});
+   if(field)field.crewReady=number=>crews.ready(number);
+  },
+  info(){return {doors:Object.fromEntries([...homes.keys()].map(b=>[b,+doorOpen[b].toFixed(3)])),crews:crews.info()};}
+ };
+ return {box:box99?.layout??null,box99,bays,garages};
 }
+
+const DOOR_RATE=.5;
 
 // Curvelo's garage row, on the infield behind its service lane (see curveloPitFrame).
 export function createCurveloPit(data,textures){
  const pit=curveloPitFrame(data),root=new THREE.Group();root.name='Boxes_Curvelo';const obstacles=[];
- const {box}=createPitBuildings({pit,...laneFrame(pit),root,obstacles,textures,labels:{label:'CURVELO · BOX 99',title:'Cuida do Opala, uai!',name:'Box 99 de Curvelo',track:'CURVELO'}});
+ const {box,garages}=createPitBuildings({pit,...laneFrame(pit),root,obstacles,textures,labels:{label:'CURVELO · BOX 99',title:'Cuida do Opala, uai!',name:'Box 99 de Curvelo',track:'CURVELO'}});
  // The service lane has no surveyed stations: the box is found by lap distance and offset.
  box.inBox=inPitBox;
  root.add(curveloPitSigns(data));
- return {root,obstacles,box};
+ return {root,obstacles,box,garages};
 }
 
 // Road signs on posts, off the asphalt and facing the cars that approach them: the entry

@@ -103,6 +103,14 @@ export function garageBays(pit,teams){
  const open=new Set(b99?[b99.index,b99.index-1]:[]),closed=[...Array(bays).keys()].filter(i=>!open.has(i)).sort((i,j)=>Math.abs(i-index)-Math.abs(j-index)||i-j);
  return {bays,bay,open,team:new Map(closed.slice(0,teams).map((b,k)=>[b,k]))};
 }
+// Each team's garage for its refuelling stop (race-field.js), by roster index: its own, or where the row has fewer
+// garages than teams (Cascavel, Piracicaba...) one it shares, from the garages furthest from Box 99 back. Never Box 99
+// nor the Tia's café. share: how many teams use that garage.
+export function teamBoxes(pit,teams){
+ const {team}=garageBays(pit,teams),own=[...team.keys()];if(!own.length)return [];
+ const bays=Array.from({length:teams},(_,k)=>k<own.length?own[k]:own[own.length-1-(k-own.length)%own.length]);
+ return bays.map(bay=>({bay,share:bays.filter(b=>b===bay).length}));
+}
 // Point of a pit block at lane distance s and offset d: world x, y (lane plane), z,
 // the lane heading and the paved edge on the garage side.
 export function pitPoint(pit,s,d=0){

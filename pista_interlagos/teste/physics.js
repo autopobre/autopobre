@@ -14,6 +14,9 @@ export const WHEELBASE=2.667;
 const G=9.81,ROAD_GRIP=1.24,GRASS_GRIP=.78,GRASS_ROLLING=.7;
 // Pit lane speed limit tolerance, as in racing: 2 km/h over.
 const PIT_TOLERANCE=2/3.6;
+// The pit limiter (user, 10-24): the drive fades out over the last LIMITER_FADE (m/s) below the limit, and a car over
+// it is braked down at up to LIMITER_BRAKE (m/s²).
+const LIMITER_FADE=1.5/3.6,LIMITER_BRAKE=5;
 // Road-wheel lock follows the grip limit: full input reaches the limit at any
 // speed and partial input turns proportionally, instead of saturating above ~70 km/h.
 // grip: the car's tyres against the Opala's (its mechanics' grip).
@@ -475,16 +478,18 @@ export class TestCar {
   // A wheel's clutch pedal (manual only): the drive fades out from a quarter of its travel to 85%;
   // neutral drives nothing. The automatic is always engaged.
   const engaged=!manual||input.reverse?1:this.gear===0?0:clamp((.85-(input.clutch||0))/.6,0,1);
+  // Pit lane (user, 10-24: the limiter back, after asking it off on 09-23): it switches itself on in the painted zone
+  // and holds the car at the limit, cutting the drive there and braking a car that comes in faster (brakeDecel).
+  // Still over the limit past the tolerance, the lap is lost, as before.
+  const limit=pitLimit(this.pitGeo,p);this.limiter=limit!==null;
   let drive=0;
   if(this.gear>0){
    drive=input.throttle*engineTorque(Math.min(engineRpm,REDLINE_RPM),m.torque)*ratio*m.torqueToAccel*power;
    if(wheelRpm>=REDLINE_RPM)drive=0;
    if(this.shiftTimer>0)drive*=.12;
    drive*=engaged;
+   if(limit!==null)drive*=clamp((limit-speed)/LIMITER_FADE,0,1);
   }
-  // Pit lane: no limiter. Beyond the painted limit the driver answers for it:
-  // speeding there costs the lap, like cutting the track.
-  const limit=pitLimit(this.pitGeo,p);this.limiter=limit!==null;
   if(limit!==null&&speed>limit+PIT_TOLERANCE){if(this.lapValid)this.pitPenalty={kmh:speed*3.6,clock:this.clock};this.lapValid=false;this.invalidReason='pit';}
   // Reverse: Q backs up at once, the brake held at rest (brake-reverse.js) as far as it is pressed; the
   // manual's R gear backs up with the throttle.
@@ -507,7 +512,7 @@ export class TestCar {
   const rolling=p.onRoad?.16:GRASS_ROLLING;
   const engineBrake=this.gear>0&&input.throttle<.05&&this.shiftTimer===0&&Math.abs(v)>1?(.18+.5*clamp(wheelRpm/REDLINE_RPM,0,1))*engaged:0;
   // Brakes cannot exceed the tyres: on grass the car simply cannot stop as hard.
-  const brakeDecel=Math.min(Math.max(input.brake*11*(condition?.brakes??1),input.handbrake&&!burning?7:0),mu*G*1.02);
+  const brakeDecel=Math.min(Math.max(input.brake*11*(condition?.brakes??1),input.handbrake&&!burning?7:0,limit!==null&&speed>limit?Math.min(LIMITER_BRAKE,(speed-limit)*3):0),mu*G*1.02);
   // --- Combined grip: longitudinal work leaves less of each axle's tyres for
   // cornering. Front-biased brakes make hard braking in a turn push wide, not spin.
   const braking=Math.abs(v)>2&&!(input.handbrake&&!input.brake)?brakeDecel:0;

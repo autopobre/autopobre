@@ -1,6 +1,8 @@
 import {TestCar,clamp,wrap,steerLimit,WHEELBASE,OPALA_BODY,sameLevel} from './physics.js';
 import {RIVAL_ROSTER,ACE_NUMBER,AI_LEVELS,gridSlot,playerGridSlot} from './race-roster.js';
-import {pitGeometry,wallContact,pitLane,curveloPitFrame,CURVELO_PIT} from './pit-lane.js';
+import {pitGeometry,wallContact,pitLane,curveloPitFrame,CURVELO_PIT,garageBays,teamBoxes} from './pit-lane.js';
+import {tankFor,burnRate,fuelScale,lapFuel,recommendedFuel} from './fuel.js';
+import {circuitId} from './circuits.js';
 import {trackFall} from './cliff-fall.js';
 import {branchGeometries,locateBranch,branchPoint,branchSpan} from './branch-lane.js';
 import {branchLayouts} from './branch-layout.js';
@@ -268,6 +270,15 @@ export const faintedInput=c=>Math.hypot(c.vx,c.vy)<=.4?HELD:c.surface.onRoad||c.
 export const inTheWay=(stop,c)=>!!stop&&stop.stage!=='fora'&&!c.surface.pit;
 const NO_CAUTIONS=Object.freeze([]);
 const COOL_PACE=24,PIT_PACE=22,PIT_LIMIT=15.5,INLAP_MERGE=220,SLOT_GAP=6.6,routes=new WeakMap();
+// --- Refuelling stops (user, 10-24): in a race longer than the tank holds (fuel.js: Stevan's table, the 15 L tank) each
+// rival burns as the player does and stops once at its team's garage (teamBoxes: never Box 99 nor the Tia's café), on a
+// lap drawn from those one stop works for, so the field comes in spread over the laps. Short of fuel it comes in at
+// once; dry, it is out (pane seca). The crew fills what is left to run, plus FUEL_RESERVE, in REFUEL_TIME + REFUEL_RATE
+// a litre (the Box 99's own pace). Races the tank covers keep the tank that never ends, as before.
+export const FUEL_RESERVE=.6,REFUEL_TIME=2,REFUEL_RATE=1.5;
+// Into its spot from the fast lane over SERVICE_OVER m (shorter than the in-lap's 12: the next garage is 13 m on), out
+// again over SERVICE_OUT m; the way out waits for a car coming down the fast lane within SERVICE_WAIT m.
+const SERVICE_OVER=7,SERVICE_OUT=8,SERVICE_WAIT=28;
 export function pitRoute(data){
  if(routes.has(data))return routes.get(data);
  const L=data.meta.reconstructed_xy_m,a=data.samples,curvelo=!data.pit&&data.meta.id==='curvelo',frame=data.pit??(curvelo?curveloPitFrame(data):null);
@@ -302,7 +313,15 @@ export function pitRoute(data){
  const clear=u=>[-1.2,-.6,0,.6,1.2].every(du=>{const p=at(u+du);return !wallContact(geo,p.x-p.ty*p.work,p.y+p.tx*p.work,Math.atan2(p.ty,p.tx));});
  const take=(from,to)=>{for(let u=from+u0;u>=to+u0;u-=.2)if(clear(u)&&!(slots.at(-1)-u<SLOT_GAP))slots.push(u);};
  take(g1-2.9,boxTo+8.5);take(boxFrom-6.4,first);
- const route={stations:st,at,entryS,entryD,limit,slots:slots.map(u=>({u,d:at(u).work}))};
+ // The teams' garages for a refuelling stop (teamBoxes): a spot on the working lane at the garage's middle, or two a car
+ // length apart where teams share it (takeSpot takes the one further down the lane first). A spot is one object for all
+ // the teams of its garage, so they see each other there.
+ const {bay}=garageBays(frame,RIVAL_ROSTER.length),spots=new Map();
+ const boxes=teamBoxes(frame,RIVAL_ROSTER.length).map(({bay:b,share})=>{
+  if(!spots.has(b)){const u=U(frame.garages[0]+(b+.5)*bay)+u0;spots.set(b,(share>1?[u+3.25,u-3.25]:[u]).map(v=>({u:v,d:at(v).work,bay:b})));}
+  return {bay:b,share,spots:spots.get(b)};
+ });
+ const route={stations:st,at,entryS,entryD,limit,slots:slots.map(u=>({u,d:at(u).work})),boxes,end:st.at(-1).u};
  routes.set(data,route);return route;
 }
 // Seeded (mulberry32) so a check or a reference run can replay one race exactly.
@@ -418,11 +437,63 @@ export class RaceField {
    const dice=random((this.raceSeed^0xAB0)>>>0),roll=dice(),count=roll<.3?1:roll<.65?2:roll<.87?3:4,pool=this.rivals.filter(r=>!r.style.ace);
    for(let k=0;k<count&&pool.length;k++){const r=pool.splice(Math.floor(dice()*pool.length),1)[0];r.breakdown={at:.06+.9*dice(),...BREAKDOWNS[Math.floor(dice()*BREAKDOWNS.length)]};}
   }
+  // Fuel: planned at the race's first step, when its laps are known (planFuel).
+  this.refuel=null;this.fuelFor=undefined;this.spotCars=new Map();this.crewReady??=null;
   this.onReset?.();
  }
+ // A race longer than the tank holds (refuel: the tank, litres a metre at the table's pace, the burn's scale) starts
+ // every rival on a full tank; each driver brings dice of its own for the lap it comes in, so the race's other dice
+ // stay as they were. A shorter race (or practice) leaves the tank endless.
+ planFuel(laps){
+  this.fuelFor=laps;this.spotCars.clear();const id=circuitId(this.data.meta.id),tank=tankFor(id),L=this.data.meta.reconstructed_xy_m;
+  this.refuel=this.route?.boxes.length&&Number.isFinite(laps)&&laps>0&&recommendedFuel(id,laps)>tank?{tank,perMetre:lapFuel(id)/L,scale:fuelScale(id,L)}:null;
+  for(const r of this.rivals)Object.assign(r,{fuel:this.refuel?tank:undefined,fuelPass:null,service:false,stops:0,fuelDice:random((this.raceSeed^0xF0E1^Math.imul(r.rosterIndex+1,0x9E3779B1))>>>0)});
+ }
+ // The burn as the player's (fuel.js burnRate at the circuit's scale); dry on the track, the car is out.
+ burn(r,input,dt){
+  const c=r.car;r.fuel=Math.max(0,r.fuel-dt*burnRate(Math.hypot(c.vx,c.vy),input.throttle||0,c.rearSlipSpeed||0)*this.refuel.scale);
+  if(!r.fuel&&!r.broken&&!r.pit)r.broken={kind:'pane seca',time:this.time,side:0,smokeLeft:0};
+ }
+ // At the pit entry, once a lap: in now? Not while what is left reaches the flag; at once when it would not last
+ // another lap; otherwise on a lap the dice draw evenly among those left where one tank then reaches the flag.
+ wantStop(r,toEntry,laps){
+  const R=this.refuel,L=this.data.meta.reconstructed_xy_m,q=R.perMetre,D=Math.max(0,L*laps+this.gridLeadIn-r.progress-toEntry),F=r.fuel-q*toEntry;
+  if(F-FUEL_RESERVE>=q*D)return false;
+  const more=Math.max(0,Math.floor((F-FUEL_RESERVE)/(q*L)));
+  if(!more)return true;
+  if(q*D+FUEL_RESERVE>R.tank)return false;
+  return r.fuelDice()<1/(more+1);
+ }
+ // A spot at the team's garage (pitRoute boxes): a free one, the one further down the lane only with the other free too
+ // (going in there it would cross a car stopped below it); none free, the nearest free one at another team's garage.
+ takeSpot(r){
+  const boxes=this.route.boxes,own=boxes[r.rosterIndex]??boxes[0],taken=sp=>this.spotCars.has(sp);
+  const pick=spots=>spots.find((sp,i)=>!taken(sp)&&!(i===0&&spots[1]&&taken(spots[1])));
+  let spot=pick(own.spots);
+  if(!spot){const u=own.spots[0].u;spot=[...new Set(boxes.map(b=>b.spots))].sort((a,b)=>Math.abs(a[0].u-u)-Math.abs(b[0].u-u)).map(pick).find(Boolean)??own.spots.at(-1);}
+  this.spotCars.set(spot,r);return spot;
+ }
+ // The way out of a garage spot: a car coming down the lane close behind, or one standing right ahead in the working
+ // lane (a shared garage's other spot), holds it in.
+ laneTraffic(c,bodies){
+  const fx=Math.cos(c.heading),fy=Math.sin(c.heading);
+  for(const o of bodies){
+   if(o===c||!o.surface?.pit)continue;const dx=o.x-c.x,dy=o.y-c.y,f=dx*fx+dy*fy,side=dy*fx-dx*fy;
+   if(f<2&&f>-SERVICE_WAIT&&o.vx*fx+o.vy*fy>1&&Math.abs(side)<7||f>0&&f<10.5&&Math.abs(side)<2)return true;
+  }
+  return false;
+ }
+ // The refuelling stops under way (the garages, their crews and the checks): phase 'chegando', 'abastecendo', 'saindo';
+ // pose: where the car stands at its spot (data x, y, heading); side: the garage's, 1 to the cars' left.
+ pitStops(){
+  return this.rivals.filter(r=>r.pit?.service).map(r=>{const P=r.pit,S=P.service,sp=P.slot,q=this.route.at(sp.u);
+   return {number:r.entry.number,rosterIndex:r.rosterIndex,color:r.entry.color,car:r.car,spot:sp,bay:sp.bay,pose:{x:q.x-q.ty*sp.d,y:q.y+q.tx*sp.d,heading:Math.atan2(q.ty,q.tx)},side:Math.sign(sp.d-q.fast)||1,
+    phase:S.leaving?'saindo':P.parked?'abastecendo':'chegando',wait:S.wait??null,time:S.time??null,litres:S.litres??null};});
+ }
  step(player,dt,totalLaps=0){
+  if(this.fuelFor!==totalLaps)this.planFuel(totalLaps);
   this.time+=dt;const impacts=[],commands=[],L=this.data.meta.reconstructed_xy_m,a=this.data.samples,n=a.length,line=this.line,ds=line.ds,t=this.time;
-  const bodies=[player,...this.rivals.map(r=>r.car)],driverOf=new Map(this.rivals.map(r=>[r.car,r]));
+  const bodies=[player,...this.rivals.map(r=>r.car)],driverOf=new Map(this.rivals.map(r=>[r.car,r]));this.stepCars={bodies,driverOf,player};
   // Slipstream: in another car's wake the air resistance drops (physics reads car.draft). Not under a car on a
   // viaduct overhead, nor over one on the street below (physics.js sameLevel).
   for(const c of bodies){
@@ -431,7 +502,7 @@ export class RaceField {
   }
   // One physics step for a rival, then its race distance and the flag. A car with nobody at the
   // wheel that gets there has run its race without its driver: AB for good (reclaim).
-  const drive=(r,input)=>{const c=r.car;r.tow=c.draft;c.step(input,dt);commands.push(input);if(c.cliff&&trackFall(c,dt)==='back'){r.recover=0;r.blocked=0;}r.progress+=lapTravel(r.lastS,c.surface.s,L);r.lastS=c.surface.s;if(totalLaps&&!r.finished&&r.progress>=L*totalLaps+this.gridLeadIn){if(!r.retired){r.finished=true;r.finishTime=this.time;}else if(r.stop)r.stop.flagged=true;}};
+  const drive=(r,input)=>{const c=r.car;r.tow=c.draft;c.step(input,dt);commands.push(input);if(r.fuel!==undefined&&!r.finished)this.burn(r,input,dt);if(c.cliff&&trackFall(c,dt)==='back'){r.recover=0;r.blocked=0;}r.progress+=lapTravel(r.lastS,c.surface.s,L);r.lastS=c.surface.s;if(totalLaps&&!r.finished&&r.progress>=L*totalLaps+this.gridLeadIn){if(!r.retired){r.finished=true;r.finishTime=this.time;}else if(r.stop)r.stop.flagged=true;}};
   // A seat raced over the network (r.puppet, multiplayer.js) is placed, not driven: it returns the
   // pedals. The driverless cars on the road (caution) as they stand before the step (almost always
   // none: no list built then).
@@ -569,6 +640,10 @@ export class RaceField {
    r.stuck=ahead&&ahead.gap<g0+4&&free>ahead.v+1?(r.stuck??0)+dt:Math.max(0,(r.stuck??0)-2*dt);
    // For the ace: a real braking zone in view (his plan sheds more than about 10 km/h there).
    const zone=!!st.clean&&slow.v<speed-3;
+   // A refuelling stop (planFuel): looked at once a lap as the pit entry comes into view (wantStop), then over to the
+   // pit side and down to the lane's pace by the entry, where pitInput takes the car to its garage.
+   const R0=this.route,toPit=r.fuel!==undefined&&!r.finished&&R0?((R0.entryS-c.surface.s)%L+L)%L:Infinity;
+   if(toPit<INLAP_MERGE){const pass=Math.round((r.progress+toPit)/L);if(r.fuelPass!==pass){r.fuelPass=pass;r.service=this.wantStop(r,toPit,totalLaps);}}
    if(r.finished&&totalLaps){
     // Past the flag the driver eases off (about 2.5 m/s²) rather than braking in front of the pack.
     if(r.mode!=='line')Object.assign(r,{mode:'line',rival:null});target=Math.min(target,COOL_PACE+Math.max(0,32-2.5*(t-r.finishTime)));
@@ -586,6 +661,10 @@ export class RaceField {
      let limit=Infinity;if(r.yieldSide)for(let j=0;j<30;j++){const q=(i+j)%n;limit=Math.min(limit,r.yieldSide>0?line.laneHi[q]:-line.laneLo[q]);}
      r.lane=r.yieldSide?r.yieldSide*Math.max(0,limit-1):0;r.blendTarget=r.yieldSide?1:0;
     }
+   }
+   else if(r.service&&toPit<INLAP_MERGE){
+    Object.assign(r,{mode:'line',rival:null,lane:R0.entryD,blendTarget:1});target=Math.min(target,Math.sqrt(PIT_PACE*PIT_PACE+2*6*Math.max(0,toPit-15)));
+    if(toPit<6+speed*.3){r.service=false;r.stops++;r.pit={k:0,u:-toPit,slot:this.takeSpot(r),parked:false,service:{laps:totalLaps}};}
    }
    else{
     if(r.mode==='line')r.blendTarget=t<r.merge?1:0;
@@ -836,23 +915,43 @@ export class RaceField {
  }
  // Pit lane after the flag: pure pursuit along the fast lane, over to the working lane for the
  // last 12 m before the slot, 56 km/h in the limit zone and a car length behind the car in front.
+ // A refuelling stop (service) goes over for the last SERVICE_OVER m to its garage's spot, waits there for the crew
+ // (REFUEL_TIME, REFUEL_RATE a litre) and a clear way out, then back over to the fast lane and down it to the lane's end,
+ // where the racing takes over again (endStop).
  pitInput(r,bodies,dt){
-  const c=r.car,R=this.route,st=R.stations,P=r.pit,slot=P.slot,speed=Math.hypot(c.vx,c.vy),fx=Math.cos(c.heading),fy=Math.sin(c.heading),hold={left:0,right:0,throttle:0,brake:1,reverse:0,handbrake:0};
-  if(P.parked)return hold;
+  const c=r.car,R=this.route,st=R.stations,P=r.pit,slot=P.slot,S=P.service,speed=Math.hypot(c.vx,c.vy),fx=Math.cos(c.heading),fy=Math.sin(c.heading),hold={left:0,right:0,throttle:0,brake:1,reverse:0,handbrake:0};
+  if(P.parked&&!S)return hold;
+  if(P.parked&&!S.leaving){
+   if(S.wait===undefined){const L=this.data.meta.reconstructed_xy_m,D=Math.max(0,L*S.laps+this.gridLeadIn-r.progress);S.litres=clamp(this.refuel.perMetre*D+FUEL_RESERVE+.4-r.fuel,1,Math.max(1,this.refuel.tank-r.fuel));S.wait=S.time=REFUEL_TIME+S.litres*REFUEL_RATE;}
+   // The time counts once the crew's nozzle is in (crewReady, pit-building.js: the visible crew's fuel man in place).
+   if(S.wait>0&&this.crewReady&&!this.crewReady(r.entry.number))return hold;
+   S.wait=Math.max(0,S.wait-dt);if(S.wait>0)return hold;
+   if(!S.filled){S.filled=true;r.fuel=Math.min(this.refuel.tank,r.fuel+S.litres);}
+   if(this.laneTraffic(c,bodies))return hold;
+   Object.assign(S,{leaving:true,from:P.u});P.parked=false;
+  }
   let best=Infinity;for(let k=Math.max(0,P.k-3);k<Math.min(st.length,P.k+12);k++){const q=st[k],dd=(c.x-q.x)**2+(c.y-q.y)**2;if(dd<best){best=dd;P.k=k;}}
-  const q=st[P.k],u=P.u=q.u+(c.x-q.x)*q.tx+(c.y-q.y)*q.ty,left=slot.u-u;
+  const q=st[P.k],u=P.u=q.u+(c.x-q.x)*q.tx+(c.y-q.y)*q.ty,leaving=!!S?.leaving,left=leaving?Infinity:slot.u-u;
+  if(leaving&&u>S.from+5&&this.spotCars.get(slot)===r)this.spotCars.delete(slot);
+  if(leaving&&u>=R.end-4)return this.endStop(r);
   // Speed: bends and the limit zone ahead through a gentle braking curve, then the stop.
-  let target=Math.sqrt(2*2.2*Math.max(0,left-.3));
+  let target=leaving?PIT_PACE:Math.sqrt(2*2.2*Math.max(0,left-.3));
   for(let k=P.k;k<Math.min(st.length,P.k+60);k++){const s=st[k],v=R.limit&&s.u>=R.limit.from-2&&s.u<=R.limit.to?Math.min(s.v,PIT_LIMIT):s.v;target=Math.min(target,Math.sqrt(v*v+2*3.5*Math.max(0,s.u-u-speed*.1)));}
   for(const o of bodies){if(o===c)continue;const dx=o.x-c.x,dy=o.y-c.y,forward=dx*fx+dy*fy,side=dy*fx-dx*fy;if(forward>0&&forward<40&&Math.abs(side)<2.3&&sameLevel(c,o))target=Math.min(target,Math.max(0,o.vx*fx+o.vy*fy)+Math.sqrt(2*3*Math.max(0,forward-6.3)));}
-  if(speed<.5&&(left<1.5||target<.3)){P.parked=left<1.5;return hold;}
-  const look=u+4+speed*.3,p=R.at(look),t=clamp((look-slot.u+12)/10,0,1),lane=p.fast+(p.work-p.fast)*t*t*(3-2*t),tx=p.x-p.ty*lane,ty=p.y+p.tx*lane,alpha=wrap(Math.atan2(ty-c.y,tx-c.x)-c.heading);
+  if(!leaving&&speed<.5&&(left<1.5||target<.3)){P.parked=left<1.5;return hold;}
+  const over=S?SERVICE_OVER:12,look=u+4+speed*.3,p=R.at(look),t=leaving?1-smooth((look-S.from)/SERVICE_OUT):clamp((look-slot.u+over)/(over-2),0,1),lane=p.fast+(p.work-p.fast)*t*t*(3-2*t),tx=p.x-p.ty*lane,ty=p.y+p.tx*lane,alpha=wrap(Math.atan2(ty-c.y,tx-c.x)-c.heading);
   const turn=clamp(Math.atan2(2*WHEELBASE*Math.sin(alpha),Math.hypot(tx-c.x,ty-c.y))/steerLimit(speed,(c.mechanics?.grip??1)*(c.weatherGrip??1)),-1,1);
   const input={left:Math.max(0,turn),right:Math.max(0,-turn),throttle:clamp((target-speed)*.6,0,1),brake:clamp((speed-target)*.7,0,1),reverse:0,handbrake:0};
   // Wedged against a wall: back out with the wheels turned, then go on.
   r.blocked=speed<1.2&&target>3?(r.blocked??0)+dt:0;if(r.blocked>2.5){r.recover=1.2;r.blocked=0;}
   if(r.recover>0){r.recover-=dt;Object.assign(input,{reverse:1,throttle:0,brake:0,left:alpha<0?1:0,right:alpha>0?1:0});}
   return input;
+ }
+ // Back on the track at the lane's end: racing again from where the car is, easing over to its line.
+ endStop(r){
+  const c=r.car,f=this.view(r).F(c);if(this.spotCars.get(r.pit.slot)===r)this.spotCars.delete(r.pit.slot);
+  Object.assign(r,{pit:null,mode:'line',rival:null,lane:f?.d??0,blend:1,blendTarget:0,cooldown:2,stuck:0,blocked:0});
+  const {bodies,driverOf,player}=this.stepCars;return this.decide(r,bodies,driverOf,player,0,this.fuelFor);
  }
  // The rivals in result order (race-results.js resultRows): who crossed the line, by time, then
  // the cars still racing in running order, retirements last. A car still on the track gets the

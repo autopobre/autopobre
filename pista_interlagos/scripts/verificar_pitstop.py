@@ -77,17 +77,18 @@ with sync_playwright() as p:
   assert not page.evaluate("pit.buySnack('cafe')")
   page.click('#pitCloseCafe');page.evaluate('walkCar()');enter_car();wait_js(page,'!pit.opened')
   page.evaluate('pit.bank=450;pit.departing=false;advance(100);pit.mode.freeFuel=3');wait_js(page,'pit.opened');page.click('#pitFill2');assert page.evaluate('pit.service.job.id')=='fuel'
-  page.evaluate('advance(120)');assert 3<page.evaluate('pit.fuel')<5
+  # The tank fills only with the fuel man's nozzle in the filler (user, 10-24): he walks there in real frames first.
+  assert page.evaluate('!pit.layout.ready("fuel")'),'the fuel waits for the fuel man';wait_js(page,'pit.service.jobs.every(j=>pit.layout.ready(j.id))');page.evaluate('advance(120)');assert 3<page.evaluate('pit.fuel')<5
   page.click('#pitLeave');wait_js(page,'!pit.opened');assert page.evaluate('!pit.service.job&&pit.driver.root.visible')
   # Re-enter and verify the inexpensive partial repair, with a visible result.
   page.evaluate("pit.condition.damage('freios',.5);pit.departing=false;advance(100)");wait_js(page,'pit.opened')
-  page.click('[data-repair="freios"][data-kind="patch"]');page.evaluate('advance(1200)');assert .5<page.evaluate('pit.condition.quality.freios')<1
+  page.click('[data-repair="freios"][data-kind="patch"]');wait_js(page,'pit.service.jobs.every(j=>pit.layout.ready(j.id))');page.evaluate('advance(1200)');assert .5<page.evaluate('pit.condition.quality.freios')<1
   # Immersive cash/profile accounting is independent of the free-race team budget.
   page.evaluate("pit.mode.onMainMenu()")
   choose_race(page,story=True)
   page.evaluate("pit.mode.state.phase='race';pit.mode.state.cash=120;pit.mode.state.profile.fund=200;pit.mode.state.fuel=4;pit.mode.raceProgress=0;pit.mode.previousS=20;pit.mode.sync();park();pit.departing=false;pit.condition.damage('tanque',.8);advance(100)")
   wait_js(page,'pit.opened');page.click('[data-repair="tanque"][data-kind="proper"]');assert page.evaluate('pit.mode.state.cash')<120;assert page.evaluate('pit.mode.state.profile.fund')==200
-  page.evaluate('advance(2000)');assert page.evaluate('pit.condition.quality.tanque')==1
+  wait_js(page,'pit.service.jobs.every(j=>pit.layout.ready(j.id))');page.evaluate('advance(2000)');assert page.evaluate('pit.condition.quality.tanque')==1
   assert page.evaluate('pit.mode.state.phase')=='race';assert page.evaluate('pit.mode.state.raceTime')>0
   print(json.dumps({'mobile':mobile,'repair':True,'freeWalkAndPaidMenu':True,'queuedRepairs':True,'partialRepair':True,'refuel':True,'pause':True,'immersiveBalance':True}),flush=True)
   context.close()

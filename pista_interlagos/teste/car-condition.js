@@ -74,10 +74,12 @@ export class PitService {
  // Orders start as soon as their place and enough mechanics are free, oldest first (a
  // later one goes ahead when it works somewhere else).
  schedule(){for(const job of [...this.queue])if(!this.blocker(job)){this.queue.splice(this.queue.indexOf(job),1);this.jobs.push(job);}}
- // Advances every job at work; returns those finished in this step.
- step(dt){
+ // Advances every job at work whose crew is at it (ready(id), Box 99's crew: the mechanic at his place, the fuel man's
+ // nozzle in the filler; user, 10-24: the tank filled while he was still walking over); returns those finished.
+ step(dt,ready=()=>true){
   const done=[];
   for(const job of [...this.jobs]){
+   if(!ready(job.id))continue;
    job.elapsed=Math.min(job.seconds,job.elapsed+Math.max(0,dt));job.progress=job.elapsed/job.seconds;
    if(job.id==='fuel')this.setFuel(job.from+(job.to-job.from)*job.progress);else this.condition.applyRepair(job,job.progress);
    if(job.progress>=1){this.jobs.splice(this.jobs.indexOf(job),1);done.push(job);}

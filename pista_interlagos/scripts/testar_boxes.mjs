@@ -43,14 +43,14 @@ const path=P.map(p=>[p[c.x]+p[c.lx]*(p[c.lane_lo]+p[c.fast_hi])/2,p[c.y]+p[c.ly]
 const car=new TestCar(data);
 car.reset(Math.max(0,data.samples.findIndex(p=>p[0]>=pit.entry_main_s-120)));
 let k=0,steps=0,inPit=0,limited=0,fastest=0,impacts=0,offRoad=0;
-// Main track until the entry, then the pit lane to its end, flat out wherever the lane allows:
-// there is no limiter, so this run speeds through the zone and must lose the lap.
+// Main track until the entry, then the pit lane to its end, flat out wherever the lane allows: the limiter
+// (user, 10-24) holds the car at 60 km/h through the zone, so the lap stays good.
 while(steps<120*400){
  const surface=car.surface;let command;
  if(k===0&&Math.hypot(path[0][0]-car.x,path[0][1]-car.y)>25)command=recognitionInput(car,{maxSpeed:30});
  else{const r=follow(car,path,k,30);k=r.k;command=r.input;command.throttle=1;command.brake=0;
   // Brake for the chicane, the tight exit curve and down to the limit before its line;
-  // inside the zone the throttle stays flat and nothing holds the car back.
+  // inside the zone the throttle stays flat and only the limiter holds the car back.
   // Sharpest bend within the next 40 m, measured over 12 m chords.
   let turn=0;const h=j=>Math.atan2(P[Math.min(P.length-1,j)][c.ty],P[Math.min(P.length-1,j)][c.tx]);
   for(let j=Math.max(0,k-4);j<k+20;j++)turn=Math.max(turn,Math.abs(wrap(h(j+6)-h(j))));
@@ -68,8 +68,15 @@ while(steps<120*400){
 assert(k>=path.length-2,'drove the whole pit lane');
 assert(inPit>120*30,'spent time on the pit lane surface');
 assert(limited>120*10,'speed-limit zone reached');
-assert(fastest>70,'no limiter: the car keeps its power in the zone: '+fastest.toFixed(1));
-assert(!car.lapValid&&car.invalidReason==='pit'&&car.pitPenalty.kmh>62,'speeding in the pit lane costs the lap');
+assert(fastest>57&&fastest<pit.limit.kmh+2,'the limiter holds the car at the limit, flat out: '+fastest.toFixed(1));
+assert(car.lapValid&&!car.pitPenalty,'held by the limiter, the lap stays good');
+// Into the zone at 108 km/h, flat out: the limiter brakes the car down to the limit within a couple of seconds, but
+// the speeding over the line still costs the lap.
+{const fast=new TestCar(data),j0=P.findIndex(q=>q[c.s]>=pit.limit.from+40),q=P[j0],h=Math.atan2(q[c.ty],q[c.tx]);let m=j0,held=0,top=0;
+ fast.x=path[j0][0];fast.y=path[j0][1];fast.heading=h;fast.vx=Math.cos(h)*30;fast.vy=Math.sin(h)*30;fast.surface=fast.sample(fast.x,fast.y);fast.index=fast.surface.i;fast.settle?.();
+ for(let i=0;i<120*6;i++){const r=follow(fast,path,m,30);m=r.k;r.input.throttle=1;r.input.brake=0;fast.step(r.input,1/120);const v=Math.hypot(fast.vx,fast.vy)*3.6;if(i>120*3.5)top=Math.max(top,v);if(fast.limiter)held++;}
+ assert(held>120*5&&top<pit.limit.kmh+1.5,'the limiter brakes a fast car down to the limit: '+top.toFixed(1));
+ assert(!fast.lapValid&&fast.invalidReason==='pit','over the limit past the line still costs the lap');}
 assert.equal(impacts,0,'clean run through the pits touches no wall');
 assert(offRoad<120*.5,'stays on the paved pit lane: '+offRoad);
 assert(car.surface.s>pit.exit_main_s-120&&car.surface.s<pit.exit_main_s+60,'back on the back straight: '+car.surface.s.toFixed(1));

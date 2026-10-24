@@ -221,8 +221,10 @@ export class PitStop {
   if(!this.opened)return false;
   this.walk(input,dt);Object.assign(input,idle);c.vx=c.vy=c.yaw=0;c.burnout=c.rearSlipSpeed=0;
   this.mode.stepPit(dt);
-  if(this.service.jobs.some(job=>job.id!=='fuel'&&Math.floor(job.elapsed/1.4)!==Math.floor((job.elapsed+dt)/1.4)))this.mode.state.emitSound('pitRepair');
-  const completed=this.service.step(dt);this.syncOpenings();
+  // The work goes on only with the crew at it (pit-box99.js layout.ready: in place, the nozzle in the filler).
+  const ready=id=>this.layout?.ready?.(id)??true;
+  if(this.service.jobs.some(job=>job.id!=='fuel'&&ready(job.id)&&Math.floor(job.elapsed/1.4)!==Math.floor((job.elapsed+dt)/1.4)))this.mode.state.emitSound('pitRepair');
+  const completed=this.service.step(dt,ready);this.syncOpenings();
   if(completed.length){const working=this.service.jobs.map(jobName);this.message=`${completed.map(jobName).join(' e ')}: serviço concluído.`+(working.length?` Na equipe agora: ${working.join(', ')}.`:' Tudo pronto para voltar!');this.mode.state.emitSound('judgeApprove');}
   if(this.mode.active){this.mode.state.health=this.condition.health;if(this.condition.quality.tanque>.4){this.mode.state.tankDetached=false;this.mode.state.tankWear=0;}}
   return true;

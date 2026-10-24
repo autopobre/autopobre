@@ -359,6 +359,8 @@ export function createBox99({pit,c,lerp,at,root,obstacles,textures,people,crowd,
    if(t<1){t=Math.max(.05,t);const head=hero.y+1.35;eye.x=hero.x+(eye.x-hero.x)*t;eye.z=hero.z+(eye.z-hero.z)*t;eye.y=head+(eye.y-head)*t;}
    if(indoors){const q=toLocal(eye.x,-eye.z);eye.y=Math.min(eye.y,floorAt(q.x,q.d)+4.3);}
   },
+  // A job's crew at it (PitCrew.ready): the pit stop's work counts only from then.
+  ready:id=>crew.ready(id),
   animate(dt,s){
    const cam=s.camera.position,near=Math.hypot(cam.x-O.x,cam.z-O.z)<160;fan.rotation.y+=dt*3.2;
    crew.update(dt,{car:s.car,active:s.opened,jobs:s.jobs.map(j=>j.id),finished:!s.jobs.length&&!s.queue.length,departing:s.departing&&Math.hypot(s.car.x-spotX,s.car.y-spotY)<30,near});

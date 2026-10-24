@@ -50,7 +50,7 @@ with sync_playwright() as p:
         assert state['pit'] and state['onRoad'], state
         assert state['hud'].startswith('PIT LANE') and 'Pit lane' in state['location'], state
         if info['limit']['from'] <= state['pitS'] <= info['limit']['to']:
-            assert 'MÁX. 60' in state['hud'], state
+            assert 'LIMITADOR 60 km/h' in state['hud'], state  # the limiter on in the zone (user, 10-24)
         page.screenshot(path=str(ROOT / f'renders/boxes_{TAG}{name}.png'))
         report['stations'].append(state)
     # Box 99: in the race the car stops on the painted box in front of the garage, along

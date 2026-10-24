@@ -693,8 +693,8 @@ const PREFER={motor:[5,2,3],cambio:[5,3,2],freios:[2,5,3],suspensao:[2,5,3],pneu
 function crewTasks(jobs){
  const tasks=new Map(),free=[2,3,5];
  for(const id of jobs){
-  if(id==='fuel'){const [at,pose,act]=SLOTS.fuel[0];tasks.set(4,{at,pose,act});continue;}
-  for(const [at,pose,act] of SLOTS[id]??[]){const who=(PREFER[id]??free).find(i=>free.includes(i));if(who===undefined)break;free.splice(free.indexOf(who),1);tasks.set(who,{at,pose,act});}
+  if(id==='fuel'){const [at,pose,act]=SLOTS.fuel[0];tasks.set(4,{at,pose,act,job:id});continue;}
+  for(const [at,pose,act] of SLOTS[id]??[]){const who=(PREFER[id]??free).find(i=>free.includes(i));if(who===undefined)break;free.splice(free.indexOf(who),1);tasks.set(who,{at,pose,act,job:id});}
  }
  if(jobs.includes('freios')||jobs.includes('suspensao'))tasks.set(1,{at:[3.2,-.5],pose:'jack',act:null});
  return tasks;
@@ -711,8 +711,8 @@ export class PitCrew{
   // Each mechanic has a wheel gun and a spanner and shows the one his job needs.
   this.tools=[2,3,5].map(i=>({i,gun:people.prop([piece(block(.09,.2,.1),0x2a2d30,[0,-.06,0]),piece(tube(.025,.025,.16,10),0xb9bec2,[0,-.22,0]),piece(block(.06,.1,.05),0xf0c419,[.07,-.02,0])],hand(i),'Pistola_pneumatica'),spanner:people.prop([piece(block(.03,.28,.015),0xc9ced2,[0,-.12,0])],hand(i),'Chave_boca')}));
   // Dump can, origin at its handle; the spout tip is at SPOUT (filler at the right rear quarter).
-  this.can=people.prop([piece(block(.34,.38,.18),0xc81d25,[-.02,-.26,0]),piece(block(.22,.03,.04),0x2a2d30,[0,-.02,0]),piece(block(.03,.06,.04),0x2a2d30,[-.1,-.05,0]),piece(block(.03,.06,.04),0x2a2d30,[.1,-.05,0]),piece(tube(.024,.024,.34,8),0x2a2d30,[.27,-.21,0],[0,0,-2.27]),piece(tube(.032,.032,.04,8),0xf0c419,[-.12,-.06,.05])],this.root,'Galao_gasolina');
-  this.spout=new THREE.Vector3(.4,-.31,0);this.filler=new THREE.Vector3();
+  this.can=people.prop(dumpCan(),this.root,'Galao_gasolina');
+  this.spout=SPOUT.clone();this.filler=new THREE.Vector3();
   const jack=this.actors[1].person;people.prop([piece(block(.9,.14,.3),0xc81d25,[1.3,.12,0]),piece(tube(.06,.06,.04,12),0x2a2d30,[1.7,.07,.14],[Math.PI/2,0,0]),piece(tube(.06,.06,.04,12),0x2a2d30,[1.7,.07,-.14],[Math.PI/2,0,0]),piece(block(.2,.04,.24),0x3a3f44,[1.72,.21,0]),piece(tube(.022,.022,.85,8),0xb9bec2,[.74,.6,0],[0,0,.28])],jack,'Macaco_jacare');
   // Lollipop: the pole follows the chief's right hand; the disc turns to the driver.
   this.discs={stop:new THREE.MeshBasicMaterial({map:lollipop('FREIO','#c81d25'),transparent:true,side:THREE.DoubleSide}),go:new THREE.MeshBasicMaterial({map:lollipop('ENGATA\n1ª','#1f8a3b'),transparent:true,side:THREE.DoubleSide})};
@@ -724,8 +724,11 @@ export class PitCrew{
   this.can.userData.live=this.pole.userData.live=this.disc.userData.live=true;
   this.handPos=new THREE.Vector3();this.poleDir=new THREE.Vector3();this.up=new THREE.Vector3(0,1,0);this.visible=true;
  }
+ // A job's crew at it: every mechanic it took at his place (the fuel man with the nozzle in the filler). Out of view
+ // (placed null) the crew is taken to be there; a job no mechanic could take is not held up either.
+ ready(id){return !this.placed||!this.manned?.has(id)||this.placed.has(id);}
  update(dt,{car,active,jobs=[],finished,departing,near}){
-  this.root.visible=near;if(!near)return;
+  this.root.visible=near;if(!near){this.placed=null;return;}
   const h=car.heading,cos=Math.cos(h),sin=Math.sin(h),toWorld=(f,r)=>[car.x+cos*f+sin*r,car.y+sin*f-cos*r];
   const facing=(f,r)=>{const [x,y]=toWorld(f,r),[tx,ty]=toWorld(Math.max(-2,Math.min(2,f)),Math.max(-.5,Math.min(.5,r)));return Math.atan2(ty-y,tx-x);};
   const tasks=active?crewTasks(jobs):new Map();
@@ -742,12 +745,11 @@ export class PitCrew{
    else{actor.corner=-1;actor.go(x,y,yaw,pose);}
    actor.step(dt,this.ground);
   });
+  // Who is at his job's place now (ready).
+  this.manned=new Set([...tasks.values()].map(t=>t.job));this.placed=new Set([...this.manned].filter(id=>[...tasks].every(([i,t])=>t.job!==id||Math.hypot(this.actors[i].target.x-this.actors[i].x,this.actors[i].target.y-this.actors[i].y)<.2&&!this.actors[i].target.pass)));
   // The can: spout in the filler while refuelling, otherwise hanging from the right hand.
   const fuel=this.actors[4];fuel.person.updateMatrixWorld(true);
-  if(active&&fuel.act==='fuel'&&Math.hypot(fuel.target.x-fuel.x,fuel.target.y-fuel.y)<.2){
-   const [fx,fy]=toWorld(-.7,.79),turn=Math.atan2(fy-fuel.y,fx-fuel.x);this.filler.set(fx,this.ground(fx,fy)+.9,-fy);
-   this.can.rotation.set(0,turn,-.35);this.can.position.copy(this.filler).sub(this.spout.clone().applyEuler(this.can.rotation));
-  }else{fuel.person.userData.rig.limbs[1].hand.getWorldPosition(this.can.position);this.can.rotation.set(0,fuel.yaw,0);}
+  holdCan(this.can,fuel,active&&fuel.act==='fuel'&&Math.hypot(fuel.target.x-fuel.x,fuel.target.y-fuel.y)<.2?toWorld(-.7,.79):null,this.ground,this.filler,this.spout);
   for(const t of this.tools){const act=this.actors[t.i].act;t.gun.visible=act==='gun'||!act&&t.i!==5;t.spanner.visible=!t.gun.visible;}
   // Pole along the hand, disc square to the driver (or to the lane when idle).
   const chief=this.actors[0],hand=chief.person.userData.rig.limbs[1].hand;chief.person.updateMatrixWorld(true);
@@ -756,6 +758,83 @@ export class PitCrew{
   this.disc.position.copy(this.handPos).addScaledVector(this.poleDir,.95);this.disc.rotation.set(0,active?h-Math.PI/2:chief.yaw+Math.PI/2,0);
   this.disc.material=finished?this.discs.go:this.discs.stop;
  }
+}
+
+// The dump can (origin at its handle, the spout's tip at SPOUT) and where it is: in the filler at the car's right rear
+// quarter while refuelling (filler: its data x, y), otherwise hanging from the fuel man's right hand.
+const SPOUT=new THREE.Vector3(.4,-.31,0);
+const dumpCan=()=>[piece(block(.34,.38,.18),0xc81d25,[-.02,-.26,0]),piece(block(.22,.03,.04),0x2a2d30,[0,-.02,0]),piece(block(.03,.06,.04),0x2a2d30,[-.1,-.05,0]),piece(block(.03,.06,.04),0x2a2d30,[.1,-.05,0]),piece(tube(.024,.024,.34,8),0x2a2d30,[.27,-.21,0],[0,0,-2.27]),piece(tube(.032,.032,.04,8),0xf0c419,[-.12,-.06,.05])];
+function holdCan(can,fuel,filler,ground,at,spout){
+ if(filler){const [fx,fy]=filler;at.set(fx,ground(fx,fy)+.9,-fy);can.rotation.set(0,Math.atan2(fy-fuel.y,fx-fuel.x),-.35);can.position.copy(at).sub(spout.clone().applyEuler(can.rotation));}
+ else{fuel.person.userData.rig.limbs[1].hand.getWorldPosition(can.position);can.rotation.set(0,fuel.yaw,0);}
+}
+
+// Rival teams' refuelling crews (race-field.js pitStops; pit-building.js garages): a pool of two-man crews, dressed in the
+// team's colours when one is called, who come out of the garage as the car comes down the lane, wait at its spot, fill it
+// from the dump can at the filler (the fuel man, round the car as at Box 99) and wipe its windscreen (the mechanic) while
+// it stands, then go back in. More stops at once than crews: those cars are served out of sight. Far from the camera
+// (CREW_REACH m) a crew is not drawn and takes its places at once.
+// [name, outfit extras, place in the car's frame while it stands (forward, right; the mechanic's right taken to the
+// garage's side), pose, work].
+const RIVAL_CREW=[['Gasolina_equipe',{hat:'cap'},[-.7,1.55],'fuel','fuel'],['Para_brisa_equipe',{hairStyle:'curly'},[1.05,1.42],'work','wipe']];
+const CREW_REACH=170,AWAY=1e5;
+export class RivalCrews{
+ constructor(people,{count=6}={}){
+  this.root=new THREE.Group();this.root.name='Equipes_adversarias';this.spout=SPOUT.clone();this.filler=new THREE.Vector3();
+  this.crews=Array.from({length:count},(_,k)=>{
+   const actors=RIVAL_CREW.map(([name,extra],i)=>{const person=people.person({...CREW,back:false,...extra});person.name=`${name}_${k}`;person.visible=false;this.root.add(person);
+    const a=new Actor(person,AWAY,AWAY,0,{kind:'crew',hands:[true,i===1],posture:true,seed:.29+k*.113+i*.061});a.go(AWAY,AWAY,0,'stand');return a;});
+   const can=people.prop(dumpCan(),this.root,`Galao_equipe_${k}`);can.visible=false;
+   // The can and the people are placed by hand every frame (never frozen with the still scenery: perf-probe.js).
+   can.userData.live=true;for(const a of actors)a.person.userData.live=true;
+   return {actors,can,number:null,garage:null,left:0,far:true};
+  });
+ }
+ // The car of `number` may fill: its crew's fuel man has the nozzle in the filler (race-field.js crewReady); a stop no
+ // crew could take, or one out of view, is not held up.
+ ready(number){const crew=this.crews.find(c=>c.number===number);if(!crew||crew.far)return true;const f=crew.actors[0];return f.act==='fuel'&&Math.hypot(f.target.x-f.x,f.target.y-f.y)<.2&&!f.target.pass;}
+ // stops: race-field.js pitStops (car, spot pose, side of the garage, phase, the team's colour); garage(bay): that
+ // garage's places inside (home(i)), its floor (ground) and the way out of it (yaw).
+ update(dt,{stops,garage,camera}){
+  const live=new Map(stops.map(s=>[s.number,s]));
+  // A crew back inside a while after its car has gone is free for the next one.
+  for(const crew of this.crews)if(crew.number!==null&&!live.has(crew.number)&&(crew.left+=dt)>4)this.release(crew);
+  for(const s of stops)if(!this.crews.some(c=>c.number===s.number)){const crew=this.crews.find(c=>c.number===null);if(crew)this.call(crew,s,garage(s.bay));}
+  for(const crew of this.crews)if(crew.number!==null)this.step(crew,live.get(crew.number)??null,dt,camera);
+ }
+ call(crew,stop,garage){
+  Object.assign(crew,{number:stop.number,garage,left:0});
+  crew.actors.forEach((a,i)=>{dressPerson(a.person,{...CREW,back:false,top:stop.color,bottom:0x2d3338,trim:0xf4f1ea,hatColor:stop.color,...RIVAL_CREW[i][1]});
+   const [x,y]=garage.home(i);Object.assign(a,{x,y,yaw:garage.yaw,act:null,corner:-1});a.go(x,y,garage.yaw,'stand');a.person.visible=true;});
+  crew.can.visible=true;
+ }
+ release(crew){
+  crew.number=null;crew.can.visible=false;
+  for(const a of crew.actors){Object.assign(a,{x:AWAY,y:AWAY,act:null});a.go(AWAY,AWAY,0,'stand');a.person.visible=false;a.person.position.set(AWAY,0,-AWAY);}
+ }
+ step(crew,stop,dt,camera){
+  const G=crew.garage,ground=G.ground,[fuel]=crew.actors;
+  // Where they work: the car's frame where it stands (the spot's before it gets there); the mechanic keeps to the
+  // garage's side (gr: the sign of the car's right that way), the fuel man goes round to the filler as at Box 99.
+  const standing=stop?.phase==='abastecendo',pose=standing?{x:stop.car.x,y:stop.car.y,heading:stop.car.heading}:stop?.pose??null,gr=-(stop?.side??1);
+  const h=pose?.heading??0,cos=Math.cos(h),sin=Math.sin(h),toWorld=(f,r)=>[pose.x+cos*f+sin*r,pose.y+sin*f-cos*r];
+  const facing=(f,r)=>{const [x,y]=toWorld(f,r),[tx,ty]=toWorld(Math.max(-2,Math.min(2,f)),Math.max(-.5,Math.min(.5,r)));return Math.atan2(ty-y,tx-x);};
+  const local=(x,y)=>{const dx=x-pose.x,dy=y-pose.y;return [dx*cos+dy*sin,dx*sin-dy*cos];};
+  const [hx,hy]=G.home(0),far=crew.far=!camera||Math.hypot(camera.position.x-(pose?.x??hx),-camera.position.z-(pose?.y??hy))>CREW_REACH;
+  crew.actors.forEach((a,i)=>{
+   let x,y,yaw,place='stand';a.act=null;
+   if(standing){const [,,[f,r],p,act]=RIVAL_CREW[i],at=[f,i===1?gr*r:r];[x,y]=toWorld(...at);yaw=facing(...at);place=p;a.act=act;}
+   else if(stop?.phase==='chegando'){[x,y]=toWorld(i?1.4:-1.1,gr*2.4);yaw=Math.atan2(pose.y-y,pose.x-x);place='ready';}
+   else{[x,y]=G.home(i);yaw=G.yaw;}
+   const way=!far&&standing&&Math.hypot(a.x-pose.x,a.y-pose.y)<12?detour(local(a.x,a.y),local(x,y),a.corner):null;
+   if(way){a.corner=way.corner;const [wx,wy]=toWorld(...way.point);a.go(wx,wy,Math.atan2(wy-a.y,wx-a.x),'stand',true);a.act=null;}else{a.corner=-1;a.go(x,y,yaw,place);}
+   a.calm=!!stop;a.person.visible=!far;
+   if(far){Object.assign(a,{x,y,yaw});a.person.position.set(x,ground(x,y),-y);}else a.step(dt,ground);
+  });
+  crew.can.visible=!far;
+  if(!far)holdCan(crew.can,fuel,standing&&fuel.act==='fuel'&&Math.hypot(fuel.target.x-fuel.x,fuel.target.y-fuel.y)<.2?toWorld(-.7,.79):null,ground,this.filler,this.spout);
+ }
+ info(){return this.crews.map(c=>({number:c.number,actors:c.actors.map(a=>({x:a.x,y:a.y,act:a.act,visible:a.person.visible,pose:a.target.pose}))}));}
 }
 
 // The Tia: turns to a customer coming close, waves, serves what was bought and
