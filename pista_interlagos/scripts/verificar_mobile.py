@@ -40,6 +40,7 @@ with sync_playwright() as p:
   page.tap('[data-action="box"]');wait_js(page,"fixtureMode.state.phase==='disqualified'");check('disqualification_keeps_prior_money_and_leftover',page.evaluate('fixtureMode.state.profile.fund')==312.5);check('ending_image_loaded',page.evaluate("document.querySelector('#dqScreen img').naturalWidth>0"));shot('desclassificado')
   check('ending_covers_viewport',page.evaluate("()=>{const r=document.querySelector('#dqScreen').getBoundingClientRect();return r.width===innerWidth&&r.height===innerHeight}"))
   # After the photo, the race's report (story-career.js); its cards read, the next race is a new fundraising.
+  page.tap('#dqContinue')  # the disqualified screen waits for the player (2026-10-24)
   wait_js(page,"fixtureMode.state.phase==='complete'&&fixtureMode.state.scene?.kind==='report'");check('ending_shows_race_report',page.evaluate("fixtureMode.state.scene.cards[0].outcome==='guincho'"))
   page.evaluate('window.interlagosHistoria.skipCards()');page.tap('[data-action="again"]');wait_js(page,"fixtureMode.state.phase==='crowd'");check('ending_returns_to_fundraising',True)
   page.evaluate("()=>{const m=fixtureMode;m.state.phase='race';m.state.finish(1);m.sync();}");page.tap('[data-action="afterPodium"]');page.tap('[data-action="inspect"]');page.evaluate('fixtureMode.state.inspectionStep(8)');wait_js(page,"fixtureMode.state.phase==='complete'");check('inspection_after_podium_completes_race',page.evaluate('fixtureMode.state.inspected'))

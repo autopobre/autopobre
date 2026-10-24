@@ -73,8 +73,7 @@ with sync_playwright() as p:
     types = page.evaluate(INSPECT)
     report['kart_cards'] = types
     check('kart_report', types == 'morale,morale,morale,repair,line,line,line,line,done,challenge', types)
-    for _ in range(4):
-        nxt()
+    nxt()  # the report's moods and bill share one screen (2026-10-24)
     seen = []
     for i in range(4):
         frame()

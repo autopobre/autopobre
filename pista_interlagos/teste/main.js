@@ -45,7 +45,7 @@ import {SkidMarks} from './skid-marks.js?v=20260923-capotagem';
 import {TyreSmoke} from './tyre-smoke.js?v=20261005-poeira-folhas';
 import {ImmersiveMode} from './immersive-mode.js';
 import {ImmersiveState} from './immersive-state.js';
-import {stageOf,MORALE,MORALE_NAMES,GAME_OVER,BLAZER_GOAL,OPALA_GOAL,STORY_PROFILE_KEY,PENSION} from './story-career.js';
+import {stageOf,MORALE,MORALE_NAMES,GAME_OVER,BLAZER_GOAL,OPALA_GOAL,STORY_PROFILE_KEY,PENSION,standsFill} from './story-career.js';
 import {MobileControls} from './mobile-controls.js';
 import {GamepadControls} from './gamepad-controls.js';
 import {WheelControls} from './wheel-controls.js';
@@ -191,6 +191,10 @@ function selectCircuit(id){
 }
 for(const button of document.querySelectorAll('[data-circuit]'))button.onclick=()=>{if(!sessionStarted&&!loading)selectCircuit(button.dataset.circuit);};
 let projectMap;
+// The circuit's stands crowd (landscape.js createCrowd): full in Modo Corrida, as full as the supporters' morale in Modo
+// História (story-career.js standsFill: 15% at a career's start), checked every frame, changed only when it differs.
+let standsCrowd=null;
+const fillStands=()=>standsCrowd?.fill(immersive?.active?standsFill(immersive.state.profile.career?.morale?.torcida??50):1);
 $('livery').value=preferences.values.livery;
 $('camera').value=preferences.values.camera;
 $('carDamage').checked=preferences.values.damage;
@@ -236,17 +240,20 @@ for(const id of ['aiLevel','tracksAiLevel']){$(id).value=preferences.values.aiLe
 // Breakdowns ("Abandonos"): taken at the next start too.
 $('retirements').checked=preferences.values.retirements;
 $('retirements').onchange=()=>{preferences.update({retirements:$('retirements').checked});if(immersive)immersive.field.retirements=preferences.values.retirements;};
-// Race length (both modes, every circuit), picked in the race settings or on the track screen: one
-// preference, taken at the next start, so a race under way keeps its own. A circuit that fixes its race length
+// Race length (every circuit), picked in the race settings or on the track screen: one preference per mode (laps for Modo
+// Corrida, 3 by default; storyLaps for Modo História, 8 by default, user 10-24), taken at the next start, so a race under
+// way keeps its own. A circuit that fixes its race length
 // (circuits.js fixedLaps: Pampulha's one lap) shows it there, locked (showLaps); the choice saved comes back elsewhere.
-for(const laps of [$('raceLaps'),$('tracksLaps')]){for(let n=LAPS.min;n<=LAPS.max;n++)laps.add(new Option(`${n} volta${n>1?'s':''}${n===LAPS.standard?' (padrão)':''}`,String(n)));
- laps.onchange=()=>{if(fixedLaps(circuit.id))return;preferences.update({laps:Number(laps.value)});showLaps();if(immersive)immersive.laps=raceLaps(circuit.id,preferences.values.laps);updateMenuLabels();};}
+const lapsKey=(mode=menuMode)=>mode==='historia'?'storyLaps':'laps',chosenLaps=(mode=menuMode)=>preferences.values[lapsKey(mode)];
+for(const laps of [$('raceLaps'),$('tracksLaps')]){for(let n=LAPS.min;n<=LAPS.max;n++)laps.add(new Option('',String(n)));
+ laps.onchange=()=>{if(fixedLaps(circuit.id))return;preferences.update({[lapsKey()]:Number(laps.value)});showLaps();if(immersive)immersive.laps=raceLaps(circuit.id,chosenLaps());updateMenuLabels();};}
 function showLaps(){
- const fixed=fixedLaps(circuit.id);
+ const fixed=fixedLaps(circuit.id),standard=menuMode==='historia'?LAPS.story:LAPS.standard;
  for(const select of [$('raceLaps'),$('tracksLaps')]){
+  for(const o of select.options)if(!o.dataset.fixed){const n=Number(o.value);o.textContent=`${n} volta${n>1?'s':''}${n===standard?' (padrão)':''}`;}
   let locked=select.querySelector('option[data-fixed]');if(fixed&&!locked){locked=new Option('','fixo');locked.dataset.fixed='';select.add(locked);}
   if(fixed)locked.textContent=`${fixed} volta${fixed>1?'s':''} (fixo nesta pista)`;else locked?.remove();
-  select.disabled=!!fixed;select.value=fixed?'fixo':String(preferences.values.laps);
+  select.disabled=!!fixed;select.value=fixed?'fixo':String(chosenLaps());
  }
 }
 showLaps();
@@ -654,6 +661,34 @@ let graphicsCompiling=null;
 // time the mirror is wanted, the mirror (and the door mirrors) left out meanwhile; the film look's programs are the
 // mirror's already. mirrorPrograms: null (to build for the programs in use), a Promise (building), true (built).
 let mirrorPrograms=null;const MIRROR_FAR=2200;
+// The rear-view mirror on screen for the outside views 1 to 4 (Perseguição, próxima, distante, Capô; user, 10-24): the
+// cockpit mirror's picture (the same target, the Gráficos tab's Retrovisores: Desligados turns it off too), drawn small at
+// the top middle over the finished frame (its own tone mapping: no film effects on it, never in the reflections). It
+// sees HUD_MIRROR.far metres back and, on the lighter levels, is redrawn every `every` frames.
+const HUD_MIRROR_MODES=new Set(['chase','close','far','hood']),HUD_MIRROR=Object.freeze({far:600,width:[180,.22,380],top:10,every:{baixo:3,medio:2,alto:1,ultra:1}});
+let hudOverlay=null,hudMirrorShown=false;
+function hudMirrorWanted(){
+ return HUD_MIRROR_MODES.has(mode)&&ready&&sessionStarted&&!intro.active&&!gridPreview()&&!watchedRival()&&!!MIRROR_SIZES[graphics.values.mirrors]&&!car.fall
+  &&!walker?.active&&!pitstop?.opened&&!immersive?.onFoot()&&raceResults.root.hidden&&!trackHistory.active&&!arenaMode?.editing;
+}
+// The mirror's frame and glass in a scene of their own, an orthographic camera over the viewport it is drawn in; the
+// picture flipped left to right, as a mirror shows it.
+function hudMirrorOverlay(){
+ if(hudOverlay)return hudOverlay;
+ const scene=new THREE.Scene(),cam=new THREE.OrthographicCamera(-1,1,1,-1,0,2),frame=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.MeshBasicMaterial({color:0x0a0c0d,toneMapped:false,depthTest:false}));
+ const glassGeo=new THREE.PlaneGeometry(2,2),uv=glassGeo.attributes.uv;for(let i=0;i<uv.count;i++)uv.setX(i,1-uv.getX(i));
+ const glass=new THREE.Mesh(glassGeo,new THREE.MeshBasicMaterial({map:cockpit.mirrorTarget.texture,depthTest:false}));glass.renderOrder=1;cam.position.z=1;scene.add(frame,glass);
+ return hudOverlay={scene,cam,frame,glass};
+}
+// Over the finished frame: the frame 3 px round the glass, the glass at the target's own proportions.
+function drawHudMirror(){
+ const o=hudMirrorOverlay(),[min,share,max]=HUD_MIRROR.width,target=cockpit.mirrorTarget,w=Math.round(Math.min(max,Math.max(min,innerWidth*share))),h=Math.round(w*target.height/target.width),x=Math.round((innerWidth-w)/2),y=innerHeight-HUD_MIRROR.top-h,b=3;
+ const saved={tone:renderer.toneMapping,exposure:renderer.toneMappingExposure,space:renderer.outputColorSpace,autoClear:renderer.autoClear,viewport:renderer.getViewport(new THREE.Vector4()),scissor:renderer.getScissorTest()};
+ renderer.setRenderTarget(null);renderer.autoClear=false;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1;renderer.outputColorSpace=THREE.SRGBColorSpace;
+ o.glass.visible=false;o.frame.visible=true;renderer.setViewport(x-b,y-b,w+2*b,h+2*b);renderer.render(o.scene,o.cam);
+ o.glass.visible=true;o.frame.visible=false;renderer.setViewport(x,y,w,h);renderer.render(o.scene,o.cam);
+ renderer.toneMapping=saved.tone;renderer.toneMappingExposure=saved.exposure;renderer.outputColorSpace=saved.space;renderer.autoClear=saved.autoClear;renderer.setViewport(saved.viewport);renderer.setScissorTest(saved.scissor);
+}
 function mirrorReady(){
  if(cinematic.level!=='off'||mirrorPrograms===true)return true;
  if(!mirrorPrograms){const target=cockpit.mirrorTarget,job=mirrorPrograms=compileInSlices(renderer,scene,cockpit.rearCamera,()=>target).catch(err=>console.warn(err)).finally(()=>{if(mirrorPrograms===job)mirrorPrograms=true;});}
@@ -1510,7 +1545,10 @@ function countGoodRace(){
  if(device.drop&&graphics.auto&&raceWatch.seconds>=60&&!raceWatch.heavy&&++device.goodRaces>=GOOD_RACES){device.drop=null;device.goodRaces=0;dropPending=true;}
  if(raceWatch.seconds>=60)saveDevice();raceWatch.seconds=0;raceWatch.heavy=false;
 }
-function updateCountdown(){const count=immersive?.active?(immersive.state.phase==='grid'?Math.max(1,Math.ceil(immersive.state.countdown)):0):Math.ceil(immersive?.freeCountdown||0),go=immersive?.goTime>0;const visible=sessionStarted&&!paused&&(count>0||go);$('raceCountdown').hidden=!visible;if(visible){const label=count>0?String(count):'VAI!';if($('countdownNumber').textContent!==label){$('countdownNumber').textContent=label;$('countdownCaption').textContent=count>0?'PREPARE-SE':'BOA CORRIDA!';}}}
+function updateCountdown(){
+ if(resumeLeft>0||resumeGo>0){const label=resumeLeft>0?String(Math.ceil(resumeLeft/RESUME.step-1e-6)):'VAI!';$('raceCountdown').hidden=false;
+  if($('countdownNumber').textContent!==label){$('countdownNumber').textContent=label;$('countdownCaption').textContent=resumeLeft>0?'PREPARE-SE':'';}return;}
+ const count=immersive?.active?(immersive.state.phase==='grid'?Math.max(1,Math.ceil(immersive.state.countdown)):0):Math.ceil(immersive?.freeCountdown||0),go=immersive?.goTime>0;const visible=sessionStarted&&!paused&&(count>0||go);$('raceCountdown').hidden=!visible;if(visible){const label=count>0?String(count):'VAI!';if($('countdownNumber').textContent!==label){$('countdownNumber').textContent=label;$('countdownCaption').textContent=count>0?'PREPARE-SE':'BOA CORRIDA!';}}}
 // Crossing the line: one line at the top of the screen with the lap just run and how far it is
 // from the best lap before it (minus: faster, green; plus: slower, red), for a few seconds. The
 // lap count and the position stay in the timing panel; the road ahead stays in sight.
@@ -1541,7 +1579,7 @@ function frame(now=performance.now()){requestAnimationFrame(frame);
  if(!document.hidden)displayCadence.observe(now,!sessionStarted&&!loading&&!['cars','visual'].includes(screen));
  if(frameCap.skip(now,displayCadence.measured?displayCadence.hz:0))return;if(graphicsCompiling){clock.update().getDelta();return;}debugOverlay.begin(now);try{runFrame();}finally{debugOverlay.end();}}
 // One frame of the game: controls, physics steps, people, cameras and the picture.
-function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().getDelta(),dt=Math.min(rawDt,.08);gamepad.suspended=wheel.learning;gamepad.poll(dt);wheel.poll(dt);if($('settings').open)wheelPanel.frame();multiplayer?.frame(dt);mobile?.update(paused,pitstop?.coffee||walker?.active?'crowd':immersive?.active?immersive.state.phase:'race');if(touchDevice)document.body.classList.toggle('can-look-back',lookBackAllowed());updateCountdown();if(!ready||!sessionStarted){action.update(0,{active:false});actionNotice.update(0,null,false);carAudio.updateScene({},[],dt);const onCars=renderer&&!sessionStarted&&!$('cars').classList.contains('hidden'),onLook=renderer&&!sessionStarted&&!$('visual').classList.contains('hidden');studioDensity(onCars||onLook,rawDt);if(onCars)carSelect.render(renderer,dt);else if(onLook)lookSelect.render(renderer,dt);return;}studioDensity(false);
+function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().getDelta(),dt=Math.min(rawDt,.08);resumeTick(rawDt);fillStands();gamepad.suspended=wheel.learning;gamepad.poll(dt);wheel.poll(dt);if($('settings').open)wheelPanel.frame();multiplayer?.frame(dt);mobile?.update(paused,pitstop?.coffee||walker?.active?'crowd':immersive?.active?immersive.state.phase:'race');if(touchDevice)document.body.classList.toggle('can-look-back',lookBackAllowed());updateCountdown();if(!ready||!sessionStarted){action.update(0,{active:false});actionNotice.update(0,null,false);carAudio.updateScene({},[],dt);const onCars=renderer&&!sessionStarted&&!$('cars').classList.contains('hidden'),onLook=renderer&&!sessionStarted&&!$('visual').classList.contains('hidden');studioDensity(onCars||onLook,rawDt);if(onCars)carSelect.render(renderer,dt);else if(onLook)lookSelect.render(renderer,dt);return;}studioDensity(false);
  renderedFrame++;if(!paused&&!document.hidden){adaptResolution(rawDt);if(!intro.active&&!trackHistory.active&&!navigator.webdriver)watchFrames(rawDt);}
  if(intro.active&&automatic)intro.stop();
  if(intro.active&&!immersive.active&&immersive.freeCountdown>0){immersive.freeCountdown=3;$('raceCountdown').hidden=true;}
@@ -1644,7 +1682,9 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  // Mirrors switched off in the Gráficos tab skip this extra pass.
  // A Fusca's (fusca-cockpit.js) take the same picture, from its own mirror's height.
  const mirrors=fuscaBody.active?fuscaMirrors:sideMirrors;
- if(mode==='cockpit'&&!gridPreview()&&!watchedCar&&MIRROR_SIZES[graphics.values.mirrors]&&mirrorReady()){
+ const inside=mode==='cockpit',hudWanted=!inside&&hudMirrorWanted(),hudDue=hudWanted&&renderedFrame%(HUD_MIRROR.every[graphics.level]??1)===0;
+ hudMirrorShown=hudWanted&&mirrorReady();document.body.classList.toggle('hud-mirror',hudMirrorShown);
+ if((inside||hudDue)&&!gridPreview()&&!watchedCar&&MIRROR_SIZES[graphics.values.mirrors]&&mirrorReady()){
   // The mirror sees the road behind, not the body round it (the classic view hides it anyway).
   const bodyShown=!!model?.visible,cockpitShown=cockpit.root.visible;cockpit.root.visible=false;driver.root.visible=false;if(model)model.visible=false;if(fuscaBody.car)fuscaBody.car.visible=false;
   const mirrorHeight=fuscaBody.active?1.28:1.14,rear=cockpit.rearCamera,mirrorTarget=cockpit.mirrorTarget;
@@ -1653,17 +1693,17 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
   rear.up.set(0,1,0).transformDirection(carBody.matrixWorld);rear.lookAt(look);
   // No further than the fog's end (Baixo's view: 1.6 km): past it everything is the fog's colour, and the mirror drew a
   // million triangles of it on a notebook's integrated video.
-  const rearFar=Math.min(MIRROR_FAR,scene.fog?.far??MIRROR_FAR);if(rear.far!==rearFar){rear.far=rearFar;rear.updateProjectionMatrix();}
+  const rearFar=Math.min(inside?MIRROR_FAR:HUD_MIRROR.far,scene.fog?.far??MIRROR_FAR);if(rear.far!==rearFar){rear.far=rearFar;rear.updateProjectionMatrix();}
   const oldShadowUpdate=renderer.shadowMap.autoUpdate;renderer.shadowMap.autoUpdate=false;
   tyreSmoke.material.uniforms.viewport.value=mirrorTarget.height;
   renderer.setRenderTarget(mirrorTarget);renderer.render(scene,rear);
   // The door mirrors look up this picture in the main pass below.
-  mirrors.show(true);mirrors.update(camera.position,carBody,rear);
+  mirrors.show(inside);if(inside)mirrors.update(camera.position,carBody,rear);
   // The Opala's trunk lid (the Fusca's engine lid) left open stands in the back window: the rear-view mirror gets a
   // picture of its own with it (car-openings.js showOnly), narrowing as the Opala's lid rises until it fills nearly all
   // of it (the Fusca's, lower, rises across the bottom of the picture as it is); the door mirrors look past the flanks
   // and keep the picture without it (user, 2026-10-15).
-  const owner=fuscaBody.active?fuscaBody.car:model,rearLid=openings.part('rear'),lid=owner?openings.amount(rearLid):0,lidOnly=lid>.02?showOnly(owner,rearLid):null;
+  const owner=fuscaBody.active?fuscaBody.car:model,rearLid=openings.part('rear'),lid=owner&&inside?openings.amount(rearLid):0,lidOnly=lid>.02?showOnly(owner,rearLid):null;
   if(lidOnly){
    lidMirror??=mirrorTarget.clone();if(lidMirror.width!==mirrorTarget.width||lidMirror.height!==mirrorTarget.height)lidMirror.setSize(mirrorTarget.width,mirrorTarget.height);
    owner.visible=true;const fov=rear.fov;if(!fuscaBody.active)rear.fov+=(LID_MIRROR_FOV-fov)*lid;rear.updateProjectionMatrix();
@@ -1673,7 +1713,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
   renderer.setRenderTarget(null);tyreSmoke.material.uniforms.viewport.value=renderer.domElement.height;
   mirrorFrame=renderedFrame;
   renderer.shadowMap.autoUpdate=oldShadowUpdate;cockpit.root.visible=cockpitShown;driver.root.visible=true;if(model)model.visible=bodyShown;if(fuscaBody.car)fuscaBody.car.visible=true;
- }else{mirrors.show(false);if(cockpit){cockpit.mirrorMaterial.map=cockpit.mirrorTarget.texture;fuscaBody.cockpit?.mirrorMap(cockpit.mirrorTarget.texture);}}
+ }else if(!hudWanted){mirrors.show(false);if(cockpit){cockpit.mirrorMaterial.map=cockpit.mirrorTarget.texture;fuscaBody.cockpit?.mirrorMap(cockpit.mirrorTarget.texture);}}
  // The cars take the race's reflections back (the car screen's studio lends them its own) and the probe
  // redraws its next faces round the player's car; in the story's paddock the grid's picture would lie.
  carReflections.update(scene,probeAt.copy(carRoot.position).setY(carRoot.position.y+1),{onTrack:!(immersive?.active&&immersive.state.phase==='crowd'),hide:reflectionHide(),rivals:immersive?.visual?.rivals,data});
@@ -1700,6 +1740,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  const raceRatio=renderer.getPixelRatio(),shotRatio=walker?.selfie.pending?walker.selfie.density(raceRatio):raceRatio,sharpShot=shotRatio>raceRatio+.01;
  if(sharpShot){renderer.setPixelRatio(shotRatio);renderer.setSize(innerWidth,innerHeight,false);}
  cinematic.render(scene,camera,{dt:paused?0:dt,topSpeed:topSpeed(subject.mechanics),mode:smearMode,hazeBase:hazeBase(),dof,roadSmear,smearCars:(graphics.values.motionBlur||roadSmear)&&smearMode!=='still'?ridingCars(watchedCar?.obj??carRoot,subject):null});
+ if(hudMirrorShown)drawHudMirror();
  walker?.selfie.capture(renderer.domElement);
  if(sharpShot){renderer.setPixelRatio(raceRatio);renderer.setSize(innerWidth,innerHeight,false);}
 }
@@ -1730,7 +1771,7 @@ function updateMenuLabels(){
  $('resume').hidden=!resume;$('leaveRace').hidden=!sessionStarted;$('leaveRace').textContent=circuit.arena?'Sair da arena':'Trocar de pista';
  $('restartRace').hidden=!(resume||finished&&!scored&&!multiplayer?.guest());menuLabel($('restartRace'),finished?'Correr novamente →':immersive?.practice?'Recomeçar treino':'Recomeçar corrida');
  // The track screen races in the mode chosen at the opening.
- const story=menuMode==='historia',laps=raceLaps(circuit.id,preferences.values.laps);
+ const story=menuMode==='historia',laps=raceLaps(circuit.id,chosenLaps());
  $('tracks').dataset.mode=menuMode;$('tracksTitle').textContent=story?'Sua temporada na Old Stock.':'Onde vamos acelerar hoje?';document.querySelector('.tracks-side-head .tracks-kicker').textContent=story?'SUA TEMPORADA':'NA PISTA ESCOLHIDA';if(!$('championshipReset').dataset.armed)$('championshipReset').textContent=story?'Recomeçar história':'Recomeçar campeonato';$('tracksMode').textContent=story?'MODO HISTÓRIA · AUTO-POBRE RACING':menuModel()==='fusca'?'MODO CORRIDA · COPA FUSCA':'MODO CORRIDA · OLD STOCK RACE';
  // The paddock look names the race in its mode row: each start button says Largar, its line what it races.
  const paddock=paddockMenus(),go=paddock?'Largar →':null;
@@ -1780,13 +1821,33 @@ function toggleWalk(){
  return walker.request();
 }
 function takeWheel(){automatic=false;if(watched){watched=0;followInitialized=false;tvCamera?.reset();}}
+// Back from a pause in the middle of a race (P, Escape's menu, the window coming back), the picture stays frozen
+// under a quick 3, 2, 1 (RESUME: faster than seconds, as games do) so the player sees where the car was before it
+// runs on (user, 10-24). Keys pressed during it count at the go. Not for the recon lap, a multiplayer room, on foot
+// or at the box; a new race has its own countdown. pausedRacing: the pause came mid-race; resumeLeft: the count's
+// seconds left (paused stays true meanwhile, the menu and the badge hidden); resumeGo: VAI! shown after it.
+const RESUME=Object.freeze({steps:3,step:.55,go:.5});
+let pausedRacing=false,resumeLeft=0,resumeGo=0;
+const stillRacing=()=>walkRace()&&!automatic&&!roomWanted&&!walker?.active&&!arenaMode?.demo&&!trackHistory.active;
+// Leaving a pause: true when the count starts (the race then stays paused until it ends).
+function countBack(){const wanted=pausedRacing&&stillRacing();pausedRacing=false;resumeLeft=wanted?RESUME.steps*RESUME.step:0;return wanted;}
+// Every frame: the count runs down (not while the tab is hidden) and, at its end, the race goes on.
+function resumeTick(dt){
+ resumeGo=Math.max(0,resumeGo-dt);if(resumeLeft<=0||document.hidden)return;
+ resumeLeft-=Math.min(dt,.1);if(resumeLeft>0)return;
+ resumeLeft=0;resumeGo=RESUME.go;paused=false;carAudio.setPaused(false);carAudio.unlock();cameraReturn.reset(performance.now());
+}
 // The recon lap (automatic) is never paused by the window losing focus: it may be a demonstration.
 // Nor is a multiplayer race: the others race on (two windows side by side share one focus).
 function hold(on){
  // The track's story pauses as a video does (the window left, the tab hidden), without the race's pause badge.
  if(trackHistory.active){if(on)trackHistory.pause();return;}
+ // P (or the window leaving) during the count: back to the frozen pause under its badge.
+ if(on&&resumeLeft>0){resumeLeft=0;held=true;pausedRacing=stillRacing();keys.clear();mobile?.clear();$('pauseBadge').hidden=false;return;}
  if(!ready||on===held||on&&paused||on&&roomWanted)return;
- held=on;paused=on;carAudio.setPaused(on);if(!on)carAudio.unlock();if(on)takeDrop();
+ if(on)pausedRacing=stillRacing();
+ const counting=!on&&countBack();
+ held=on;paused=on||counting;carAudio.setPaused(paused);if(!paused)carAudio.unlock();if(on)takeDrop();
  if(on&&document.pointerLockElement===$('view'))document.exitPointerLock();
  keys.clear();mobile?.clear();cameraReturn.reset(performance.now());$('pauseBadge').hidden=!on;
 }
@@ -1794,12 +1855,14 @@ $('pauseBadge').onclick=()=>hold(false);
 // The touch pads' places (mobile-controls.js arrange, the ✥ beside ⚙): the race waits as in the menu, without
 // it, while the pads are dragged.
 function arrangePause(on){held=false;$('pauseBadge').hidden=true;paused=on;carAudio.setPaused(on);if(!on)carAudio.unlock();if(on&&document.pointerLockElement===$('view'))document.exitPointerLock();keys.clear();cameraReturn.reset(performance.now());updateScreens();}
-function menu(show){mobile?.arrange(false,false,true);if(!show)sceneryToast();held=false;$('pauseBadge').hidden=true;if(!show&&!immersive?.active&&immersive?.freeResultReady)show=true;paused=show;if(show)takeDrop();updateMenuLabels();carAudio.setPaused(show);if(!show)carAudio.unlock();if(show&&document.pointerLockElement===$('view'))document.exitPointerLock();cameraReturn.reset(performance.now());updateScreens();keys.clear();mobile?.clear();status('');}
+function menu(show){mobile?.arrange(false,false,true);if(!show)sceneryToast();held=false;$('pauseBadge').hidden=true;if(!show&&!immersive?.active&&immersive?.freeResultReady)show=true;
+ if(show&&(!paused||resumeLeft>0)){pausedRacing=stillRacing();resumeLeft=0;}const counting=!show&&countBack();
+ paused=show||counting;if(show)takeDrop();updateMenuLabels();carAudio.setPaused(paused);if(!paused)carAudio.unlock();if(show&&document.pointerLockElement===$('view'))document.exitPointerLock();cameraReturn.reset(performance.now());updateScreens();keys.clear();mobile?.clear();status('');}
 function updateScreens(){
  const free=paused&&!sessionStarted,tracks=free&&screen==='tracks',cars=free&&screen==='cars',visual=free&&screen==='visual',histories=free&&screen==='historias';
  $('historias').classList.toggle('hidden',!histories);
  // The arena's panel and editor pause the car without the menu (drift-arena-mode.js).
- $('menu').classList.toggle('hidden',!paused||tracks||cars||visual||histories||!!(arenaMode?.editing||arenaMode?.panelOpen||mobile?.arranging));$('tracks').classList.toggle('hidden',!tracks);$('cars').classList.toggle('hidden',!cars);$('visual').classList.toggle('hidden',!visual);
+ $('menu').classList.toggle('hidden',!paused||resumeLeft>0||tracks||cars||visual||histories||!!(arenaMode?.editing||arenaMode?.panelOpen||mobile?.arranging));$('tracks').classList.toggle('hidden',!tracks);$('cars').classList.toggle('hidden',!cars);$('visual').classList.toggle('hidden',!visual);
  // The Visual screen too: only the canvas (its studio) and the screen (visual.css).
  document.body.classList.toggle('visual-open',visual);
  // The car screen is the canvas's window: the race's HUD steps aside (carros.css).
@@ -1875,7 +1938,9 @@ function renderStoryCareer(){
   :challenge?`<p>Desafio ${challenge.number}: ${challenge.title.toLowerCase()} · ${money(Math.min(p.fund,challenge.goal))} de ${money(challenge.goal)} · prazo: ${left} corrida${left===1?'':'s'}</p>`
   :stage.kind==='blazer'?`<p>Sonho: tirar a Blazer da oficina · ${money(Math.min(p.fund,BLAZER_GOAL))} de ${money(BLAZER_GOAL)}</p>`
   :`<p>${stage.done?'O Opala 99 é seu!':`Grande sonho: comprar o Opala 99 da equipe · ${money(Math.min(p.fund,OPALA_GOAL))} de ${money(OPALA_GOAL)}`}</p>`;
+ const energy=c.energy??100;
  box.innerHTML=`<span class="tracks-kicker">SUA CARREIRA · ${c.races} corrida${c.races===1?'':'s'}</span><div class="career-wallet"><span>Carteira</span><b>${money(p.fund)}</b></div>`
+  +`<div class="career-bar career-energy" data-key="energia" data-low="${energy<=30}"><span>Energia</span><i><b style="width:${energy}%"></b></i><em>${energy}%</em></div>`
   +MORALE.map(k=>k==='esposa'&&c.divorced?`<div class="career-bar career-divorced" data-key="${k}"><span>${MORALE_NAMES[k]}</span><em>divorciado · pensão ${money(PENSION)}/mês</em></div>`
    :`<div class="career-bar" data-key="${k}" data-low="${c.morale[k]<=20}"><span>${MORALE_NAMES[k]}</span><i><b style="width:${c.morale[k]}%"></b></i><em>${c.morale[k]}%</em></div>`).join('')+goal;
 }
@@ -2061,8 +2126,8 @@ if(e.code==='KeyJ')toggleWipers();
  if(e.code==='KeyU')cycleWeather('rain');
  // P pauses on the track (from the menu it resumes, as before); Escape opens the menu and, pressed again there, goes back
  // to the track (the team's request, 10-15).
- if(e.code==='KeyP'){if(held||!paused)hold(!held);else menu(false);}
- if(e.code==='Escape'){if(paused&&!held)resumeRace();else menu(true);}
+ if(e.code==='KeyP'){if(resumeLeft>0)hold(true);else if(held||!paused)hold(!held);else menu(false);}
+ if(e.code==='Escape'){if(paused&&!held&&!(resumeLeft>0))resumeRace();else menu(true);}
  if(automatic&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))takeWheel();
  // The arena's AI demonstration hands the car back at the first driving key (drift-arena-mode.js stopDemo).
  if(arenaMode?.demo&&['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))arenaMode.stopDemo('VOCÊ ASSUMIU O CARRO');
@@ -2096,7 +2161,7 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  // A championship round races the championship's laps; everything else the chosen ones; a circuit that fixes its race
  // length (circuits.js fixedLaps: Pampulha) always its own. A room's race (multiplayer.js plan) takes the host's.
  if(tour)championshipRace=null;storyRound=null;raceResults.championship=null;
- immersive.laps=raceLaps(circuit.id,championshipRace?championshipRace.championship.laps:preferences.values.laps);
+ immersive.laps=raceLaps(circuit.id,championshipRace?championshipRace.championship.laps:chosenLaps());
  // In a Fusca (the car screen's tab, or the Copa Fusca's rounds) when it loaded; the story and the recon lap race the Opala 99.
  raceModel=!preferences.values.immersive&&!tour&&!roomWanted&&wantedModel()==='fusca'&&fuscaTemplate?'fusca':'opala';ghostCar.use(raceModel);
  // The car: Modo Corrida's choice for that model, or the room's (multiplayer.js); the story and the recon lap race the 99.
@@ -2117,7 +2182,7 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  paintCar();
  if(!immersive.active&&!tour&&!circuit.arena&&!historyPending)immersive.beginCountdown();
  startLights();
- sessionStarted=true;automatic=tour&&!immersive.active;menu(false);
+ sessionStarted=true;automatic=tour&&!immersive.active;pausedRacing=false;menu(false);
 }
 // História do autódromo: the circuit loads as a solo practice without the 3-2-1 and the story takes the camera;
 // leaving it (Pistas, Escape, the end) lands back on the track screen.
@@ -2203,15 +2268,18 @@ function startChampionshipRound(mode=menuMode){
  const pilot=pilotPicker.commit();if(!pilot)return;
  const championship=championshipFor(mode);if(!championship.available)return;menuMode=mode;
  if(championship.finished)championship.reset();
- if(!championship.started)championship.start(pilot,preferences.values.laps,mode==='historia'?'opala':preferences.values.carModel);
+ if(!championship.started)championship.start(pilot,chosenLaps(mode),mode==='historia'?'opala':preferences.values.carModel);
+ // The story's rounds race the laps chosen now (its Voltas, 8 by default); a Modo Corrida championship keeps its start's.
+ else if(mode==='historia'&&championship.state.laps!==chosenLaps(mode)){championship.state.laps=chosenLaps(mode);championship.save();}
  selectCircuit(championship.nextCircuit);championshipRace={championship,round:championship.round,circuit:championship.nextCircuit};
  pendingMode='championship';beginRace(true,false,mode==='historia');
 }
-// After a scored Modo História round, a new vaquinha (Outra corrida, or the restart after a
-// disqualification) is the next round; after the last one, the final standings.
+// After a scored Modo História round (Próxima etapa, or Continuar after a disqualification) the season's screen, its next
+// round waiting for the player's Correr a etapa (user, 10-24: no round loads on its own); after the last one, the final
+// standings.
 function nextStoryRound(){
  const {championship}=storyRound;storyRound=null;returnToMainMenu();
- if(championship.active)startChampionshipRound(championship.mode);else championshipDialog.open(championship);
+ if(!championship.active)championshipDialog.open(championship);
 }
 // The opening picks the mode; the track screen then the circuit and a single race or the championship.
 function chooseMode(mode){if(sessionStarted||loading||!pilotPicker.commit())return;menuMode=mode;carSelect.drift=mode==='drift';carSelect.show();showScreen(carScreen()?'cars':'tracks');}
@@ -2461,7 +2529,7 @@ async function loadCircuit(){
   Object.assign(landscape.stats,{ground:groundFit.stats,stands:stands.stats,legacyStands});
  }
  scene.add(landscape.root);
- const crowd=createCrowd(standTops,{mobile:scenery.mobile,lean:sceneryLevel==='basico'});scene.add(crowd.root);fixed.push(crowd.root);landscape.stats.fans=crowd.count;
+ const crowd=createCrowd(standTops,{mobile:scenery.mobile,lean:sceneryLevel==='basico'});standsCrowd=crowd;scene.add(crowd.root);fixed.push(crowd.root);landscape.stats.fans=crowd.count;
  // The fans standing on a city's sidewalks are in the way of a car out in the city (meta.roam).
  if(data.meta.roam)landscape.stats.fanSolids=addRoamSolids(data,crowd.standing);await ensureCarModel();await fuscaWanted();
  if(circuit.arena){roadRails={root:new THREE.Group(),rails:null,setQuality(){}};roadCurbs=new THREE.Group();roadCurbs.userData.setQuality=()=>{};}
@@ -2534,7 +2602,7 @@ async function loadCircuit(){
  // rest, as the rivals were just cloned), with the distant rivals' profile beyond 45 m.
  if(!ghostCar.has('opala'))ghostCar.build(model,immersive.visual.farProxy(0xffffff).geometry,'opala');
  // In a Modo História championship the story's own restarts lead to the next round (after this frame).
- {const storyStart=immersive.start.bind(immersive);immersive.start=()=>{if(storyRound){queueMicrotask(()=>{if(storyRound)nextStoryRound();});return;}storyStart();};}immersive.laps=raceLaps(circuit.id,preferences.values.laps);immersive.field.ace=preferences.values.aceKoyzinho;immersive.field.level=preferences.values.aiLevel;immersive.field.retirements=preferences.values.retirements;immersive.visual.viewCamera=camera;immersive.visual.setCarDetail(CAR_DETAIL[graphics.values.carDetail]);
+ {const storyStart=immersive.start.bind(immersive);immersive.start=()=>{if(storyRound){queueMicrotask(()=>{if(storyRound)nextStoryRound();});return;}storyStart();};}immersive.laps=raceLaps(circuit.id,chosenLaps());immersive.field.ace=preferences.values.aceKoyzinho;immersive.field.level=preferences.values.aiLevel;immersive.field.retirements=preferences.values.retirements;immersive.visual.viewCamera=camera;immersive.visual.setCarDetail(CAR_DETAIL[graphics.values.carDetail]);
  // The weather on the new track, the new car and the new field, before their programs compile below.
  applyWeather();
  // Sessions started from the menu open with the cinematic intro (the 3-2-1 waits for it).
@@ -2629,7 +2697,7 @@ async function loadCircuit(){
     // The lens with no speed widening (camera-rig.js baseFov), the follow frame drawn and where the player's car is on screen.
     baseFov:baseFov(gridPreview()?'grid':mode==='orbit'?orbitSpeedFov||'orbit':mode,camera.aspect),aspect:camera.aspect,frame:gridPreview()?'grid':FOLLOW_FRAMES.includes(mode)?mode:null,carScreen:carOnScreen(),rig:{...rig.out}}),
   wheelSnapshot:()=>{carRoot.updateMatrixWorld(true);const inverse=carRoot.getWorldQuaternion(new THREE.Quaternion()).invert();return wheels.map(w=>{const axle=new THREE.Vector3(0,0,1).applyQuaternion(w.obj.getWorldQuaternion(new THREE.Quaternion())).applyQuaternion(inverse);return {name:w.obj.name,front:w.front,angle:Math.atan2(axle.x,axle.z),axle:axle.toArray()};});},
-  get state(){return {paused,automatic,mode,livery:activeLivery,wheels:wheels.length,drawCalls:renderer.info.render.calls};}};
+  get state(){return {paused,resuming:resumeLeft>0,pausedRacing,racingNow:stillRacing(),walkRace:walkRace(),automatic,mode,livery:activeLivery,wheels:wheels.length,drawCalls:renderer.info.render.calls};}};
  window.interlagos.carPaintInfo=carPaintInfo;
  // Paint and glass checks (verificar_pintura.py): points of the player's car frame (x forward, y up, z right; world: the
  // scene's) where the last picture drew them, CSS pixels from the top left, and their depth (past 1: behind the camera).
@@ -2639,6 +2707,8 @@ async function loadCircuit(){
  window.interlagos.carSun=()=>{opalaShell.updateWorldMatrix(true,false);return sunDirection.clone().transformDirection(opalaShell.matrixWorld.clone().invert()).toArray();};
  // The Arena de Drift's state for the checks (verificar_arena_drift.py): layout, score, challenge, editor.
  window.interlagos.arenaInfo=()=>arenaMode?.info()??null;
+ // The stands' fans: how many the circuit has and how many the fill shows now (Modo História: the supporters' morale).
+ window.interlagos.crowdInfo=()=>({total:standsCrowd?.count??0,shown:standsCrowd?.shown()??0});
  window.interlagos.speedInfo=()=>({...speedFx.info(),particles:tyreSmoke.info().speedFx,kerb:kerbSound(car),kerbWheels:car.kerbWheels??0,kerbTilt:car.kerbTilt??0});
  return true;
  }catch(err){console.error(err);ready=false;clearCircuit();status('Não foi possível carregar a pista. Clique em começar para tentar novamente.');return false;}

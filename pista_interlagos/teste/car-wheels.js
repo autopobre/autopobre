@@ -59,8 +59,8 @@ function tyreGeometry(geometry,matrix,profile,outer){
 // face's letters stand toward the tread.
 // The letters are a worn light grey, not paint white: brake dust and rubber pick-up dull them unevenly.
 export const TYRE_LETTERS=Object.freeze({v:.81,color:'#7d7a73',brand:36,small:17});
-// The real cars' tyres: the Opala on Dunlop Direzza, the Fusca on Goodyear 185/70 R14.
-export const TYRE_MARKINGS=Object.freeze({opala:'DUNLOP DIREZZA',fusca:'GOODYEAR 185/70 R14'});
+// The tyre's name under AUTO POBRE: the Opala's the game's own joke rubber (user, 10-24), the Fusca's the real Goodyear 185/70 R14.
+export const TYRE_MARKINGS=Object.freeze({opala:'CORRERIA & DUREZA',fusca:'GOODYEAR 185/70 R14'});
 function tyreTexture(tyre){
  const W=1024,H=256,c=document.createElement('canvas');c.width=W;c.height=H;const ctx=c.getContext('2d'),y=v=>(1-v)*H;
  ctx.fillStyle='#313234';ctx.fillRect(0,0,W,H);

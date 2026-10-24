@@ -6,7 +6,8 @@ import {timeChoice,rainChoice} from './weather.js';
 export const PREFERENCES_KEY='opala99-preferences-v1';
 // 'tv' films from the trackside towers and verge cameras (tv-camera.js).
 // Race length in laps, for the free race and the story alike, on every circuit.
-export const LAPS=Object.freeze({min:1,max:20,standard:3});
+// story: Modo História's own default (user, 10-24), its own preference (storyLaps).
+export const LAPS=Object.freeze({min:1,max:20,standard:3,story:8});
 // 'far' is the old high Perseguição; chase and close ride low behind the car (camera-rig.js).
 export const CAMERA_MODES=Object.freeze(['chase','close','far','hood','cockpit','tv','aerial','orbit']);
 // The driving line's modes, in the order O goes round them.
@@ -51,6 +52,8 @@ export function normalizePreferences(value){
   carStill:typeof source.carStill==='boolean'?source.carStill:false,
   // Laps of every race (Modo Corrida and Modo História): 3 unless the player picks more or fewer.
   laps:Number.isInteger(source.laps)&&source.laps>=LAPS.min&&source.laps<=LAPS.max?source.laps:LAPS.standard,
+  // Modo História's laps: 8 unless the player picks otherwise there (the track screen's and the settings' Voltas, in the story).
+  storyLaps:Number.isInteger(source.storyLaps)&&source.storyLaps>=LAPS.min&&source.storyLaps<=LAPS.max?source.storyLaps:LAPS.story,
   // The race's weather (weather.js): the time of day (dia, fim_de_tarde, noite) and the rain (seco, garoa, chuva), or
   // aleatorio for either (drawn at each race). Day and dry unless the player picks otherwise, in both modes.
   timeOfDay:timeChoice(source.timeOfDay),

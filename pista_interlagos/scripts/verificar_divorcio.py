@@ -59,8 +59,7 @@ with sync_playwright() as p:
     check('report_with_divorce', types.startswith('morale,morale,morale,repair,line,line,line,line,line,line,divorce'), types)
     frame()
     check('wife_card_says_she_left', 'Ela não aguentou mais' in panel(), panel()[:400])
-    for _ in range(4):
-        nxt()
+    nxt()  # the report's moods and bill share one screen (2026-10-24)
     seen = []
     for i in range(6):
         frame()

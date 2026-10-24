@@ -28,8 +28,10 @@ check('bad_career_is_new',loadCareer({version:1,morale:{esposa:500,equipe:-3,tor
 // Supporters give by their morale: 50% as always, half at 0%, one and a half at 100%.
 const half=story({morale:{esposa:50,equipe:50,torcida:50}});check('gifts_as_before_at_half',FANS.every((f,i)=>half.gift(i)===f.gift));
 const cold=story({morale:{esposa:50,equipe:50,torcida:0}}),warm=story({morale:{esposa:50,equipe:50,torcida:100}});
-check('supporters_morale_scales_gifts',FANS.every((f,i)=>cold.gift(i)===Math.round(f.gift*.5)&&warm.gift(i)===Math.round(f.gift*1.5)));
-const mild=story({morale:{esposa:50,equipe:50,torcida:20}});mild.talk(2);mild.joke(JOKES.findIndex(j=>j.topic===FANS[2].taste));check('joke_pays_scaled_gift',mild.cash===Math.round(FANS[2].gift*.7));
+// The vaquinha's whole follows the morale as before, shared by whoever came (two at 0%, ten at 100%).
+const whole=s=>FANS.reduce((sum,f,i)=>sum+(s.here(i)?s.gift(i):0),0),base=FANS.slice(0,6).reduce((sum,f)=>sum+f.gift,0);
+check('supporters_morale_scales_gifts',Math.abs(whole(cold)-base*.5)<=2&&Math.abs(whole(warm)-base*1.5)<=5&&whole(half)===base);
+const mild=story({morale:{esposa:50,equipe:50,torcida:20}});mild.talk(2);mild.joke(JOKES.findIndex(j=>j.topic===FANS[2].taste));check('joke_pays_scaled_gift',mild.profile.fund===mild.gift(2)&&mild.profile.fund>0&&Math.abs(whole(mild)-base*.7)<=3);
 
 // The entry: R$ 100 at Interlagos, R$ 150 elsewhere; the kitty pays first, then the wallet.
 check('entry_home_and_away',entryFor('interlagos')===ENTRY.home&&ENTRY.home===100&&['brasilia','cascavel','chapeco','curvelo'].every(c=>entryFor(c)===150));
@@ -37,7 +39,7 @@ const away=new ImmersiveState(profileOf({},60));away.entry=entryFor('cascavel');
 away.cash=120;away.openDesk();check('wallet_tops_up_the_kitty',away.buy(4,false)&&away.cash===0&&away.profile.fund===60-(176-120)&&away.phase==='starting');
 const poor=new ImmersiveState(profileOf({},0));poor.entry=150;poor.start();poor.cash=100;poor.openDesk();check('short_money_stays',!poor.buy(4,false)&&poor.phase==='crowd');
 // Snacks never take what the registration still needs, kitty and wallet together.
-const snack=new ImmersiveState(profileOf({},40));snack.entry=150;snack.start();fundAll(snack);check('snack_keeps_registration_with_wallet',snack.spareCash()===snack.cash+40-176&&!snack.pay(snack.spareCash()+1)&&snack.pay(snack.spareCash())&&snack.cash+snack.profile.fund===176);
+const snack=new ImmersiveState(profileOf({},40));snack.entry=150;snack.start();fundAll(snack);check('snack_keeps_registration_with_wallet',snack.spareCash()===snack.profile.fund-176&&!snack.pay(snack.spareCash()+1)&&snack.pay(snack.spareCash())&&snack.cash+snack.profile.fund===176);
 
 // Prizes: 800, 600, 500, 400, 300, 200, then 100 down to the 10th and nothing from the 11th.
 check('prize_table',[1,2,3,4,5,6,7,10,11,15].map(prizeFor).join()==='800,600,500,400,300,200,100,100,0,0'&&PRIZES.length===10);
@@ -173,4 +175,20 @@ const big=story({challenge:CHALLENGES.length},7500);race(big,1);check('opala_dre
 readAll(big);check('opala_bought',big.buyOpala()&&big.profile.career.opala&&big.profile.fund===300&&types(big)==='owned');readAll(big);
 check('opala_bought_once',!big.buyOpala()&&big.profile.fund===300&&stageOf(new ImmersiveState(JSON.parse(JSON.stringify(big.profile))).profile.career,true).done);
 const poorDream=story({challenge:CHALLENGES.length},100);race(poorDream,12);readAll(poorDream);check('opala_needs_the_money',!poorDream.buyOpala()&&!poorDream.profile.career.opala);
+// The supporters' morale fills the paddock (six at 50% as before, two at 0%, ten at 100%) and the stands (15% at a
+// career's start, all at 100%); a supporter who stayed home neither talks nor counts in what the vaquinha can reach.
+const {fanCount,standsFill}=await import('../teste/story-career.js');
+check('paddock_fans_by_morale',fanCount(50)===6&&fanCount(0)===2&&fanCount(100)===10&&FANS.length===10&&fanCount(75)===8);
+check('stands_by_morale',Math.abs(standsFill(50)-.15)<1e-9&&standsFill(100)===1&&standsFill(0)>.01&&standsFill(0)<.05&&standsFill(70)>standsFill(50));
+const cool=story({morale:{esposa:50,equipe:50,torcida:0}});cool.talk(4);check('absent_fan_does_not_talk',cool.fan===null&&cool.present===2);
+const keen=story({morale:{esposa:50,equipe:50,torcida:100}}),start=story({morale:{esposa:50,equipe:50,torcida:50}});keen.talk(9);
+check('more_fans_when_warm',keen.fan===9&&keen.reachable()>start.reachable());
+// The hero's energy (2026-10-24): full at the start, a race takes 60, a coffee or a pão de queijo 30 each, both in one
+// paddock fill it (Leonardo's free coffee counts as one), a doce de leite 15; kept with the career.
+const {ENERGY,eatEnergy}=await import('../teste/story-career.js');
+check('energy_starts_full',newCareer().energy===100&&ENERGY.race===60);
+const tired=story();race(tired,5);check('race_tires_the_hero',tired.profile.career.energy===40);
+check('one_snack_gives_30',eatEnergy(40,'cafe',[])===70&&eatEnergy(40,'pao',[])===70&&eatEnergy(40,'doce',[])===55);
+check('coffee_and_cheese_bread_fill_it',eatEnergy(70,'pao',['cafe'])===100&&eatEnergy(10,'cafe',['pao'])===100&&eatEnergy(95,'cafe',[])===100);
+const fed=story();fed.profile.career.energy=40;fed.eat('cafe');fed.eat('pao');check('state_eats',fed.profile.career.energy===100&&loadCareer(JSON.parse(JSON.stringify(fed.profile.career))).energy===100);
 const report={passed:true,checks};fs.writeFileSync(new URL('../dados/validacao_carreira.json',import.meta.url),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));

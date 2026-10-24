@@ -159,9 +159,13 @@ export class ImmersiveVisuals {
   // the hero's yaw stays a world heading; `lane` converts to lane coordinates.
   this.people=createPeople();this.crowd=new THREE.Group();this.crowd.name='Vaquinha_nos_boxes';this.root.add(this.crowd);
   const pit=data.pit??(data.meta.id==='curvelo'?curveloPitFrame(data):null);this.lane=this.crowdFrame(pit,anchor);this.crowd.position.copy(this.lane.origin);
-  const L=this.lane,outfits=[{top:0x76a67b,bottom:0x2b3a55,hat:'cap',hatColor:0x2f7d4a,skin:0xc68e6a},{top:0xd69569,bottom:0x3b3f45,hairStyle:'long',hair:0x5a3a22,skin:0xe0b08f},{top:0xab7daf,bottom:0x3b3f45,hairStyle:'bun',hair:0x3b2a1a,glasses:true,skin:0xd8a27e,belly:.4},{top:0xb3a77a,bottom:0x2b3a55,hat:'cap',hatColor:0xc4232a,skin:0xb77a55},{top:0x77888f,bottom:0x1b1d20,hairStyle:'curly',skin:0x6b4128},{top:0x7492c9,bottom:0x2d3338,mustache:true,hairStyle:'bald',skin:0x8d5a3b}];
+  const L=this.lane,outfits=[{top:0x76a67b,bottom:0x2b3a55,hat:'cap',hatColor:0x2f7d4a,skin:0xc68e6a},{top:0xd69569,bottom:0x3b3f45,hairStyle:'long',hair:0x5a3a22,skin:0xe0b08f},{top:0xab7daf,bottom:0x3b3f45,hairStyle:'bun',hair:0x3b2a1a,glasses:true,skin:0xd8a27e,belly:.4},{top:0xb3a77a,bottom:0x2b3a55,hat:'cap',hatColor:0xc4232a,skin:0xb77a55},{top:0x77888f,bottom:0x1b1d20,hairStyle:'curly',skin:0x6b4128},{top:0x7492c9,bottom:0x2d3338,mustache:true,hairStyle:'bald',skin:0x8d5a3b},
+   {top:0xe2c36a,bottom:0x4a3b52,hairStyle:'bun',hair:0x2a1c12,skin:0xa86c48,belly:.3},{top:0x9a4b3c,bottom:0x24272b,hairStyle:'bald',mustache:true,glasses:true,skin:0xd9a07a},
+   {top:0x3f8fd0,bottom:0x2b3a55,hat:'cap',hatColor:0xf0c419,skin:0xc08560},{top:0xd2556b,bottom:0x2d3338,hairStyle:'curly',hair:0x1e1510,skin:0x7a4a2d}];
   // Supporters ahead of the pilot, between the parked cars, turned toward him.
-  const spots=[[4,-1.4,.2,'ready'],[6.5,1,-.5,'stand'],[9.5,-.4,.35,'folded'],[16.5,1.1,-.3,'stand'],[19,-1.2,.4,'folded'],[22,.6,0,'ready']];
+  // The last four come only when the supporters' morale is high (immersive-state.js present): in the gaps between the six.
+  const spots=[[4,-1.4,.2,'ready'],[6.5,1,-.5,'stand'],[9.5,-.4,.35,'folded'],[16.5,1.1,-.3,'stand'],[19,-1.2,.4,'folded'],[22,.6,0,'ready'],
+   [12.5,1.3,-.35,'stand'],[24.6,-1,.35,'ready'],[14.4,-1.3,.3,'folded'],[26.4,1,-.2,'stand']];
   this.fans=FANS.map((fan,i)=>{
    const [x,dd,turn,idle]=spots[i],pos=L.point(x,L.spotD+dd),person=this.people.person(outfits[i]);person.position.copy(pos);person.rotation.y=L.heading+Math.PI+(dd>0?.5:-.5)+turn;setPose(person,POSES[idle]);this.crowd.add(person);
    const label=this.tag(this.crowd,fan.name,[pos.x,pos.y+2.1,pos.z],1.8,.30),dollar=this.tag(this.crowd,'$',[pos.x,pos.y+2.65,pos.z],.43,.56,'#ffe380','#19452b');
@@ -272,6 +276,21 @@ export class ImmersiveVisuals {
   // crew waits along the door (solid people in the paddock) and a corner cut there runs into them.
   const route=(layout.route??[layout.cafeSeat]).map(local);if(route.length>1){const door=this.lane.lane(route[0]),inside=this.lane.point(door.x,door.d+1.4);inside.y=route[0].y;route.splice(1,0,inside);}
   this.cafe={seat:local(layout.cafeSeat),route,sign};
+  this.placeGuests(layout.guests,local);
+ }
+ // The supporters beyond the paddock's six (FANS 6-9) at the café and in the Box 99 (pit-box99.js guests): each where its
+ // spot is, turned to the garage's door, with the way in kept for the walk to him (fanRoute). Without guests they keep
+ // their lane spots.
+ placeGuests(guests=[],local){
+  guests.forEach((g,k)=>{const f=this.fans[6+k];if(!g||!f)return;const pos=local(g.at);f.pos.copy(pos);f.person.position.copy(pos);
+   f.person.rotation.y=Math.atan2(-(this.heroStart.z-pos.z),this.heroStart.x-pos.x);
+   for(const [tag,h] of [[f.label,2.1],[f.dollar,2.65],[f.reaction,3.15]])tag.position.set(pos.x,pos.y+h,pos.z);f.path=g.path.map(local);});
+ }
+ // The walk to a supporter: along the lane, or for one at the café or in the garage by its way in, from the nearest point of it.
+ fanRoute(index){
+  const f=this.fans[index];if(!f?.path)return this.routeTo(f.pos,{direct:true});
+  const path=[...f.path,f.pos],h=this.hero.position;let k=0;path.forEach((p,j)=>{if(p.distanceTo(h)<path[k].distanceTo(h))k=j;});
+  return k>0?path.slice(k).map(p=>p.clone()):[...this.routeTo(path[0]),...path.slice(1).map(p=>p.clone())];
  }
  // With the menu open the pilot turns to the Tia (behind the counter, under the sign) and the camera
  // looks at both from a little to the side, clear of her menu, which stands on the right.
@@ -588,7 +607,7 @@ export class ImmersiveVisuals {
  blocked(pos,from=pos){
   const local=pos.clone().sub(this.crowd.position),back=from.clone().sub(this.crowd.position),q=this.lane.lane(local);
   if([...this.parked,...(this.ownSpot?[this.ownSpot]:[])].some(p=>Math.abs(q.x-p.x)<1.3&&Math.abs(q.d-p.d)<2.7))return true;
-  return [...this.fans.map(f=>f.pos),...(this.leo?[this.leo.pos]:[])].some(p=>{const a=Math.hypot(local.x-p.x,local.z-p.z);return a<.55&&a<Math.hypot(back.x-p.x,back.z-p.z);});
+  return [...this.fans.filter(f=>f.person.visible).map(f=>f.pos),...(this.leo?[this.leo.pos]:[])].some(p=>{const a=Math.hypot(local.x-p.x,local.z-p.z);return a<.55&&a<Math.hypot(back.x-p.x,back.z-p.z);});
  }
  // Input that walks toward a world heading: sideways to the camera on a desktop; on
  // touch screens the view turns toward it first, as the steering pad does.
@@ -638,7 +657,7 @@ export class ImmersiveVisuals {
   route.push(at(x,clear),at(goal.x,clear),to.clone());return route;
  }
  leoRoute(){return this.leo?this.routeTo(this.leo.pos):null;}
- nearestFan(){let best=-1,d=2.5;this.fans.forEach((f,i)=>{const distance=this.hero.position.distanceTo(f.pos);if(distance<d){best=i;d=distance;}});this.nearSocial=best;return best;}
+ nearestFan(){let best=-1,d=2.5;this.fans.forEach((f,i)=>{if(!f.person.visible)return;const distance=this.hero.position.distanceTo(f.pos);if(distance<d){best=i;d=distance;}});this.nearSocial=best;return best;}
  // gift: what went into the kitty (the fan's own gift scaled by the supporters' morale, immersive-state.js gift).
  showDonation(index,gift){const f=this.fans[index];if(f){f.cheerUntil=this.time+2.3;f.dollar.visible=false;f.reaction.visible=true;const m=f.reaction.material;m.map.dispose();m.map=this.labelTexture('HAHA! + R$ '+gift,...REACTION);}}
  drawCracks(value){
@@ -683,7 +702,9 @@ export class ImmersiveVisuals {
    if(show){m.beam.material.opacity=.36+.24*pulse;m.ring.material.opacity=.7+.3*pulse;m.arrow.position.y=2.2+.1*Math.sin(this.time*2.4);m.arrow.rotation.y=this.time*1.6;
     const far=this.viewCamera?this.viewCamera.position.distanceTo(m.sign.getWorldPosition(this.signPosition??=new THREE.Vector3())):99;m.sign.material.opacity=THREE.MathUtils.clamp((far-5)/4,0,1);m.sign.visible=far>5;}}
   const selected=state.fan??this.nearSocial;this.socialMarker.visible=state.phase==='crowd'&&Number.isInteger(selected)&&!!this.fans[selected];if(this.socialMarker.visible){this.socialMarker.position.copy(this.fans[selected].pos).add(new THREE.Vector3(.4,2.85,0));this.socialMarker.rotation.y=this.time*1.5;}
-  this.fans.forEach((f,i)=>{const laughing=this.time<f.cheerUntil||state.fan===i&&state.feedback.includes('risada'),pose=laughing?'cheer':f.idle;if(this.crowd.visible)f.idler.update(dt,pose,{calm:laughing||state.fan===i});f.person.rotation.z=laughing?Math.sin(this.time*9)*.08:0;f.dollar.visible=!state.donors.includes(i);f.reaction.visible=this.time<f.cheerUntil;f.reaction.position.y=3.15+Math.max(0,2.3-(f.cheerUntil-this.time))*.15;f.label.material.color.setHex(state.donors.includes(i)?0xc4eb93:0xffffff);});
+  // Only the supporters the morale brought are there (immersive-state.js here).
+  this.fans.forEach((f,i)=>{const here=state.here?.(i)??true;f.person.visible=f.label.visible=here;if(!here){f.dollar.visible=f.reaction.visible=false;return;}
+   const laughing=this.time<f.cheerUntil||state.fan===i&&state.feedback.includes('risada'),pose=laughing?'cheer':f.idle;if(this.crowd.visible)f.idler.update(dt,pose,{calm:laughing||state.fan===i});f.person.rotation.z=laughing?Math.sin(this.time*9)*.08:0;f.dollar.visible=!state.donors.includes(i);f.reaction.visible=this.time<f.cheerUntil;f.reaction.position.y=f.pos.y+3.15+Math.max(0,2.3-(f.cheerUntil-this.time))*.15;f.label.material.color.setHex(state.donors.includes(i)?0xc4eb93:0xffffff);});
   // Leonardo turns to the pilot as he comes near and keeps his cup; the pilot shows the one he took.
   if(this.leo){const l=this.leo,h=this.hero.position,target=!this.inCar&&h.distanceTo(l.pos)<6?Math.atan2(-(h.z-l.pos.z),h.x-l.pos.x):l.yaw;
    l.person.rotation.y+=Math.atan2(Math.sin(target-l.person.rotation.y),Math.cos(target-l.person.rotation.y))*Math.min(1,dt*4);

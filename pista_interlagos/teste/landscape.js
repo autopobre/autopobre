@@ -1904,7 +1904,9 @@ function fanGeometry(mobile,far=false){
 // step.stand: a row of people standing (on a city's sidewalk behind the fences: city-crowd.js), none seated; step.ground(x, y):
 // each one's feet on the ground there (a sidewalk climbing a hill), not on the row's highest corner.
 export function createCrowd(steps,{mobile=false,lean=false}={}){
- const rand=random(steps.length*131+7),items=[],spacing=lean?1.22:mobile?.98:.69;
+ // keep: each fan's own draw, from a second stream so the stands' layout is as before; fill(f) shows the fans whose draw
+ // is under f (Modo História's supporters' morale, story-career.js standsFill), so the empty seats fall anywhere.
+ const rand=random(steps.length*131+7),keep=random(steps.length*977+3),items=[],spacing=lean?1.22:mobile?.98:.69;
  for(const step of steps){
   const corners=step.corners??step,face=step.face;
   // Order the four corners around the centre so consecutive points share an edge.
@@ -1929,7 +1931,7 @@ export function createCrowd(steps,{mobile=false,lean=false}={}){
    const pose=standing?(r<.6?4:r<.84?5:7):r<.07?2:r<.19?1:r<.27?3:r<.31?5:r<.345?6:0;
    const depth=(rand()-.5)*.14,along=t+(rand()-.5)*.1;
    const ix=cx+ux*along-uz*depth,iy=-(cz+uz*along+ux*depth);
-   items.push({x:ix,y:iy,z:step.ground?.(ix,iy)??y,turn,color:own.map(v=>v*bright),scale:.93+rand()*.14,pose,seed:rand(),sun,sky:sky*(.93+rand()*.14),street:!!step.stand});
+   items.push({x:ix,y:iy,z:step.ground?.(ix,iy)??y,turn,color:own.map(v=>v*bright),scale:.93+rand()*.14,pose,seed:rand(),sun,sky:sky*(.93+rand()*.14),street:!!step.stand,keep:step.stand?0:keep()});
   }
  }
  // Blocks of CROWD_CELL metres, each drawn near or far (fanGeometry far) as it looks to the camera of that draw (crowdNear:
@@ -1938,7 +1940,11 @@ export function createCrowd(steps,{mobile=false,lean=false}={}){
  // Most of a lap sees every fan far; on the main straight only the blocks beside the car are near.
  const near=fanGeometry(mobile),far=fanGeometry(mobile,true),material=sceneryMaterial('crowd'),root=new THREE.Group(),matrix=new THREE.Matrix4(),color=new THREE.Color(),blocks=new Map(),eye=new THREE.Vector3();root.name='Torcida';
  for(const item of items){const key=Math.floor(item.x/CROWD_CELL)+':'+Math.floor(item.y/CROWD_CELL);if(!blocks.has(key))blocks.set(key,[]);blocks.get(key).push(item);}
+ const shown=[];
  for(const list of blocks.values()){
+  // In the order of their draws: the first `count` instances are the fans a fill shows (a city's street fans always, their
+  // posts stay solid).
+  list.sort((a,b)=>a.keep-b.keep);
   // Each block its own geometries over the shared buffers, for its per-fan pose data (shared by its two meshes).
   const data=new Float32Array(list.length*4),fanData=new THREE.InstancedBufferAttribute(data,4),n=list.length;
   const [close,distant]=[near,far].map(geometry=>{
@@ -1950,12 +1956,16 @@ export function createCrowd(steps,{mobile=false,lean=false}={}){
   close.computeBoundingSphere();distant.boundingSphere=close.boundingSphere.clone();
   // (each camera keeps its last choice for crowdNear's give; both meshes of the block agree within a pass)
   const {center,radius}=close.boundingSphere,chosen=new WeakMap(),isNear=camera=>{const near=crowdNear(eye.setFromMatrixPosition(camera.matrixWorld).distanceTo(center)-radius,camera,chosen.get(camera));chosen.set(camera,near);return near;};
-  close.onBeforeRender=(renderer,scene,camera)=>{close.count=isNear(camera)?n:0;};
-  distant.onBeforeRender=(renderer,scene,camera)=>{distant.count=isNear(camera)?0:n;};
+  const block={keeps:list.map(item=>item.keep),count:n};shown.push(block);
+  close.onBeforeRender=(renderer,scene,camera)=>{close.count=isNear(camera)?block.count:0;};
+  distant.onBeforeRender=(renderer,scene,camera)=>{distant.count=isNear(camera)?0:block.count;};
   root.add(close,distant);
  }
+ let filled=1;
+ const fill=f=>{f=Math.max(0,Math.min(1,f));if(f===filled)return;filled=f;for(const b of shown){let k=0;while(k<b.keeps.length&&b.keeps[k]<f)k++;b.count=f>=1?b.keeps.length:k;}root.visible=shown.some(b=>b.count>0);};
  // (Those standing on the ground, a city's sidewalks: posts where a car may come at them, physics.js addRoamSolids.)
- return {root,count:items.length,standing:items.filter(it=>it.street).map(it=>({x:it.x,y:it.y,r:.3}))};
+ return {root,count:items.length,standing:items.filter(it=>it.street).map(it=>({x:it.x,y:it.y,r:.3})),fill,
+  shown:()=>shown.reduce((sum,b)=>sum+b.count,0)};
 }
 const CROWD_CELL=60,CROWD_NEAR=50,CROWD_GIVE=4,LENS_REF=Math.tan(29*Math.PI/180);
 // Near or far by how big a block looks, not by its metres alone: the distance shortened by the lens (the broadcast

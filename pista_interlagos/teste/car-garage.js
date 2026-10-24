@@ -2,14 +2,18 @@ import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {canvasTexture,css,toolBoard} from './pit-textures.js';
 import {rosterOf,MODEL_NAMES,cssColor,luminance} from './race-roster.js';
+import {TYRE_MARKINGS} from './car-wheels.js';
+import {SPONSORS,paintBoard,drawIcon} from './sponsors.js';
 
 // The car screen's garage (car-select.js Studio): the Auto-Pobre Racing's workshop round the turntable, built
 // once from boxes, tubes and canvas paint, the fixed parts merged by finish (a couple dozen draw calls).
 // Frame: the car turns at the origin, the camera looks from +x+z (car-select.js VIEW), so the walls it sees are
-// the long one at x=G.wall (tool chests and tool board, tyre rack, the backlit logo right behind the car, the
-// data desk and its screens) and the end one at z=G.end (roller door, car lift), behind the cards on a computer.
-// The other two walls and the ceiling show in the paint and in the floor: hexagonal LED lights, a bright door
-// behind the camera. The floor is glossy epoxy that mirrors the room (mirror) on computers' Alto and Ultra.
+// the long one at x=G.wall (tool chests and tool board, tyre rack, the backlit logo right behind the car, a spare
+// hood, the data desk and its screens, the team's banners up under the cove) and the end one at z=G.end (a car
+// under its cover, roller door, car lift). The other two walls and the ceiling show in the paint and in the floor:
+// a showroom light of long diffusers over the turntable in a ceiling of hexagonal LEDs, the team office's frosted
+// windows and light columns behind the camera, a cove of light round the room (the streaks the paint carries as the
+// car turns). The floor is glossy epoxy that mirrors the room (mirror) on computers' Alto and Ultra.
 export const G=Object.freeze({wall:-7.5,end:-13,right:18,front:15,height:7,deck:.08,ring:3.1});
 const SMALL=typeof matchMedia==='function'&&(matchMedia('(pointer:coarse)').matches||navigator.maxTouchPoints>0);
 // Where things stand: z along the long wall (x along the end wall), the footprints also shade the floor.
@@ -17,11 +21,24 @@ const L={
  chests:[{z:3.1,w:1.5,top:true,seed:3},{z:1.42,w:1.62,top:false,seed:8}],board:{z:2.25,y:2.3,w:4.4,h:1.1},
  rack:{z:-1.55,w:2.04},stacks:[[G.wall+.48,-3.0,4],[G.wall+1.12,-3.2,2]],logo:{z:-5.1,y:2.5,w:3.6,h:1.8},trophies:{z:-5.1,w:3.3},
  desk:{z:-10.2,len:3.0},screens:[-9.25,-11.15],engine:{x:-4.35,z:3.1,turn:-.4},jack:{x:-3.85,z:-3.05,turn:.62},
- cans:[[G.wall+.32,.35],[G.wall+.33,-.05]],door:{x0:-1.4,x1:3.8,open:2.7,top:4.4},lift:{x0:7.4,x1:10.6}
+ cans:[[G.wall+.32,.35],[G.wall+.33,-.05]],door:{x0:-1.4,x1:3.8,open:2.7,top:4.4},lift:{x0:7.4,x1:10.6},
+ // The car under its cover along the end wall left of the door, a spare hood leaning between the cups and the desk.
+ cover:{x:-4.15,z:-11.92,turn:.03},hood:{z:-7.98},
+ // Banners hung under the cove (metres along the long wall, width, drop, design), tin signs [where, centre, size, tilt].
+ // All right of the logo: left of it they hang behind the screen's title whenever the camera is low.
+ banners:[[-7.95,.6,1.1,0],[-9.02,.66,1.24,2],[-10.06,.56,1.04,1],[-11.12,.64,1.18,3],[-12.22,.58,1.12,4]],
+ signs:[[[G.wall,1.5,-8.06],.86,.03,'pegaprimeira'],[[G.wall,1.42,.02],.52,-.04,'oleovo']]
 };
 const YELLOW=0xf0c52b,BLACK=0x141618,STEEL=0xa9afb3,RUBBER=0x111214;
 const rng=seed=>()=>(seed=seed*16807%2147483647)/2147483647;
 const box=(w,h,d)=>new THREE.BoxGeometry(w,h,d),cyl=(r,h,s=16,top=r,open=false)=>new THREE.CylinderGeometry(top,r,h,s,1,open);
+// A box w x h x d (centred) with every edge rounded by r: a pressed or folded part catches a line of light on its edges.
+function rounded(w,h,d,r){
+ const b=Math.min(r,d/2-.001,w/2-.001,h/2-.001),c=Math.max(.0005,b*.5),x=w/2-b,y=h/2-b,s=new THREE.Shape();
+ s.moveTo(-x+c,-y);s.lineTo(x-c,-y);s.quadraticCurveTo(x,-y,x,-y+c);s.lineTo(x,y-c);s.quadraticCurveTo(x,y,x-c,y);s.lineTo(-x+c,y);s.quadraticCurveTo(-x,y,-x,y-c);s.lineTo(-x,-y+c);s.quadraticCurveTo(-x,-y,-x+c,-y);
+ const g=new THREE.ExtrudeGeometry(s,{depth:Math.max(.001,d-2*b),bevelEnabled:true,bevelThickness:b,bevelSize:b,bevelSegments:2,curveSegments:2});
+ return g.translate(0,0,-(d-2*b)/2);
+}
 const along=g=>g.rotateZ(Math.PI/2),across=g=>g.rotateX(Math.PI/2);
 // Vertex colours (linear, as THREE.Color gives them); k>1 glows past white in the HDR picture (LEDs, light boxes).
 export function paint(geometry,color,k=1){
@@ -29,10 +46,19 @@ export function paint(geometry,color,k=1){
  const c=new THREE.Color(color).multiplyScalar(k),n=g.attributes.position.count,a=new Float32Array(n*3);
  for(let i=0;i<n;i++){a[i*3]=c.r;a[i*3+1]=c.g;a[i*3+2]=c.b;}g.setAttribute('color',new THREE.BufferAttribute(a,3));return g;
 }
+// Vertex colours by where each vertex is (fn(x, y, z) gives a hex), for one piece in more than one colour (a stripe,
+// a band, a hem) without a texture of its own.
+function tint(geometry,fn){
+ const g=geometry.index?geometry.toNonIndexed():geometry;if(g.attributes.uv)g.deleteAttribute('uv');
+ const p=g.attributes.position,a=new Float32Array(p.count*3),c=new THREE.Color();
+ for(let i=0;i<p.count;i++){c.set(fn(p.getX(i),p.getY(i),p.getZ(i)));a[i*3]=c.r;a[i*3+1]=c.g;a[i*3+2]=c.b;}
+ g.setAttribute('color',new THREE.BufferAttribute(a,3));return g;
+}
 // One object's parts by finish, in its own frame (+x toward the room, y up), placed together by Parts.place.
 export class Kit{
  constructor(){this.parts={paint:[],metal:[],matte:[],glow:[]};}
  add(kind,geometry,color,pos=[0,0,0],k=1){this.parts[kind].push(paint(geometry.translate(...pos),color,k));return this;}
+ t(kind,geometry,fn,pos=[0,0,0]){this.parts[kind].push(tint(geometry,fn).translate(...pos));return this;}
  p(g,c,pos){return this.add('paint',g,c,pos);}
  m(g,c,pos){return this.add('metal',g,c,pos);}
  r(g,c,pos){return this.add('matte',g,c,pos);}
@@ -70,6 +96,9 @@ function floorMap(){
   for(const [x,z] of L.stacks)shade(x-.3,z-.3,x+.3,z+.3,.15,.7);
   shade(L.engine.x-.45,L.engine.z-.55,L.engine.x+.45,L.engine.z+.55,.35,.55);shade(L.jack.x-.6,L.jack.z-.25,L.jack.x+.6,L.jack.z+.25,.2,.45);
   shade(L.lift.x0-.3,G.end+.1,L.lift.x1+.3,G.end+1.1,.4,.4);
+  shade(L.cover.x-2.25,L.cover.z-.95,L.cover.x+2.25,L.cover.z+.95,.5,.62);shade(G.wall,L.hood.z-.7,G.wall+.42,L.hood.z+.7,.18,.45);
+  // The showroom light's pool round the turntable, stretched along its diffusers.
+  ctx.save();ctx.globalCompositeOperation='lighter';ctx.translate(X(0),Y(0));ctx.scale(1.25,1);const lit=ctx.createRadialGradient(0,0,G.ring*m,0,0,6.2*m);lit.addColorStop(0,'rgba(196,202,208,.16)');lit.addColorStop(.45,'rgba(196,202,208,.06)');lit.addColorStop(1,'rgba(196,202,208,0)');ctx.fillStyle=lit;ctx.fillRect(-6.2*m,-6.2*m,12.4*m,12.4*m);ctx.restore();
   // The turntable sits on a soft dark pool.
   const pool=ctx.createRadialGradient(X(0),Y(0),G.ring*m*.95,X(0),Y(0),(G.ring+.9)*m);pool.addColorStop(0,'rgba(0,0,0,.55)');pool.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=pool;ctx.beginPath();ctx.arc(X(0),Y(0),(G.ring+.9)*m,0,7);ctx.fill();
   // Markings: the yellow ring and a white dashed one round the turntable, walkway lines, the door apron.
@@ -109,6 +138,18 @@ function wallMap(length,lights,seed,extra=null){
   extra?.(ctx,m,Y);
  },Math.round(length*m),G.height*m,false);
 }
+// Light the walls catch (added over a wallMap): the cove's grazing scallops under the dark band, each its own width
+// and strength, and glows: [metres along, height, half width, half height, colour, strength] (an uplight behind the
+// cups, the monitors' backlight, the screens' spill).
+function wallLight(seed,glows=[]){
+ return (ctx,m,Y)=>{
+  const r=rng(seed),w=ctx.canvas.width/ctx.getTransform().a;ctx.save();ctx.globalCompositeOperation='lighter';
+  for(let x=r()*.8*m;x<w;x+=(1.05+r()*.7)*m){const a=.07+r()*.08,hw=(.45+r()*.35)*m,depth=(1.1+r()*.7)*m;ctx.save();ctx.translate(x,Y(4.83));ctx.scale(hw/depth,1);
+   const g=ctx.createRadialGradient(0,0,0,0,0,depth);g.addColorStop(0,`rgba(225,234,255,${a})`);g.addColorStop(.55,`rgba(225,234,255,${a*.35})`);g.addColorStop(1,'rgba(225,234,255,0)');ctx.fillStyle=g;ctx.fillRect(-depth,0,2*depth,depth);ctx.restore();}
+  for(const [at,y,hw,hh,color,k] of glows){ctx.save();ctx.translate(at*m,Y(y));ctx.scale(hw/hh,1);const g=ctx.createRadialGradient(0,0,0,0,0,hh*m);g.addColorStop(0,`rgba(${color},${k})`);g.addColorStop(.5,`rgba(${color},${k*.4})`);g.addColorStop(1,`rgba(${color},0)`);ctx.fillStyle=g;ctx.fillRect(-hh*m,-hh*m,2*hh*m,2*hh*m);ctx.restore();}
+  ctx.restore();
+ };
+}
 // The box number stencilled on the end wall left of the door (BOX_SIGN: its plane, metres), the car's own
 // (show); drawn on a clear canvas over the wall.
 const BOX_SIGN=Object.freeze({x:-4.3,y:3.45,w:4.8,h:1.8});
@@ -128,17 +169,24 @@ function deckArt(ctx,w,h,number){
   [...all].forEach((ch,i)=>{ctx.save();ctx.translate(c,c);ctx.rotate(i/all.length*Math.PI*2);ctx.fillText(ch,0,-.925*c);ctx.restore();});
   ctx.fillStyle='#596066';for(let i=0;i<120;i++){ctx.save();ctx.translate(c,c);ctx.rotate(i/120*Math.PI*2);ctx.fillRect(-1.5,-.995*c,3,i%10?.012*c:.03*c);ctx.restore();}
 }
-// Stacked tyres' sidewall (the cylinder caps): the game's AUTO POBRE with the Opala's real tyre under it, on a
-// dark race wheel.
+// Stacked tyres: the sidewall on the left half (the cylinder caps), the game's AUTO POBRE with the Opala's tyre
+// (car-wheels.js TYRE_MARKINGS) under it, on a dark race wheel; the tread on the right half (the cylinder's side).
 function sidewallMap(){
  return canvasTexture((ctx,w,h)=>{
-  const c=w/2;ctx.fillStyle='#161719';ctx.fillRect(0,0,w,h);ctx.fillStyle='#202124';ctx.beginPath();ctx.arc(c,c,c*.98,0,7);ctx.fill();
+  const c=h/2;ctx.fillStyle='#161719';ctx.fillRect(0,0,w,h);ctx.fillStyle='#202124';ctx.beginPath();ctx.arc(c,c,c*.98,0,7);ctx.fill();
   ctx.fillStyle='#8a877f';ctx.textAlign='center';ctx.textBaseline='middle';
-  for(const [label,start,size,step] of [['AUTO POBRE',-2.55,.11,.21],['DUNLOP DIREZZA',.55,.06,.12]]){ctx.font=`italic 900 ${w*size}px Arial,sans-serif`;[...label].forEach((ch,i)=>{ctx.save();ctx.translate(c,c);ctx.rotate(start+i*step);ctx.fillText(ch,0,-c*.8);ctx.restore();});}
+  for(const [label,start,size,step] of [['AUTO POBRE',-2.55,.11,.21],[TYRE_MARKINGS.opala,.5,.06,.115]]){ctx.font=`italic 900 ${h*size}px Arial,sans-serif`;[...label].forEach((ch,i)=>{ctx.save();ctx.translate(c,c);ctx.rotate(start+i*step);ctx.fillText(ch,0,-c*.8);ctx.restore();});}
   const rim=ctx.createRadialGradient(c,c,0,c,c,c*.62);rim.addColorStop(0,'#3b3f43');rim.addColorStop(.85,'#25282b');rim.addColorStop(1,'#7b8186');ctx.fillStyle=rim;ctx.beginPath();ctx.arc(c,c,c*.62,0,7);ctx.fill();
   ctx.fillStyle='#0c0d0e';for(let k=0;k<8;k++){const a=k*Math.PI/4;ctx.beginPath();ctx.ellipse(c+Math.cos(a)*c*.36,c+Math.sin(a)*c*.36,c*.11,c*.06,a,0,7);ctx.fill();}
   ctx.fillStyle='#9aa1a5';ctx.beginPath();ctx.arc(c,c,c*.1,0,7);ctx.fill();
- },256,256);
+  // A paint-pen mark by the bead, as the crew marks a set.
+  ctx.strokeStyle='rgba(240,197,43,.75)';ctx.lineWidth=h*.012;ctx.lineCap='round';ctx.beginPath();ctx.arc(c,c,c*.7,2.2,2.55);ctx.stroke();ctx.beginPath();ctx.arc(c+Math.cos(2.75)*c*.7,c+Math.sin(2.75)*c*.7,h*.012,0,7);ctx.fillStyle='rgba(240,197,43,.75)';ctx.fill();
+  // The tread, round the right half once: two grooves round it, slanted sipes across, the shoulders worn lighter.
+  const x0=h,tw=w-h,n=24;ctx.fillStyle='#131416';ctx.fillRect(x0,0,tw,h);
+  const sh=ctx.createLinearGradient(0,0,0,h);sh.addColorStop(0,'rgba(90,90,92,.35)');sh.addColorStop(.18,'rgba(90,90,92,0)');sh.addColorStop(.82,'rgba(90,90,92,0)');sh.addColorStop(1,'rgba(90,90,92,.35)');ctx.fillStyle=sh;ctx.fillRect(x0,0,tw,h);
+  ctx.fillStyle='#060607';for(const y of [.34,.66])ctx.fillRect(x0,h*y-h*.018,tw,h*.036);
+  ctx.strokeStyle='#08090a';ctx.lineWidth=h*.02;for(let i=0;i<n;i++){const x=x0+(i+.5)*tw/n;for(const [a,b,o] of [[.04,.3,0],[.38,.62,.5],[.7,.96,0]]){ctx.beginPath();ctx.moveTo(x+(o-.25)*tw/n,h*a);ctx.lineTo(x+(o+.15)*tw/n,h*b);ctx.stroke();}}
+ },512,256);
 }
 // Light through the roller door: overcast daylight over the paddock's concrete.
 function daylightMap(){
@@ -147,19 +195,64 @@ function daylightMap(){
   const r=rng(41);for(let i=0;i<6;i++){ctx.fillStyle=`rgba(120,128,132,${.25+r()*.2})`;const x=r()*w,bw=20+r()*60,bh=12+r()*30;ctx.fillRect(x,h*.62-bh,bw,bh);}
  },256,128);
 }
+// The team's banners and the tin signs on one canvas (one material, one draw): five pennants for honours nobody
+// else would hang (cell i: 256 x 512 along the top), the joke sponsors' signs (sponsors.js) along the bottom.
+const BANNERS=[
+ {bg:'#121416',fg:'#f0c52b',ink:'#f4f1ea',icon:'cup',lines:['CAMPEÕES','DA','VAQUINHA'],year:'2025'},
+ {bg:'#f0c52b',fg:'#141618',ink:'#141618',icon:'chequer',lines:['POLE NO','ESTACIONA-','MENTO'],year:'2024'},
+ {bg:'#1d3557',fg:'#f4f1ea',ink:'#f0c52b',icon:'tyre',lines:['VICE','NA CHUVA'],year:'INTERLAGOS'},
+ {bg:'#8f141a',fg:'#f4f1ea',ink:'#f0c52b',icon:'star',lines:['PRÊMIO','GARRA'],year:'ÚLTIMO A DESISTIR'},
+ {bg:'#e9e6dc',fg:'#8f141a',ink:'#1d2023',icon:'flag',lines:['1º NA FILA','DO PASTEL'],year:'TODO DOMINGO'}
+];
+const ART=Object.freeze({w:2048,h:1024,banner:[256,512],sign:[512,256]});
+function garageArt(signs){
+ return canvasTexture((ctx,w,h)=>{
+  ctx.fillStyle='#202326';ctx.fillRect(0,0,w,h);ctx.textAlign='center';ctx.textBaseline='middle';const F='"Arial Black","Arial Bold",Arial,sans-serif',r=rng(61);
+  BANNERS.forEach((b,i)=>{const [cw,ch]=ART.banner,x=i*cw;ctx.save();ctx.beginPath();ctx.rect(x,0,cw,ch);ctx.clip();
+   ctx.fillStyle=b.bg;ctx.fillRect(x,0,cw,ch);ctx.fillStyle=b.ink;ctx.fillRect(x,10,cw,6);ctx.fillRect(x+14,0,5,ch);ctx.fillRect(x+cw-19,0,5,ch);
+   ctx.beginPath();ctx.arc(x+cw/2,96,50,0,7);ctx.fill();drawIcon(ctx,b.icon,x+cw/2,96,30,b.bg,b.ink);
+   ctx.fillStyle=b.fg;b.lines.forEach((line,k)=>{ctx.font=`900 ${b.lines.length>2?40:46}px ${F}`;ctx.fillText(line,x+cw/2,196+k*(b.lines.length>2?50:58),cw-44);});
+   ctx.fillStyle=b.ink;ctx.fillRect(x+60,352,cw-120,4);ctx.font=`900 ${b.year.length>6?20:34}px ${F}`;ctx.fillText(b.year,x+cw/2,390,cw-50);
+   // Cloth: soft vertical folds and a little grime, each banner its own.
+   for(let k=0;k<7;k++){const fx=x+r()*cw,g=ctx.createLinearGradient(fx-26,0,fx+26,0),a=.05+r()*.07;g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(.5,`rgba(0,0,0,${a})`);g.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=g;ctx.fillRect(fx-26,0,52,ch);}
+   const dirt=ctx.createLinearGradient(0,0,0,ch);dirt.addColorStop(0,'rgba(0,0,0,.18)');dirt.addColorStop(.25,'rgba(0,0,0,0)');dirt.addColorStop(.85,'rgba(0,0,0,0)');dirt.addColorStop(1,'rgba(0,0,0,.2)');ctx.fillStyle=dirt;ctx.fillRect(x,0,cw,ch);
+   ctx.restore();});
+  signs.forEach((id,i)=>{const [cw,ch]=ART.sign,x=i*cw,y=h-ch;paintBoard(ctx,x,y,cw,ch,SPONSORS[id],{seed:i*3+2});
+   // Old tin: rust at the edges, scratches, the screws in the corners.
+   ctx.save();ctx.beginPath();ctx.rect(x,y,cw,ch);ctx.clip();const e=ctx.createRadialGradient(x+cw/2,y+ch/2,ch*.4,x+cw/2,y+ch/2,cw*.62);e.addColorStop(0,'rgba(60,32,14,0)');e.addColorStop(1,'rgba(60,32,14,.42)');ctx.fillStyle=e;ctx.fillRect(x,y,cw,ch);
+   for(let k=0;k<26;k++){ctx.strokeStyle=`rgba(255,255,255,${.04+r()*.08})`;ctx.lineWidth=1;const sx=x+r()*cw,sy=y+r()*ch;ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx+(r()-.5)*60,sy+(r()-.5)*14);ctx.stroke();}
+   ctx.fillStyle='#9aa0a4';for(const [px,py] of [[14,14],[cw-14,14],[14,ch-14],[cw-14,ch-14]]){ctx.beginPath();ctx.arc(x+px,y+py,6,0,7);ctx.fill();}ctx.restore();});
+ },ART.w,ART.h);
+}
+// A rectangle (or a pennant: tip, how far its V comes up) of the art canvas, facing +x, w x h, its top at y.
+function artPiece(cell,w,h,tip=0){
+ const shape=new THREE.Shape();if(tip){shape.moveTo(0,1);shape.lineTo(1,1);shape.lineTo(1,tip);shape.lineTo(.5,0);shape.lineTo(0,tip);}else{shape.moveTo(0,0);shape.lineTo(1,0);shape.lineTo(1,1);shape.lineTo(0,1);}shape.closePath();
+ const g=new THREE.ShapeGeometry(shape),uv=g.attributes.uv,[cx,cy,cw,ch]=cell;
+ for(let i=0;i<uv.count;i++)uv.setXY(i,(cx+uv.getX(i)*cw)/ART.w,1-(cy+(1-uv.getY(i))*ch)/ART.h);
+ return g.translate(-.5,-1,0).scale(w,h,1).rotateY(Math.PI/2);
+}
+// The floor as the paint's map sees it: lit grey under the showroom light, fading to the room's dark at the walls.
+function poolMap(){return canvasTexture((ctx,w,h)=>{const g=ctx.createRadialGradient(w/2,h/2,0,w/2,h/2,w/2);g.addColorStop(0,'#5d6266');g.addColorStop(.35,'#464b4f');g.addColorStop(.75,'#2f3438');g.addColorStop(1,'#2a2f33');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);},128,128);}
 function haloMap(){return canvasTexture((ctx,w,h)=>{const g=ctx.createRadialGradient(w/2,h/2,0,w/2,h/2,w/2);g.addColorStop(0,'rgba(255,214,120,.55)');g.addColorStop(.45,'rgba(255,200,90,.18)');g.addColorStop(1,'rgba(255,200,90,0)');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);},256,256);}
 
 // ---- Things ----
 // Roll cab tool chest, w wide along the wall: drawers in this chest's own mix, chrome pulls, a steel top,
 // casters; top: a top chest on it.
 function rollCab(w,seed,top){
- const k=new Kit(),r=rng(seed),d=.62,h=.92,y0=.1,FACE=0x23272b;
- k.p(box(d,h,w),BLACK,[d/2,y0+h/2,0]).m(box(d+.03,.035,w+.03),STEEL,[d/2,y0+h+.018,0]).p(box(.008,.035,w-.02),YELLOW,[d+.004,y0+h-.03,0]);
- let y=y0+h-.06;for(const dh of [.075,.075,.09,.09,.12,.15,.2].map(v=>v*(.88+r()*.3))){if(y-dh<y0+.03)break;k.p(box(.014,dh-.014,w-.07),FACE,[d+.007,y-dh/2,0]).m(box(.026,.016,w*.72),STEEL,[d+.02,y-.035,0]);y-=dh;}
- for(const [x,z] of [[.09,w/2-.09],[.53,w/2-.09],[.09,.09-w/2],[.53,.09-w/2]])k.r(across(cyl(.045,.04,12)),RUBBER,[x,.05,z]).m(box(.07,.04,.06),STEEL,[x,.09,z]);
+ const k=new Kit(),r=rng(seed),d=.62,h=.92,y0=.1,FACE=0x23272b,ALU=0xb9bfc3;
+ // Pressed steel body, a ribbed rubber mat on the brushed top, the team's yellow line.
+ k.p(rounded(d,h,w,.018),BLACK,[d/2,y0+h/2,0]).m(rounded(d+.03,.035,w+.03,.008),STEEL,[d/2,y0+h+.018,0]).r(box(d-.06,.006,w-.08),0x2b2d30,[d/2,y0+h+.038,0]).p(box(.008,.035,w-.02),YELLOW,[d+.004,y0+h-.03,0]);
+ for(let i=0;i<9;i++)k.r(box(d-.08,.004,.012),0x232528,[d/2,y0+h+.042,-w/2+.08+i*(w-.16)/8]);
+ // Drawers, deeper towards the floor, each a rounded face with a full-width brushed pull and, here and there, a label.
+ let y=y0+h-.06;for(const dh of [.075,.075,.09,.09,.12,.15,.2].map(v=>v*(.88+r()*.3))){if(y-dh<y0+.03)break;
+  k.p(rounded(.016,dh-.012,w-.06,.005),FACE,[d+.008,y-dh/2,0]).m(rounded(.022,.018,w*.84,.007),ALU,[d+.024,y-.03,0]).m(box(.03,.026,.02),0x6a7176,[d+.02,y-.03,w*.42]).m(box(.03,.026,.02),0x6a7176,[d+.02,y-.03,-w*.42]);
+  if(r()<.55)k.r(box(.004,.02,.075+r()*.03),0x8f8d86,[d+.017,y-dh+.03,(r()-.5)*w*.5]);y-=dh;}
+ for(const [x,z] of [[.09,w/2-.09],[.53,w/2-.09],[.09,.09-w/2],[.53,.09-w/2]])k.r(across(cyl(.045,.04,12)),RUBBER,[x,.05,z]).m(box(.07,.04,.06),STEEL,[x,.09,z]).m(across(cyl(.012,.05,8)),ALU,[x,.05,z]);
  k.m(along(cyl(.014,.36,8)),STEEL,[d/2,y0+h-.12,w/2+.06]).m(box(.03,.03,.06),STEEL,[d/2-.17,y0+h-.12,w/2+.03]).m(box(.03,.03,.06),STEEL,[d/2+.17,y0+h-.12,w/2+.03]);
- if(top){const th=.44,b=y0+h+.035;k.p(box(d-.08,th,w-.04),BLACK,[d/2-.03,b+th/2,0]).m(box(d-.06,.02,w-.02),STEEL,[d/2-.03,b+th+.01,0]);
-  let yy=b+th-.04;for(const dh of [.06,.07,.09,.12]){k.p(box(.012,dh-.012,w-.1),FACE,[d-.07+.006,yy-dh/2,0]).m(box(.02,.014,w*.6),STEEL,[d-.07+.018,yy-.03,0]);yy-=dh;}}
+ if(top){const th=.44,b=y0+h+.035;k.p(rounded(d-.08,th,w-.04,.016),BLACK,[d/2-.03,b+th/2,0]).m(rounded(d-.06,.02,w-.02,.006),STEEL,[d/2-.03,b+th+.01,0]);
+  let yy=b+th-.04;for(const dh of [.06,.07,.09,.12]){k.p(rounded(.014,dh-.01,w-.1,.004),FACE,[d-.07+.007,yy-dh/2,0]).m(rounded(.02,.014,w*.66,.006),ALU,[d-.07+.02,yy-.028,0]);yy-=dh;}
+  // A couple of spanners and a screwdriver left on the lid.
+  const lid=b+th+.024;k.m(box(.025,.008,.24).rotateY(.4+r()*.3),ALU,[d/2-.08,lid,w*.18]).m(box(.025,.008,.2).rotateY(.1+r()*.2),ALU,[d/2+.02,lid,w*.25]).p(cyl(.012,.12,8).rotateZ(Math.PI/2).rotateY(1.2),0xc01e25,[d/2-.05,lid+.006,-w*.2]).m(cyl(.004,.1,6).rotateZ(Math.PI/2).rotateY(1.2),STEEL,[d/2-.05+.04,lid+.006,-w*.2-.09]);}
  return k;
 }
 // A laptop open on a chest, its screen lit; a team helmet beside it.
@@ -169,8 +262,13 @@ function chestTop(y){
  k.m(new THREE.SphereGeometry(.143,16,10,Math.PI-.9,1.8,1.05,.75).scale(1.08,.95,1),0x2a3540,[.3,y+.15,-.35]);
  return k;
 }
-// Jerry can, red or yellow.
-function jerryCan(color){return new Kit().p(box(.17,.42,.32),color,[0,.21,0]).p(box(.06,.05,.12),color,[0,.45,.05]).r(cyl(.025,.06,10),RUBBER,[0,.45,-.1]);}
+// Jerry can, red or yellow: the pressed body with its X on the sides, three handles on top, the spout capped.
+function jerryCan(color){
+ const k=new Kit().p(rounded(.17,.42,.32,.025),color,[0,.215,0]).p(rounded(.18,.012,.33,.005),color,[0,.215,0]);
+ for(const s of [-1,1])k.p(box(.012,.36,.022).rotateX(s*.62),color,[.088,.22,0]).p(box(.012,.36,.022).rotateX(s*.62),color,[-.088,.22,0]);
+ for(const z of [-.07,0,.07])k.p(box(.03,.05,.022),color,[0,.45,z]);k.p(box(.03,.018,.17),color,[0,.475,0]);
+ return k.p(cyl(.022,.05,10).rotateX(-.35),color,[0,.44,-.125]).r(cyl(.026,.03,10).rotateX(-.35),RUBBER,[0,.47,-.137]);
+}
 // Steel tyre rack, w long: uprights, two rails per shelf (the tyres are an instanced mesh).
 function rack(w){
  const k=new Kit(),G_=0x5f676c;for(const x of [.05,.57])for(const z of [w/2-.03,.03-w/2])k.p(box(.05,2.12,.05),G_,[x,1.06,z]);
@@ -205,9 +303,13 @@ function jack(){
 // Data desk along the wall: top on two panel legs, three monitors (screens: their own meshes), keyboard, the
 // PC under it with a blue light, a racing-style chair pulled out.
 function desk(len){
- const k=new Kit(),top=.76;k.p(box(.78,.04,len),0x1c1f22,[.42,top,0]);for(const z of [len/2-.06,.06-len/2])k.m(box(.7,top-.02,.035),0x6a7176,[.42,(top-.02)/2,z]);
+ const k=new Kit(),top=.76;k.p(rounded(.78,.04,len,.012),0x1c1f22,[.42,top,0]).m(box(.012,.03,len-.02),0x6a7176,[.81,top,0]);for(const z of [len/2-.06,.06-len/2])k.m(box(.7,top-.02,.035),0x6a7176,[.42,(top-.02)/2,z]);
  for(const [z,turn] of [[-.78,.28],[0,0],[.78,-.28]]){k.r(box(.035,.42,.74).rotateY(turn),0x0e0f10,[.22,top+.36,z]).r(box(.04,.24,.05),0x2a2d30,[.2,top+.13,z]).r(box(.2,.015,.24),0x2a2d30,[.25,top+.01,z]);}
  k.r(box(.17,.018,.46),0x16181a,[.6,top+.03,0]).r(box(.1,.02,.06),0x16181a,[.62,top+.03,.36]);
+ // The engineer's things: a team mug, a pile of setup sheets, the radio headset.
+ k.p(cyl(.04,.1,14),YELLOW,[.55,top+.07,-.62]).r(new THREE.TorusGeometry(.028,.008,6,10,Math.PI).rotateZ(-Math.PI/2),YELLOW,[.59,top+.07,-.62]).r(cyl(.036,.005,14),0x2a1a10,[.55,top+.118,-.62]);
+ for(let i=0;i<4;i++)k.r(box(.21,.004,.297).rotateY(.08*i-.1),0xd9d6cc,[.5+i*.004,top+.024+i*.005,.62+i*.01]);
+ k.r(new THREE.TorusGeometry(.085,.012,6,16,Math.PI).rotateY(.5),0x1a1b1d,[.36,top+.03,.98]).r(cyl(.04,.03,12).rotateZ(Math.PI/2).rotateY(.5),0x1a1b1d,[.36+.07*Math.cos(.5),top+.04,.98-.07*Math.sin(.5)]);
  k.r(box(.45,.46,.2),0x101113,[.3,.24,-len/2+.4]).g(box(.004,.38,.01),0x3a8fe0,[.528,.24,-len/2+.33],2.2);
  const C=new Kit();C.r(box(.5,.09,.5),BLACK,[0,.5,0]).r(box(.09,.78,.5),BLACK,[-.24,.92,0]).p(box(.095,.06,.5),YELLOW,[-.24,1.28,0]).p(box(.4,.012,.06),YELLOW,[0,.552,.22]).p(box(.4,.012,.06),YELLOW,[0,.552,-.22]);
  C.m(cyl(.03,.42,10),0x6a7176,[0,.25,0]);for(let i=0;i<5;i++){const a=i/5*Math.PI*2;C.r(box(.3,.03,.04).rotateY(a),RUBBER,[Math.cos(a)*.15,.06,-Math.sin(a)*.15]);}
@@ -216,29 +318,75 @@ function desk(len){
 // Low sideboard under the logo with the team's cups on it (gold, silver, bronze; the tallest in the middle), a
 // warm light along its plinth.
 function trophies(w){
- const k=new Kit(),r=rng(17),top=.78;k.p(box(.42,top-.08,w),BLACK,[.21,.08+(top-.08)/2,0]).m(box(.44,.025,w+.02),0x2b2f33,[.22,top+.012,0]).r(box(.36,.08,w-.06),0x0b0c0d,[.18,.04,0]).g(box(.006,.012,w-.12),0xffd9a0,[.362,.075,0],2.2);
- for(const z of [-w/6,w/6])k.p(box(.006,top-.16,.004),0x23272b,[.423,.08+(top-.08)/2,z]);
+ const k=new Kit(),r=rng(17),top=.78;k.p(rounded(.42,top-.08,w,.012),BLACK,[.21,.08+(top-.08)/2,0]).m(rounded(.44,.025,w+.02,.008),0x2b2f33,[.22,top+.012,0]).r(box(.36,.08,w-.06),0x0b0c0d,[.18,.04,0]).g(box(.006,.012,w-.12),0xffd9a0,[.362,.075,0],2.2);
+ for(const z of [-w/6,w/6])k.p(box(.006,top-.16,.004),0x23272b,[.423,.08+(top-.08)/2,z]).m(box(.016,.12,.014),0x9aa0a5,[.43,top-.16,z-.05]).m(box(.016,.12,.014),0x9aa0a5,[.43,top-.16,z+.05]);
 
  const cup=h=>new THREE.LatheGeometry([[0,0],[.06,0],[.06,.025],[.025,.035],[.014,.07],[.014,h*.42],[.028,h*.48],[.07,h*.6],[.088,h*.86],[.093,h],[.086,h],[.078,h*.87],[0,h*.8]].map(([x,y])=>new THREE.Vector2(x,y)),22);
  const list=[[.28,0xc89b3c],[.36,0xb9bec2],[.46,0xd6a943],[.34,0xa86b3a],[.26,0xc89b3c]];
  const y=top+.025;list.forEach(([h,color],i)=>{const z=(i-2)*(w/5.4)+(r()-.5)*.12;k.r(box(.15,.07,.15),0x111214,[.2,y+.035,z]).m(cup(h).scale(h>.4?1.25:1,1,h>.4?1.25:1),color,[.2,y+.07,z]);if(h>.4)for(const s of [-1,1])k.m(new THREE.TorusGeometry(.05,.01,6,14).rotateY(Math.PI/2),color,[.2,y+.07+h*.72,z+s*.12]);});
  return k;
 }
-// Fire extinguisher on its wall bracket and an air hose reel.
+// Fire extinguisher on its wall bracket and an air hose reel, its hose run down to a loose coil on the floor.
 function safety(){
  const k=new Kit();k.p(cyl(.085,.48,16),0xc01e25,[.12,.62,0]).p(new THREE.SphereGeometry(.085,14,8,0,Math.PI*2,0,Math.PI/2),0xc01e25,[.12,.86,0]).r(box(.06,.08,.06),RUBBER,[.12,.92,0]).r(cyl(.012,.3,6),RUBBER,[.2,.72,0]).p(box(.03,.3,.14),0x4a5054,[.015,.7,0]);
  k.p(box(.04,.36,.36),0x2a2d30,[.02,1.75,.8]).p(across(cyl(.16,.12,22)),YELLOW,[.12,1.75,.8]).r(across(new THREE.TorusGeometry(.13,.025,8,22)),0xe4b622,[.12,1.75,.8]);
+ const hose=new THREE.CatmullRomCurve3([[.16,1.6,.82],[.2,1.2,.86],[.26,.55,.84],[.36,.12,.7],[.52,.025,.45],[.74,.025,.4],[.82,.025,.62],[.66,.025,.8],[.46,.025,.66],[.5,.025,.36],[.78,.025,.2],[.9,.025,.34]].map(p=>new THREE.Vector3(...p)));
+ k.r(new THREE.TubeGeometry(hose,64,.014,6),0xd9a91f).m(along(cyl(.016,.07,8)),0xb7a46a,[.92,.025,.37]);
  return k;
 }
-// Ceiling: hexagonal LED tubes over the turntable (each shared edge once) and plain bars elsewhere.
+// A car under its fitted cover: an Opala's shape (hood, cabin, fastback, the wheels' bulges) from a squared-off
+// sphere, the cloth flaring and creasing where it gathers at the floor, the team's yellow band at the waist.
+function coveredCar(){
+ const L=4.55,g=new THREE.SphereGeometry(1,80,48),p=g.attributes.position,r=rng(71),ph=[r()*6.3,r()*6.3,r()*6.3];
+ const s=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t);},pw=(v,e)=>Math.sign(v)*Math.pow(Math.abs(v),e);
+ for(let i=0;i<p.count;i++){
+  const sx=p.getX(i),sy=p.getY(i),sz=p.getZ(i),u=pw(sx,.3),cabin=s(-.66,-.3,u)*s(.32,.08,u),top=.8-.07*s(.5,1,u)+.52*cabin,yy=sy>0?Math.pow(sy,.5)*top:0;
+  const half=.92-.26*cabin*s(.72,1.12,yy),hem=1+.045*s(.16,0,yy),wheel=.035*Math.exp(-(((Math.abs(u)-.6)/.1)**2)-((yy-.34)/.16)**2);
+  const crease=.012*(1-s(0,.7,yy))*(Math.sin(u*14+ph[0])+.6*Math.sin(u*31+ph[1])+.4*Math.sin(sz*9+ph[2]));
+  p.setXYZ(i,u*L/2*hem,yy,pw(sz,.38)*(half*hem+wheel+crease));
+ }
+ g.computeVertexNormals();
+ return new Kit().t('matte',g,(x,y,z)=>y<.05?0x1a1c1f:Math.abs(z)>.8&&Math.abs(x)<1.9&&y>.56&&y<.63?0xd9b02a:0x2b2e33);
+}
+// A spare hood leaning on the wall: the 99's black with its yellow stripes, crowned, front edge on the floor.
+function spareHood(){
+ const g=new THREE.PlaneGeometry(1.42,1.15,28,16).rotateY(Math.PI/2).translate(0,.575,0),p=g.attributes.position;
+ for(let i=0;i<p.count;i++){const z=p.getZ(i)/.71,y=(p.getY(i)-.575)/.575;p.setX(i,.05*(1-z*z)+.025*(1-y*y)-.012*Math.exp(-(((Math.abs(z)-.3)/.06)**2)));}
+ g.computeVertexNormals();g.rotateZ(.31);
+ return new Kit().t('paint',g,(x,y,z)=>Math.abs(Math.abs(z)-.5)<.045?0xe8bd2c:0x141618).r(box(.06,.03,1.3),RUBBER,[.38,.015,0]);
+}
+// The showroom light over the turntable: long diffusers side by side in a dark canopy hung from the ceiling, above
+// the highest the camera goes (car-select.js VIEW.ceiling), so the paint shows them as clean parallel streaks.
+const SOFTBOX=Object.freeze({y:6.2,len:5.6,width:.44,gap:.56,count:4,k:4.6});
+function softbox(){
+ const k=new Kit(),s=SOFTBOX,depth=s.count*s.width+(s.count-1)*s.gap,ALU=0x8d949a;
+ for(let i=0;i<s.count;i++){const z=-depth/2+s.width/2+i*(s.width+s.gap);k.g(box(s.len,.02,s.width),0xfff8ee,[0,s.y,z],s.k);if(i)k.r(box(s.len,.09,s.gap),0x16181a,[0,s.y+.035,z-s.width/2-s.gap/2]);}
+ k.r(box(s.len+.16,.08,depth+.16),0x16181a,[0,s.y+.11,0]);
+ for(const z of [-1,1])k.m(box(s.len+.2,.16,.04),ALU,[0,s.y+.06,z*(depth/2+.1)]);for(const x of [-1,1])k.m(box(.04,.16,depth+.2),ALU,[x*(s.len/2+.1),s.y+.06,0]);
+ for(const x of [-1,1])for(const z of [-1,1])k.m(cyl(.008,G.height-s.y-.15,5),STEEL,[x*(s.len/2-.25),(G.height+s.y+.15)/2,z*(depth/2-.1)]);
+ return k;
+}
+// Ceiling: hexagonal LED tubes round the showroom light (each shared edge once; hex: its own mesh, dimmed in the
+// paint's map, where a grid of bright edges read as a pattern printed on every car) and plain bars elsewhere.
 function ceiling(){
- const k=new Kit(),R=.95,y=G.height-.55,seen=new Set(),s3=Math.sqrt(3);
+ const hex=new Kit(),bars=new Kit(),R=.95,y=G.height-.55,seen=new Set(),s3=Math.sqrt(3),hole=[SOFTBOX.len/2+.35,(SOFTBOX.count*(SOFTBOX.width+SOFTBOX.gap))/2+.35];
  for(let i=-4;i<=6;i++)for(let j=-4;j<=4;j++){
   const cx=i*1.5*R+.4,cz=j*s3*R+(i&1)*s3/2*R-.6;if(cx<-5.6||cx>5.2||cz<-10.5||cz>4)continue;
-  for(let e=0;e<6;e++){const a0=e*Math.PI/3,a1=a0+Math.PI/3,x0=cx+R*Math.cos(a0),z0=cz+R*Math.sin(a0),x1=cx+R*Math.cos(a1),z1=cz+R*Math.sin(a1),key=`${Math.round((x0+x1)*50)},${Math.round((z0+z1)*50)}`;
-   if(seen.has(key))continue;seen.add(key);k.g(box(R,.035,.05).rotateY(-Math.atan2(z1-z0,x1-x0)),0xf3f6ff,[(x0+x1)/2,y,(z0+z1)/2],4);}
+  for(let e=0;e<6;e++){const a0=e*Math.PI/3,a1=a0+Math.PI/3,x0=cx+R*Math.cos(a0),z0=cz+R*Math.sin(a0),x1=cx+R*Math.cos(a1),z1=cz+R*Math.sin(a1),mx=(x0+x1)/2,mz=(z0+z1)/2,key=`${Math.round(mx*100)},${Math.round(mz*100)}`;
+   if(seen.has(key)||Math.abs(mx)<hole[0]&&Math.abs(mz)<hole[1])continue;seen.add(key);hex.g(box(R,.035,.05).rotateY(-Math.atan2(z1-z0,x1-x0)),0xf3f6ff,[mx,y,mz],3.4);}
  }
- for(const [x,z,turn] of [[-4.5,-11.5,0],[1.5,-11.6,0],[12,-6,Math.PI/2],[12,2,Math.PI/2],[6,11,0],[-3,11,0]])k.g(box(3,.05,.14).rotateY(turn),0xf3f6ff,[x,y+.15,z],4).r(box(3.05,.04,.2).rotateY(turn),0x2a2d30,[x,y+.2,z]);
+ for(const [x,z,turn] of [[-4.5,-11.5,0],[1.5,-11.6,0],[12,-6,Math.PI/2],[12,2,Math.PI/2],[6,11,0],[-3,11,0]])bars.g(box(3,.05,.14).rotateY(turn),0xf3f6ff,[x,y+.15,z],4).r(box(3.05,.04,.2).rotateY(turn),0x2a2d30,[x,y+.2,z]);
+ return {hex,bars};
+}
+// The walls behind the camera, only ever seen in the paint and the chrome: the team office's frosted windows along
+// the right wall (a long soft band the turning car's shoulders sweep through) and tall light columns by the front
+// door, each pane and column its own size and warmth.
+function cameraSide(){
+ const k=new Kit(),r=rng(53),y0=1.05,y1=2.55;
+ let z=-9.5;while(z<8.5){const w=1.05+r()*.55,warm=r();k.g(box(.03,y1-y0,w-.07),warm<.5?0xfff1dc:0xf6f4ee,[G.right-.06,(y0+y1)/2,z+w/2],1.5+r()*.5).r(box(.06,y1-y0+.08,.07),0x1d2023,[G.right-.05,(y0+y1)/2,z]);z+=w;}
+ k.r(box(.08,.07,18.2),0x1d2023,[G.right-.05,y1+.04,-.5]).m(box(.14,.04,18.2),0x8d949a,[G.right-.08,y0-.04,-.5]);
+ for(const [x,h] of [[-4.6,4.1],[-1.2,3.6],[10.5,3.9],[14.2,4.2]])k.g(box(.16,h,.03),0xf3f6ff,[x,.35+h/2,G.front-.05],3.2+r()).r(box(.24,h+.1,.05),0x1d2023,[x,.35+h/2,G.front-.03]);
+ for(const z of [-5.5,5.8])k.g(box(.03,3.8,.16),0xf3f6ff,[G.right-.05,2.3,z],3+r());
  return k;
 }
 // The roller door in the end wall (frame, slats rolled up to L.door.open; the opening is its own lit plane) and
@@ -351,22 +499,26 @@ export function createGarage(){
   paint:new THREE.MeshStandardMaterial({name:'pintado',vertexColors:true,roughness:.36,metalness:.22}),
   metal:new THREE.MeshStandardMaterial({name:'metal',vertexColors:true,roughness:.24,metalness:.92}),
   matte:new THREE.MeshStandardMaterial({name:'fosco',vertexColors:true,roughness:.8}),
-  glow:new THREE.MeshBasicMaterial({name:'luzes',vertexColors:true})
+  glow:new THREE.MeshBasicMaterial({name:'luzes',vertexColors:true}),
+  // The ceiling's hexagons: the lights' own program, a mesh of their own so the paint's map can dim them (bake).
+  hex:new THREE.MeshBasicMaterial({name:'luzes_teto',vertexColors:true})
  };
  const parts=new Parts(M),W=G.right-G.wall,D=G.front-G.end,H=G.height;
  // Floor, walls, ceiling. The long wall's canvas starts at the front corner, the end wall's at the long wall.
  const floor=floorMaterial(floorMap(),grainMap()),floorMesh=new THREE.Mesh(new THREE.PlaneGeometry(W,D).rotateX(-Math.PI/2),floor.material);
  floorMesh.position.set((G.wall+G.right)/2,0,(G.end+G.front)/2);floorMesh.name='Garagem_piso';root.add(floorMesh);
  const lights=[-1.35,2.4,-5.1,-10.2,-12.4];
- const longWall=new THREE.MeshStandardMaterial({name:'Parede_longa',map:wallMap(D,lights.map(z=>G.front-z),5),roughness:.62,metalness:.1});
- const endWallMat=new THREE.MeshStandardMaterial({name:'Parede_fundo',map:wallMap(W,[-4.6,6,9,13.4].map(x=>x-G.wall),9),roughness:.62,metalness:.1});
+ const onWall=z=>G.front-z,glows=[[onWall(L.trophies.z),1.05,2.1,.95,'255,206,140',.32],...[-.78,0,.78].map(dz=>[onWall(L.desk.z+dz),1.18,.42,.32,'80,150,255',.4]),...L.screens.map(z=>[onWall(z),2.65,1.25,.75,'110,170,255',.13])];
+ const longWall=new THREE.MeshStandardMaterial({name:'Parede_longa',map:wallMap(D,lights.map(onWall),5,wallLight(31,glows)),roughness:.62,metalness:.1});
+ const endWallMat=new THREE.MeshStandardMaterial({name:'Parede_fundo',map:wallMap(W,[-4.6,6,9,13.4].map(x=>x-G.wall),9,wallLight(37,[[BOX_SIGN.x-G.wall,3.55,2.9,1.35,'255,226,180',.3]])),roughness:.62,metalness:.1});
  const plane=(material,w,h,pos,turn)=>{const mesh=new THREE.Mesh(new THREE.PlaneGeometry(w,h).rotateY(turn),material);mesh.position.set(...pos);root.add(mesh);return mesh;};
  plane(longWall,D,H,[G.wall,H/2,(G.end+G.front)/2],Math.PI/2);plane(endWallMat,W,H,[(G.wall+G.right)/2,H/2,G.end],0);
  plane(longWall,D,H,[G.right,H/2,(G.end+G.front)/2],-Math.PI/2);plane(endWallMat,W,H,[(G.wall+G.right)/2,H/2,G.front],Math.PI);
  parts.add(M.matte,paint(new THREE.PlaneGeometry(W,D).rotateX(Math.PI/2).translate((G.wall+G.right)/2,H,(G.end+G.front)/2),0x15171a));
- // LED strips along the walls (cool white under the dark band, yellow over the kick panels).
- const strips=new Kit();for(const [x,z,len,turn] of [[G.wall+.02,(G.end+G.front)/2,D,0],[(G.wall+G.right)/2,G.end+.02,W,-Math.PI/2],[G.right-.02,(G.end+G.front)/2,D,Math.PI],[(G.wall+G.right)/2,G.front-.02,W,Math.PI/2]]){
-  const s=new Kit();s.g(box(.03,.035,len),0xf3f6ff,[0,4.92,0],3.2).g(box(.02,.022,len),YELLOW,[0,.135,0],1.6);parts.place(s,x,z,0,turn);}
+ // Light along the walls: a cove of cool white under the dark band (wide enough for the paint's map to keep it: the
+ // turning car's shoulders carry it round as a line), yellow LEDs over the kick panels.
+ for(const [x,z,len,turn] of [[G.wall+.02,(G.end+G.front)/2,D,0],[(G.wall+G.right)/2,G.end+.02,W,-Math.PI/2],[G.right-.02,(G.end+G.front)/2,D,Math.PI],[(G.wall+G.right)/2,G.front-.02,W,Math.PI/2]]){
+  const s=new Kit();s.g(box(.02,.17,len),0xf3f6ff,[.01,4.95,0],2.3).r(box(.11,.035,len),0x1d2023,[.055,4.85,0]).g(box(.02,.022,len),YELLOW,[0,.135,0],1.6);parts.place(s,x,z,0,turn);}
  // Wall lights over the pools painted on the walls.
  for(const z of lights){const s=new Kit();s.r(box(.3,.1,.5),0x1d2023,[.15,4.78,0]).g(box(.004,.06,.4),0xfff3dd,[.302,4.76,0],4);parts.place(s,G.wall,z);}
  // Long wall: chests and tool board, cans, rack and tyres, the logo over the cups, the data desk and its screens, extinguisher and reel.
@@ -383,8 +535,16 @@ export function createGarage(){
  const logo=new THREE.Mesh(new THREE.PlaneGeometry(L.logo.w,L.logo.h).rotateY(Math.PI/2),new THREE.MeshBasicMaterial({name:'Logo_garagem',map:logoMap,transparent:true,depthWrite:false,color:new THREE.Color(1.3,1.3,1.3)}));logo.position.set(G.wall+.07,L.logo.y,L.logo.z);logo.renderOrder=1;root.add(logo);
  const {desk:deskKit,chair}=desk(L.desk.len);parts.place(deskKit,G.wall,L.desk.z);parts.place(chair,G.wall+1.45,L.desk.z+.45,0,.5);
  parts.place(safety(),G.wall,-12.6);
+ parts.place(coveredCar(),L.cover.x,L.cover.z,0,L.cover.turn);parts.place(spareHood(),G.wall+.4,L.hood.z,0,.04);
+ // The banners on their rods under the cove and the tin signs: one mesh on the art canvas, lit like the walls.
+ const art=[],signIds=L.signs.map(s=>s[3]),hang=new Kit();
+ L.banners.forEach(([z,w,h,i])=>{const top=4.74-(i%2)*.06;art.push(artPiece([i*ART.banner[0],0,...ART.banner],w,h,.14).translate(G.wall+.035,top,z));hang.m(across(cyl(.012,w+.12,8)),0x8d949a,[.05,top+.015,z]).m(box(.04,.04,.02),0x5b6267,[.02,top+.015,z+w/2+.04]).m(box(.04,.04,.02),0x5b6267,[.02,top+.015,z-w/2-.04]);});
+ L.signs.forEach(([[x,y,z],w,tilt],i)=>art.push(artPiece([i*ART.sign[0],ART.h-ART.sign[1],...ART.sign],w,w/2).translate(0,w/4,0).rotateX(tilt).translate(x+.012,y,z)));
+ parts.place(hang,G.wall,0);
+ const artMesh=new THREE.Mesh(mergeGeometries(art,false),new THREE.MeshStandardMaterial({name:'Arte_garagem',map:garageArt(signIds),roughness:.72,metalness:0}));artMesh.name='Garagem_arte';root.add(artMesh);
  parts.place(engineStand(),L.engine.x,L.engine.z,0,L.engine.turn);parts.place(jack(),L.jack.x,L.jack.z,0,L.jack.turn);
- parts.place(ceiling(),0,0);parts.place(endWall(),0,G.end);
+ const roof=ceiling();parts.place(roof.bars,0,0);parts.place(softbox(),0,0);parts.place(cameraSide(),0,0);parts.place(endWall(),0,G.end);
+ parts.add(M.hex,mergeGeometries(roof.hex.parts.glow,false));
  // Screens: two big ones on the wall (live telemetry, the field) and the desk's three monitors.
  const screens=new Screens(),screenMaterial=map=>new THREE.MeshBasicMaterial({name:'Tela_garagem',map,color:new THREE.Color(1.15,1.15,1.15)});
  L.screens.forEach((z,i)=>{const s=new Kit();s.r(box(.06,1.1,1.9),0x0b0c0d,[.06,0,0]).r(box(.14,.3,.1),0x2a2d30,[.04,0,0]);parts.place(s,G.wall,z,2.65);
@@ -395,11 +555,11 @@ export function createGarage(){
  // Daylight in the roller doors: the end wall's and, behind the camera, one in the front wall (seen in the paint).
  const day=new THREE.MeshBasicMaterial({name:'Luz_do_dia',map:daylightMap(),color:new THREE.Color(2.2,2.2,2.2)});
  const dw=L.door.x1-L.door.x0;plane(day,dw,L.door.open,[(L.door.x0+L.door.x1)/2,L.door.open/2,G.end+.01],0);plane(day,7,3.4,[4,1.7,G.front-.01],Math.PI);
- // Tyres: the rack's (standing, tread out) and two stacks on the floor, each a little turned, in one mesh; the tread
- // takes the sidewall canvas's plain dark corner.
+ // Tyres: the rack's (standing, tread out) and two stacks on the floor, each a little turned, in one mesh; the caps
+ // take the canvas's left half, the tread its right.
  const tyreSlots=[];for(const [y,count] of [[.12,7],[.84,7],[1.56,5]])for(let i=0;i<count;i++)tyreSlots.push({stand:true,x:G.wall+.31,y:y+.33,z:L.rack.z-L.rack.w/2+.18+i*.28});
  for(const [x,z,count] of L.stacks)for(let i=0;i<count;i++)tyreSlots.push({stand:false,x,y:.12+i*.245,z});
- const tyre=new THREE.CylinderGeometry(.31,.31,.24,28),tread=tyre.attributes.uv;for(let i=0;i<29*2;i++)tread.setXY(i,.03,.03);
+ const tyre=new THREE.CylinderGeometry(.31,.31,.24,28),tread=tyre.attributes.uv;for(let i=0;i<tread.count;i++)i<29*2?tread.setX(i,.5+.5*tread.getX(i)):tread.setX(i,.5*tread.getX(i));
  const r=rng(23),m4=new THREE.Matrix4(),q=new THREE.Quaternion(),e=new THREE.Euler(),one=new THREE.Vector3(1,1,1),p=new THREE.Vector3();
  const tyres=new THREE.Mesh(mergeGeometries(tyreSlots.map(s=>{if(s.stand)e.set(Math.PI/2,r()*6.28,(r()-.5)*.06,'XYZ');else e.set(0,r()*6.28,0);
   return tyre.clone().applyMatrix4(m4.compose(p.set(s.x+(s.stand?(r()-.5)*.04:(r()-.5)*.05),s.y,s.z),q.setFromEuler(e),one));}),false),new THREE.MeshStandardMaterial({name:'Pneus_garagem',map:sidewallMap(),roughness:.74}));
@@ -416,16 +576,22 @@ export function createGarage(){
  const garage={root,deck,screens,floor:floorMesh,
   show:(entry,model)=>{screens.show(entry,model);showBox(entry.number);},
   update:dt=>screens.update(dt),
-  // The floor lets the upside-down room through (on), or only the room's map shows in it.
-  mirror(on){floor.uniforms.mirror.value=on?1:0;floor.material.envMapIntensity=on?.3:.9;},
+  // The floor lets the upside-down room through (on), or only the room's map shows in it (at about half: the showroom
+  // light above made it a flat grey sheet at .9).
+  mirror(on){floor.uniforms.mirror.value=on?1:0;floor.material.envMapIntensity=on?.3:.5;},
   // The room as the paint sees it from the car's middle: what glows (the ceiling's hexagons, the strips, the doors'
   // daylight, the logo, the screens) in a dark box of the walls' tone. Only unlit materials: baking the whole garage
   // built a lit program of every material once more, for a picture nobody sees whole (seconds on the first visit).
+  // The hexagons go in at a fifth (the showroom light and the walls' lights make the streaks), and the floor round the
+  // turntable as the light above leaves it, a soft grey pool the sills and bumpers pick up.
   bake(renderer){
    const room=new THREE.Scene(),walls=new THREE.Mesh(paint(new THREE.BoxGeometry(W,H,D).scale(-1,1,1).translate((G.wall+G.right)/2,H/2,(G.end+G.front)/2),0x2a2f33),M.glow);
-   room.background=new THREE.Color(0x0c0e10);room.add(walls);
-   root.traverse(o=>{if(!o.isMesh||!o.material?.isMeshBasicMaterial)return;const copy=new THREE.Mesh(o.geometry,o.material);copy.matrixAutoUpdate=false;copy.matrix.copy(o.matrixWorld);copy.renderOrder=o.renderOrder;room.add(copy);});
-   const pmrem=new THREE.PMREMGenerator(renderer),env=pmrem.fromScene(room,.02,.1,80,{position:new THREE.Vector3(0,1.1,0)}).texture;pmrem.dispose();walls.geometry.dispose();return env;
+   const dim=new THREE.MeshBasicMaterial({vertexColors:true,color:new THREE.Color(.2,.2,.2)}),pool=new THREE.MeshBasicMaterial({map:poolMap()});
+   const floorPool=new THREE.Mesh(new THREE.CircleGeometry(7.5,48).rotateX(-Math.PI/2).translate(0,.01,0),pool);
+   room.background=new THREE.Color(0x0c0e10);room.add(walls,floorPool);
+   root.traverse(o=>{if(!o.isMesh||!o.material?.isMeshBasicMaterial)return;const copy=new THREE.Mesh(o.geometry,o.material===M.hex?dim:o.material);copy.matrixAutoUpdate=false;copy.matrix.copy(o.matrixWorld);copy.renderOrder=o.renderOrder;room.add(copy);});
+   const pmrem=new THREE.PMREMGenerator(renderer),env=pmrem.fromScene(room,.03,.1,80,{position:new THREE.Vector3(0,1.1,0)}).texture;pmrem.dispose();
+   walls.geometry.dispose();floorPool.geometry.dispose();pool.map.dispose();pool.dispose();dim.dispose();return env;
   },
   info:()=>({meshes:root.children.length,tyres:tyreSlots.length,mirror:floor.uniforms.mirror.value>0,screen:screens.car?.label??null,box:boxNumber})
  };
@@ -434,6 +600,6 @@ export function createGarage(){
 // The garage's lights: sky and floor bounce, a key from above the camera's side, a cool rim from the wall behind.
 export function garageLights(scene){
  const key=new THREE.DirectionalLight(0xfff2e0,1.55);key.position.set(3,10,5);
- const rim=new THREE.DirectionalLight(0xc4d8ff,.75);rim.position.set(-7,4.5,-4);
+ const rim=new THREE.DirectionalLight(0xc4d8ff,1.1);rim.position.set(-7,4.5,-4);
  scene.add(key,rim,new THREE.HemisphereLight(0xdfe8ff,0x2b2723,.55));
 }

@@ -73,7 +73,7 @@ for(const [name,P] of Object.entries(TYRE_PROFILES)){
 }
 // Each model's sidewall reads the tyre its real car races on.
 assert.deepEqual(Object.keys(TYRE_MARKINGS).sort(),Object.keys(TYRE_PROFILES).sort());
-assert.equal(TYRE_MARKINGS.opala,'DUNLOP DIREZZA');assert.equal(TYRE_MARKINGS.fusca,'GOODYEAR 185/70 R14');
+assert.equal(TYRE_MARKINGS.opala,'CORRERIA & DUREZA');assert.equal(TYRE_MARKINGS.fusca,'GOODYEAR 185/70 R14');
 // A triangle across u's seam gets copies of its low corners at u+1; the others keep their vertices.
 const seam=splitSeam([0,1,2,2,3,4],[.98,.02,.97,.5,.55]);
 assert.deepEqual(seam.index,[0,5,2,2,3,4]);assert.deepEqual(seam.copies,[1]);

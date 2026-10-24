@@ -60,15 +60,14 @@ with sync_playwright() as p:
     page.evaluate("()=>{for(let i=0;i<1100&&fixtureMode.state.phase==='inspection';i++)fixtureMode.step({},1/120);}")
     types = page.evaluate("fixtureMode.state.scene?.cards.map(c=>c.type).join()")
     report['cards'] = types
-    for _ in range(3):
-        page.click('[data-action="scene:next"]')
     frame()
-    card = page.evaluate("()=>{const c=fixtureMode.state.sceneCard();return {type:c?.type,key:fixtureMode.state.scene.cards[2].key,charged:c?.charged,fund:c?.fund,wallet:fixtureMode.state.profile.fund}}")
+    # The report's cards on one screen (user, 2026-10-24): the bill's part after the three moods.
+    card = page.evaluate("()=>{const c=fixtureMode.state.scene.cards[3];return {type:c?.type,key:fixtureMode.state.scene.cards[2].key,charged:c?.charged,fund:c?.fund,wallet:fixtureMode.state.profile.fund}}")
     text = page.inner_text('body')
     report['repairCard'] = card
     check('repair_card_after_supporters', types.startswith('morale,morale,morale,repair') and card['type'] == 'repair' and card['key'] == 'torcida', [types, card])
-    check('repair_card_words', 'Custos de reparo do carro' in text and 'Sua equipe cobrou R$ 250,00 para reparar os danos causados ao carro na última corrida.' in text
-          and f"Valor disponível na carteira: R$ {card['fund']:.2f}".replace('.', ',') in text and card['fund'] == card['wallet'], [card, text[:400]])
+    check('repair_card_words', 'Reparo do carro' in text and 'R$ 250,00' in text and 'Danos de 25%' in text
+          and f"Na carteira: R$ {card['fund']:.2f}".replace('.', ',') in text and card['fund'] == card['wallet'], [card, text[:400]])
     page.screenshot(path=str(SHOTS / 'reparo_custos.png'))
     page.evaluate('window.interlagosHistoria.skipCards()')
     page.close()

@@ -553,4 +553,6 @@ html:not(.menus-paddock) .settings-sources{display:none}
  .menus-paddock .settings-footer{padding:8px 18px;gap:10px}
  .menus-paddock #settings :is(#settingsBack,#settingsResume){font-size:18px}
 }
+/* The narrowest phones (667 px): Modo História's start, at the screen's right, leaves Início beside it uncovered. */
+@media(max-height:520px) and (max-width:720px){.menus-paddock #tracks[data-mode=historia] #championshipStart{font-size:17px;max-width:calc(100% - 470px)}}
 @media(prefers-reduced-motion:reduce){.menus-paddock :is(#menu .menu-modes button,.car-thumbs button,#carsNext,#singleRace,#soloRace,#duelRace,#championshipStart){transition:none}}

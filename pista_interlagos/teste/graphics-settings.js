@@ -62,7 +62,7 @@ export const GRAPHICS_OPTIONS=Object.freeze({
  scenery:{group:'mundo',label:'Cenário e vegetação',hint:'Árvores, casas e capim com vento nas margens. Vale na próxima largada.',next:true,choices:[['basico','Básico'],['leve','Leve'],['completo','Completo'],['denso','Denso']]},
  viewDistance:{group:'mundo',label:'Distância de visão',hint:'Até onde o horizonte aparece antes de sumir na neblina.',choices:[['curta','Curta'],['media','Média'],['longa','Longa'],['maxima','Máxima']]},
  water:{group:'mundo',label:'Água dos lagos',hint:'Realista reflete árvores, casas e céu e ondula com o vento: desenha a cena mais uma vez.',choices:[['simples','Simples'],['realista','Realista']]},
- mirrors:{group:'mundo',label:'Retrovisores',hint:'Resolução do espelho na câmera interna: desenha a pista para trás a cada quadro.',choices:[['off','Desligados'],['baixa','Baixa'],['media','Média'],['alta','Alta']]}
+ mirrors:{group:'mundo',label:'Retrovisores',hint:'Resolução do retrovisor: o espelho da câmera interna e o retrovisor no alto da tela nas câmeras 1 a 4. Desenha a pista para trás a cada quadro (nos níveis mais leves, a cada 2 ou 3 quadros).',choices:[['off','Desligados'],['baixa','Baixa'],['media','Média'],['alta','Alta']]}
 });
 export const GRAPHICS_GROUPS=Object.freeze([['imagem','Imagem'],['luz','Luz e efeitos'],['mundo','Mundo']]);
 

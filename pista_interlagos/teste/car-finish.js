@@ -68,6 +68,11 @@ const FAR_COAT=.24;
 const coatFor=(m,samples)=>m.name==='Rival_distante'?Math.max(FAR_COAT,coatRoughnessFor(state.profile,samples)):coatRoughnessFor(state.profile,samples);
 
 const state={profile:FINISH_PROFILES.alto,name:'alto',samples:4,env:null,owner:null,sky:false};
+// The rims in the car screen's garage (owner 'estudio'): the car turns slowly up close there, and a near-mirror rim
+// (.06 on Alto) swept the garage's thin light tubes across its barrel and spokes as lines a pixel wide that came and
+// went from frame to frame (user, 10-24: "o brilho interno na roda fica piscando"); satin there, the race's own value back
+// with the race's map.
+const RIMS=/^(Aros_polidos|Aluminio_rodas)$/,STUDIO_RIM=.3;
 // The tail lamps' reflector rings as a normal map (u across the lamp, v up; brake-lights.js lampUVs): a domed
 // bulb boss in the middle, Fresnel steps round it, a plain rim. Built once, on first use (no canvas: Node tests).
 export function lensRingHeight(u,v){
@@ -226,7 +231,7 @@ function apply(m){
   const flake=p.flake>0&&m.isMeshPhysicalMaterial;if(flake!==(m.defines?.CAR_FLAKE!==undefined)){if(flake)m.defines.CAR_FLAKE='';else delete m.defines.CAR_FLAKE;m.needsUpdate=true;}
  }else if(kind==='chrome'){
   // The GLB's polished trim (Aros_polidos, .14) takes the profile's value, rougher metals (the rims) a bit more.
-  m.metalness=1;m.roughness=Math.max(.03,p.chrome*Math.sqrt(base.roughness/.14));m.envMapIntensity=p.env;
+  m.metalness=1;m.roughness=Math.max(state.owner==='estudio'&&RIMS.test(m.name)?STUDIO_RIM:.03,p.chrome*Math.sqrt(base.roughness/.14));m.envMapIntensity=p.env;
   // Polished metal a shade brighter than the GLB's grey (Aros_polidos .68).
   m.color.fromArray(base.color).multiplyScalar(base.color[1]<.75?1.2:1);
  }else if(kind==='glass'){
@@ -240,7 +245,11 @@ function apply(m){
   if(m.isMeshPhysicalMaterial){m.clearcoat=1;m.clearcoatRoughness=Math.max(.08,coatRoughnessFor(p,state.samples));m.specularIntensity=1;}
   m.color.setRGB(...LENS_RED);m.roughness=.3;m.metalness=.2;m.envMapIntensity=p.env;m.emissive?.setRGB(.034,.0015,.001);m.emissiveIntensity=1;
   if(m.normalMap!==lensRings()){m.normalMap=lensRings();m.normalScale.set(.8,.8);m.needsUpdate=true;}
- }else if(kind==='tyre')m.envMapIntensity=p.tyreEnv;
+ }else if(kind==='tyre'){m.envMapIntensity=p.tyreEnv;
+  // The tyre's bead and the rim's barrel are the same surface in the GLB (both double sided): seen inside the barrel
+  // up close they fought pixel by pixel, a glittering band that changed as the car turned (the car screen, 10-24). A
+  // depth bias (GL state, no other program) lets the rim win there.
+  m.polygonOffset=true;m.polygonOffsetFactor=1;m.polygonOffsetUnits=2;}
  else if(kind==='blur')m.envMapIntensity=p.env;
  else{m.envMapIntensity=TRIM_ENV;if(MATTE.test(m.name)){m.roughness=.9;if(m.specularIntensity!==undefined)m.specularIntensity=.35;}if(SHELL.test(m.name))m.color.fromArray(base.color).multiplyScalar(SHELL_GREY/Math.max(base.color[1],1e-3));}
 }
@@ -303,7 +312,9 @@ export function setCarSamples(samples){
 export function setCarEnvironment(texture,owner=null,sky=false){
  if(state.sky!==!!sky){state.sky=!!sky;coatValues();}
  // Only the race's probe has a centre to correct the road's reflection from (car-reflections.js sets it after this).
- state.owner=owner;if(owner!=='corrida'||texture!==state.env)setCarProbe(null);if(texture===state.env)return false;
+ const studio=(owner==='estudio')!==(state.owner==='estudio');
+ state.owner=owner;if(studio)for(const m of materials())if(m.userData.carFinish==='chrome')apply(m);
+ if(owner!=='corrida'||texture!==state.env)setCarProbe(null);if(texture===state.env)return false;
  const size=t=>t?.image?.height??0,programs=size(texture)!==size(state.env);
  state.env=texture;for(const m of materials())m.envMap=texture;return programs;
 }

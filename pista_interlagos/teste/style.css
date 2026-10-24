@@ -39,6 +39,8 @@ body:not(.touch-device) #cameraTools{left:34px;right:auto;max-width:calc(100vw -
 @keyframes lapBanner{0%{opacity:0;transform:translate(-50%,-8px)}6%,88%{opacity:1;transform:translate(-50%,0)}100%{opacity:0;transform:translate(-50%,-4px)}}
 .immersive-stage #lapBanner{display:none}
 .touch-device #lapBanner{top:max(10px,env(safe-area-inset-top));gap:9px}
+/* Under the on-screen rear-view mirror of the outside views (main.js HUD_MIRROR: 10 px from the top, 22vw wide, 6:1). */
+body.hud-mirror #lapBanner{top:calc(21px + clamp(180px,22vw,380px)/6)}
 .touch-device #lapBannerTime{font-size:21px}
 .touch-device #lapBannerDelta{font-size:16px}
 .touch-device #lapBannerNote{font-size:8px}

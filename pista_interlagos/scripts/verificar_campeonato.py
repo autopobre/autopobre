@@ -171,9 +171,15 @@ with sync_playwright() as p:
     page.evaluate("fixture.action('box')")
     wait_js(page, "fixture.state.phase==='disqualified'")
     wait_js(page, f"(()=>{{const r=JSON.parse(localStorage.getItem('{STORY_KEY}')).results[0].rows.find(r=>r.player);return r.dsq&&r.points===0}})()")
+    page.click('#dqContinue')  # the disqualified screen waits for the player (2026-10-24)
     wait_js(page, "fixture.state.phase==='complete'&&fixture.state.scene?.kind==='report'", timeout=20000)
     page.evaluate('window.interlagosHistoria.skipCards()')
     page.click('[data-action="again"]')
+    # The season's screen waits for the player (2026-10-24: no round loads on its own), its next round offered.
+    wait_js(page, "!document.querySelector('#tracks').classList.contains('hidden')&&document.querySelector('#tracks').dataset.mode==='historia'")
+    page.wait_for_timeout(1500)
+    assert not page.evaluate('interlagos.ready&&!interlagos.state.paused'), 'the next round waits for the player'
+    page.click('#championshipStart')
     story_round(page, STORY_ROUNDS[1])
     assert f'ETAPA 2/{len(STORY_ROUNDS)}' in page.inner_text('header .session') or page.evaluate('fixture.active')
     # Round 2 towed in: no points, the player last.

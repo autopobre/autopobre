@@ -315,6 +315,14 @@ export function createBox99({pit,c,lerp,at,root,obstacles,textures,people,crowd,
  // First waypoint: beside the parked car, clear of its footprint, before the garage door.
  const route=[[0,Math.min(F-.07,Math.max(spot.d+1.45,F-.6))],[-3.2,F+2.6],[-5.6,F+5],[-7.3,F+5.2],[-11.2,F+7.4],[-13.2,F+8.1]].map(([x,d])=>world(x,d));
  const spotWorld=at(lerp(S),spot.d),[spotX,spotY]=toData(0,spot.d);
+ // Where the supporters beyond the paddock's six wait when the supporters' morale brings them (immersive-visuals.js
+ // placeGuests; user, 10-24: at the café and inside the Box 99, never in a car): two by the café's tables, two at the back
+ // of the garage beside the car, each at the first free spot of its list, with the way in (the café's route to its door,
+ // or the garage's door and the car's side), every waypoint on free floor.
+ const free=([x,d])=>walkable(x,d),boxWay=[[0,Math.min(F-.07,Math.max(spot.d+1.45,F-.6))],[-1.9,F+2.4],[-2.4,F+6.2]];
+ const guests=[[[-12.2,F+3.4],[-12.8,F+5.6],[-10.6,F+3.2]],[[-15.9,F+5.8],[-15.6,F+2.6],[-13,F+2.4]],[[-2.2,F+10.6],[-2.2,F+12.8],[-1.4,F+14.2]],[[1,F+13],[.4,F+11.4],[1.2,F+14.6]]].map((list,k)=>{
+  const at=list.find(free),way=k<2?route.slice(0,4):boxWay.every((p,i)=>i===0||free(p))?boxWay.map(([x,d])=>world(x,d)):null;
+  return at&&way?{at:world(...at),path:way.map(p=>p.clone())}:null;});
  const layout={
   pit,anchor:{x:spotWorld.x,y:spotWorld.y+.055,z:spotWorld.z,heading:h0},label:'INTERLAGOS · BOX 99',title:'Cuida do Opala!',name:'Box 99 de Interlagos',...labels,scenery:true,
   // lap, race: trackRecords rows (lap-records.js); mode: the story's ('immersive') or the race's.
@@ -322,7 +330,7 @@ export function createBox99({pit,c,lerp,at,root,obstacles,textures,people,crowd,
   showRecords:({title,mode,lap,race,laps,other})=>{layout.recordsShown={title,mode,lap,race,other};const kind=m=>m==='immersive'?'MODO HISTÓRIA':'MODO CORRIDA';
    boards[0].show({title,subtitle:`MELHOR VOLTA · ${kind(mode)}`,rows:lap});boards[1].show({title,subtitle:`CORRIDA DE ${laps} VOLTA${laps>1?'S':''} · ${kind(mode)}`,rows:race});boards[2].show({title,subtitle:`MELHOR VOLTA · ${kind(other.mode)}`,rows:other.lap});},
   inBox:surface=>inServiceSpot(spot,surface),
-  crew,cafeSeat:route.at(-1).clone(),cafeSign:world(-13.2,F+9.6,2.95),route,heroHeading:h0+Math.PI/2,pitView:[5.6,-6.4,2.9],
+  crew,cafeSeat:route.at(-1).clone(),cafeSign:world(-13.2,F+9.6,2.95),route,guests,heroHeading:h0+Math.PI/2,pitView:[5.6,-6.4,2.9],
   makeHero:()=>people.person(OUTFITS.driver),
   // elevation: the height of the pilot's feet (the team stand is climbed step by step).
   walk:(pos,elevation=pos.y)=>{

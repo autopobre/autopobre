@@ -81,9 +81,10 @@ def desktop(browser):
     check('away_entry', page.evaluate('fixtureMode.state.entry') == 150 and 'fora de Interlagos' in text)
     shot(page, '05_paddock_carteira')
     # The team's desk: the kitty and the wallet against the away entry.
-    page.evaluate("()=>{const s=fixtureMode.state;s.cash=60;s.profile.fund=200;fixtureMode.prepFilm=false;fixtureMode.action('desk');}"); frames(page)
+    # One wallet (2026-10-24): the gifts are in it already, no kitty apart.
+    page.evaluate("()=>{const s=fixtureMode.state;s.cash=0;s.profile.fund=260;fixtureMode.prepFilm=false;fixtureMode.action('desk');}"); frames(page)
     text = panel(page)
-    check('desk_shows_wallet', 'Na carteira' in text and 'R$ 200,00' in text and 'Inscrição · fora de Interlagos' in text and 'R$ 150,00' in text)
+    check('desk_shows_wallet', 'Na carteira' in text and 'R$ 260,00' in text and 'Na vaquinha' not in text and 'Inscrição · fora de Interlagos' in text and 'R$ 150,00' in text)
     shot(page, '06_inscricao_carteira')
     page.evaluate("fixtureMode.action('buy')")
     info = page.evaluate("({phase:fixtureMode.state.phase,cash:fixtureMode.state.cash,fund:fixtureMode.state.profile.fund,litres:fixtureMode.state.fuel})")
@@ -98,20 +99,12 @@ def desktop(browser):
     page.evaluate("()=>{fixtureMode.action('afterPodium');fixtureMode.action('inspect');fixtureMode.state.inspectionStep(8);fixtureMode.sync();fixtureMode.ui();}")
     wait_js(page, "fixtureMode.state.phase==='complete'&&fixtureMode.state.scene?.kind==='report'")
     text = panel(page)
-    check('first_card_wife', card(page) == 'morale' and 'QUADRO 1 DE 3' in text and 'admirada' in text and '+5%' in text)
-    shot(page, '07_quadro_esposa')
-    page.keyboard.press('Enter'); frames(page)
-    check('second_card_team', 'QUADRO 2 DE 3' in panel(page) and '+15%' in panel(page))
-    shot(page, '08_quadro_equipe')
-    page.click('[data-action="scene:next"]'); frames(page)
-    check('third_card_supporters', 'QUADRO 3 DE 3' in panel(page) and '+10%' in panel(page))
-    page.keyboard.press('Space'); frames(page)
-    # Central #14: the team's repair bill comes after the supporters' card.
-    check('repair_bill_card', card(page) == 'repair' and 'Custos de reparo do carro' in panel(page))
-    page.keyboard.press('Space'); frames(page)
+    # One screen for the whole report (user, 2026-10-24): the three moods (wife, team, supporters), the repair bill
+    # (Central #14) and the challenge's progress, one Continuar for all.
     fund = page.evaluate('fixtureMode.state.profile.fund')
-    check('challenge_progress', card(page) == 'challenge' and 'DESAFIO EM ANDAMENTO' in panel(page) and 'faltam 2 corridas' in panel(page) and f'{int(fund // 10)}%' in panel(page))
-    shot(page, '09_desafio_andamento')
+    check('report_on_one_screen', card(page) == 'morale' and 'Como foi a corrida' in text and 'admirada' in text and '+5%' in text and '+15%' in text and '+10%' in text
+          and 'Reparo do carro' in text and 'faltam 2 corridas' in text and f'{int(fund // 10)}%' in text and page.locator('#immersivePanel .report-part').count() == 5)
+    shot(page, '07_resumo_da_corrida')
     page.keyboard.press('Enter'); frames(page)
     text = panel(page)
     check('summary_after_report', page.evaluate('!fixtureMode.state.scene') and 'Carteira' in text and 'Próxima etapa' in text and 'Prêmio: R$ 500,00' in text)
@@ -129,9 +122,10 @@ def desktop(browser):
     page.keyboard.press('Enter'); frames(page)
     check('kleber_gets_overalls_back', card(page) == 'line' and 'Muito obrigado pelo macacão' in panel(page))
     shot(page, '12_devolve_macacao')
-    for _ in range(3): page.keyboard.press('Enter')
+    # The challenge done and the next one share the report's screen (2026-10-24).
+    for _ in range(2): page.keyboard.press('Enter')
     frames(page)
-    check('next_challenge_gloves', card(page) == 'challenge' and 'NOVO DESAFIO' in panel(page) and 'LUVAS' in panel(page))
+    check('next_challenge_gloves', card(page) in ('done', 'challenge') and 'Novo desafio' in panel(page) and 'LUVAS' in panel(page).upper())
     check('overalls_owned', page.evaluate("fixtureMode.state.profile.career.gear.join()") == 'macacao')
     shot(page, '13_desafio_luvas')
     page.keyboard.press('Enter')

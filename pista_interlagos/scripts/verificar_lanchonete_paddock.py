@@ -51,20 +51,20 @@ def run(page, circuit):
     wait_js(page, 'fixtureMode.state.cafe', timeout=60000)
     check('menu_opens_at_counter' + tag, info()['nearCafe'] and page.is_visible('#immersivePanel.social-dialogue') and 'Cardápio da Tia' in page.inner_text('#immersivePanel'))
     text = page.inner_text('#immersivePanel')
-    check('menu_lists_snacks_and_prices' + tag, all(s in text for s in ['Café · R$ 4,00', 'Pão de queijo · R$ 6,00', 'Doce de leite · R$ 5,00', 'Na vaquinha: R$ 0,00']))
+    check('menu_lists_snacks_and_prices' + tag, all(s in text for s in ['Café · R$ 4,00', 'Pão de queijo · R$ 6,00', 'Doce de leite · R$ 5,00', 'Na carteira: R$ ']) and 'vaquinha' not in text)
     check('empty_kitty_buys_nothing' + tag, all(page.is_disabled(f'[data-action="snack:{i}"]') for i in ['cafe', 'pao', 'doce']))
     page.keyboard.press('Digit1'); check('key_without_money_buys_nothing' + tag, info()['snacks'] == [])
     shot('cardapio')
     # E goes back to the paddock; with the kitty funded, E at the counter opens the menu again.
     page.keyboard.press('KeyE'); check('e_closes_menu' + tag, not page.evaluate('fixtureMode.state.cafe'))
     page.evaluate('''async()=>{const {FANS,JOKES}=await import('./immersive-state.js');const s=fixtureMode.state;for(let i=0;i<FANS.length;i++){s.fan=null;s.talk(i);s.joke(JOKES.findIndex(j=>j.topic===FANS[i].taste));}s.fan=null;s.touch();}''')
-    cash = info()['cash']
+    cash = info()['wallet']  # one wallet (2026-10-24): the gifts are in it
     page.keyboard.press('KeyE'); wait_js(page, 'fixtureMode.state.cafe')
     # 1, 2, 3 buy into the free hands: coffee and pão de queijo; the doce waits for a free hand.
     page.keyboard.press('Digit1'); page.keyboard.press('Digit2'); page.keyboard.press('Digit3')
     now = info()
     check('one_item_per_hand' + tag, now['snacks'] == [['cafe', 3], ['pao', 2]])
-    check('paid_from_kitty' + tag, abs(now['cash'] - (cash - 10)) < 1e-6)
+    check('paid_from_kitty' + tag, abs(now['wallet'] - (cash - 10)) < 1e-6)
     check('full_hands_buy_nothing_more' + tag, all(page.is_disabled(f'[data-action="snack:{i}"]') for i in ['cafe', 'pao', 'doce']) and 'na mão: Café (3 goles) + Pão de queijo (2 mordidas)' in page.inner_text('#immersivePanel'))
     frames(20); shot('compra')
     # E closes the menu, then E drinks: one sip, the cup at the mouth.

@@ -8,7 +8,8 @@ const checks={},check=(name,value)=>{checks[name]=!!value;assert(value,name);};
 const fresh=()=>{const s=new ImmersiveState({career:{version:1,intro:true}});s.start();return s;};
 const fund=s=>{for(let i=0;i<FANS.length;i++){s.talk(i);s.joke(JOKES.findIndex(j=>j.topic===FANS[i].taste));}};
 const s=fresh();check('optional_off_by_default',!new ImmersiveState().active);
-s.talk(0);s.joke(1);check('no_laugh_no_money',s.cash===0);s.joke(0);const cash=s.cash;s.joke(0);check('laugh_donates_once',cash>0&&s.cash===cash);
+// A gift goes straight into the wallet (one sum, user 2026-10-24); raised counts the race's gifts.
+s.talk(0);s.joke(1);check('no_laugh_no_money',s.profile.fund===0&&s.raised===0);s.joke(0);const cash=s.profile.fund;s.joke(0);check('laugh_donates_once',cash>0&&s.profile.fund===cash&&s.raised===cash&&s.cash===0);
 const desk=fresh();check('desk_opens_without_money',desk.openDesk()&&desk.desk&&desk.cash===0);desk.talk(0);check('desk_keeps_supporters_waiting',desk.fan===null);check('poor_kitty_stays_in_paddock',!desk.buy(2,false)&&desk.phase==='crowd'&&desk.desk);
 check('desk_closes_back_to_supporters',desk.closeDesk()&&!desk.desk&&desk.phase==='crowd');fund(desk);desk.openDesk();check('fuel_chosen_at_desk_goes_to_start',desk.buy(6,true)&&desk.phase==='starting'&&!desk.desk&&desk.fuel===6&&desk.film);
 // Leonardo Martins (#19) offers a coffee in the paddock: one conversation at a time, one answer.
@@ -22,12 +23,12 @@ const cafe=fresh();check('cafe_menu_opens',cafe.openCafe()&&cafe.cafe);cafe.talk
 check('cafe_menu_closes',cafe.closeCafe()&&!cafe.cafe&&cafe.openDesk()&&!cafe.openCafe());
 const wallet=fresh();wallet.cash=5;wallet.profile.fund=3;check('snack_paid_from_kitty_then_savings',wallet.pay(6)&&wallet.cash===0&&wallet.profile.fund===2);check('snack_never_beyond_money',!wallet.pay(4)&&wallet.profile.fund===2);
 // Once every supporter has given, the kitty keeps what the registration needs: snacks spend only the rest.
-const kept=fresh();fund(kept);const spare=kept.cash-COSTS.minimum;check('snack_keeps_registration_money',kept.spareCash()===spare&&!kept.pay(spare+1)&&kept.pay(spare)&&kept.cash===COSTS.minimum&&!kept.pay(4));
-const early=fresh();early.talk(0);early.joke(JOKES.findIndex(j=>j.topic===FANS[0].taste));check('snack_before_all_gifts_counts_the_rest',early.spareCash()===early.cash&&early.pay(4));
+const kept=fresh();fund(kept);const spare=kept.profile.fund-COSTS.minimum;check('snack_keeps_registration_money',kept.spareCash()===spare&&!kept.pay(spare+1)&&kept.pay(spare)&&kept.profile.fund===COSTS.minimum&&!kept.pay(4));
+const early=fresh();early.talk(0);early.joke(JOKES.findIndex(j=>j.topic===FANS[0].taste));check('snack_before_all_gifts_counts_the_rest',early.spareCash()===early.profile.fund&&early.pay(4));
 const hands=snackState(),paid=[],pay=price=>{paid.push(price);return true;},emit=()=>{};
 check('snacks_one_per_hand',buySnack(hands,'cafe',{pay,emit})&&giveSnack(hands,'pao')&&!buySnack(hands,'doce',{pay,emit})&&paid.join()==='4'&&hands.held.map(h=>h.side).join()==='1,-1');
 useSnack(hands);for(let i=0;i<200;i++)stepSnack(hands,1/120,emit);check('a_sip_at_a_time',hands.held[0].bites===2&&!hands.using&&!giveSnack(hands,'cafe'));
-fund(s);check('crowd_can_fund_entry_and_full_tank',s.cash>=208&&s.openDesk());check('fuel_and_protection_purchase',s.buy(12,true)&&s.fuel===12&&s.film);
+fund(s);check('crowd_can_fund_entry_and_full_tank',s.profile.fund>=208&&s.openDesk());check('fuel_and_protection_purchase',s.buy(12,true)&&s.fuel===12&&s.film);
 s.starter=true;for(let i=0;i<120;i++)s.startEngine({throttle:s.pressure<.45?1:0},1/120);check('no_ign_turns_but_never_fires',s.phase==='starting'&&s.crank>0);s.starter=false;s.startEngine({},1/120);
 check('ign_switch_flips',s.switchIgnition()&&s.ignOn);s.starter=true;for(let i=0;i<240&&s.phase==='starting';i++)s.startEngine({throttle:s.pressure<.45?1:0},1/120);check('controlled_start_works',s.phase==='grid');
 const flooded=fresh();fund(flooded);flooded.openDesk();flooded.buy(4,false);for(let i=0;i<240;i++)flooded.startEngine({throttle:1},1/120);flooded.starter=true;for(let i=0;i<120&&flooded.phase==='starting';i++)flooded.startEngine({throttle:1},1/120);check('flooded_start_calls_tow',flooded.phase==='broken'&&flooded.reason.includes('afogado'));

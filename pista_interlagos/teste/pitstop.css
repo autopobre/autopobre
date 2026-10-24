@@ -20,3 +20,5 @@ body.pit-open #mapcard{display:none!important}
 body.free-walking .touch-toolbar>:not(#touchMenu){display:none!important}
 @media(max-height:520px){#walkHud{top:8px;padding:6px 10px;width:min(360px,52vw)}#walkHint{font-size:9px}#walkHud button{padding:6px;margin-top:5px;font-size:10px}}
 body.free-walking :is(#orbitButton,#cockpitButton,#skinButton,#ghostButton,#lineButton,#watchButton){display:none!important}
+/* Under the on-screen rear-view mirror of the outside views 1 to 4 (main.js HUD_MIRROR: 10 px from the top, 22vw wide, 6:1). */
+body.hud-mirror #conditionHud{top:calc(24px + clamp(180px,22vw,380px)/6)}

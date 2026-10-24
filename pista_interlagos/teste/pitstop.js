@@ -27,10 +27,11 @@ export function buySnack(s,id,{pay,emit,touch=false}){
 }
 // One sip or bite: the hand goes to the mouth; the last one finishes the item.
 export function useSnack(s){if(s.menu||s.using||!s.held.length)return false;s.using={item:s.held[0],t:0,taken:false};return true;}
-export function stepSnack(s,dt,emit){
+// finished(id): called as an item's last bite or sip goes down (the story's energy, immersive-state.js eat).
+export function stepSnack(s,dt,emit,finished=null){
  s.snackTime=Math.max(0,s.snackTime-dt);const u=s.using;if(!u)return;u.t+=dt;const item=snackItem(u.item.id);
  if(!u.taken&&u.t>.55){u.taken=true;u.item.bites--;emit(item.id==='cafe'?'sip':'bite');s.feedback=u.item.bites>0?`Hum! Mais ${u.item.bites} ${item.portion}${u.item.bites>1?'s':''} de ${item.name.toLowerCase()}.`:item.id==='cafe'?'Cafezinho da Tia: coisa boa demais!':`${item.name} acabou. Delícia, uai!`;}
- if(u.t>1.25){s.using=null;if(u.item.bites<=0)s.held.splice(s.held.indexOf(u.item),1);}
+ if(u.t>1.25){s.using=null;if(u.item.bites<=0){s.held.splice(s.held.indexOf(u.item),1);finished?.(u.item.id);}}
 }
 // What is in hand, for the walking HUD: 'Café (3 goles) + Pão de queijo (2 mordidas)'.
 export const snackLabel=s=>s.held.map(h=>{const m=snackItem(h.id);return `${m.name} (${h.bites} ${m.portion}${h.bites>1?'s':''})`;}).join(' + ');

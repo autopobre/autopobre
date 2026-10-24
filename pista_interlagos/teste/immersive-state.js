@@ -1,6 +1,6 @@
 import {GRID_SIZE} from './race-roster.js';
 import {TANK,burnRate} from './fuel.js';
-import {loadCareer,newCareer,applyRace,reviseRace,moraleCards,repairBill,repairPerPoint,repairCards,divorce,divorceCards,pensionCards,challengeCards,answerExpense,releaseBlazer as blazerOut,buyOpala as opalaBought,overReason,lineCard,prizeFor,giftScale,expenseScale,SNAG_COST,INTRO_LINES,CHALLENGES,BLAZER_AFTER,BLAZER_GOAL} from './story-career.js';
+import {fanCount,eatEnergy,loadCareer,newCareer,applyRace,reviseRace,moraleCards,repairBill,repairPerPoint,repairCards,divorce,divorceCards,pensionCards,challengeCards,answerExpense,releaseBlazer as blazerOut,buyOpala as opalaBought,overReason,lineCard,prizeFor,giftScale,expenseScale,SNAG_COST,INTRO_LINES,CHALLENGES,BLAZER_AFTER,BLAZER_GOAL} from './story-career.js';
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export const FANS=[
  {name:'Dona Cida',taste:'família',hint:'Vim com os netos. Adoro uma história de família.',gift:42},
@@ -8,8 +8,16 @@ export const FANS=[
  {name:'Bia da arquibancada',taste:'corrida',hint:'Quero uma piada de piloto!',gift:46},
  {name:'Pai do churrasco',taste:'família',hint:'Se tem boleto e criança no meio, eu entendo.',gift:40},
  {name:'Nando da graxa',taste:'oficina',hint:'Meu habitat é debaixo de um capô.',gift:44},
- {name:'Léo do radinho',taste:'corrida',hint:'Não perco uma chegada de corrida.',gift:36}
+ {name:'Léo do radinho',taste:'corrida',hint:'Não perco uma chegada de corrida.',gift:36},
+ // More come as the supporters warm to the team (story-career.js fanCount: the first six at 50%, all ten at 100%), the
+ // last ones first to stay home when it cools.
+ {name:'Tia do isopor',taste:'família',hint:'Trouxe o isopor e a família inteira.',gift:39},
+ {name:'Vô Bené',taste:'oficina',hint:'Já desmontei muito Opala nessa vida.',gift:43},
+ {name:'Juninho do kart',taste:'corrida',hint:'Um dia ainda corro de Opala também!',gift:37},
+ {name:'Mari do megafone',taste:'corrida',hint:'Grito mais alto que o motor. Me faz rir!',gift:41}
 ];
+// The vaquinha's whole at 50% morale: what the first six supporters give (ImmersiveState gift).
+const VAQUINHA=FANS.slice(0,6).reduce((sum,f)=>sum+f.gift,0);
 export const JOKES=[
  {topic:'família',text:'Lá em casa eu sou o piloto. Minha esposa escolhe o destino, a filha escolhe a música e o boleto pisa no acelerador.'},
  {topic:'oficina',text:'Minha Blazer está há tanto tempo na oficina que o mecânico já colocou ela como dependente.'},
@@ -39,7 +47,7 @@ export class ImmersiveState {
  touch(){this.revision++;}
  start(){
   this.sounds=[];this.emitSound('crowdWelcome');
-  Object.assign(this,{active:true,phase:'crowd',cash:0,donors:[],fan:null,desk:false,leo:null,coffee:false,cafe:false,feedback:'',fuel:0,tankDetached:false,tankWear:0,health:1,glass:0,film:false,
+  Object.assign(this,{active:true,phase:'crowd',cash:0,raised:0,eaten:[],donors:[],fan:null,desk:false,leo:null,coffee:false,cafe:false,feedback:'',fuel:0,tankDetached:false,tankWear:0,health:1,glass:0,film:false,
    pressure:0,crank:0,flood:0,battery:1,ignitionGood:0,starter:false,ignOn:false,raceTime:0,position:GRID_SIZE,result:null,reason:'',towSnags:0,snagCost:0,repair:null,inspection:0,judging:false,inspected:false,paid:false,prize:0,savedCash:0,podiumPlace:null,disqualifiedTime:0,alert:'',alertTime:0,scene:null});
   // Before the paddock: the last race's report not seen yet, Kléber's welcome, or the end of the story; after a
   // divorce, the pension of this race (round: its championship round, ImmersiveMode.start) before the vaquinha.
@@ -49,7 +57,15 @@ export class ImmersiveState {
  disable(){this.sounds=[];this.active=false;this.phase='off';this.scene=null;this.touch();}
  // The least that opens the registration here, and what each supporter gives (by their morale).
  get minimum(){return this.entry+COSTS.leastLitres*COSTS.litre;}
- gift(index){return Math.round(FANS[index].gift*giftScale(this.profile.career.morale.torcida));}
+ // A supporter's gift: the vaquinha as a whole is what the first six gave, scaled by the supporters' morale (giftScale),
+ // whoever came: more supporters share it (each a little less), fewer split it (each a little more), so a cold crowd
+ // does not end the story sooner than before (checkMoney).
+ gift(index){const share=VAQUINHA/FANS.slice(0,Math.min(FANS.length,this.present)).reduce((sum,f)=>sum+f.gift,0);return Math.round(FANS[index].gift*share*giftScale(this.profile.career.morale.torcida));}
+ // The supporters in the paddock this race: the first of FANS, as many as the supporters' morale brings (fanCount).
+ get present(){return fanCount(this.profile.career.morale.torcida);}
+ here(index){return Number.isInteger(index)&&index>=0&&index<Math.min(FANS.length,this.present);}
+ // A snack finished at the Tia's café: the hero's energy goes up (story-career.js eatEnergy); gives what it rose by.
+ eat(id){const c=this.profile.career,before=c.energy;c.energy=eatEnergy(before,id,this.eaten??=[]);this.eaten.push(id);this.touch();return c.energy-before;}
  // How much harder a knock hits the car, by the team's morale (1 at 50%).
  damageScale(){return expenseScale(this.profile.career.morale.equipe);}
  // Career scenes (story-career.js): cards shown one at a time in the paddock before walking, or
@@ -72,11 +88,11 @@ export class ImmersiveState {
  }
  openScene(kind,cards){this.scene={kind,cards,at:0};this.fan=null;this.desk=false;this.leo=null;this.cafe=false;this.feedback='';this.touch();}
  sceneCard(){return this.scene?.cards[this.scene.at]??null;}
- // Avançar: the next card; the wife's request waits for an answer and the end for a new story.
- // skip: Kléber's lines straight to the challenge.
- advanceScene(skip=false){
+ // Avançar: the next card (steps: past a run of cards shown together, immersive-mode.js sceneGroup); the wife's request
+ // waits for an answer and the end for a new story. skip: Kléber's lines straight to the challenge.
+ advanceScene(skip=false,steps=1){
   const s=this.scene,card=this.sceneCard();if(!card||['expense','over'].includes(card.type))return false;
-  if(skip){const next=s.cards.findIndex((c,i)=>i>s.at&&c.type!=='line');s.at=next<0?s.cards.length:next;}else s.at++;
+  if(skip){const next=s.cards.findIndex((c,i)=>i>s.at&&c.type!=='line');s.at=next<0?s.cards.length:next;}else s.at=Math.min(s.cards.length,s.at+Math.max(1,steps));
   this.emitSound(s.cards[s.at]?.type==='line'?'talk':'paper');if(s.at>=s.cards.length)this.closeScene();this.touch();return true;
  }
  answerScene(pay){
@@ -87,13 +103,13 @@ export class ImmersiveState {
  }
  closeScene(){const s=this.scene;if(!s)return;if(s.kind==='intro')this.profile.career.intro=true;this.scene=null;if(this.phase==='crowd')this.checkMoney();this.touch();}
  // In the paddock: when not even every supporter's gift would pay the registration, the story ends.
- reachable(){return this.cash+this.profile.fund+FANS.reduce((sum,fan,i)=>sum+(this.donors.includes(i)?0:this.gift(i)),0);}
+ reachable(){return this.cash+this.profile.fund+FANS.reduce((sum,fan,i)=>sum+(this.donors.includes(i)||!this.here(i)?0:this.gift(i)),0);}
  checkMoney(){const c=this.profile.career;if(this.phase!=='crowd'||c.over||this.reachable()>=this.minimum)return false;c.over='dinheiro';this.openScene('over',[{type:'over',reason:'dinheiro'}]);return true;}
  // A new story after the end: an empty wallet, the bars at 50%, the overalls on loan again.
  restartCareer(){this.profile.fund=0;this.profile.released=false;this.profile.career=newCareer();this.scene=null;this.touch();}
  // After the disqualification's photo: the report (or the end) of the race, on the paddock's panel.
  afterDisqualified(){if(this.phase!=='disqualified')return false;const cards=this.careerCards();if(!cards||cards.kind==='intro')return false;this.phase='complete';this.openScene(cards.kind,cards.cards);return true;}
- talk(index){if(this.phase!=='crowd'||this.scene||this.desk||this.leo||this.cafe||!FANS[index])return;this.emitSound('talk');this.fan=index;this.feedback='';this.touch();}
+ talk(index){if(this.phase!=='crowd'||this.scene||this.desk||this.leo||this.cafe||!this.here(index))return;this.emitSound('talk');this.fan=index;this.feedback='';this.touch();}
  // The registration is made with the team at the computers of its stand on the pit wall:
  // they show the kitty against the costs, and the pilot goes back for more or to the track.
  openDesk(){if(this.phase!=='crowd'||this.scene||this.desk||this.leo||this.cafe)return false;this.emitSound('talk');this.desk=true;this.fan=null;this.feedback='';this.touch();return true;}
@@ -111,7 +127,7 @@ export class ImmersiveState {
  // What the kitty and the wallet may spend on a snack: before the registration, never what its
  // minimum still needs, counting the gifts of the supporters who have not given yet (each gives
  // once, whenever they laugh).
- spareCash(){const coming=FANS.reduce((sum,fan,i)=>sum+(this.donors.includes(i)?0:this.gift(i)),0),reserve=this.phase==='crowd'?Math.max(0,this.minimum-coming):0;return clamp(this.cash+this.profile.fund-reserve,0,this.cash+this.profile.fund);}
+ spareCash(){const coming=FANS.reduce((sum,fan,i)=>sum+(this.donors.includes(i)||!this.here(i)?0:this.gift(i)),0),reserve=this.phase==='crowd'?Math.max(0,this.minimum-coming):0;return clamp(this.cash+this.profile.fund-reserve,0,this.cash+this.profile.fund);}
  // A snack in the paddock is paid as at the pit stop: from the kitty first, then from the wallet.
  pay(cost){if(!Number.isFinite(cost)||cost<0||cost>this.spareCash()+.001)return false;const cash=Math.min(this.cash,cost);this.cash-=cash;this.profile.fund=Math.max(0,this.profile.fund-(cost-cash));this.touch();return true;}
  joke(index){
@@ -119,7 +135,8 @@ export class ImmersiveState {
   const fan=FANS[this.fan],laughed=fan.taste===JOKES[index].topic;
   this.emitSound(this.donors.includes(this.fan)?'noDonation':laughed?'donation':'badJoke');
   if(this.donors.includes(this.fan))this.feedback=`${fan.name}: “Essa eu já patrocinei! Vai falar com o pessoal ali.”`;
-  else if(laughed){const gift=this.gift(this.fan);this.cash+=gift;this.donors.push(this.fan);this.feedback=`${fan.name} caiu na risada! + R$ ${gift} para a vaquinha.`;}
+  // A gift goes straight into the wallet (user, 10-24: one sum, no kitty apart); raised counts this race's gifts.
+  else if(laughed){const gift=this.gift(this.fan);this.profile.fund+=gift;this.raised+=gift;this.donors.push(this.fan);this.feedback=`${fan.name} caiu na risada! + R$ ${gift} na carteira.`;}
   else this.feedback=`${fan.name}: “Essa não me pegou... tenta outra!”`;
   this.touch();return laughed;
  }
@@ -207,7 +224,7 @@ export class ImmersiveState {
  // challenges, the Opala 99 bought from the team (story-career.js).
  releaseBlazer(){if(this.phase!=='complete'||this.scene)return false;const cards=blazerOut(this.profile.career,this.profile);if(!cards)return false;this.emitSound('blazer');this.openScene('blazer',cards);return true;}
  buyOpala(){if(this.phase!=='complete'||this.scene)return false;const cards=opalaBought(this.profile.career,this.profile);if(!cards)return false;this.emitSound('podiumWin');this.openScene('opala',cards);return true;}
- info(){return {active:this.active,phase:this.phase,cash:this.cash,desk:!!this.desk,fuel:this.fuel,health:this.health,glass:this.glass,tankDetached:this.tankDetached,pressure:this.pressure,ignOn:!!this.ignOn,flood:this.flood,battery:this.battery,
+ info(){return {active:this.active,phase:this.phase,cash:this.cash,wallet:this.cash+this.profile.fund,energy:this.profile.career.energy,raised:this.raised??0,desk:!!this.desk,fuel:this.fuel,health:this.health,glass:this.glass,tankDetached:this.tankDetached,pressure:this.pressure,ignOn:!!this.ignOn,flood:this.flood,battery:this.battery,
   leo:this.leo,coffee:!!this.coffee,cafe:!!this.cafe,position:this.position,result:this.result,reason:this.reason,towGap:this.towGap,towSnags:this.towSnags,snagCost:this.snagCost,inspected:this.inspected,podiumPlace:this.podiumPlace,prize:this.prize,savedCash:this.savedCash,entry:this.entry,minimum:this.minimum,profile:{...this.profile},
   career:JSON.parse(JSON.stringify(this.profile.career)),scene:this.scene?{kind:this.scene.kind,at:this.scene.at,cards:this.scene.cards.map(c=>c.type),card:this.sceneCard()}:null};}
 }

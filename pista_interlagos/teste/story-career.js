@@ -36,6 +36,12 @@ export function repairBill(health,fund,perPoint=REPAIR_PER_POINT){
 // the same scale with the team; the supporters' gifts go the other way round.
 export const expenseScale=morale=>1.5-clamp(morale,0,100)/100;
 export const giftScale=morale=>.5+clamp(morale,0,100)/100;
+// The supporters' morale also fills the paddock and the stands (user, 10-24): the paddock's six supporters at 50% (as
+// before), down to two at 0% and up to ten at 100%; the stands 15% full at 50% (where a career starts), all at 100% and
+// a handful (2%) at 0%, growing faster as the morale climbs.
+export const PADDOCK_FANS=Object.freeze({least:2,most:10});
+export const fanCount=morale=>Math.round(PADDOCK_FANS.least+(PADDOCK_FANS.most-PADDOCK_FANS.least)*clamp(morale,0,100)/100);
+export const standsFill=morale=>{const m=clamp(morale,0,100);return m>=100?1:.15*Math.pow(1/.15,(m-50)/50);};
 // The morale cards after a race, by outcome (outcomeOf), in the first five races and from the
 // sixth on: [wife, team, supporters], each a text and a change in points of morale.
 export const EARLY_RACES=5;
@@ -186,7 +192,14 @@ export const DIVORCE_LINES=Object.freeze([
 export const divorceCards=(career,wallet)=>career.report?.divorce?[...DIVORCE_LINES.map((line,i)=>({...lineCard(line,'divorce','divorce',i),outfit:outfitOf(career)})),{type:'divorce',taken:career.report.divorce.taken,fund:wallet.fund,race:career.report.race}]:[];
 
 // blazerAt: the race count when the Blazer came out (null before); opala: the Opala 99 bought (Central #16).
-export const newCareer=()=>({version:1,morale:Object.fromEntries(MORALE.map(k=>[k,MORALE_START])),races:0,challenge:0,since:0,expense:false,gear:[],intro:false,report:null,over:null,clock:newClock(),divorced:null,pensionFor:null,blazerAt:null,opala:false});
+// The hero's energy (user, 10-24): full at a career's start, a race takes ENERGY.race, the Tia's café gives it back — a
+// coffee or a pão de queijo ENERGY.one each, both in the same paddock fill it (he is mineiro), a doce de leite ENERGY.sweet.
+export const ENERGY=Object.freeze({start:100,race:60,one:30,sweet:15});
+export function eatEnergy(energy,id,eaten){
+ const both=['cafe','pao'].every(item=>item===id||eaten.includes(item));
+ return clamp(both?100:energy+(id==='doce'?ENERGY.sweet:ENERGY.one),0,100);
+}
+export const newCareer=()=>({version:1,energy:ENERGY.start,morale:Object.fromEntries(MORALE.map(k=>[k,MORALE_START])),races:0,challenge:0,since:0,expense:false,gear:[],intro:false,report:null,over:null,clock:newClock(),divorced:null,pensionFor:null,blazerAt:null,opala:false});
 // A saved career, checked field by field; anything unknown starts a new one.
 export function loadCareer(raw){
  const c=newCareer();if(!raw||typeof raw!=='object'||raw.version!==1)return c;
@@ -198,6 +211,7 @@ export function loadCareer(raw){
   c.report={race:count(raw.report.race),outcome:raw.report.outcome,before:Object.fromEntries(MORALE.map(k=>[k,clamp(Math.round(raw.report.before[k]),0,100)])),awaiting:raw.report.awaiting==='expense'?'expense':null,
    ...(['damage','bill','charged'].every(k=>Number.isInteger(raw.report.repair?.[k])&&raw.report.repair[k]>=0)?{repair:{damage:raw.report.repair.damage,bill:raw.report.repair.bill,charged:raw.report.repair.charged}}:{})};
  c.over=Object.hasOwn(GAME_OVER,raw.over)?raw.over:null;
+ c.energy=Number.isFinite(raw.energy)?clamp(Math.round(raw.energy),0,100):ENERGY.start;
  // The divorce (Central #15): the clock, the divorce itself and the race whose pension is paid.
  const share=v=>Number.isFinite(v)&&v>=0&&v<=1,clockOf=k=>k&&share(k.progress)?{progress:k.progress,calm:Math.min(count(k.calm),FORGIVE_AFTER),patience:share(k.patience)?k.patience:null}:null;
  c.clock=clockOf(raw.clock)??newClock();
@@ -225,7 +239,7 @@ export const repairCards=(report,wallet)=>report?.repair?[{type:'repair',...repo
 // repair: the team's bill already taken from the wallet (repairBill).
 // The wife's clock steps with her new morale (divorceDue: the state takes half of the wallet, divorce()).
 export function applyRace(career,result,repair=null,random=Math.random){
- career.races++;const outcome=outcomeOf(result),before={...career.morale};
+ career.races++;const outcome=outcomeOf(result),before={...career.morale};career.energy=Math.max(0,(career.energy??ENERGY.start)-ENERGY.race);
  career.report={race:career.races,outcome,before,awaiting:null,...(repair?{repair}:{}),clockBefore:{...career.clock}};
  for(const card of moraleCards(career))career.morale[card.key]=card.value;
  career.report.divorceDue=divorceStep(career,random);career.report.clock={...career.clock};
