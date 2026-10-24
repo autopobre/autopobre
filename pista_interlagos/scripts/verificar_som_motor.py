@@ -84,12 +84,9 @@ with sync_playwright() as p:
         page.keyboard.press('Escape')
         page.click('#settingsButton')
         page.click('#tab-audio')
-        page.check('#synthEngine')
-        wait_js(page, 'interlagos.audioInfo().synthEngine&&interlagos.audioInfo().engine===null', timeout=5000)
-        check('Áudio: "Usar motor sintetizado" swaps the recordings for the old engine', info()['engine'] is None)
-        page.uncheck('#synthEngine')
-        wait_js(page, 'interlagos.audioInfo().engine?.ready', timeout=20000)
-        check('and unchecked, the recordings come back', info()['engine']['bank'] == 'loops_m3' and not info()['synthEngine'])
+        # The old "Usar motor sintetizado" option is gone (user, 2026-10-24): the recordings always play.
+        check('Áudio has no synthesized-engine option', page.query_selector('#synthEngine') is None)
+        check('the recordings stay on', info()['engine']['bank'] == 'loops_m3' and not info()['synthEngine'])
         check('pause silences the recorded engine and tyres', a['engine']['voices'][0]['gain'] == 0 and not any(v > 0 for v in a['tyres']['loops'].values()), a['engine']['voices'][0])
         check('no browser errors', not errors, errors[:5])
     except Exception as e:

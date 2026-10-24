@@ -33,9 +33,9 @@ export class CarAudio {
   const saved=options.tunings?null:readSoundSettings();
   this.tunings=options.tunings??(saved.useInGame?{opala:saved.opala,fusca:saved.fusca}:{opala:soundDefaults(),fusca:soundDefaults()});
   this.tuningSource=options.tunings||saved.useInGame?'bancada':'padrão';this.kind='opala';this.tuning=this.tunings.opala;
-  this.volume=.55;this.musicVolume=.35;this.effectsVolume=1;this.focused=true;this.hasDriven=false;this.openingTime=0;this.muted=false;this.paused=true;this.context=null;this.shifts=0;this.error=null;
+  this.volume=.55;this.musicVolume=.35;this.effectsVolume=1;this.focused=true;this.hasDriven=false;this.openingTime=0;this.muted=false;this.paused=true;this.context=null;this.shifts=0;this.error=null;this.synthEngine=false;
   try{const saved=JSON.parse(localStorage.getItem('opala99-audio'));if(saved){this.volume=clamp(Number(saved.volume)||0,0,1);this.muted=!!saved.muted;}}catch{}
-  try{const saved=JSON.parse(localStorage.getItem('opala99-audio'));for(const key of ['musicVolume','effectsVolume'])if(Number.isFinite(saved?.[key]))this[key]=clamp(saved[key],0,1);this.musicMuted=saved?.musicMuted===true;this.effectsMuted=saved?.effectsMuted===true;this.synthEngine=saved?.synthEngine===true;}catch{}
+  try{const saved=JSON.parse(localStorage.getItem('opala99-audio'));for(const key of ['musicVolume','effectsVolume'])if(Number.isFinite(saved?.[key]))this[key]=clamp(saved[key],0,1);this.musicMuted=saved?.musicMuted===true;this.effectsMuted=saved?.effectsMuted===true;}catch{}
   this.reset();
  }
  reset(){this.state={gear:'N',rpm:950,skid:0,throttle:0};this.heardRpm=this.heardAt=this.gas=null;this.shiftUntil=0;this.lastGear=null;this.lastThrottle=0;this.effects?.stopWorld();this.tyres?.silence();}
@@ -97,9 +97,10 @@ export class CarAudio {
  setMusicMuted(value){this.musicMuted=!!value;this.save();this.applyVolume();}
  setEffectsMuted(value){this.effectsMuted=!!value;this.save();this.applyVolume();}
  toggleMute(){this.muted=!this.muted;this.save();this.applyVolume();}
- save(){try{localStorage.setItem('opala99-audio',JSON.stringify({volume:this.volume,musicVolume:this.musicVolume,effectsVolume:this.effectsVolume,muted:this.muted,musicMuted:!!this.musicMuted,effectsMuted:!!this.effectsMuted,synthEngine:!!this.synthEngine}));}catch{}}
- // Áudio's "Usar motor sintetizado": the old synthesized engine for the car and the rivals instead of the
- // recordings (saved with the other audio settings, applied at once).
+ save(){try{localStorage.setItem('opala99-audio',JSON.stringify({volume:this.volume,musicVolume:this.musicVolume,effectsVolume:this.effectsVolume,muted:this.muted,musicMuted:!!this.musicMuted,effectsMuted:!!this.effectsMuted}));}catch{}}
+ // The old synthesized engine for the car and the rivals instead of the recordings: only the sound bench's
+ // comparison now (bancada-som.js). The game's Áudio option is gone (user, 2026-10-24): a save that had it on is
+ // read as off.
  setSynthEngine(value,keep=true){this.synthEngine=!!value;if(keep)this.save();this.wireEngine();}
  // The recorded engines (player and nearest rivals) unless the synthesized one is wanted; the banks stay
  // decoded across a switch (engine-loops.js caches them).

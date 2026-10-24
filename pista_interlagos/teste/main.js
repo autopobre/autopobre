@@ -203,9 +203,11 @@ function showRoster(){
 // Koyzinho Indestrutível: taken at the next start (RaceField.reset), like the race length.
 $('aceKoyzinho').checked=preferences.values.aceKoyzinho;
 $('aceKoyzinho').onchange=()=>{preferences.update({aceKoyzinho:$('aceKoyzinho').checked});if(immersive)immersive.field.ace=preferences.values.aceKoyzinho;if(ready)showRoster();};
-// Rivals' level (race-roster.js AI_LEVELS): taken at the next start, like Koyzinho Indestrutível.
-$('aiLevel').value=preferences.values.aiLevel;
-$('aiLevel').onchange=()=>{preferences.update({aiLevel:$('aiLevel').value});if(immersive)immersive.field.level=preferences.values.aiLevel;if(ready)showRoster();};
+// Rivals' level (race-roster.js AI_LEVELS): taken at the next start, like Koyzinho Indestrutível. Picked in the race
+// settings or on the track screen (its options copied from the settings'): one preference.
+$('tracksAiLevel').append(...[...$('aiLevel').options].map(o=>new Option(o.text,o.value)));
+for(const id of ['aiLevel','tracksAiLevel']){$(id).value=preferences.values.aiLevel;
+ $(id).onchange=()=>{preferences.update({aiLevel:$(id).value});for(const other of ['aiLevel','tracksAiLevel'])$(other).value=preferences.values.aiLevel;if(immersive)immersive.field.level=preferences.values.aiLevel;if(ready)showRoster();};}
 // Breakdowns ("Abandonos"): taken at the next start too.
 $('retirements').checked=preferences.values.retirements;
 $('retirements').onchange=()=>{preferences.update({retirements:$('retirements').checked});if(immersive)immersive.field.retirements=preferences.values.retirements;};
@@ -749,7 +751,7 @@ function debugLines(){
 const carAudio=new CarAudio();
 // Each channel keeps its level while silenced: the slider stays put, dimmed, and says so.
 const AUDIO_CHANNELS=Object.freeze([['musicVolume','music','música'],['effectsVolume','effects','efeitos']]);
-function audioControls(){ for(const [key,channel,label] of AUDIO_CHANNELS){const muted=!!carAudio[channel+'Muted'];$(key).value=Math.round(carAudio[key]*100);$(key).classList.toggle('channel-muted',muted);$(key+'Value').textContent=`${Math.round(carAudio[key]*100)}%${muted?' · mudo':''}`;$(channel+'Mute').textContent=`${muted?'Ativar':'Silenciar'} ${label}`;$(channel+'Mute').setAttribute('aria-pressed',String(muted));} $('volume').value=Math.round(carAudio.volume*100);$('volumeValue').textContent=`${Math.round(carAudio.volume*100)}%`;$('mute').textContent=`${carAudio.muted?'Ativar som':'Silenciar'} (${keyName('KeyM')})`;$('mute').setAttribute('aria-pressed',String(carAudio.muted));$('synthEngine').checked=carAudio.synthEngine; }
+function audioControls(){ for(const [key,channel,label] of AUDIO_CHANNELS){const muted=!!carAudio[channel+'Muted'];$(key).value=Math.round(carAudio[key]*100);$(key).classList.toggle('channel-muted',muted);$(key+'Value').textContent=`${Math.round(carAudio[key]*100)}%${muted?' · mudo':''}`;$(channel+'Mute').textContent=`${muted?'Ativar':'Silenciar'} ${label}`;$(channel+'Mute').setAttribute('aria-pressed',String(muted));} $('volume').value=Math.round(carAudio.volume*100);$('volumeValue').textContent=`${Math.round(carAudio.volume*100)}%`;$('mute').textContent=`${carAudio.muted?'Ativar som':'Silenciar'} (${keyName('KeyM')})`;$('mute').setAttribute('aria-pressed',String(carAudio.muted)); }
 audioControls();
 // Moving a silenced channel's slider turns it back on; the effects slider plays its preview.
 for(const [key,channel] of AUDIO_CHANNELS){
@@ -761,7 +763,6 @@ document.addEventListener('keydown',()=>carAudio.unlock(),{once:true});
 document.addEventListener('click',e=>{if(e.target.closest('button')&&!e.target.closest('button').disabled)carAudio.uiClick();});
 $('volume').oninput=e=>{carAudio.setVolume(Number(e.target.value)/100);audioControls();};
 $('mute').onclick=()=>{carAudio.toggleMute();carAudio.unlock();audioControls();};
-$('synthEngine').onchange=e=>{carAudio.setSynthEngine(e.target.checked);carAudio.unlock();audioControls();};
 let sessionStarted=false,loading=false,loadedCircuit=null;
 // Multiplayer test room (multiplayer.js): loaded only for an address with #desafio=NOME (the old
 // #sala= and #corrida= links open no room); no menu leads there.
@@ -1941,12 +1942,14 @@ $('padSteering').value=preferences.values.padSteering;gamepad.setSteering(prefer
 $('padSteering').onchange=()=>{preferences.update({padSteering:$('padSteering').value});gamepad.setSteering(preferences.values.padSteering);};
 $('padRumble').checked=gamepad.rumble=preferences.values.padRumble;
 $('padRumble').onchange=()=>{preferences.update({padRumble:$('padRumble').checked});gamepad.rumble=preferences.values.padRumble;gamepad.bump(12);};
-$('gearbox').value=preferences.values.gearbox;
-$('gearbox').onchange=()=>preferences.update({gearbox:$('gearbox').value});
+// Picked in the Controles tab or on the track screen: one preference, in force at once.
+const showGearbox=()=>{for(const id of ['gearbox','tracksGearbox'])$(id).value=preferences.values.gearbox;};
+for(const id of ['gearbox','tracksGearbox'])$(id).onchange=()=>{preferences.update({gearbox:$(id).value});showGearbox();};
+showGearbox();
 $('wheelLock').value=String(preferences.values.wheelLock);wheel.setLock(preferences.values.wheelLock);
 $('wheelLock').onchange=()=>{preferences.update({wheelLock:Number($('wheelLock').value)});wheel.setLock(preferences.values.wheelLock);};
 // A setup that found paddles or an H gate turns Câmbio manual on.
-wheelPanel=new WheelPanel({wheel,gearbox,manual:manualGearbox,onManual:()=>{preferences.update({gearbox:'manual'});$('gearbox').value='manual';}});
+wheelPanel=new WheelPanel({wheel,gearbox,manual:manualGearbox,onManual:()=>{preferences.update({gearbox:'manual'});showGearbox();}});
 // Closing the settings ends a wheel setup left half done.
 $('settings').addEventListener('close',()=>wheelPanel.cancel());
 // Teclado do seu jeito: a key moved lets go of whatever was held (it would read as another key on release), and the

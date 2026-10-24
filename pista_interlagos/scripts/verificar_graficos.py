@@ -52,7 +52,9 @@ with sync_playwright() as p:
     # The cards say which machine each level is for; Automático, what it picked here and why (the video chip).
     cards = {lv: page.inner_text(f'#gfxLevel-{lv} small') for lv in ('auto', 'baixo', 'medio', 'alto', 'ultra')}
     check('cards_name_the_machine', 'vídeo integrado' in cards['baixo'] and 'intermediário' in cards['medio'] and 'placa de vídeo' in cards['alto'] and 'forte' in cards['ultra'], cards)
-    check('auto_card_says_why', 'Alto neste computador' in cards['auto'] and g['device']['reason'] in cards['auto'] and g['device']['tier'], {'card': cards['auto'], 'device': g['device']})
+    # (The level it picked, large over the reason: "→ Alto", "Neste computador: detectamos placa de vídeo.")
+    picked = page.inner_text('#gfxLevel-auto .graphics-picked')
+    check('auto_card_says_why', picked == '→ Alto' and 'Neste computador' in cards['auto'] and g['device']['reason'] in cards['auto'] and g['device']['tier'], {'picked': picked, 'card': cards['auto'], 'device': g['device']})
     # Manual change in the menu: shows as a change, Restore drops it.
     page.select_option('#gfx-shadows', 'media')
     g = info(page)

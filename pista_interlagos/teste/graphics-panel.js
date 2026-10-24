@@ -2,7 +2,9 @@ import {GRAPHICS_LEVELS,GRAPHICS_LEVEL_NAMES,GRAPHICS_OPTIONS,GRAPHICS_GROUPS,au
 // The settings' Gráficos tab: the four levels (and Automático) as cards, then every setting by hand,
 // grouped. Built from graphics-settings.js into the #settings-graphics panel of index.html; each
 // change goes to onChange(graphics) and comes back through show().
-// Which machine each level is for, then what it shows. Automático's says what it picked here and why (autoReason).
+// Which machine each level is for, then what it shows. Automático's card names the level it picked here, large, and
+// why (autoReason); that level's own card carries a tag saying so (user, 2026-10-24: which level it picked was hard to
+// tell).
 const LEVEL_TEXT={
  auto:'Escolhe pelo aparelho',
  baixo:'PC simples ou notebook com vídeo integrado. Imagem leve, sem sombras, carros e cenário simplificados.',
@@ -21,7 +23,9 @@ export class GraphicsPanel {
   for(const level of ['auto',...GRAPHICS_LEVELS]){
    // Four bars: how heavy the level is (Automático lights those of the level it stands for).
    const bars=element('span',{className:'graphics-bars',ariaHidden:'true'});for(let i=0;i<4;i++)bars.append(element('i',{className:i<=GRAPHICS_LEVELS.indexOf(level)?'on':''}));
-   const card=element('button',{type:'button',className:'graphics-level',id:`gfxLevel-${level}`},element('b',{},GRAPHICS_LEVEL_NAMES[level]),bars,element('small',{},level==='auto'?this.autoText():LEVEL_TEXT[level]));
+   const card=element('button',{type:'button',className:'graphics-level',id:`gfxLevel-${level}`},element('b',{},GRAPHICS_LEVEL_NAMES[level]),bars,
+    ...(level==='auto'?[element('strong',{className:'graphics-picked'})]:[element('em',{className:'graphics-auto-tag'},'Escolhido pelo Automático')]),
+    element('small',{},level==='auto'?this.autoText():LEVEL_TEXT[level]));
    card.dataset.level=level;card.setAttribute('role','radio');card.onclick=()=>this.change(chooseGraphicsLevel(level));
    this.cards.set(level,card);this.levels.append(card);
   }
@@ -48,8 +52,8 @@ export class GraphicsPanel {
   this.summary.closest('.graphics-status').after(this.pendingNote);
   this.show(graphics);
  }
- // "Escolhe pelo aparelho: Baixo neste computador · detectamos vídeo integrado."
- autoText(){return `${LEVEL_TEXT.auto}: ${GRAPHICS_LEVEL_NAMES[autoLevel(this.touch,this.device)]} neste ${this.touch?'celular':'computador'} · ${autoReason(this.touch,this.device)}.`;}
+ // Under the picked level's name: "Neste computador: detectamos vídeo integrado."
+ autoText(){return `Neste ${this.touch?'celular':'computador'}: ${autoReason(this.touch,this.device)}.`;}
  // The pixel ratio this screen really draws at for a density setting (never above the screen's own).
  drawn(value){return Math.min(value,this.screen().ratio);}
  optionValue(key,text){return GRAPHICS_OPTIONS[key].choices.find(([v])=>String(v)===text)?.[0];}
@@ -76,7 +80,9 @@ export class GraphicsPanel {
  busy(on){this.root.classList.toggle('graphics-busy',on);if(on)this.summary.textContent='Preparando o novo visual: a imagem volta em instantes.';else this.show(this.graphics);}
  show(graphics){
   this.graphics=graphics;const state=resolveGraphics(graphics,{touch:this.touch,device:this.device}),values=state.values;
-  const autoSmall=this.cards.get('auto').querySelector('small'),autoText=this.autoText();if(autoSmall.textContent!==autoText)autoSmall.textContent=autoText;
+  const autoCard=this.cards.get('auto'),autoSmall=autoCard.querySelector('small'),autoText=this.autoText(),picked=`→ ${GRAPHICS_LEVEL_NAMES[state.level]}`;
+  if(autoSmall.textContent!==autoText)autoSmall.textContent=autoText;
+  const autoPicked=autoCard.querySelector('.graphics-picked');if(autoPicked.textContent!==picked)autoPicked.textContent=picked;
   for(const [level,card] of this.cards){const on=level===graphics.level;card.setAttribute('aria-checked',String(on));card.tabIndex=on?0:-1;card.classList.toggle('implied',graphics.level==='auto'&&level===state.level);}
   for(const [i,bar] of [...this.cards.get('auto').querySelectorAll('.graphics-bars i')].entries())bar.classList.toggle('on',i<=GRAPHICS_LEVELS.indexOf(state.level));
   for(const [key,select] of this.selects){
@@ -88,7 +94,7 @@ export class GraphicsPanel {
    label.classList.toggle('changed',state.changed.includes(key));
   }
   const name=GRAPHICS_LEVEL_NAMES[state.level],changes=state.changed.map(key=>GRAPHICS_OPTIONS[key].label);
-  if(!this.root.classList.contains('graphics-busy'))this.summary.textContent=`${graphics.level==='auto'?`Automático: nível ${name} neste ${this.touch?'celular':'computador'} (${autoReason(this.touch,this.device)})`:`Nível ${name}`}${changes.length?` · ${changes.length} ${changes.length>1?'ajustes':'ajuste'} à mão: ${changes.join(', ')}.`:', sem ajustes à mão.'}`;
+  if(!this.root.classList.contains('graphics-busy'))this.summary.textContent=`${graphics.level==='auto'?`O Automático escolheu o nível ${name} para este ${this.touch?'celular':'computador'} (${autoReason(this.touch,this.device)})`:`Nível ${name}`}${changes.length?` · ${changes.length} ${changes.length>1?'ajustes':'ajuste'} à mão: ${changes.join(', ')}.`:', sem ajustes à mão.'}`;
   this.restore.hidden=!changes.length;
   return state;
  }
