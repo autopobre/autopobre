@@ -118,8 +118,8 @@ export class LapRecords {
   this.selectedCircuit=id;this.showCircuits(false);this.pickButton.focus();this.saveView();this.render();
  }
  // The accounts' board (recordes-online.js, only where the accounts are): a fourth source, Online, read
- // from the server; each pilot once, at their best lap, ✓ checked as it was driven or (!) an old record
- // of some browser, unchecked.
+ // from the server (each pilot once, at their best lap, ✓ checked as it was driven or (!) an old record
+ // of some browser, unchecked), which Todos joins too.
  addOnline(online){
   if(this.online)return;this.online=online;
   const button=document.createElement('button');button.type='button';button.dataset.recordsSource='online';button.setAttribute('aria-pressed','false');
@@ -127,24 +127,6 @@ export class LapRecords {
   button.onclick=()=>{this.selectedSource='online';this.saveView();this.render();};
   this.dialog.querySelector('.records-source-options').append(button);
   if(this.dialog.open)this.render();
- }
- async renderOnline(circuit,mode){
-  const draw=++this.onlineDraw,body=this.dialog.querySelector('tbody'),empty=this.dialog.querySelector('#recordsEmpty');
-  empty.textContent='Carregando os recordes online…';empty.hidden=false;
-  let rows,bests;
-  try{[rows,bests]=await Promise.all([this.online.board(circuit,mode),this.online.bests(mode)]);}
-  catch(error){if(draw===this.onlineDraw)empty.textContent=error.message;return;}
-  if(draw!==this.onlineDraw)return;
-  for(const li of this.pickList.children){
-   const ms=bests[li.dataset.recordsCircuit],best=li.querySelector('em');best.classList.toggle('records-pick-none',!ms);best.replaceChildren();
-   if(ms){const label=document.createElement('span');label.textContent='MELHOR VOLTA';best.append(label,formatTime(ms/1000));}else best.textContent='sem tempos';}
-  rows.forEach((row,i)=>{
-   const tr=document.createElement('tr');tr.dataset.source='online';if(row.mine)tr.dataset.mine='';
-   for(const value of [`${i+1}º`,row.name,formatTime(row.bestLap),'—']){const td=document.createElement('td');td.textContent=value;tr.append(td);}
-   const checked=row.badge==='conferido',badge=document.createElement('span'),label=checked?'Volta conferida pelo servidor enquanto foi pilotada':'Recorde antigo de um navegador, não verificado';
-   badge.className='record-source-badge record-online-badge'+(checked?'':' record-unchecked');badge.title=label;badge.setAttribute('role','img');badge.setAttribute('aria-label',label);badge.textContent=checked?'✓':'(!)';
-   tr.children[1].append(badge);body.append(tr);});
-  empty.textContent='Ainda não há recordes online nesta pista e modo. Entre com a sua conta e complete uma volta sem pausa para registrar a primeira.';empty.hidden=rows.length>0;
  }
  saveView(){this.viewSaved=true;try{this.storage?.setItem(RECORD_VIEW_KEY,JSON.stringify({circuit:this.selectedCircuit,mode:this.selectedMode,source:this.selectedSource}));}catch{}}
  open(mode=null){
@@ -160,24 +142,66 @@ export class LapRecords {
   const storage=this.storage;
   // Online without the accounts here (a view saved on dev.autopobre.com.br, opened elsewhere): everyone.
   if(this.selectedSource==='online'&&!this.online)this.selectedSource='all';
-  const online=this.selectedSource==='online';this.onlineDraw++;this.dialog.querySelector('#recordsEmpty').textContent=this.emptyText;
-  let rows=this.selectedSource==='ai'||online?[]:readRecords(storage).map(r=>({...r,source:'human'}));
-  if(this.selectedSource!=='human'&&!online)rows.push(...readAIRecords(storage));
-  for(const button of this.dialog.querySelectorAll('[data-records-source]'))button.setAttribute('aria-pressed',String(button.dataset.recordsSource===this.selectedSource));
-  this.dialog.querySelector('#recordsSourceNote').textContent=online?'Online: o melhor de cada piloto com conta. ✓ volta conferida pelo servidor · (!) recorde antigo, não verificado.':this.selectedSource==='human'?'Pessoas: recordes salvos automaticamente neste navegador.':'Pessoas: recordes deste navegador. IA: tempos do jogo, não dos pilotos reais.';
+  const source=this.selectedSource,online=source==='online';this.onlineDraw++;this.dialog.querySelector('#recordsEmpty').textContent=this.emptyText;
+  const local=source==='ai'||online?[]:readRecords(storage).map(r=>({...r,source:'human'}));
+  if(source!=='human'&&!online)local.push(...readAIRecords(storage));
+  for(const button of this.dialog.querySelectorAll('[data-records-source]'))button.setAttribute('aria-pressed',String(button.dataset.recordsSource===source));
+  this.dialog.querySelector('#recordsSourceNote').textContent=online?'Online: o melhor de cada piloto com conta. ✓ volta conferida pelo servidor · (!) recorde antigo, não verificado.'
+   :source==='human'?'Pessoas: recordes salvos automaticamente neste navegador.'
+   :`Pessoas: recordes deste navegador. IA: tempos do jogo, não dos pilotos reais.${this.online?' Online: pilotos com conta (✓ conferida · (!) não verificado).':''}`;
   const mode=this.selectedMode;
   for(const button of this.dialog.querySelectorAll('[data-records-mode]'))button.setAttribute('aria-pressed',String(button.dataset.recordsMode===mode));
   const circuit=CIRCUITS[this.selectedCircuit],button=this.pickButton;button.dataset.circuit=circuit.id;
   // The race times' distance: the circuit's own where it fixes one (Pampulha's single lap).
   {const n=standardLaps(circuit.id);for(const span of this.dialog.querySelectorAll('[data-records-mode] span'))span.textContent=`corrida em ${n} volta${n>1?'s':''}`;}
   button.querySelector('path').setAttribute('d',circuitOutline(circuit.id));button.querySelector('b').textContent=circuit.name;button.querySelector('small').textContent=circuitLength(circuit);
+  const localBest=id=>{const laps=local.filter(r=>r.mode===mode&&r.circuit===id).map(r=>r.bestLap);return laps.length?Math.min(...laps):null;};
+  this.drawPicker(localBest);
+  const rows=local.filter(r=>r.mode===mode&&r.circuit===this.selectedCircuit);
+  this.drawRows(rows);
+  if(this.online&&(online||source==='all'))this.joinOnline(rows,localBest,circuit.id,mode,online);
+ }
+ // Each circuit's best lap in the list (best(id): seconds, or null).
+ drawPicker(best){
   for(const li of this.pickList.children){
-   const id=li.dataset.recordsCircuit,laps=rows.filter(r=>r.mode===mode&&r.circuit===id).map(r=>r.bestLap),best=li.querySelector('em');
-   li.setAttribute('aria-selected',String(id===circuit.id));best.classList.toggle('records-pick-none',!laps.length);
-   best.replaceChildren();if(laps.length){const label=document.createElement('span');label.textContent='MELHOR VOLTA';best.append(label,formatTime(Math.min(...laps)));}else best.textContent='sem tempos';}
-  rows=rows.filter(r=>r.mode===mode&&r.circuit===this.selectedCircuit).sort((a,b)=>a.bestLap-b.bestLap);
+   const id=li.dataset.recordsCircuit,time=best(id),em=li.querySelector('em');
+   li.setAttribute('aria-selected',String(id===this.selectedCircuit));em.classList.toggle('records-pick-none',time===null);
+   em.replaceChildren();if(time!==null){const label=document.createElement('span');label.textContent='MELHOR VOLTA';em.append(label,formatTime(time));}else em.textContent='sem tempos';}
+ }
+ // The table, fastest lap first; each row says whose it is: 🧑 this browser, 🤖 the game's AI, 🌐 an account.
+ drawRows(rows){
+  rows=[...rows].sort((a,b)=>a.bestLap-b.bestLap);
   const body=this.dialog.querySelector('tbody');body.replaceChildren();
-  rows.forEach((row,i)=>{const tr=document.createElement('tr');tr.dataset.source=row.source;for(const value of [`${i+1}º`,row.name,formatTime(row.bestLap),formatTime(row.bestRace)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}const badge=document.createElement('span');badge.className='record-source-badge';const label=row.source==='ai'?`Inteligência artificial · carro #${row.number}`:'Pessoa';badge.title=label;badge.setAttribute('role','img');badge.setAttribute('aria-label',label);badge.textContent=row.source==='ai'?`🤖 · #${row.number}`:'🧑';tr.children[1].append(badge);body.append(tr);});this.dialog.querySelector('#recordsEmpty').hidden=rows.length>0;
-  if(online)this.renderOnline(this.selectedCircuit,mode);
+  rows.forEach((row,i)=>{
+   const tr=document.createElement('tr');tr.dataset.source=row.source;if(row.mine)tr.dataset.mine='';
+   for(const value of [`${i+1}º`,row.name,formatTime(row.bestLap),row.source==='online'?'—':formatTime(row.bestRace)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}
+   const badge=document.createElement('span'),checked=row.badge==='conferido';badge.className='record-source-badge';
+   const label=row.source==='ai'?`Inteligência artificial · carro #${row.number}`:row.source==='online'?checked?'Online: volta conferida pelo servidor enquanto foi pilotada':'Online: recorde antigo de um navegador, não verificado':'Pessoa, neste navegador';
+   if(row.source==='online')badge.classList.add('record-online-badge',...(checked?[]:['record-unchecked']));
+   badge.title=label;badge.setAttribute('role','img');badge.setAttribute('aria-label',label);
+   badge.textContent=row.source==='ai'?`🤖 · #${row.number}`:row.source==='online'?`🌐 ${checked?'✓':'(!)'}`:'🧑';
+   tr.children[1].append(badge);body.append(tr);});
+  this.dialog.querySelector('#recordsEmpty').hidden=rows.length>0;
+ }
+ // The accounts' records joined to what is drawn (only=true: the Online source alone). The signed-in pilot
+ // shows once: their row online and this browser's rows under the same name are one pilot, at the best of them.
+ async joinOnline(rows,localBest,circuit,mode,only){
+  const draw=this.onlineDraw,empty=this.dialog.querySelector('#recordsEmpty');
+  if(only){empty.textContent='Carregando os recordes online…';empty.hidden=false;}
+  let board,bests;
+  try{[board,bests]=await Promise.all([this.online.board(circuit,mode),this.online.bests(mode)]);}
+  catch(error){if(draw===this.onlineDraw&&only)empty.textContent=error.message;return;}
+  if(draw!==this.onlineDraw)return;
+  const same=(a,b)=>a.toLocaleLowerCase('pt-BR')===b.toLocaleLowerCase('pt-BR');
+  let joined=[...rows,...board.map(r=>({...r,source:'online'}))];
+  const mine=joined.find(r=>r.source==='online'&&r.mine);
+  if(mine){
+   const pilot=joined.filter(r=>r===mine||r.source==='human'&&same(r.name,mine.name));
+   const fastest=pilot.reduce((a,b)=>b.bestLap<a.bestLap||b.bestLap===a.bestLap&&b.source==='online'?b:a);   // a tie: the account's row (an old record that went up is the same time)
+   joined=joined.filter(r=>!pilot.includes(r)||r===fastest);
+  }
+  this.drawPicker(id=>{const ms=bests[id],there=ms?ms/1000:null,here=localBest(id);return here===null?there:there===null?here:Math.min(here,there);});
+  this.drawRows(joined);
+  if(only){empty.textContent='Ainda não há recordes online nesta pista e modo. Entre com a sua conta e complete uma volta sem pausa para registrar a primeira.';empty.hidden=joined.length>0;}
  }
 }

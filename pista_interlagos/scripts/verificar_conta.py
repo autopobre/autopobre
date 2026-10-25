@@ -94,10 +94,17 @@ try:
   page.click('#recordsButton');page.click('[data-records-source=online]')
   wait_js(page,"[...document.querySelectorAll('#lapRecords tbody tr')].some(tr=>tr.textContent.includes('Piloto Teste'))")
   rows=page.evaluate("[...document.querySelectorAll('#lapRecords tbody tr')].map(tr=>({text:tr.textContent,mine:tr.hasAttribute('data-mine'),badge:tr.querySelector('.record-online-badge')?.textContent}))")
-  assert len(rows)==1 and '01:38.765' in rows[0]['text'] and rows[0]['badge']=='(!)' and rows[0]['mine'],rows
+  assert len(rows)==1 and '01:38.765' in rows[0]['text'] and rows[0]['badge']=='🌐 (!)' and rows[0]['mine'],rows
   page.screenshot(path=str(RENDERS/'conta_recordes_online.png'))
+  # Todos joins them: this browser's people, the AI and the accounts; the pilot once (the account's row: the same time).
+  page.click('[data-records-source=all]')
+  wait_js(page,"!!document.querySelector('#lapRecords tbody tr[data-source=online]')")
+  todos=page.evaluate("[...document.querySelectorAll('#lapRecords tbody tr')].map(tr=>({name:tr.children[1].firstChild.textContent,source:tr.dataset.source,mine:tr.hasAttribute('data-mine')}))")
+  assert [r['source'] for r in todos if r['name']=='Piloto Teste']==['online'] and todos[[r['name'] for r in todos].index('Piloto Teste')]['mine'],todos
+  assert any(r['source']=='ai' for r in todos) and any(r['name']=='Outra Pessoa' and r['source']=='human' for r in todos),todos
+  page.screenshot(path=str(RENDERS/'conta_recordes_todos.png'))
   page.keyboard.press('Escape');wait_js(page,"!document.getElementById('lapRecords').open")
-  result['recordes_online']={'linha':rows[0]['text'],'selo':rows[0]['badge']}
+  result['recordes_online']={'linha':rows[0]['text'],'selo':rows[0]['badge'],'todos':len(todos)}
   # What is kept: an "i" that opens the technical account.
   page.click('#pilotAccount');page.click('.conta-info summary')
   assert page.evaluate("document.querySelector('.conta-info').open&&document.querySelector('.conta-info').textContent.includes('openid')")
