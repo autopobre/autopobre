@@ -4,7 +4,7 @@
 // hands back a code for the account the test picked, checks PKCE, and its ID token is unsigned, which
 // the Worker accepts only because it trusts the token endpoint, as with Google's).
 //
-//   node teste/local.mjs [--porta 8788] [--origem http://127.0.0.1:8799] [--banco arquivo.sqlite] [--ponte http://127.0.0.1:PORTA]
+//   node teste/local.mjs [--porta 8788] [--origem http://127.0.0.1:8799] [--banco arquivo.sqlite] [--ponte http://127.0.0.1:PORTA] [--admins sub1,sub2]
 //
 // The origin is the page's (servidor.py passes /api/ on to this port), so the cookies and the Origin
 // check work as on dev.autopobre.com.br.
@@ -17,7 +17,8 @@ import worker from '../src/index.js';
 export const CLIENT_ID='cliente-de-teste.apps.googleusercontent.com',CLIENT_SECRET='segredo-de-teste-local';
 
 // D1's API as the Worker uses it: prepare().bind().first()/all()/run(), and batch() in one transaction.
-export function localD1(file=':memory:'){
+// admins: Google ids made administrators as their accounts are made (a check driving the admin panel).
+export function localD1(file=':memory:',admins=[]){
  const db=new DatabaseSync(file);
  db.exec('PRAGMA foreign_keys=ON');
  const migrations=fileURLToPath(new URL('../migracoes/',import.meta.url));
@@ -26,6 +27,7 @@ export function localD1(file=':memory:'){
   if(db.prepare('SELECT 1 FROM d1_migrations WHERE name=?').get(name))continue;
   db.exec(readFileSync(migrations+name,'utf8'));db.prepare('INSERT INTO d1_migrations VALUES (?)').run(name);
  }
+ for(const sub of admins)if(/^[\w-]{1,64}$/.test(sub))db.exec(`CREATE TRIGGER IF NOT EXISTS admin_${sub.replace(/\W/g,'_')} AFTER INSERT ON usuarios WHEN NEW.google_sub='${sub}' BEGIN UPDATE usuarios SET admin=1 WHERE id=NEW.id; END`);
  const statement=(sql,params=[])=>({
   bind:(...values)=>statement(sql,values),
   first:async column=>{const row=db.prepare(sql).get(...params);return row?column?row[column]:{...row}:null;},
@@ -35,7 +37,8 @@ export function localD1(file=':memory:'){
  });
  return {
   prepare:sql=>statement(sql),
-  batch:async list=>{db.exec('BEGIN');try{const out=list.map(s=>s.now());db.exec('COMMIT');return out;}catch(error){db.exec('ROLLBACK');throw error;}},
+  // As D1's: one result per statement, its meta.changes included.
+  batch:async list=>{db.exec('BEGIN');try{const out=list.map(s=>{const r=s.now();return {success:true,results:[],meta:{changes:Number(r.changes),last_row_id:Number(r.lastInsertRowid)}};});db.exec('COMMIT');return out;}catch(error){db.exec('ROLLBACK');throw error;}},
   sqlite:db,
  };
 }
@@ -79,8 +82,9 @@ function fakeGoogle(){
  };
 }
 
-export async function startLocal({port=8788,origem,banco=':memory:',ponte=null}={}){
- const google=fakeGoogle(),DB=localD1(banco);
+// adminSecret: the Worker's ADMINS secret, as Cloudflare would pass it.
+export async function startLocal({port=8788,origem,banco=':memory:',ponte=null,admins=[],adminSecret=null}={}){
+ const google=fakeGoogle(),DB=localD1(banco,admins);
  const server=http.createServer(async(req,res)=>{
   try{
    const url=new URL(req.url,`http://127.0.0.1:${server.address().port}`);
@@ -88,7 +92,7 @@ export async function startLocal({port=8788,origem,banco=':memory:',ponte=null}=
    const headers=new Headers();for(const [k,v] of Object.entries(req.headers))if(typeof v==='string')headers.set(k,v);
    const request=new Request(url,{method:req.method,headers,body:['GET','HEAD'].includes(req.method)?undefined:Buffer.concat(chunks)});
    const env={DB,ORIGEM:origem??`http://127.0.0.1:${server.address().port}`,GOOGLE_CLIENT_ID:CLIENT_ID,GOOGLE_CLIENT_SECRET:CLIENT_SECRET,
-    GOOGLE_AUTH_URL:`http://127.0.0.1:${server.address().port}/falso-google/auth`,GOOGLE_TOKEN_URL:`http://127.0.0.1:${server.address().port}/falso-google/token`,...(ponte&&{PONTE_RECORDES:ponte})};
+    GOOGLE_AUTH_URL:`http://127.0.0.1:${server.address().port}/falso-google/auth`,GOOGLE_TOKEN_URL:`http://127.0.0.1:${server.address().port}/falso-google/token`,...(ponte&&{PONTE_RECORDES:ponte}),...(adminSecret&&{ADMINS:adminSecret})};
    const response=url.pathname.startsWith('/falso-google/')?await google.handle(request,url):await worker.fetch(request,env);
    const out={};for(const [k,v] of response.headers)if(k!=='set-cookie')out[k]=v;
    const cookies=response.headers.getSetCookie();if(cookies.length)out['set-cookie']=cookies;
@@ -101,6 +105,6 @@ export async function startLocal({port=8788,origem,banco=':memory:',ponte=null}=
 
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
  const arg=name=>{const i=process.argv.indexOf(name);return i>0?process.argv[i+1]:undefined;};
- const local=await startLocal({port:Number(arg('--porta')??8788),origem:arg('--origem')??'http://127.0.0.1:8799',banco:arg('--banco'),ponte:arg('--ponte')});
+ const local=await startLocal({port:Number(arg('--porta')??8788),origem:arg('--origem')??'http://127.0.0.1:8799',banco:arg('--banco'),ponte:arg('--ponte'),admins:(arg('--admins')??'').split(',').filter(Boolean)});
  console.log(`Contas locais em http://127.0.0.1:${local.port} (origem ${arg('--origem')??'http://127.0.0.1:8799'}). Google de mentira: entra direto.`);
 }

@@ -39,6 +39,8 @@
 #contaApelido{flex:1;min-width:0;margin:0;padding:8px 10px;border:1px solid #afbea5;border-radius:4px;background:#fff;color:#214b3b;font-family:inherit;font-size:15px;font-weight:700;line-height:1.2}
 .conta-corpo :is(button,a){display:inline-flex;align-items:center;gap:8px;margin:0;padding:8px 12px;min-height:34px;border:1px solid #afbea5;border-radius:4px;background:#e4e9dc;color:#214b3b;font-size:12px;font-weight:800;text-decoration:none;cursor:pointer;width:auto}
 .conta-corpo :is(button,a):hover{filter:brightness(1.06)}
+/* Their display above would show what is hidden (the panel's link for anyone but an admin). */
+.conta-corpo [hidden]{display:none}
 .conta-corpo .conta-principal{background:#197746;color:#fff;border-color:#197746;box-shadow:inset 0 -2px #f3ca12}
 .conta-acoes{display:flex;flex-wrap:wrap;gap:6px}
 .conta-corpo .conta-perigo{background:#fff;color:#a32020;border-color:#d9a3a3}

@@ -37,10 +37,11 @@ BANCADA = ('bancada-som.html', 'bancada-som.js')
 # The track editor, where a circuit's centreline is painted or corrected over reference images: also only under /dev/.
 # Its reference folders (fontes/<circuito>/referencias/) stay on the user's machine; the page opens them from disk.
 EDITOR = ('editor-tracado.html', 'editor-tracado.js')
-DEV_PAGES = ('bancada-som.html', 'editor-tracado.html')
+DEV_PAGES = ('bancada-som.html', 'editor-tracado.html', 'admin.html')
 # Accounts (sign in with Google): only the dev.autopobre.com.br build (preparar_publicacao.py --conta), where the
 # accounts server (conta-cloudflare) answers /api/conta/. The main link and the old /dev/ folder leave them out.
-CONTA = ('conta.js', 'conta.css', 'recordes-online.js')
+# The admin panel (admin.html) too: it reads the same server, which answers only an admin account.
+CONTA = ('conta.js', 'conta.css', 'recordes-online.js', 'admin.html', 'admin.js', 'admin.css')
 ASSETS = (
     'branding/old_stock_preparada_v1.jpg',
     'branding/patrocinio_omp_v1.webp', 'branding/patrocinio_rtj_v1.webp', 'branding/patrocinio_eletric_v1.webp',

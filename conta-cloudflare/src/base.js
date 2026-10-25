@@ -68,10 +68,13 @@ export async function unseal(env,purpose,text){
 export async function session(request,env){
  const value=readCookies(request)[SESSION_COOKIE];
  if(!value)return null;
- const row=await env.DB.prepare('SELECT s.id AS sid,u.id,u.google_sub,u.apelido,u.criado_em,u.ultimo_login,u.importou_em FROM sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.id=? AND s.expira_em>?').bind(await hashed(value),Date.now()).first();
+ const row=await env.DB.prepare('SELECT s.id AS sid,u.id,u.google_sub,u.apelido,u.criado_em,u.ultimo_login,u.importou_em,u.admin FROM sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.id=? AND s.expira_em>?').bind(await hashed(value),Date.now()).first();
  return row??{gone:true};
 }
 export const signedOut=()=>setCookie(SESSION_COOKIE,'',0);
+// An administrator: an account whose Google id is in the Worker's ADMINS secret (comma separated; set in Cloudflare's
+// dashboard, it takes effect at once and no deploy overwrites it), or marked admin in the database.
+export const isAdmin=(env,s)=>!!s&&!s.gone&&(!!s.admin||String(env.ADMINS??'').split(',').map(x=>x.trim()).filter(Boolean).includes(s.google_sub));
 export async function signedIn(request,env){
  const s=await session(request,env);
  return s&&!s.gone?s:null;

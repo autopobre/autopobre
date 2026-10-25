@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light">
+<title>Painel · Auto-Pobre Racing</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="admin.css">
+<script type="module" src="admin.js"></script>
+</head>
+<body>
+<header class="topo">
+ <div><span class="marca">AUTO-POBRE RACING · DEV</span><h1>Painel</h1></div>
+ <div class="acoes"><span id="atualizado"></span><button id="atualizar" type="button">Atualizar</button><a href="./">← Voltar ao jogo</a></div>
+</header>
+<p id="aviso" role="status">Carregando…</p>
+<main id="painel" hidden>
+ <section id="resumo" class="cartoes" aria-label="Resumo"></section>
+ <section class="bloco">
+  <h2>Voltas recusadas na semana, por motivo</h2>
+  <ul id="motivos"></ul>
+ </section>
+ <section class="bloco">
+  <h2>Usuários</h2>
+  <div class="rolagem"><table id="usuarios"><thead><tr><th>Apelido</th><th>Conta criada</th><th>Último login</th><th>Sessões</th><th>✓</th><th>⚠️</th><th>Antigos subiram</th><th>Recusas (7 dias)</th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nenhuma conta ainda.</p></div>
+ </section>
+ <section class="bloco">
+  <div class="titulo-filtro"><h2>Eventos</h2><label>Tipo <select id="tipo"><option value="">Todos</option></select></label></div>
+  <div class="rolagem"><table id="eventos"><thead><tr><th>Quando</th><th>Quem</th><th>O quê</th><th>Detalhe</th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nenhum evento.</p></div>
+  <button id="mais" type="button" hidden>Mais antigos</button>
+ </section>
+ <section class="bloco">
+  <h2>Últimos recordes</h2>
+  <div class="rolagem"><table id="recordes"><thead><tr><th>Quando</th><th>Piloto</th><th>Pista</th><th>Modo</th><th>Volta</th><th>Selo</th><th>Versão</th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nenhum recorde ainda.</p></div>
+ </section>
+ <p class="nota" id="nota"></p>
+</main>
+</body>
+</html>

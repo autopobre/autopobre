@@ -27,6 +27,7 @@
 import {CIRCUITS} from '../../pista_interlagos/teste/circuits.js';
 import {LINE_TIMES} from './pisos.js';
 import {json,seal,unseal,signedIn,notSignedIn} from './base.js';
+import {event} from './eventos.js';
 
 const TICKET='bilhete-v1';
 export const CHUNK_EVERY=10;  // seconds of the game's clock between chunks (the game keeps this pace)
@@ -52,6 +53,7 @@ const GAME_START=Date.parse('2026-09-01T00:00:00Z');
 const FLOOR=.85;
 const fastest=circuit=>Math.ceil(1000*(LINE_TIMES[circuit]?LINE_TIMES[circuit]*FLOOR:CIRCUITS[circuit].length/70));
 const GHOST_BYTES=120000;     // a lap's ghost as the game encodes it (3600 samples at most: ~70 kB)
+const LOGGED_REFUSALS=5;      // refused laps a ticket writes to the panel's events (the rest only answer: no writes to spend)
 export const RECORDS_BODY={'/api/recordes/pedaco':GHOST_BYTES+4096,'/api/recordes/importar':16384};
 const known=(c,m,k)=>typeof c==='string'&&Object.hasOwn(CIRCUITS,c)&&MODES.includes(m)&&CARS.includes(k);
 const UPSERT=`INSERT INTO recordes (usuario_id,circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma) VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -151,8 +153,15 @@ async function chunk(request,env,body){
  return json(out);
 }
 
-// The lap that ends at game time g: checked, and kept when it is the pilot's best.
+// The lap that ends at game time g: checked, and kept when it is the pilot's best. Its verdict goes to the panel's
+// events too (a refusal with its reason, up to LOGGED_REFUSALS a ticket).
 async function judge(env,t,g,now,from,lap){
+ const verdict=await check(env,t,g,now,from,lap);
+ if(!verdict.conferida&&(t.rf=(t.rf??0)+1)<=LOGGED_REFUSALS)
+  await event(env,'recusada',t.u,{circuito:t.c,modo:t.m,volta_ms:verdict.tempo_ms??null,motivo:verdict.recusada}).run().catch(()=>{});
+ return verdict;
+}
+async function check(env,t,g,now,from,lap){
  if(!from)return {recusada:'a volta teve pausa, ficou sem sinal ou o jogo rodou mais devagar que o relógio'};
  const time=g-from.g,ms=Math.round(time*1000),real=now-from.s;
  if(Math.abs(real-ms)>LAP_SLACK+ms*.01)return {tempo_ms:ms,recusada:'o tempo da volta não bate com o relógio do servidor'};
@@ -160,7 +169,8 @@ async function judge(env,t,g,now,from,lap){
  const ghost=readGhost(lap?.fantasma),why=ghostProblem(ghost,time,t.c);
  if(why)return {tempo_ms:ms,recusada:why};
  if(!await env.DB.prepare('SELECT 1 FROM usuarios WHERE id=? AND google_sub=?').bind(t.u,t.sb).first())return {tempo_ms:ms,recusada:'a conta não existe mais'};
- const r=await env.DB.prepare(UPSERT).bind(t.u,t.c,t.m,t.k,'conferido',ms,t.v,now,now,JSON.stringify(ghost.stored)).run();
+ const [r]=await env.DB.batch([env.DB.prepare(UPSERT).bind(t.u,t.c,t.m,t.k,'conferido',ms,t.v,now,now,JSON.stringify(ghost.stored)),
+  event(env,'conferida',t.u,{circuito:t.c,modo:t.m,volta_ms:ms})]);
  return {tempo_ms:ms,conferida:true,recorde:r.meta.changes>0};
 }
 
@@ -184,7 +194,7 @@ async function importOld(request,env,body){
   return json({erro:'Os recordes antigos desta conta já subiram.'},409);
  const made=when=>Number.isFinite(when)&&when>=GAME_START&&when<=now?when:now;
  const steps=[...best.values()].map(r=>env.DB.prepare(UPSERT).bind(s.id,r.c,r.m,'opala','nao_verificado',r.ms,'local',made(r.when),now,null));
- if(steps.length)await env.DB.batch(steps);
+ await env.DB.batch([...steps,event(env,'importou',s.id,{recordes:steps.length})]);
  return json({importados:steps.length});
 }
 

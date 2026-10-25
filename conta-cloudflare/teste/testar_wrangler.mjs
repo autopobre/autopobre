@@ -46,6 +46,6 @@ try{
  assert.deepEqual(board.recordes.filter(r=>r.apelido===nick).map(r=>[r.apelido,r.selo,r.volta_ms,r.meu]),[[nick,'nao_verificado',95000,true]]);
  assert.equal((await (await go('/api/recordes/melhores?modo=normal')).json()).melhores.cascavel,undefined,'the circuit list counts checked laps only');
  assert.equal((await post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
- assert.deepEqual(await (await go('/api/conta/eu')).json(),{conta:null});
+ assert.equal((await (await go('/api/conta/eu')).json()).conta,null);
  console.log('ok: entrar, apelido, meus dados, bilhete, recordes e apagar no runtime do Cloudflare (wrangler dev)');
 }finally{stop();await google.close();}

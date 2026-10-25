@@ -32,6 +32,30 @@ O que o selo conferido não pega: volta pilotada por um programa, ou alguém dei
 
 Pista nova no jogo: rode `node gerar_pisos.mjs` (o piso dela) e publique o Worker de novo (`.\wrangler deploy`), porque ele leva o `circuits.js` e os pisos junto.
 
+## Painel de administração
+
+Em `https://dev.autopobre.com.br/admin.html` (página do pacote do dev, `pista_interlagos/teste/admin.html`). Ele é só para leitura e mostra:
+- **Resumo:** contas, logins e voltas recusadas por motivo.
+- **Usuários:** cada conta, com sessões e recordes.
+- **Eventos:** o que aconteceu, com filtro por tipo.
+- **Recordes:** os últimos que chegaram.
+
+Quem decide quem vê é o servidor (`src/admin.js`), a cada pedido. Administrador é a conta cujo **identificador Google** está no segredo **`ADMINS`** do Worker. Para pôr ou tirar alguém:
+1. A pessoa entra no jogo, abre **Sua conta → Baixar meus dados** e copia o valor de `identificador_google`. Nunca use o apelido, que muda e pode passar para outra pessoa.
+2. No painel do Cloudflare: **Workers & Pages → `conta-autopobre-dev` → Settings → Variables and Secrets → `ADMINS`**. Edite o valor (vários identificadores separados por vírgula) e salve. Vale na hora, sem publicar nada. Use o tipo **Secret**: variável de texto fica pública no repositório, e o `wrangler deploy` a sobrescreveria.
+
+Pelo terminal, nesta pasta: `.\wrangler secret put ADMINS`.
+
+Uma conta com `admin=1` no banco também é administradora; essa marca fica para o próprio painel poder promover alguém no futuro.
+
+O painel nunca mostra a conta Google de ninguém. Os **eventos** (`src/eventos.js`) não guardam IP e ficam 90 dias:
+- conta criada, entrou, saiu;
+- trocou o apelido, subiu recordes antigos;
+- volta conferida, volta recusada com o motivo (no máximo 5 recusas registradas por bilhete);
+- conta apagada.
+
+Quando a conta é apagada, os eventos dela vão junto, e fica só um "conta apagada" sem dono. "Baixar meus dados" traz os eventos da própria pessoa.
+
 ## Rotas
 
 | Rota | O que faz |
@@ -48,6 +72,7 @@ Pista nova no jogo: rode `node gerar_pisos.mjs` (o piso dela) e publique o Worke
 | `POST /api/recordes/importar` `{recordes}` | os recordes antigos do navegador, uma vez, até 30/11/2026 |
 | `GET /api/recordes?circuito=&modo=` | a tabela de uma pista (pública) |
 | `GET /api/recordes/melhores?modo=` | a melhor volta de cada pista (pública) |
+| `GET /api/admin/resumo`, `/usuarios`, `/eventos?tipo=&antes=`, `/recordes` | o painel (só administradores) |
 
 ## Publicar (uma vez)
 

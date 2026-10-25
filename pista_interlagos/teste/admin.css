@@ -1,0 +1,39 @@
+/* The admin panel (admin.html): the records dialog's colours, on a page of its own. */
+:root{--fundo:#e9ede1;--papel:#f6f8f1;--tinta:#214b3b;--azul:#28558a;--verde:#197746;--amarelo:#f3ca12;--linha:#cfd9c6;--apagado:#5f7466}
+*{box-sizing:border-box}
+html{background:var(--fundo)}
+body{margin:0;padding:16px clamp(16px,3vw,40px) 40px;font:14px/1.45 system-ui,"Segoe UI",Roboto,sans-serif;color:var(--tinta);background:var(--fundo)}
+.topo{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 20px;margin-bottom:18px}
+.marca{font-size:10px;font-weight:900;letter-spacing:.12em;color:var(--verde)}
+h1{margin:2px 0 0;font-size:28px;font-weight:900;color:var(--azul)}
+h2{margin:0 0 10px;font-size:14px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--azul)}
+.acoes{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+#atualizado{font-size:12px;color:var(--apagado)}
+button,.acoes a{padding:7px 12px;border:1px solid #afbea5;border-radius:5px;background:var(--papel);color:var(--tinta);font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
+#atualizar{background:var(--verde);border-color:var(--verde);color:#fff;box-shadow:inset 0 -2px var(--amarelo)}
+#aviso{padding:12px 14px;border-radius:6px;background:#fff3b7;border-left:4px solid var(--amarelo);font-weight:700}
+#aviso[hidden]{display:none}
+.cartoes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.cartao{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border:1px solid var(--linha);border-radius:8px;background:var(--papel)}
+.cartao span{font-size:11px;font-weight:800;color:var(--apagado);text-transform:uppercase;letter-spacing:.04em}
+.cartao b{font-size:28px;font-weight:900;font-variant-numeric:tabular-nums;color:var(--tinta)}
+.cartao small{font-size:12px;color:var(--apagado);min-height:1em}
+.bloco{margin-bottom:18px;padding:14px;border:1px solid var(--linha);border-radius:8px;background:var(--papel)}
+#motivos{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+#motivos b{display:inline-block;min-width:2.5em;font-variant-numeric:tabular-nums}
+.titulo-filtro{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
+.titulo-filtro label{font-size:12px;font-weight:700}
+select{margin-left:6px;padding:5px 8px;border:1px solid #afbea5;border-radius:5px;background:#fff;color:var(--tinta);font:inherit}
+.rolagem{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{position:sticky;top:0;padding:6px 8px;text-align:left;font-size:11px;font-weight:800;color:var(--azul);background:var(--papel);border-bottom:2px solid var(--linha);white-space:nowrap}
+td{padding:6px 8px;border-bottom:1px solid var(--linha);vertical-align:top}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+td.tipo{font-weight:700;white-space:nowrap}
+tbody tr:nth-child(even){background:#eef2e7}
+.vazio{margin:8px 0 0;color:var(--apagado)}
+.vazio[hidden]{display:none}
+#mais{margin-top:10px}
+#mais[hidden]{display:none}
+.nota{font-size:12px;color:var(--apagado)}
+@media(max-width:560px){h1{font-size:22px}.cartao b{font-size:22px}}

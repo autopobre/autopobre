@@ -4,8 +4,9 @@
 //
 // What it keeps, and nothing else (LGPD: the least that makes an account): the Google account's
 // subject id (`sub`: the scope is openid alone, so no name, picture or e-mail ever arrives), the public
-// nickname the player picks, when the account was made and last signed in, its sessions and its online
-// records. Each account can download all of it (/meus-dados) and delete it for good (/apagar).
+// nickname the player picks, when the account was made and last signed in, its sessions, its online records and
+// what it did (eventos.js, 90 days, for the admin panel). Each account can download all of it (/meus-dados) and
+// delete it for good (/apagar).
 //
 // Sign-in is the authorization code flow, run here (the page loads no Google script): state, nonce and
 // the PKCE verifier travel in a short-lived encrypted cookie, so nothing is written before Google has
@@ -15,8 +16,10 @@
 // (HttpOnly, Secure, SameSite=Lax); the database holds only its SHA-256. Every write needs the exact
 // Origin and a JSON body: dev and the main link are the same site to a browser, so SameSite alone
 // would let a page of one post to the other.
-import {SESSION_COOKIE,LOGIN_COOKIE,b64url,fromB64url,random,sha256,hashed,sameText,readCookies,setCookie,json,redirect,seal,unseal,session,signedOut,signedIn,notSignedIn,readPost} from './base.js';
+import {SESSION_COOKIE,LOGIN_COOKIE,b64url,fromB64url,random,sha256,hashed,sameText,readCookies,setCookie,json,redirect,seal,unseal,session,signedOut,signedIn,notSignedIn,readPost,isAdmin} from './base.js';
 import {RECORDS_GETS,RECORDS_POSTS,RECORDS_BODY} from './recordes.js';
+import {ADMIN_GETS} from './admin.js';
+import {event,forgetOld} from './eventos.js';
 
 const SESSION_DAYS=30;        // a session's life; signing in again makes a new one
 const MAX_SESSIONS=10;        // per account (browsers, phones): the oldest go first
@@ -47,14 +50,15 @@ function google(env,which){
 }
 const redirectUri=env=>env.ORIGEM+'/api/conta/google';
 
-const account=row=>({apelido:row.apelido??null,desde:new Date(row.criado_em).toISOString()});
+// The account as its own page sees it (admin: the panel's link shows).
+const account=(row,env)=>({apelido:row.apelido??null,desde:new Date(row.criado_em).toISOString(),...(isAdmin(env,row)&&{admin:true})});
 
 // The account, and where the main link's old records can come from (PONTE_RECORDES: the origin of the bridge page,
 // levar-recordes.html, set once that page is published there; the game hops to it once per account).
 async function me(request,env){
  const s=await session(request,env),bridge=env.PONTE_RECORDES?{ponte:env.PONTE_RECORDES}:{};
  if(!s||s.gone)return json({conta:null,...bridge},200,{cookies:s?.gone?[signedOut()]:[]});
- return json({conta:account(s),...bridge});
+ return json({conta:account(s,env),...bridge});
 }
 
 async function signIn(request,env,url){
@@ -89,8 +93,9 @@ async function googleBack(request,env,url){
  const claims=await exchange(env,code,pending.v);
  if(!claims||!sameText(claims.nonce,pending.n))return redirect(back,[clear]);
  const now=Date.now();
- const user=await env.DB.prepare('INSERT INTO usuarios (google_sub,criado_em,ultimo_login) VALUES (?1,?2,?2) ON CONFLICT(google_sub) DO UPDATE SET ultimo_login=?2 RETURNING id').bind(claims.sub,now).first();
+ const user=await env.DB.prepare('INSERT INTO usuarios (google_sub,criado_em,ultimo_login) VALUES (?1,?2,?2) ON CONFLICT(google_sub) DO UPDATE SET ultimo_login=?2 RETURNING id,criado_em').bind(claims.sub,now).first();
  const value=b64url(random(32)),steps=[
+  event(env,user.criado_em===now?'conta_criada':'entrou',user.id),forgetOld(env),
   env.DB.prepare('INSERT INTO sessoes (id,usuario_id,criada_em,expira_em) VALUES (?,?,?,?)').bind(await hashed(value),user.id,now,now+SESSION_DAYS*86400000),
   env.DB.prepare('DELETE FROM sessoes WHERE expira_em<=?').bind(now),
   env.DB.prepare('DELETE FROM sessoes WHERE usuario_id=?1 AND id NOT IN (SELECT id FROM sessoes WHERE usuario_id=?1 ORDER BY criada_em DESC LIMIT ?2)').bind(user.id,MAX_SESSIONS)];
@@ -106,21 +111,26 @@ async function setNickname(request,env,body){
  const key=nicknameKey(nick),taken=()=>json({erro:'Esse apelido já é de outro piloto.'},409);
  if(RESERVED.has(key))return json({erro:'Esse apelido é reservado. Escolha outro.'},409);
  if(await env.DB.prepare('SELECT id FROM usuarios WHERE apelido_chave=? AND id<>?').bind(key,s.id).first())return taken();
- try{await env.DB.prepare('UPDATE usuarios SET apelido=?,apelido_chave=? WHERE id=?').bind(nick,key,s.id).run();}
+ try{await env.DB.batch([env.DB.prepare('UPDATE usuarios SET apelido=?,apelido_chave=? WHERE id=?').bind(nick,key,s.id),event(env,'apelido',s.id,{apelido:nick})]);}
  catch(error){if(/UNIQUE/i.test(String(error?.message)))return taken();throw error;}
- return json({conta:account({...s,apelido:nick})});
+ return json({conta:account({...s,apelido:nick},env)});
 }
 
 async function signOut(request,env){
  const value=readCookies(request)[SESSION_COOKIE];
- if(value)await env.DB.prepare('DELETE FROM sessoes WHERE id=?').bind(await hashed(value)).run();
+ if(value){
+  const id=await hashed(value),who=await env.DB.prepare('SELECT usuario_id FROM sessoes WHERE id=?').bind(id).first('usuario_id');
+  await env.DB.batch([env.DB.prepare('DELETE FROM sessoes WHERE id=?').bind(id),...(who?[event(env,'saiu',who)]:[])]);
+ }
  return json({conta:null},200,{cookies:[signedOut()]});
 }
 
 async function deleteAccount(request,env,body){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
  if(body.confirmar!=='APAGAR')return json({erro:'Confirme para apagar a conta.'},400);
- await env.DB.batch(['recordes','sessoes'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE usuario_id=?`).bind(s.id)).concat(env.DB.prepare('DELETE FROM usuarios WHERE id=?').bind(s.id)));
+ // Its records, sessions and events go with it; the panel keeps only that an account was deleted, by nobody.
+ await env.DB.batch(['recordes','sessoes','eventos'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE usuario_id=?`).bind(s.id))
+  .concat(env.DB.prepare('DELETE FROM usuarios WHERE id=?').bind(s.id),event(env,'conta_apagada')));
  return json({conta:null,apagada:true},200,{cookies:[signedOut()]});
 }
 
@@ -129,6 +139,7 @@ async function myData(request,env){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
  const sessions=(await env.DB.prepare('SELECT criada_em,expira_em FROM sessoes WHERE usuario_id=? ORDER BY criada_em').bind(s.id).all()).results;
  const records=(await env.DB.prepare('SELECT circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma FROM recordes WHERE usuario_id=? ORDER BY circuito,modo,selo').bind(s.id).all()).results;
+ const events=(await env.DB.prepare('SELECT quando,tipo,detalhe FROM eventos WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
  const ghost=text=>{try{return text?JSON.parse(text):null;}catch{return null;}};
  const when=ms=>new Date(ms).toISOString();
  return json({
@@ -138,10 +149,11 @@ async function myData(request,env){
   sessoes:sessions.map(r=>({aberta_em:when(r.criada_em),expira_em:when(r.expira_em)})),
   recordes:records.map(r=>({circuito:r.circuito,modo:r.modo,carro:r.carro,selo:r.selo,volta_ms:r.volta_ms,versao_do_jogo:r.versao,feito_em:when(r.feito_em),enviado_em:when(r.enviado_em),fantasma:ghost(r.fantasma)})),
   subida_dos_recordes_antigos:s.importou_em?when(s.importou_em):null,
+  eventos:events.map(e=>({quando:when(e.quando),tipo:e.tipo,detalhe:ghost(e.detalhe)})),
  },200,{headers:{'Content-Disposition':'attachment; filename="autopobre-meus-dados.json"'}});
 }
 
-const GETS={'/api/conta/eu':me,'/api/conta/entrar':signIn,'/api/conta/google':googleBack,'/api/conta/meus-dados':myData,...RECORDS_GETS};
+const GETS={'/api/conta/eu':me,'/api/conta/entrar':signIn,'/api/conta/google':googleBack,'/api/conta/meus-dados':myData,...RECORDS_GETS,...ADMIN_GETS};
 const POSTS={'/api/conta/apelido':setNickname,'/api/conta/sair':signOut,'/api/conta/apagar':deleteAccount,...RECORDS_POSTS};
 
 export default {

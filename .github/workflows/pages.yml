@@ -153,14 +153,14 @@ jobs:
           # The accounts go only to dev.autopobre.com.br (autopobre/dev): neither address here has their server.
           for pasta in principal dev; do
             [ -d "$pasta/dist" ] || continue
-            for arquivo in conta.js conta.css recordes-online.js; do
+            for arquivo in conta.js conta.css recordes-online.js admin.html admin.js admin.css; do
               if [ -e "$pasta/dist/$arquivo" ]; then
                 echo "::error::A versao de $pasta tem as contas ($arquivo); elas so podem ir para dev.autopobre.com.br."
                 exit 1
               fi
             done
             # By content too, should a later module call the accounts' server or turn them on.
-            if grep -rqE '/api/(conta|recordes)|const CONTA=true;' --include='*.js' --include='*.html' "$pasta/dist"; then
+            if grep -rqE '/api/(conta|recordes|admin)|const CONTA=true;' --include='*.js' --include='*.html' "$pasta/dist"; then
               echo "::error::A versao de $pasta chama o servidor das contas ou liga as contas; elas so podem ir para dev.autopobre.com.br."
               exit 1
             fi

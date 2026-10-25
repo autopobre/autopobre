@@ -42,7 +42,7 @@ export class Conta {
  <section id="contaDentro" hidden>
   <form id="contaApelidoForm"><label for="contaApelido">SEU APELIDO NOS RECORDES</label><div class="conta-linha"><input id="contaApelido" maxlength="20" autocomplete="nickname" spellcheck="false" required><button id="contaSalvar" class="conta-principal" type="submit">Salvar</button></div><small>3 a 20 letras ou números. Todo mundo vê este nome.</small></form>
   <p id="contaDesde"></p>
-  <div class="conta-acoes"><a id="contaDados" href="${API}meus-dados" download="autopobre-meus-dados.json">Baixar meus dados</a><button id="contaSair" type="button">Sair</button><button id="contaApagar" class="conta-perigo" type="button">Apagar conta</button></div>
+  <div class="conta-acoes"><a id="contaDados" href="${API}meus-dados" download="autopobre-meus-dados.json">Baixar meus dados</a><button id="contaSair" type="button">Sair</button><button id="contaApagar" class="conta-perigo" type="button">Apagar conta</button><a id="contaPainel" href="admin.html" hidden>Painel de administração</a></div>
  </section>
  <details class="conta-info"><summary><span class="conta-i" aria-hidden="true">i</span>Guardamos só o número que o Google dá à sua conta, o apelido e as datas em que você entrou. Nada de nome, e-mail ou foto.</summary>
   <h3>Como funciona, tecnicamente</h3>
@@ -52,6 +52,7 @@ export class Conta {
    <li><b>Sessão:</b> um cookie <code>__Host-ap_sessao</code> (HttpOnly, Secure, SameSite=Lax) que dura 30 dias. O servidor guarda só o SHA-256 dele, nunca o valor. Sair apaga a sessão também no servidor.</li>
    <li><b>Onde fica:</b> num banco Cloudflare D1, no leste dos EUA. Ficam a conta (identificador, apelido, datas), as sessões e os recordes.</li>
    <li><b>Recordes:</b> pista, modo, tempo, versão do jogo, data e o fantasma da volta. Uma volta é <i>conferida</i> quando o servidor acompanha o relógio dela, com pedaços enviados a cada 10 segundos, não deixa passar volta absurdamente mais rápida que a linha ideal do Opala, e confere o trajeto. Os recordes antigos (deste navegador e do autopobre.com.br) sobem uma única vez por conta, marcados com ⚠️ (recordes de versões anteriores do Auto Pobre podem conter erros).</li>
+   <li><b>Registro de eventos:</b> quando a conta foi criada, entradas e saídas, troca de apelido, a subida dos recordes antigos e as voltas conferidas ou recusadas (com o motivo). Sem IP, guardado por 90 dias e visto só pela administração do jogo.</li>
    <li><b>Seus direitos (LGPD):</b> "Baixar meus dados" entrega tudo num arquivo JSON, e "Apagar conta" apaga a conta, as sessões e os recordes. As cópias de segurança automáticas do banco somem em até 7 dias.</li>
   </ul>
  </details>
@@ -95,6 +96,8 @@ export class Conta {
   if(account){
    $('contaApelido').value=account.apelido||this.pilot()||'';
    $('contaDesde').textContent=`Conta criada em ${new Date(account.desde).toLocaleDateString('pt-BR')}.`;
+   // The panel's link for an admin (the server says so, and checks it again on every request of the panel).
+   $('contaPainel').hidden=!account.admin;
   }
   this.disarm();
  }

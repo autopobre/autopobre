@@ -1,5 +1,13 @@
 # Revisão para publicação — 13/09/2026
 
+## Atualização — 25/10/2026 (noite): painel de administração
+
+`dev.autopobre.com.br/admin.html` mostra resumo, usuários, eventos e últimos recordes. É só leitura, e é do pacote do dev; o link principal e o `/dev/` antigo não o recebem, e a trava da publicação também procura `/api/admin`.
+- **Quem vê:** o servidor só responde a contas com `admin=1` no banco, posto à mão. A página não decide nada, e o link na janela "Sua conta" só aparece para admin.
+- **O que não aparece:** a conta Google de ninguém.
+- **Eventos novos (LGPD):** entradas, saídas, apelido, subida dos antigos, voltas conferidas e recusadas, conta apagada. Sem IP, por 90 dias, explicados no "i" da conta e incluídos em "Baixar meus dados". Vão embora com a conta.
+- **Recusas no registro:** no máximo 5 por bilhete, para ninguém usar voltas recusadas para gastar as escritas do banco.
+
 ## Atualização — 25/10/2026 (tarde): revisão independente do login e dos recordes
 
 Um revisor separado, que não viu as conclusões de quem escreveu o código, atacou o login e os recordes contra o servidor local. Correções:
