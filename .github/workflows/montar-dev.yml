@@ -1,0 +1,65 @@
+name: Montar a versao de testes (dev.autopobre.com.br)
+
+# Called by the "Publicar dev.autopobre.com.br" workflow of autopobre/dev, a repository with no game
+# code: it only gives the test version its own Pages site, on its own origin, with saves and cookies
+# apart from the main link's. Everything else stays here: this workflow checks out this repository at
+# `versao`, runs that version's own publishing checks (scripts/testes_publicacao.txt, the list pages.yml
+# runs too), builds the /dev/ package (multiplayer test room, sound bench and track editor) and uploads
+# it as the run's Pages artifact; the caller deploys it. It leaves out the saves migration of the old
+# address, which only brings saves to the main link.
+on:
+  workflow_call:
+    inputs:
+      versao:
+        description: 'Versao de autopobre/autopobre: branch, tag ou commit (hash completo, 40 caracteres).'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      # Spelled out: in a called workflow the default repository is the caller's (autopobre/dev).
+      - name: Baixar a versao escolhida do jogo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: autopobre/autopobre
+          ref: ${{ inputs.versao }}
+          path: dev
+          persist-credentials: false
+      - name: Preparar Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: dev/pista_interlagos/teste/package-lock.json
+      - name: Preparar Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Instalar a dependencia fixada no lock
+        run: npm ci --prefix dev/pista_interlagos/teste --ignore-scripts --no-audit --no-fund
+      # The version's own list: every check in it must exist (as for /dev/ in pages.yml).
+      - name: Verificar a versao (preferencias, audio, contatos, corrida, boxes)
+        run: |
+          lista=dev/pista_interlagos/scripts/testes_publicacao.txt
+          [ -s "$lista" ] || { echo "::error::Esta versao nao tem $lista: e anterior ao dev.autopobre.com.br. Publique uma versao mais nova."; exit 1; }
+          echo "::notice::Publicando o commit $(git -C dev rev-parse HEAD) em dev.autopobre.com.br."
+          for teste in $(grep -v '^#' "$lista"); do
+            (cd dev && node "pista_interlagos/scripts/$teste.mjs")
+          done
+      - name: Gerar somente os arquivos publicos (com multiplayer, bancada de som e editor)
+        run: (cd dev && python pista_interlagos/scripts/preparar_publicacao.py --multiplayer)
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - name: Enviar o jogo para publicacao
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dev/dist

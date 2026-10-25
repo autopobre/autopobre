@@ -18,10 +18,11 @@
   // The free plan runs SQLite-backed Durable Objects only.
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sala"] }, { "tag": "v2", "new_sqlite_classes": ["Porteiro"] }],
   "vars": {
-    // Pages allowed to open a room: the site only. The local preview (INICIAR_TESTE) talks to
-    // wrangler dev (&servidor=local, origins in .dev.vars), never to this server. The old address
-    // (www.inteligenciamilgrau.com.br, an origin all of that account's Pages projects share) only
-    // redirects here now, so it no longer opens rooms.
-    "ORIGENS": "https://autopobre.com.br"
+    // Pages allowed to open a room: the site only, the main link (whose /dev/ folder still carries
+    // the multiplayer) and the test version at dev.autopobre.com.br (autopobre/dev). The local
+    // preview (INICIAR_TESTE) talks to wrangler dev (&servidor=local, origins in .dev.vars), never to
+    // this server. The old address (www.inteligenciamilgrau.com.br, an origin all of that account's
+    // Pages projects share) only redirects here now, so it no longer opens rooms.
+    "ORIGENS": "https://autopobre.com.br,https://dev.autopobre.com.br"
   }
 }

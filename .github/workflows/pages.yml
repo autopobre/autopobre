@@ -50,12 +50,15 @@ jobs:
           persist-credentials: false
       # migrar.html brings the saves from the old address (pista_interlagos/migracao). It is the same
       # for both versions: it comes from the commit this run started from and lands at the site's root.
-      - name: Baixar a pagina que traz os dados do endereco antigo
+      # The list of checks (scripts/testes_publicacao.txt) comes from the same commit.
+      - name: Baixar a pagina que traz os dados do endereco antigo e a lista de testes
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: atual
           persist-credentials: false
-          sparse-checkout: pista_interlagos/migracao
+          sparse-checkout: |
+            pista_interlagos/migracao
+            pista_interlagos/scripts
       - name: Preparar Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -74,6 +77,8 @@ jobs:
           done
       - name: Verificar cada versao (preferencias, audio, contatos, corrida, boxes)
         run: |
+          lista=atual/pista_interlagos/scripts/testes_publicacao.txt
+          [ -s "$lista" ] || { echo "::error::Falta a lista de testes $lista."; exit 1; }
           pastas="principal dev"
           # Both addresses on one commit (the usual case right after a release): test it once, as /dev/.
           if [ -d dev ] && [ "$(git -C principal rev-parse HEAD)" = "$(git -C dev rev-parse HEAD)" ]; then
@@ -83,7 +88,7 @@ jobs:
           for pasta in $pastas; do
             [ -d "$pasta" ] || continue
             echo "::group::Testes de $pasta"
-            for teste in testar_preferencias testar_audio testar_eventos_audio testar_colisoes testar_saldo testar_imersivo testar_voltas testar_derrapadas testar_terreno_rivais testar_aderencia testar_direcao testar_bandeirada testar_recordes testar_pilotos_largada testar_curvelo testar_pitstop testar_controle testar_retorno_camera testar_volante testar_freio_re testar_graficos testar_luz testar_fantasma testar_camera testar_colisao_fusca testar_mecanica_fusca testar_multiplayer testar_estados_sala testar_zebras testar_particulas testar_bandeiras testar_beira testar_contato testar_pintura testar_grid_fusca testar_clima testar_arena_drift testar_muro_curvas testar_passeio_cidade testar_ramal testar_a_pe testar_selfie testar_visual testar_futebol testar_ajustes_som testar_migracao testar_teclas testar_aberturas testar_disco_voador testar_historia testar_combustivel testar_linha_ideal testar_paradas_rivais; do
+            for teste in $(grep -v '^#' "$lista"); do
               # Only an older tag published again to roll back can predate a test (e.g. testar_a_pe,
               # testar_migracao) and skips it; /dev/ must have every one.
               if [ "$pasta" != dev ] && [ ! -f "$pasta/pista_interlagos/scripts/$teste.mjs" ]; then
