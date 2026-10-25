@@ -9,7 +9,7 @@
 //   why the lap was not checked.
 // - The records dialog's Online tab reads the board (lap-records.js addOnline).
 // - The old records of this browser, of the pilot that signs in, go up once per account (then this browser
-//   is marked), flagged unchecked, until IMPORT_UNTIL.
+//   is marked), flagged ⚠️ unchecked, until IMPORT_UNTIL.
 import {CIRCUITS} from './circuits.js';
 import {encodeGhost} from './ghost-lap.js';
 import {readRecords} from './lap-records.js';

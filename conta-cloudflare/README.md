@@ -22,7 +22,7 @@ Cada piloto aparece com a melhor volta por pista, modo e carro (por enquanto só
   - A volta, de linha a linha, precisa durar no relógio do servidor o que durou no jogo. Por isso volta com pausa não é conferida.
   - O **fantasma** da volta (a mesma gravação que o jogo guarda) precisa ter o tempo da volta, começar na linha, percorrer a pista inteira (o comprimento vem do `circuits.js` do jogo), não andar mais rápido que um Opala e não ganhar pista sem andar por ela.
   - Só a melhor volta de cada piloto fica guardada, com o fantasma.
-- **(!) não verificado:** um recorde antigo, de antes da conta. O jogo sobe os recordes do navegador uma única vez por conta (depois marca o navegador) e só até **30/11/2026**. Tempo impossível para a pista é descartado.
+- **⚠️ não verificado** ("Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros"): um recorde antigo, de antes da conta. O jogo sobe os recordes do navegador uma única vez por conta (depois marca o navegador) e só até **30/11/2026**. Tempo impossível para a pista é descartado.
 
 O que o selo conferido não pega: volta pilotada por um programa, ou alguém deixando o jogo mais lento por um instante dentro de um pedaço. Isso fica para o próximo selo (homologado: o servidor refaz a volta a partir dos comandos do piloto).
 

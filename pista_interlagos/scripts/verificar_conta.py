@@ -89,12 +89,12 @@ try:
   page.click('#start');wait_js(page,"!document.getElementById('cars').classList.contains('hidden')")
   assert page.text_content('#carsPilot').startswith('Piloto: Piloto Teste'),page.text_content('#carsPilot')
   page.click('#carsBack');wait_js(page,"!document.getElementById('menu').classList.contains('hidden')")
-  # The old record went up (the browser is marked), and the records' Online tab shows it flagged (!), the pilot's own row.
+  # The old record went up (the browser is marked), and the records' Online tab shows it flagged ⚠️, the pilot's own row.
   wait_js(page,"!!localStorage.getItem('autopobre-recordes-importados-v1')")
   page.click('#recordsButton');page.click('[data-records-source=online]')
   wait_js(page,"[...document.querySelectorAll('#lapRecords tbody tr')].some(tr=>tr.textContent.includes('Piloto Teste'))")
   rows=page.evaluate("[...document.querySelectorAll('#lapRecords tbody tr')].map(tr=>({text:tr.textContent,mine:tr.hasAttribute('data-mine'),badge:tr.querySelector('.record-online-badge')?.textContent}))")
-  assert len(rows)==1 and '01:38.765' in rows[0]['text'] and rows[0]['badge']=='🌐 (!)' and rows[0]['mine'],rows
+  assert len(rows)==1 and '01:38.765' in rows[0]['text'] and rows[0]['badge']=='🌐 ⚠️' and rows[0]['mine'],rows
   page.screenshot(path=str(RENDERS/'conta_recordes_online.png'))
   # Todos joins them: this browser's people, the AI and the accounts; the pilot once (the account's row: the same time).
   page.click('[data-records-source=all]')

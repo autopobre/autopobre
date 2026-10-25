@@ -51,7 +51,7 @@ export class Conta {
    <li><b>O que o Google entrega:</b> o jogo pede só o escopo <code>openid</code>. Chega o identificador da conta (<code>sub</code>), um número que não revela nome, e-mail nem foto. O token do Google é conferido e descartado.</li>
    <li><b>Sessão:</b> um cookie <code>__Host-ap_sessao</code> (HttpOnly, Secure, SameSite=Lax) que dura 30 dias. O servidor guarda só o SHA-256 dele, nunca o valor. Sair apaga a sessão também no servidor.</li>
    <li><b>Onde fica:</b> num banco Cloudflare D1, no leste dos EUA. Ficam a conta (identificador, apelido, datas), as sessões e os recordes.</li>
-   <li><b>Recordes:</b> pista, modo, tempo, versão do jogo, data e o fantasma da volta. Uma volta é <i>conferida</i> quando o servidor acompanha o relógio dela, com pedaços enviados a cada 5 segundos, e confere o trajeto. Os recordes antigos deste navegador sobem uma vez, marcados como (!) não verificados.</li>
+   <li><b>Recordes:</b> pista, modo, tempo, versão do jogo, data e o fantasma da volta. Uma volta é <i>conferida</i> quando o servidor acompanha o relógio dela, com pedaços enviados a cada 5 segundos, e confere o trajeto. Os recordes antigos deste navegador sobem uma vez, marcados com ⚠️ (recordes de versões anteriores do Auto Pobre podem conter erros).</li>
    <li><b>Seus direitos (LGPD):</b> "Baixar meus dados" entrega tudo num arquivo JSON, e "Apagar conta" apaga a conta, as sessões e os recordes.</li>
   </ul>
  </details>

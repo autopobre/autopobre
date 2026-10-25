@@ -118,7 +118,7 @@ export class LapRecords {
   this.selectedCircuit=id;this.showCircuits(false);this.pickButton.focus();this.saveView();this.render();
  }
  // The accounts' board (recordes-online.js, only where the accounts are): a fourth source, Online, read
- // from the server (each pilot once, at their best lap, ✓ checked as it was driven or (!) an old record
+ // from the server (each pilot once, at their best lap, ✓ checked as it was driven or ⚠️ an old record
  // of some browser, unchecked), which Todos joins too.
  addOnline(online){
   if(this.online)return;this.online=online;
@@ -146,9 +146,9 @@ export class LapRecords {
   const local=source==='ai'||online?[]:readRecords(storage).map(r=>({...r,source:'human'}));
   if(source!=='human'&&!online)local.push(...readAIRecords(storage));
   for(const button of this.dialog.querySelectorAll('[data-records-source]'))button.setAttribute('aria-pressed',String(button.dataset.recordsSource===source));
-  this.dialog.querySelector('#recordsSourceNote').textContent=online?'Online: o melhor de cada piloto com conta. ✓ volta conferida pelo servidor · (!) recorde antigo, não verificado.'
+  this.dialog.querySelector('#recordsSourceNote').textContent=online?'Online: o melhor de cada piloto com conta. ✓ volta conferida pelo servidor · ⚠️ Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros.'
    :source==='human'?'Pessoas: recordes salvos automaticamente neste navegador.'
-   :`Pessoas: recordes deste navegador. IA: tempos do jogo, não dos pilotos reais.${this.online?' Online: pilotos com conta (✓ conferida · (!) não verificado).':''}`;
+   :`Pessoas: recordes deste navegador. IA: tempos do jogo, não dos pilotos reais.${this.online?' Online: pilotos com conta (✓ volta conferida · ⚠️ Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros).':''}`;
   const mode=this.selectedMode;
   for(const button of this.dialog.querySelectorAll('[data-records-mode]'))button.setAttribute('aria-pressed',String(button.dataset.recordsMode===mode));
   const circuit=CIRCUITS[this.selectedCircuit],button=this.pickButton;button.dataset.circuit=circuit.id;
@@ -176,10 +176,10 @@ export class LapRecords {
    const tr=document.createElement('tr');tr.dataset.source=row.source;if(row.mine)tr.dataset.mine='';
    for(const value of [`${i+1}º`,row.name,formatTime(row.bestLap),row.source==='online'?'—':formatTime(row.bestRace)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}
    const badge=document.createElement('span'),checked=row.badge==='conferido';badge.className='record-source-badge';
-   const label=row.source==='ai'?`Inteligência artificial · carro #${row.number}`:row.source==='online'?checked?'Online: volta conferida pelo servidor enquanto foi pilotada':'Online: recorde antigo de um navegador, não verificado':'Pessoa, neste navegador';
+   const label=row.source==='ai'?`Inteligência artificial · carro #${row.number}`:row.source==='online'?checked?'Online: volta conferida pelo servidor enquanto foi pilotada':'Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros':'Pessoa, neste navegador';
    if(row.source==='online')badge.classList.add('record-online-badge',...(checked?[]:['record-unchecked']));
    badge.title=label;badge.setAttribute('role','img');badge.setAttribute('aria-label',label);
-   badge.textContent=row.source==='ai'?`🤖 · #${row.number}`:row.source==='online'?`🌐 ${checked?'✓':'(!)'}`:'🧑';
+   badge.textContent=row.source==='ai'?`🤖 · #${row.number}`:row.source==='online'?`🌐 ${checked?'✓':'⚠️'}`:'🧑';
    tr.children[1].append(badge);body.append(tr);});
   this.dialog.querySelector('#recordsEmpty').hidden=rows.length>0;
  }

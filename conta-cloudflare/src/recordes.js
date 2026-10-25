@@ -14,7 +14,7 @@
 // Only a pilot's best goes in, with its ghost ("ver a volta", later).
 //
 // nao_verificado: an old record of a browser, from before the account (/importar). The game sends them
-// once per browser and account, until IMPORT_UNTIL, and the board shows them flagged (!).
+// once per browser and account, until IMPORT_UNTIL, and the board shows them flagged ⚠️.
 //
 // What this cannot tell: a lap driven by a program, or slowed for a second inside one chunk. That is the
 // next badge's work (homologado: the server re-running the lap from the pilot's inputs).
