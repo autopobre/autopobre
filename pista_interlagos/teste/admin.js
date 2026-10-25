@@ -64,7 +64,7 @@ async function load(){
   const [s,u,r]=await Promise.all([get('resumo'),get('usuarios'),get('recordes')]);
   summary(s);
   rows('usuarios',u.usuarios,[[x=>(x.apelido??'(sem apelido)')+(x.admin?' · admin':'')],[x=>when(x.criado_em)],[x=>when(x.ultimo_login)],[x=>String(x.sessoes),'num'],
-   [x=>String(x.conferidos),'num'],[x=>String(x.antigos),'num'],[x=>x.importou_em?when(x.importou_em):'não'],[x=>String(x.recusadas_7d),'num']]);
+   [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>x.importou_em?when(x.importou_em):'não'],[x=>String(x.recusadas_7d),'num']]);
   rows('recordes',r.recordes,[[x=>when(x.enviado_em)],[x=>x.apelido],[x=>track(x.circuito)],[x=>MODES[x.modo]??x.modo],[x=>lap(x.volta_ms),'num'],
    [x=>x.selo==='conferido'?'✓ conferido':'⚠️ antigo'],[x=>x.versao]]);
   oldest=null;await events();

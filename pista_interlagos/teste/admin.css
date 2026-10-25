@@ -28,7 +28,9 @@ select{margin-left:6px;padding:5px 8px;border:1px solid #afbea5;border-radius:5p
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{position:sticky;top:0;padding:6px 8px;text-align:left;font-size:11px;font-weight:800;color:var(--azul);background:var(--papel);border-bottom:2px solid var(--linha);white-space:nowrap}
 td{padding:6px 8px;border-bottom:1px solid var(--linha);vertical-align:top}
-td.num{text-align:right;font-variant-numeric:tabular-nums}
+/* A column's title and its numbers line up: counts to the right, the ✓ and ⚠️ columns centred. */
+:is(th,td).num{text-align:right;font-variant-numeric:tabular-nums}
+:is(th,td).ic{text-align:center;font-variant-numeric:tabular-nums}
 td.tipo{font-weight:700;white-space:nowrap}
 tbody tr:nth-child(even){background:#eef2e7}
 .vazio{margin:8px 0 0;color:var(--apagado)}
