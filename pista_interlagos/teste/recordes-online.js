@@ -19,9 +19,10 @@ import {readRecords} from './lap-records.js';
 import {formatTime} from './race-results.js';
 
 const API='/api/recordes';
-// Per account (its creation date): this browser sent its old records. Never again after that. (v2: with the main
-// link's, through the bridge: the accounts that sent this address's alone send once more; the server keeps the best.)
-const IMPORTED='autopobre-recordes-importados-v2';
+// Per account (its creation date): this browser sent its old records. Never again after that. (v3: with the main
+// link's, through the bridge. v2 went out before the bridge was on, so the accounts that sent this address's alone
+// then send once more; the server's own mark was cleared with it, and it keeps the best.)
+const IMPORTED='autopobre-recordes-importados-v3';
 // The bridge's records in the link back, and the hop under way in this tab (a bridge that did not answer is not
 // asked again: this address's records go up alone).
 const BRIDGE_PARAM='recordes-do-principal',HOPPING='autopobre-ponte-recordes';

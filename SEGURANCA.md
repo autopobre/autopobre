@@ -21,7 +21,7 @@ Um revisor separado, que não viu as conclusões de quem escreveu o código, ata
 Os pedaços do relógio passaram de 5 para 10 segundos, o que reduz o consumo da cota pela metade.
 
 Continua em aberto:
-- **Cota esgotável por qualquer um:** ainda falta uma regra de limite de pedidos no WAF do Cloudflare para `dev.autopobre.com.br/api/*`. É uma configuração do painel; pedidos barrados ali nem chegam ao Worker.
+- ~~Cota esgotável por qualquer um~~ **feito em 25/10/2026:** regra de limite de pedidos no painel do Cloudflare (Security rules → rate limiting). Ela vale para `starts_with(http.request.uri.path, "/api/")` (o plano grátis só deixa usar o caminho, e só o dev tem `/api/`), conta por IP, permite 30 pedidos em 10 segundos e bloqueia por 10 segundos. Testada de fora: numa rajada de 60 pedidos, 28 passaram e 32 receberam 429, e 15 segundos depois tudo voltou ao normal. Pedidos barrados nem chegam ao Worker.
 - **Trajeto inventado mas realista:** um anel do comprimento da pista, liso, ainda passa. Fecha com o traçado de cada pista no servidor (posição dentro da faixa).
 - **Física alterada no navegador ou volta pilotada por programa:** só o selo homologado, com o servidor refazendo a volta pelos comandos, mais revisão humana.
 

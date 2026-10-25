@@ -54,11 +54,11 @@ assert.equal(sent.length,1);
 assert.deepEqual(sent[0].body.recordes.sort((a,b)=>a.circuito.localeCompare(b.circuito)),[
  {circuito:'chapeco',modo:'normal',volta_ms:95000,data:null},{circuito:'interlagos',modo:'normal',volta_ms:99000,data:null}],
  'the best of both addresses (99 here beats 101.25 there), the main link\'s other pilot left out');
-assert.ok(JSON.parse(dev.getItem('autopobre-recordes-importados-v2'))[account.desde],'marked');
+assert.ok(JSON.parse(dev.getItem('autopobre-recordes-importados-v3'))[account.desde],'marked');
 await online.importOld(account,['Bob'],'https://autopobre.com.br',page(''));assert.equal(sent.length,1,'never again');
 // A tab whose hop did not come back (the bridge did not answer) sends this address's records alone, once.
 const other={apelido:'Ana',desde:'2026-10-25T11:00:00.000Z'};tab.setItem('autopobre-ponte-recordes','1');went=null;
-await online.importOld(other,['Ana'],'https://autopobre.com.br',page(''));assert.equal(went,null);assert.ok(JSON.parse(dev.getItem('autopobre-recordes-importados-v2'))[other.desde]);
+await online.importOld(other,['Ana'],'https://autopobre.com.br',page(''));assert.equal(went,null);assert.ok(JSON.parse(dev.getItem('autopobre-recordes-importados-v3'))[other.desde]);
 // A bridge the server names elsewhere is never used: no hop, this address's records alone.
 tab.removeItem('autopobre-ponte-recordes');went=null;const before=sent.length;
 await online.importOld({apelido:'Caio',desde:'2026-10-25T12:00:00.000Z'},['Bob'],'https://evil.example',page(''));

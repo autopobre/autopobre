@@ -17,6 +17,9 @@
     // The page's origin: the only one allowed to write, and where Google sends the player back.
     "ORIGEM": "https://dev.autopobre.com.br",
     // The OAuth client of the Google Cloud project autopobre-dev (public: it goes in Google's address).
-    "GOOGLE_CLIENT_ID": "93518128320-74sqauh7ul0s4tlro0tnqtel6vhostrg.apps.googleusercontent.com"
+    "GOOGLE_CLIENT_ID": "93518128320-74sqauh7ul0s4tlro0tnqtel6vhostrg.apps.googleusercontent.com",
+    // Where the main link's old records come from: the bridge page at its root (levar-recordes.html, published
+    // by pages.yml). The game hops there once per account; remove it to stop the hop.
+    "PONTE_RECORDES": "https://autopobre.com.br"
   }
 }

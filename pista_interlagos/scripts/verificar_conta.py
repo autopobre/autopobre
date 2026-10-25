@@ -49,7 +49,7 @@ def accounts(**params):
 def wait_after_hop(page,seconds=60):
  for _ in range(seconds*5):
   try:
-   if page.evaluate("location.port===%r&&!!localStorage.getItem('autopobre-recordes-importados-v2')" % str(PORT)):return
+   if page.evaluate("location.port===%r&&!!localStorage.getItem('autopobre-recordes-importados-v3')" % str(PORT)):return
   except Exception:pass
   sleep(.2)
  raise AssertionError('the records did not come back from the bridge')
@@ -114,7 +114,7 @@ try:
   assert page.text_content('#carsPilot').startswith('Piloto: Piloto Teste'),page.text_content('#carsPilot')
   page.click('#carsBack');wait_js(page,"!document.getElementById('menu').classList.contains('hidden')")
   # The old record went up (the browser is marked), and the records' Online tab shows it flagged ⚠️, the pilot's own row.
-  wait_js(page,"!!localStorage.getItem('autopobre-recordes-importados-v2')")
+  wait_js(page,"!!localStorage.getItem('autopobre-recordes-importados-v3')")
   page.click('#recordsButton');page.click('[data-records-source=online]')
   wait_js(page,"[...document.querySelectorAll('#lapRecords tbody tr')].some(tr=>tr.textContent.includes('Piloto Teste'))")
   rows=page.evaluate("[...document.querySelectorAll('#lapRecords tbody tr')].map(tr=>({text:tr.textContent,mine:tr.hasAttribute('data-mine'),badge:tr.querySelector('.record-online-badge')?.textContent}))")
