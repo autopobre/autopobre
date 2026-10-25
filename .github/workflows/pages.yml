@@ -159,6 +159,11 @@ jobs:
                 exit 1
               fi
             done
+            # By content too, should a later module call the accounts' server or turn them on.
+            if grep -rqE '/api/(conta|recordes)|const CONTA=true;' --include='*.js' --include='*.html' "$pasta/dist"; then
+              echo "::error::A versao de $pasta chama o servidor das contas ou liga as contas; elas so podem ir para dev.autopobre.com.br."
+              exit 1
+            fi
           done
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0

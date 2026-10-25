@@ -161,7 +161,8 @@ export class OnlineRecords {
    const best=new Map();
    for(const r of all)if(pilots.some(p=>same(p,r.name))){const k=r.circuit+'|'+r.mode,o=best.get(k);if(!o||r.bestLap<o.bestLap)best.set(k,r);}
    const mine=[...best.values()].map(r=>({circuito:r.circuit,modo:r.mode,volta_ms:Math.round(r.bestLap*1000),data:r.date||null}));
-   if(mine.length){const r=await call(this.base,'/importar',{recordes:mine.slice(0,64)});if(!r.ok&&r.status!==410)return;}
+   // 410: the deadline passed; 409: this account's went up already (from another browser). Either way, done here.
+   if(mine.length){const r=await call(this.base,'/importar',{recordes:mine.slice(0,64)});if(!r.ok&&r.status!==410&&r.status!==409)return;}
    done[account.desde]=new Date().toISOString();
    try{store.setItem(IMPORTED,JSON.stringify(done));}catch{}
   }finally{this.importing=false;}

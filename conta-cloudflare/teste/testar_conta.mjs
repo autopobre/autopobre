@@ -56,7 +56,7 @@ await check('sign-in: the request to Google and the cookies',async()=>{
  // The database has the subject and the session's hash, never the cookie's value.
  const value=b.jar.get('__Host-ap_sessao');
  assert.ok(rows('SELECT id FROM sessoes').every(r=>r.id!==value));
- assert.deepEqual(Object.keys(rows('SELECT * FROM usuarios')[0]).sort(),['apelido','apelido_chave','criado_em','google_sub','id','ultimo_login']);
+ assert.deepEqual(Object.keys(rows('SELECT * FROM usuarios')[0]).sort(),['apelido','apelido_chave','criado_em','google_sub','id','importou_em','ultimo_login']);
 });
 
 await check('the same Google account comes back to the same account',async()=>{
@@ -67,7 +67,7 @@ await check('the same Google account comes back to the same account',async()=>{
 });
 
 await check('nicknames: rules, uniqueness without accents or case',async()=>{
- for(const bad of ['ab','a'.repeat(21),'Jоão','-Bia','Bia_','😀 Piloto','Bia​X','.. ..','<b>x</b>'])assert.equal(cleanNickname(bad),null,bad);
+ for(const bad of ['ab','a'.repeat(21),'Jоão','-Bia','Bia_','😀 Piloto','Bia​X','.. ..','<b>x</b>','ᴋʟᴇʙᴇʀ','Steνan','Ana×Bia'])assert.equal(cleanNickname(bad),null,bad);
  assert.equal(cleanNickname('  João   da  Silva  '),'João da Silva');assert.equal(cleanNickname('ＡＢＣ'),'ABC');assert.equal(cleanNickname('Zé_99'),'Zé_99');
  local.google.next.sub='100000000000000000003';
  const b=browser();await b.signIn();
@@ -77,6 +77,10 @@ await check('nicknames: rules, uniqueness without accents or case',async()=>{
  const c=browser();await c.signIn();
  const taken=await c.post('/api/conta/apelido',{apelido:'JOAO DA SILVA'});assert.equal(taken.status,409);
  assert.equal((await b.post('/api/conta/apelido',{apelido:'João da Silva'})).status,200,'the owner may change its own case');
+ assert.equal((await c.post('/api/conta/apelido',{apelido:'J.O.A.O da Silva'})).status,409,'separators do not make another name');
+ assert.equal((await c.post('/api/conta/apelido',{apelido:'Joa0 da SiIva'})).status,409,'0 for O and I for l neither');
+ for(const reserved of ['Stevan','KIeber','Kléber','stevan_gaipo','Admin','Auto Pobre']){
+  const r=await c.post('/api/conta/apelido',{apelido:reserved});assert.equal(r.status,409,reserved);assert.match((await r.json()).erro,/reservado/,reserved);}
 });
 
 await check('writes need the exact origin, JSON and a session',async()=>{
@@ -127,6 +131,23 @@ await check('sessions: one per browser, ten per account, expiry',async()=>{
  local.DB.sqlite.prepare(`UPDATE sessoes SET expira_em=1 WHERE usuario_id=${id}`).run();
  const r=await b.go('/api/conta/eu');assert.deepEqual(await r.json(),{conta:null});
  assert.ok(r.headers.getSetCookie().some(c=>c.startsWith('__Host-ap_sessao=; ')),'an expired cookie is cleared');
+});
+
+await check('a session cookie sent twice (a sibling site planted one) is nobody\'s',async()=>{
+ local.google.next.sub='100000000000000000010';
+ const b=browser();await b.signIn();const value=b.jar.get('__Host-ap_sessao');
+ const twice=await fetch(ORIGIN+'/api/conta/eu',{headers:{Cookie:`__Host-ap_sessao=${value}; __Host-ap_sessao=outro`}});
+ assert.deepEqual(await twice.json(),{conta:null});
+ const spaced=await fetch(ORIGIN+'/api/conta/eu',{headers:{Cookie:`\u00a0__Host-ap_sessao=x; __Host-ap_sessao=${value}`}});
+ assert.notEqual((await spaced.json()).conta,null,'a name with another space is another cookie');
+});
+
+await check('a body sent in chunks is read only up to the limit',async()=>{
+ local.google.next.sub='100000000000000000011';
+ const b=browser();await b.signIn();
+ const big=new ReadableStream({start(c){for(let i=0;i<64;i++)c.enqueue(new TextEncoder().encode('x'.repeat(4096)));c.close();}});
+ const r=await fetch(ORIGIN+'/api/conta/apelido',{method:'POST',duplex:'half',body:big,headers:{Origin:ORIGIN,'Content-Type':'application/json',Cookie:'__Host-ap_sessao='+b.jar.get('__Host-ap_sessao')}});
+ assert.equal(r.status,413);
 });
 
 await check('sign-out',async()=>{

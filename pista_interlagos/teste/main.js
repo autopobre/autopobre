@@ -836,7 +836,7 @@ const MULTIPLAYER=true;
 if(!MULTIPLAYER)carAudio.useDefaultSound();
 $('soundBench').hidden=!MULTIPLAYER;$('soundBenchState').textContent=carAudio.tuningSource==='bancada'?'Os seus ajustes da bancada estão tocando no jogo (desligue lá e recarregue o jogo para voltar ao padrão).':'Ajuste o ronco do Opala e do Fusca, marcha por marcha, e escolha se o jogo toca os seus ajustes.';
 // Accounts (conta.js: sign in with Google, the nickname on the records). Only the dev.autopobre.com.br build carries
-// them (preparar_publicacao.py --conta, its server answering /api/conta/ there); the others turn this off.
+// them (preparar_publicacao.py --conta: the accounts' server answers only there); the others turn this off.
 const CONTA=true;
 // The online records (recordes-online.js, through conta.js): fed the run every frame (onlineRun) and each lap that counts (recordGhost).
 let contaOnline=null;

@@ -65,23 +65,23 @@ await check('a run: the ticket, the start, a best lap checked and shown',async()
  online.setAccount(account);
  await frames(3,{running:false});                                   // the 3-2-1: the clock stands, nothing goes
  assert.equal(sent.filter(u=>u.endsWith('/bilhete')).length,1);assert.equal(pedacos(),0);
- await lap(100);
+ await lap(120);
  const kept=local.DB.sqlite.prepare("SELECT selo,volta_ms,versao FROM recordes r JOIN usuarios u ON u.id=r.usuario_id WHERE u.apelido='Fefe Rapida'").all();
- assert.deepEqual(kept.map(r=>({...r})),[{selo:'conferido',volta_ms:100000,versao:'local'}]);
- assert.equal(toast.hidden,false);assert.match(toast.textContent,/Recorde online conferido: 01:40.000/);
- assert.ok(pedacos()>=20&&pedacos()<=23,`a chunk every 5 s and the two crossings (${pedacos()})`);
+ assert.deepEqual(kept.map(r=>({...r})),[{selo:'conferido',volta_ms:120000,versao:'local'}]);
+ assert.equal(toast.hidden,false);assert.match(toast.textContent,/Recorde online conferido: 02:00.000/);
+ assert.ok(pedacos()>=12&&pedacos()<=15,`a chunk every 10 s and the two crossings (${pedacos()})`);
 });
 
 await check('a slower lap is not even sent; a lap with a pause is refused, and the screen says why',async()=>{
  toast.hidden=true;const before=sent.join('|').length;
- await lap(103);
+ await lap(123);
  assert.equal(online.pending,null);assert.equal(toast.hidden,true,'nothing to say');
- await lap(97,{pauseAt:40});
- assert.equal(toast.hidden,false);assert.match(toast.textContent,/Volta de 01:37.000 não conferida: a volta teve pausa/);
- assert.equal(local.DB.sqlite.prepare("SELECT volta_ms FROM recordes WHERE selo='conferido'").get().volta_ms,100000);
+ await lap(117,{pauseAt:40});
+ assert.equal(toast.hidden,false);assert.match(toast.textContent,/Volta de 01:57.000 não conferida: a volta teve pausa/);
+ assert.equal(local.DB.sqlite.prepare("SELECT volta_ms FROM recordes WHERE selo='conferido'").get().volta_ms,120000);
  assert.ok(sent.join('|').length>before);
- await lap(98);
- assert.match(toast.textContent,/Recorde online conferido: 01:38.000/,'the next clean lap counts again');
+ await lap(118);
+ assert.match(toast.textContent,/Recorde online conferido: 01:58.000/,'the next clean lap counts again');
 });
 
 await check('a reset asks for a new ticket; the Fusca and a signed-out pilot send nothing',async()=>{
@@ -89,29 +89,29 @@ await check('a reset asks for a new ticket; the Fusca and a signed-out pilot sen
  race.clock=0;race.lapStart=0;await frames(1);
  assert.equal(tickets(),t0+1,'the clock went back: a new run');
  const n=sent.length;
- race.car='fusca';await frames(6);race.car='opala';
- online.setAccount(null);await frames(6);
+ race.car='fusca';await frames(12);race.car='opala';
+ online.setAccount(null);await frames(12);
  assert.ok(sent.slice(n).every(u=>!u.includes('/pedaco')),'nothing for the Fusca nor signed out');
 });
 
 await check('the old records go up once: the pilot\'s only, then the browser is marked',async()=>{
  store.set('autopobre-records-v1',JSON.stringify([
-  {circuit:'interlagos',name:'fefe rapida',mode:'normal',bestLap:96.5,bestRace:null,raceLaps:3,date:'2026-09-01T10:00:00Z'},
+  {circuit:'interlagos',name:'fefe rapida',mode:'normal',bestLap:116.5,bestRace:null,raceLaps:3,date:'2026-09-01T10:00:00Z'},
   {circuit:'cascavel',name:'Velho Nome',mode:'normal',bestLap:80,bestRace:null,raceLaps:3,date:''},
   {circuit:'chapeco',name:'Outra Pessoa',mode:'normal',bestLap:90,bestRace:null,raceLaps:3,date:''}]));
  const imports=()=>sent.filter(u=>u.endsWith('/importar')).length;
  await online.importOld(account,['Fefe Rapida','Velho Nome']);
  assert.equal(imports(),1);
  const kept=local.DB.sqlite.prepare("SELECT circuito,volta_ms FROM recordes WHERE selo='nao_verificado' ORDER BY circuito").all().map(r=>[r.circuito,r.volta_ms]);
- assert.deepEqual(kept,[['cascavel',80000],['interlagos',96500]],'the nickname\'s and the menu\'s old pilot, not the others');
+ assert.deepEqual(kept,[['cascavel',80000],['interlagos',116500]],'the nickname\'s and the menu\'s old pilot, not the others');
  assert.ok(JSON.parse(store.get('autopobre-recordes-importados-v2'))[account.desde],'marked');
  await online.importOld(account,['Fefe Rapida']);assert.equal(imports(),1,'never again from this browser');
 });
 
 await check('the board and the circuits\' bests, as the records dialog reads them',async()=>{
  const board=await online.board('interlagos','normal');
- assert.deepEqual(board.map(r=>[r.name,r.bestLap,r.badge,r.mine]),[['Fefe Rapida',96.5,'nao_verificado',true]]);
- assert.equal((await online.bests('normal')).interlagos,96500);
+ assert.deepEqual(board.map(r=>[r.name,r.bestLap,r.badge,r.mine]),[['Fefe Rapida',118,'conferido',true]],'the checked lap, though the old one is quicker');
+ assert.equal((await online.bests('normal')).interlagos,118000);
  await assert.rejects(online.board('nada','normal'));
 });
 

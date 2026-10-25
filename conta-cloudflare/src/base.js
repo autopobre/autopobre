@@ -13,9 +13,15 @@ export function sameText(a,b){
  let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);
  return diff===0;
 }
+// The cookies by name, trimmed of spaces and tabs only (trim() would also eat Unicode spaces, turning a cookie another
+// site set as " __Host-…" into ours). A name sent twice is nobody's (null): a __Host- cookie cannot come twice
+// unless some sibling planted one beside it, and then this browser counts as signed out.
 export function readCookies(request){
- const out={};
- for(const part of (request.headers.get('Cookie')??'').split(';')){const i=part.indexOf('=');if(i>0){const k=part.slice(0,i).trim();if(!(k in out))out[k]=part.slice(i+1).trim();}}
+ const out={},bare=s=>s.replace(/^[ \t]+|[ \t]+$/g,'');
+ for(const part of (request.headers.get('Cookie')??'').split(';')){
+  const i=part.indexOf('=');if(i<=0)continue;
+  const k=bare(part.slice(0,i));out[k]=k in out?null:bare(part.slice(i+1));
+ }
  return out;
 }
 export const setCookie=(name,value,seconds)=>`${name}=${value}; Path=/; Max-Age=${seconds}; HttpOnly; Secure; SameSite=Lax`;
@@ -31,12 +37,13 @@ export function redirect(location,cookies=[]){
  return new Response(null,{status:303,headers:h});
 }
 
-// Sealed tokens (AES-GCM): the sign-in cookie, the records' run tickets. Each purpose has its own key,
-// derived from the client secret (one secret to keep; a new one voids only what is under way).
+// Sealed tokens (AES-GCM): the sign-in cookie, the records' run tickets. Each purpose has its own key, derived
+// from SEAL_KEY, a secret of the Worker alone (someone who can read the Google client's secret in Google Cloud must
+// not be able to mint tickets); the client secret until SEAL_KEY is set. A new one voids only what is under way.
 const keys=new Map();
 async function sealKey(env,purpose){
- const secret=String(env.GOOGLE_CLIENT_SECRET??'');
- if(!secret)throw new Error('GOOGLE_CLIENT_SECRET is not set');
+ const secret=String(env.SEAL_KEY||env.GOOGLE_CLIENT_SECRET||'');
+ if(!env.GOOGLE_CLIENT_SECRET)throw new Error('GOOGLE_CLIENT_SECRET is not set');
  const id=purpose+'\n'+secret;
  if(!keys.has(id)){
   const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),'HKDF',false,['deriveKey']);
@@ -61,7 +68,7 @@ export async function unseal(env,purpose,text){
 export async function session(request,env){
  const value=readCookies(request)[SESSION_COOKIE];
  if(!value)return null;
- const row=await env.DB.prepare('SELECT s.id AS sid,u.id,u.google_sub,u.apelido,u.criado_em,u.ultimo_login FROM sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.id=? AND s.expira_em>?').bind(await hashed(value),Date.now()).first();
+ const row=await env.DB.prepare('SELECT s.id AS sid,u.id,u.google_sub,u.apelido,u.criado_em,u.ultimo_login,u.importou_em FROM sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.id=? AND s.expira_em>?').bind(await hashed(value),Date.now()).first();
  return row??{gone:true};
 }
 export const signedOut=()=>setCookie(SESSION_COOKIE,'',0);
@@ -71,13 +78,26 @@ export async function signedIn(request,env){
 }
 export const notSignedIn=()=>json({erro:'Entre com a sua conta primeiro.'},401,{cookies:[signedOut()]});
 
+// The body as text, read no further than `limit` bytes (null past it): a request sent in chunks has no length to
+// refuse it by, and reading it whole first would let anyone make the Worker hold up to Cloudflare's 100 MB.
+async function readCapped(request,limit){
+ if(!request.body)return '';
+ const reader=request.body.getReader(),parts=[];let size=0;
+ for(;;){
+  const {done,value}=await reader.read();if(done)break;
+  size+=value.byteLength;if(size>limit){try{await reader.cancel();}catch{}return null;}
+  parts.push(value);
+ }
+ const all=new Uint8Array(size);let at=0;for(const p of parts){all.set(p,at);at+=p.byteLength;}
+ return new TextDecoder().decode(all);
+}
 // A write: this site's exact origin, JSON, within `limit` bytes.
 export async function readPost(request,env,limit=MAX_BODY){
  if(request.headers.get('Origin')!==env.ORIGEM)return json({erro:'Origem não permitida.'},403);
  if(!/^application\/json\b/i.test(request.headers.get('Content-Type')??''))return json({erro:'Esperava JSON.'},415);
  if(Number(request.headers.get('Content-Length')??0)>limit)return json({erro:'Pedido grande demais.'},413);
- const text=await request.text();
- if(text.length>limit)return json({erro:'Pedido grande demais.'},413);
+ const text=await readCapped(request,limit);
+ if(text===null)return json({erro:'Pedido grande demais.'},413);
  let body;try{body=JSON.parse(text||'{}');}catch{return json({erro:'JSON inválido.'},400);}
  return body&&typeof body==='object'&&!Array.isArray(body)?body:json({erro:'JSON inválido.'},400);
 }

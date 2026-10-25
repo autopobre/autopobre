@@ -16,11 +16,13 @@ O que o servidor garante, seja lá o que o navegador mande:
 Cada piloto aparece com a melhor volta por pista, modo e carro (por enquanto só o Opala), com um selo:
 
 - **✓ conferido:** o servidor acompanhou a volta enquanto ela era pilotada.
-  - Ao entrar na pista, o jogo pede um **bilhete** (pista, modo, carro, versão do jogo). Depois manda um **pedaço** do relógio da física a cada 5 segundos e outro a cada passagem pela linha.
+  - Ao entrar na pista, o jogo pede um **bilhete** (pista, modo, carro, versão do jogo). Depois manda um **pedaço** do relógio da física a cada 10 segundos e outro a cada passagem pela linha.
   - O bilhete vai e volta selado (AES-GCM) a cada pedaço, então nada é gravado enquanto as voltas passam.
   - Entre dois pedaços, o relógio do jogo precisa ter andado como o do servidor. Isso pega câmera lenta, relógio adiantado e silêncio de mais de 15 s.
   - A volta, de linha a linha, precisa durar no relógio do servidor o que durou no jogo. Por isso volta com pausa não é conferida.
-  - O **fantasma** da volta (a mesma gravação que o jogo guarda) precisa ter o tempo da volta, começar na linha, percorrer a pista inteira (o comprimento vem do `circuits.js` do jogo), não andar mais rápido que um Opala e não ganhar pista sem andar por ela.
+  - A volta não pode ser mais rápida que 85% do tempo da **linha ideal** do Opala naquela pista (`src/pisos.js`, gerado por `gerar_pisos.mjs` com o código do jogo).
+  - O **fantasma** da volta (a mesma gravação que o jogo guarda) precisa ter o tempo da volta, ter sido gravado nas frequências do jogo, começar na linha e percorrer a pista inteira (o comprimento vem do `circuits.js` do jogo). O carro precisa cobrir de fato a pista, sem passar de 70 m/s, sem acelerar ou virar mais do que um Opala consegue (meio segundo a meio segundo) e sem ganhar pista que não andou.
+  - O bilhete leva, selada, a conta Google de quem o pediu: volta de conta apagada (ou de outra que herdou o número dela) não entra.
   - Só a melhor volta de cada piloto fica guardada, com o fantasma.
 - **⚠️ não verificado** ("Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros"): um recorde antigo, de antes da conta. O jogo sobe os recordes do navegador uma única vez por conta (depois marca o navegador) e só até **30/11/2026**. Tempo impossível para a pista é descartado.
 
@@ -28,7 +30,7 @@ O que o selo conferido não pega: volta pilotada por um programa, ou alguém dei
 
 **Os recordes do autopobre.com.br:** cada endereço guarda os recordes à parte no navegador, então o dev não enxerga os do site principal. Para a subida pegar também esses, o site principal tem uma página-ponte, `levar-recordes.html` (em `pista_interlagos/ponte/`, publicada na raiz pelo `pages.yml`, sem conta nem servidor). Na primeira vez, o jogo no dev dá um pulo até ela. A ponte lê os recordes e o piloto escolhido lá e devolve o jogador ao dev com eles no pedaço do link depois do `#`, que não vai a servidor nenhum. Ela só sabe voltar para o `dev.autopobre.com.br`. O pulo só acontece quando a variável `PONTE_RECORDES` do `wrangler.jsonc` aponta para o site que tem a ponte (`https://autopobre.com.br`): ligue-a depois de a ponte estar no ar.
 
-Pista nova no jogo: publique o Worker de novo (`.\wrangler deploy`), porque ele leva o `circuits.js` junto.
+Pista nova no jogo: rode `node gerar_pisos.mjs` (o piso dela) e publique o Worker de novo (`.\wrangler deploy`), porque ele leva o `circuits.js` e os pisos junto.
 
 ## Rotas
 
@@ -60,7 +62,9 @@ Dentro desta pasta, no cmd ou no PowerShell. Numa cópia nova do projeto, rode a
    ```sh
    .\wrangler d1 migrations apply conta-autopobre-dev --remote
    .\wrangler secret put GOOGLE_CLIENT_SECRET
+   .\wrangler secret put SEAL_KEY
    ```
+   O `SEAL_KEY` sela os bilhetes e o cookie do login: um valor aleatório longo que ninguém precisa saber (por exemplo, a saída de `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`). Enquanto ele não existir, o servidor usa o segredo do Google.
 4. Publique. O `deploy` cria a rota `dev.autopobre.com.br/api/*` no Cloudflare:
    ```sh
    .\wrangler deploy

@@ -24,15 +24,18 @@ const LOGIN_MINUTES=10;       // to come back from Google
 const GOOGLE_AUTH='https://accounts.google.com/o/oauth2/v2/auth',GOOGLE_TOKEN='https://oauth2.googleapis.com/token';
 const ISSUERS=new Set(['https://accounts.google.com','accounts.google.com']);
 const SUB=/^[\x21-\x7e]{1,255}$/;
-// A nickname: 3 to 20 Latin letters or digits, with single spaces, dots, dashes or underscores
-// between them. Latin only, so nobody passes for another with look-alike letters; its key (no
-// accents, no case) is unique, so "João" and "joao" are one pilot.
-const NICKNAME=/^[\p{Script=Latin}0-9](?:[\p{Script=Latin}0-9 ._-]{1,18})[\p{Script=Latin}0-9]$/u;
+// A nickname: 3 to 20 letters or digits, with single spaces, dots, dashes or underscores between them. Letters of
+// Portuguese and its neighbours only (A-Z and the accented ones of Latin-1): no small capitals, no look-alikes from
+// other alphabets. Its key, unique, reads it the way an eye does: no case, no accents, no separators, and I, l and
+// 1 alike, O and 0 alike ("João", "joao", "J.O.A.O" are one pilot; "KIeber" is "Kleber").
+const NICKNAME=/^[A-Za-z0-9À-ÖØ-öø-ÿ](?:[A-Za-z0-9À-ÖØ-öø-ÿ ._-]{1,18})[A-Za-z0-9À-ÖØ-öø-ÿ]$/;
 export function cleanNickname(value){
- const nick=String(value??'').normalize('NFKC').replace(/\s+/g,' ').trim();
+ const nick=String(value??'').normalize('NFKC').replace(/\s+/g,' ').trim().normalize('NFC');
  return NICKNAME.test(nick)&&!/[ ._-]{2}/.test(nick)?nick:null;
 }
-export const nicknameKey=nick=>nick.normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase();
+export const nicknameKey=nick=>nick.normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase().replace(/[ ._-]/g,'').replace(/[i1]/g,'l').replace(/0/g,'o');
+// Names nobody takes: the game's people and the ones that would pass for its staff.
+const RESERVED=new Set(['stevan','stevangaipo','gaipo','pobrepiloto','kleber','admin','administrador','moderador','moderacao','autopobre','autopobreracing','suporte','oficial','google'].map(nicknameKey));
 const NICKNAME_RULE='Use de 3 a 20 letras ou números (espaço, ponto, traço ou sublinhado só entre eles).';
 // Where to land after Google: a path on this site, never another site ("//host" or a backslash).
 export const safeReturn=value=>typeof value==='string'&&value.length<=512&&/^\/(?![/\\])[^\s\\]*$/.test(value)?value:'/';
@@ -101,6 +104,7 @@ async function setNickname(request,env,body){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
  const nick=cleanNickname(body.apelido);if(!nick)return json({erro:NICKNAME_RULE},400);
  const key=nicknameKey(nick),taken=()=>json({erro:'Esse apelido já é de outro piloto.'},409);
+ if(RESERVED.has(key))return json({erro:'Esse apelido é reservado. Escolha outro.'},409);
  if(await env.DB.prepare('SELECT id FROM usuarios WHERE apelido_chave=? AND id<>?').bind(key,s.id).first())return taken();
  try{await env.DB.prepare('UPDATE usuarios SET apelido=?,apelido_chave=? WHERE id=?').bind(nick,key,s.id).run();}
  catch(error){if(/UNIQUE/i.test(String(error?.message)))return taken();throw error;}
@@ -124,14 +128,16 @@ async function deleteAccount(request,env,body){
 async function myData(request,env){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
  const sessions=(await env.DB.prepare('SELECT criada_em,expira_em FROM sessoes WHERE usuario_id=? ORDER BY criada_em').bind(s.id).all()).results;
- const records=(await env.DB.prepare('SELECT circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,length(fantasma) AS fantasma FROM recordes WHERE usuario_id=? ORDER BY circuito,modo,selo').bind(s.id).all()).results;
+ const records=(await env.DB.prepare('SELECT circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma FROM recordes WHERE usuario_id=? ORDER BY circuito,modo,selo').bind(s.id).all()).results;
+ const ghost=text=>{try{return text?JSON.parse(text):null;}catch{return null;}};
  const when=ms=>new Date(ms).toISOString();
  return json({
   sobre:'Tudo o que o Auto-Pobre Racing guarda da sua conta.',
   gerado_em:when(Date.now()),
   conta:{identificador_google:s.google_sub,apelido:s.apelido??null,criada_em:when(s.criado_em),ultimo_login:when(s.ultimo_login)},
   sessoes:sessions.map(r=>({aberta_em:when(r.criada_em),expira_em:when(r.expira_em)})),
-  recordes:records.map(r=>({circuito:r.circuito,modo:r.modo,carro:r.carro,selo:r.selo,volta_ms:r.volta_ms,versao_do_jogo:r.versao,feito_em:when(r.feito_em),enviado_em:when(r.enviado_em),fantasma_bytes:r.fantasma??0})),
+  recordes:records.map(r=>({circuito:r.circuito,modo:r.modo,carro:r.carro,selo:r.selo,volta_ms:r.volta_ms,versao_do_jogo:r.versao,feito_em:when(r.feito_em),enviado_em:when(r.enviado_em),fantasma:ghost(r.fantasma)})),
+  subida_dos_recordes_antigos:s.importou_em?when(s.importou_em):null,
  },200,{headers:{'Content-Disposition':'attachment; filename="autopobre-meus-dados.json"'}});
 }
 

@@ -67,7 +67,7 @@ try:
   page=context.new_page();page.set_default_timeout(120000);page.on('pageerror',lambda e:errors.append(str(e)))
   # The main link's records, on its own address: a slower Interlagos lap and a Cascavel lap of this pilot, and another pilot's.
   page.goto(f'http://127.0.0.1:{MAIN}/',wait_until='load')
-  page.evaluate("""localStorage.setItem('autopobre-records-v1',JSON.stringify([{circuit:'interlagos',name:'Piloto Teste',mode:'normal',bestLap:101,bestRace:null,raceLaps:3,date:''},
+  page.evaluate("""localStorage.setItem('autopobre-records-v1',JSON.stringify([{circuit:'interlagos',name:'Piloto Teste',mode:'normal',bestLap:121,bestRace:null,raceLaps:3,date:''},
    {circuit:'cascavel',name:'Piloto Teste',mode:'normal',bestLap:80.5,bestRace:null,raceLaps:3,date:''},{circuit:'chapeco',name:'Alguém',mode:'normal',bestLap:90,bestRace:null,raceLaps:3,date:''}]));
    localStorage.setItem('autopobre-pilots-v1',JSON.stringify({selected:'Piloto Teste',names:['Piloto Teste','Alguém']}))""")
   page.goto(URL,wait_until='load');wait_js(page,"document.getElementById('contaFaixa')?.hidden===false")
@@ -79,7 +79,7 @@ try:
   result['fora']={'faixa':s['label'],'piloto_do_menu':pilot}
 
   # An old record of this browser, under the name the pilot will take: it goes up once, flagged unchecked.
-  page.evaluate("""localStorage.setItem('autopobre-records-v1',JSON.stringify([{circuit:'interlagos',name:'Piloto Teste',mode:'normal',bestLap:98.765,bestRace:null,raceLaps:3,date:'2026-10-01T12:00:00Z'},
+  page.evaluate("""localStorage.setItem('autopobre-records-v1',JSON.stringify([{circuit:'interlagos',name:'Piloto Teste',mode:'normal',bestLap:118.765,bestRace:null,raceLaps:3,date:'2026-10-01T12:00:00Z'},
    {circuit:'interlagos',name:'Outra Pessoa',mode:'normal',bestLap:90,bestRace:null,raceLaps:3,date:''}]))""")
   # To Google and back: the dialog asks for the nickname, the menu's pilot offered.
   accounts(sub='100000000000000000777')
@@ -118,7 +118,7 @@ try:
   page.click('#recordsButton');page.click('[data-records-source=online]')
   wait_js(page,"[...document.querySelectorAll('#lapRecords tbody tr')].some(tr=>tr.textContent.includes('Piloto Teste'))")
   rows=page.evaluate("[...document.querySelectorAll('#lapRecords tbody tr')].map(tr=>({text:tr.textContent,mine:tr.hasAttribute('data-mine'),badge:tr.querySelector('.record-online-badge')?.textContent}))")
-  assert len(rows)==1 and '01:38.765' in rows[0]['text'] and rows[0]['badge']=='🌐 ⚠️' and rows[0]['mine'],rows
+  assert len(rows)==1 and '01:58.765' in rows[0]['text'] and rows[0]['badge']=='🌐 ⚠️' and rows[0]['mine'],rows
   page.screenshot(path=str(RENDERS/'conta_recordes_online.png'))
   # Todos joins them: this browser's people, the AI and the accounts; the pilot once (the account's row: the same time).
   page.click('[data-records-source=all]')

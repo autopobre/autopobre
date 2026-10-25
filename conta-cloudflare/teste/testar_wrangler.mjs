@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {spawn,execSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {startLocal,CLIENT_ID,CLIENT_SECRET} from './local.mjs';
+import {CHUNK_EVERY} from '../src/recordes.js';
 
 const PORT=8790,API=`http://127.0.0.1:${PORT}`,ORIGIN='http://127.0.0.1:8799',google=await startLocal({port:0}),G=`http://127.0.0.1:${google.port}/falso-google`;
 const vars={ORIGEM:ORIGIN,GOOGLE_CLIENT_ID:CLIENT_ID,GOOGLE_CLIENT_SECRET:CLIENT_SECRET,GOOGLE_AUTH_URL:G+'/auth',GOOGLE_TOKEN_URL:G+'/token'};
@@ -37,12 +38,13 @@ try{
  assert.equal((await go('/api/conta/meus-dados')).status,200);
  // The records: the game's circuits.js inside the bundle, the ticket sealed and opened, the board's SQL.
  const ticket=await (await post('/api/recordes/bilhete',{circuito:'interlagos',modo:'normal',carro:'opala',versao:'wrangler'})).json();
- assert.ok(ticket.bilhete&&ticket.intervalo===5,JSON.stringify(ticket));
+ assert.ok(ticket.bilhete&&ticket.intervalo===CHUNK_EVERY,JSON.stringify(ticket));
  const chunk=await (await post('/api/recordes/pedaco',{bilhete:ticket.bilhete,relogio:0,cruzou:true})).json();assert.ok(chunk.bilhete);
  assert.equal((await post('/api/recordes/importar',{recordes:[{circuito:'cascavel',modo:'normal',volta_ms:95000}]})).status,200);
  const board=await (await go('/api/recordes?circuito=cascavel&modo=normal')).json();
- assert.deepEqual(board.recordes.map(r=>[r.apelido,r.selo,r.volta_ms,r.meu]),[[nick,'nao_verificado',95000,true]]);
- assert.equal((await (await go('/api/recordes/melhores?modo=normal')).json()).melhores.cascavel,95000);
+ // The local database keeps what an interrupted run left: this run's own row only.
+ assert.deepEqual(board.recordes.filter(r=>r.apelido===nick).map(r=>[r.apelido,r.selo,r.volta_ms,r.meu]),[[nick,'nao_verificado',95000,true]]);
+ assert.equal((await (await go('/api/recordes/melhores?modo=normal')).json()).melhores.cascavel,undefined,'the circuit list counts checked laps only');
  assert.equal((await post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
  assert.deepEqual(await (await go('/api/conta/eu')).json(),{conta:null});
  console.log('ok: entrar, apelido, meus dados, bilhete, recordes e apagar no runtime do Cloudflare (wrangler dev)');

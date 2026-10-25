@@ -1,5 +1,30 @@
 # Revisão para publicação — 13/09/2026
 
+## Atualização — 25/10/2026 (tarde): revisão independente do login e dos recordes
+
+Um revisor separado, que não viu as conclusões de quem escreveu o código, atacou o login e os recordes contra o servidor local. Correções:
+
+| Achado | Correção |
+|---|---|
+| Volta inventada passava como conferida. O piso era uma média de 70 m/s (Interlagos em 1:02), e um "carro parado" com amostras muito frequentes passava, porque a folga por amostra não dependia do intervalo entre elas. | O piso agora é 85% do tempo da **linha ideal** do Opala em cada pista, calculada pelo próprio jogo (`conta-cloudflare/gerar_pisos.mjs`; Interlagos em 1:36). A linha é um modelo: as primeiras voltas conferidas de verdade já a bateram em 3,5%, por isso a folga. O trajeto:<br>- só é aceito nas frequências que o jogo grava;<br>- tem folgas proporcionais ao tempo entre amostras e velocidade máxima de 70 m/s;<br>- tem limites de aceleração e de curva a cada meio segundo;<br>- precisa cobrir de fato 85% da pista. |
+| Um bilhete antigo podia gravar volta em outra conta (a conta apagada deixava o número para a próxima). | O bilhete leva, selada, a conta Google de quem o pediu, e a volta só entra se a conta com aquele número ainda for a mesma. |
+| A subida dos recordes antigos era "uma vez" só no navegador. Uma lista com 64 entradas iguais fazia 64 gravações, e datas falsas ganhavam empates. | Uma vez por conta **no servidor** (coluna `importou_em`), só o melhor de cada pista e modo, e nenhuma data anterior a 01/09/2026. |
+| Recordes ⚠️ podiam esconder o ✓ do mesmo piloto, e a lista de pistas misturava os dois. | Cada piloto aparece pela melhor volta conferida, quando tem uma. A lista de pistas só conta voltas conferidas. |
+| Pedido enviado em pedaços, sem tamanho declarado, era lido inteiro (até 100 MB). | O corpo é lido com teto de bytes. |
+| Cookie com espaço Unicode no nome (` __Host-…`) era lido como o de sessão, o que permitia um subdomínio plantar sessão. | Só espaço e tab são aparados, e um nome repetido conta como sem sessão. |
+| O fantasma era guardado como veio, com campos extras. | Só os campos conhecidos são guardados, e os de freio são conferidos. |
+| A chave que sela bilhetes vinha do segredo do Google (quem visse o segredo no Google Cloud poderia forjar bilhetes). | Segredo próprio do Worker, `SEAL_KEY`. |
+| Apelidos parecidos (versaletes `ᴋʟᴇʙᴇʀ`, `KIeber` no lugar de `Kleber`) e nomes da equipe. | Só letras do português e vizinhas. A unicidade ignora maiúsculas, acentos e separadores, e trata I, l e 1 como iguais, e O e 0 também. Há nomes reservados. |
+| Dados pessoais: a tabela pública mostrava a hora exata de cada volta, "meus dados" vinha sem os fantasmas, e "Nada ficou guardado" prometia demais. | A tabela mostra só o dia. "Meus dados" traz os fantasmas. O texto conta que as cópias de segurança do banco somem em até 7 dias. |
+| A trava da publicação olhava só nomes de arquivo. | Ela também procura `/api/conta`, `/api/recordes` e `const CONTA=true;` no conteúdo do link principal e do `/dev/` antigo. |
+
+Os pedaços do relógio passaram de 5 para 10 segundos, o que reduz o consumo da cota pela metade.
+
+Continua em aberto:
+- **Cota esgotável por qualquer um:** ainda falta uma regra de limite de pedidos no WAF do Cloudflare para `dev.autopobre.com.br/api/*`. É uma configuração do painel; pedidos barrados ali nem chegam ao Worker.
+- **Trajeto inventado mas realista:** um anel do comprimento da pista, liso, ainda passa. Fecha com o traçado de cada pista no servidor (posição dentro da faixa).
+- **Física alterada no navegador ou volta pilotada por programa:** só o selo homologado, com o servidor refazendo a volta pelos comandos, mais revisão humana.
+
 ## Atualização — 25/10/2026: endereço próprio para o dev e login com Google
 
 A versão de testes ganhou endereço próprio, **dev.autopobre.com.br**. Ela é publicada pelo repositório `autopobre/dev`, que só tem o fluxo de publicação; o código continua aqui. Por ser outra origem, saves, preferências e cookies do dev não se misturam com os do link principal. O registro DNS passa pelo proxy do Cloudflare, e a Transform Rule de cabeçalhos agora vale para `autopobre.com.br`, `www.autopobre.com.br` e `dev.autopobre.com.br`. O domínio verificado na organização do GitHub protege o subdomínio contra tomada. O `/dev/` antigo continua no ar até o dono decidir o que fazer com ele.
