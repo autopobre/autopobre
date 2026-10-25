@@ -36,6 +36,10 @@ const SLOWEST=.85;            // the slowest a chunk's game clock may run agains
 const STEADY=.97;             // the same over the whole stretch since it began
 const LAP_SLACK=1000;         // ms (plus 1% of the lap): a lap's real time against its game time
 const RUN_HOURS=8;            // a ticket's life
+// The Opala only, as the game's own boards (lap-records.js keeps no Fusca lap). Should the Fusca get records one day,
+// they are a table of their own: an Opala does 217 km/h and a Fusca 165, so their times never compare. It will need
+// its own floor (the driving line with FUSCA_MECHANICS in gerar_pisos.mjs), its own top speed in ghostProblem, and a
+// car picker on the records dialog.
 const MODES=['normal','immersive'],CARS=['opala'];
 const VERSION=/^[\w.-]{1,40}$/;
 // The old records come up until the end of 30/11/2026 in Brasília (the owner's deadline), and none is dated

@@ -64,6 +64,7 @@ export class OnlineRecords {
  // Each frame. s: {circuit, mode, car, clock, lapStart, driving}. driving: the pilot at the wheel of
  // a race the records count (no autopilot, no room race).
  frame(s){
+  // The Opala's laps only, as the game's boards (a Fusca's would need a table of its own: conta-cloudflare/src/recordes.js CARS).
   if(!this.account||!s?.driving||s.car!=='opala'||!Object.hasOwn(CIRCUITS,s.circuit))return;
   const key=`${s.circuit}|${s.mode}|${s.car}`,r=this.run;
   if(!r||r.key!==key||s.clock<r.clock-1e-6||(r.failed&&this.now()-r.failed>RETRY)){this.begin(key,s);return;}
