@@ -5,14 +5,16 @@
 //
 // Signed out, the menu gets a line under its pilot: "Entrar com Google". Signed in with a nickname, that
 // nickname is the pilot (the menu's Piloto shows it instead of the name field: one name, not two) and the
-// line goes. Either opens "Sua conta": the nickname shown on the records, the date the account was made,
-// the player's data as a file, sign-out, and deleting the account (a second click confirms).
+// line goes. Either opens "Sua conta": the nickname shown on the records, Sair, and a gear for the rest (the date
+// the account was made, the player's data as a file, deleting the account with a second click to confirm, what is
+// kept): the owner's word, someone come to change their name should not read a page of warnings first.
 import {OnlineRecords} from './recordes-online.js';
 const API='/api/conta/';
 // Set just before leaving for Google: back on the page, the player hears how it went.
 const SIGNING_IN='autopobre-conta-entrando';
 // Signing in: an arrow through a door (the pilot's own line already has the person).
 const SIGN_IN='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l4-4-4-4M14 12H3"/></svg>';
+const GEAR='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
 
 function session(){try{return globalThis.sessionStorage;}catch{return null;}}
 async function call(path,body){
@@ -41,10 +43,14 @@ export class Conta {
  <section id="contaFora"><p>Entre com a sua conta Google para guardar seus recordes em qualquer navegador. Por enquanto é um teste, só para os pilotos convidados.</p><button id="contaEntrar" class="conta-principal" type="button">${SIGN_IN}Entrar com Google</button></section>
  <section id="contaDentro" hidden>
   <form id="contaApelidoForm"><label for="contaApelido">SEU APELIDO NOS RECORDES</label><div class="conta-linha"><input id="contaApelido" maxlength="20" autocomplete="nickname" spellcheck="false" required><button id="contaSalvar" class="conta-principal" type="submit">Salvar</button></div><small>3 a 20 letras ou números. Todo mundo vê este nome.</small></form>
-  <p id="contaDesde"></p>
-  <div class="conta-acoes"><a id="contaDados" href="${API}meus-dados" download="autopobre-meus-dados.json">Baixar meus dados</a><button id="contaSair" type="button">Sair</button><button id="contaApagar" class="conta-perigo" type="button">Apagar conta</button><a id="contaPainel" href="admin.html" hidden>Painel de administração</a></div>
+  <div class="conta-acoes"><button id="contaSair" type="button">Sair</button><a id="contaPainel" href="admin.html" hidden>Painel de administração</a><button id="contaMais" class="conta-engrenagem" type="button" aria-expanded="false" aria-controls="contaExtra" aria-label="Mais opções da conta" title="Mais opções da conta">${GEAR}</button></div>
+  <div id="contaExtra" hidden>
+   <p id="contaDesde"></p>
+   <div class="conta-acoes"><a id="contaDados" href="${API}meus-dados" download="autopobre-meus-dados.json">Baixar meus dados</a><button id="contaApagar" class="conta-perigo" type="button">Apagar conta</button></div>
+  </div>
  </section>
- <details class="conta-info"><summary><span class="conta-i" aria-hidden="true">i</span>Guardamos só o número que o Google dá à sua conta, o apelido e as datas em que você entrou. Nada de nome, e-mail ou foto.</summary>
+ <details class="conta-info" id="contaInfo"><summary><span class="conta-i" aria-hidden="true">i</span>O que guardamos</summary>
+  <p>Só o número que o Google dá à sua conta, o apelido e as datas em que você entrou. Nada de nome, e-mail ou foto.</p>
   <h3>Como funciona, tecnicamente</h3>
   <ul>
    <li><b>Login:</b> OpenID Connect com o Google, no fluxo <i>authorization code</i> com PKCE, <i>state</i> e <i>nonce</i>, feito pelo servidor do jogo. A página não carrega nenhum script do Google.</li>
@@ -68,7 +74,8 @@ export class Conta {
   $('contaApelidoForm').onsubmit=e=>{e.preventDefault();this.saveNickname($('contaApelido').value);};
   $('contaSair').onclick=()=>this.run(()=>call('sair',{}));
   $('contaApagar').onclick=()=>this.deleteAccount();
-  this.dialog.addEventListener('close',()=>this.disarm());
+  $('contaMais').onclick=()=>this.extras($('contaExtra').hidden);
+  this.dialog.addEventListener('close',()=>{this.disarm();this.extras(false);});
  }
  // Whether the accounts server answers here; then the menu line shows.
  async start(){
@@ -93,6 +100,8 @@ export class Conta {
   if(nickname)this.online.importOld(account,[nickname,this.firstPilot],this.bridge);
   $('contaRotulo').textContent=account?account.apelido||'Escolha seu apelido':'Entrar com Google';
   $('contaFora').hidden=!!account;$('contaDentro').hidden=!account;
+  // What is kept: behind the gear once signed in; before it, a closed line under the sign-in button.
+  (account?$('contaExtra'):$('contaFora')).append($('contaInfo'));
   if(account){
    $('contaApelido').value=account.apelido||this.pilot()||'';
    $('contaDesde').textContent=`Conta criada em ${new Date(account.desde).toLocaleDateString('pt-BR')}.`;
@@ -126,6 +135,11 @@ export class Conta {
   }
   this.disarm();
   return this.run(()=>call('apagar',{confirmar:'APAGAR'}),'Conta apagada, com o apelido e os recordes.');
+ }
+ // The gear's part: the account's date, my data, deleting, what is kept (closed again with the dialog).
+ extras(open){
+  const $=id=>document.getElementById(id);$('contaExtra').hidden=!open;$('contaMais').setAttribute('aria-expanded',String(open));
+  if(!open){$('contaInfo').open=false;this.disarm();}
  }
  disarm(){
   clearTimeout(this.confirmTimer);const button=document.getElementById('contaApagar');

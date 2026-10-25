@@ -42,11 +42,18 @@
 /* Their display above would show what is hidden (the panel's link for anyone but an admin). */
 .conta-corpo [hidden]{display:none}
 .conta-corpo .conta-principal{background:#197746;color:#fff;border-color:#197746;box-shadow:inset 0 -2px #f3ca12}
-.conta-acoes{display:flex;flex-wrap:wrap;gap:6px}
+.conta-acoes{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:12px}
+/* The gear: the account's other options, at the row's end. */
+.conta-corpo .conta-engrenagem{margin-left:auto;padding:6px;min-width:34px;justify-content:center}
+.conta-corpo .conta-engrenagem svg{width:18px;height:18px}
+.conta-corpo .conta-engrenagem[aria-expanded=true]{background:#d6e0c5}
+#contaExtra{margin-top:10px;padding-top:6px;border-top:1px solid #cfd9c6}
+#contaExtra .conta-acoes{margin-top:8px}
 .conta-corpo .conta-perigo{background:#fff;color:#a32020;border-color:#d9a3a3}
 .conta-corpo .conta-perigo[data-confirmar]{background:#a32020;color:#fff;border-color:#a32020}
 /* What is kept: the plain line, an "i" that opens the technical account below it. */
-.conta-info{border-top:1px solid #cfd9c6;margin-top:14px;padding-top:10px;font-size:11px;line-height:1.45;color:#516859}
+.conta-info{margin-top:12px;font-size:11px;line-height:1.45;color:#516859}
+.conta-info > p{margin:8px 0 0;font-size:11px}
 .conta-info summary{display:flex;align-items:flex-start;gap:8px;cursor:pointer;list-style:none}
 .conta-info summary::-webkit-details-marker{display:none}
 .conta-i{flex-shrink:0;display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;background:#28558a;color:#fff;font:italic 800 11px/1 Georgia,serif}

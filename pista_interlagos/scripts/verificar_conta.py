@@ -130,7 +130,7 @@ try:
   page.keyboard.press('Escape');wait_js(page,"!document.getElementById('lapRecords').open")
   result['recordes_online']={'linha':rows[0]['text'],'selo':rows[0]['badge'],'todos':len(todos)}
   # What is kept: an "i" that opens the technical account.
-  page.click('#pilotAccount');page.click('.conta-info summary')
+  page.click('#pilotAccount');page.click('#contaMais');page.click('.conta-info summary')
   assert page.evaluate("document.querySelector('.conta-info').open&&document.querySelector('.conta-info').textContent.includes('openid')")
   page.screenshot(path=str(RENDERS/'conta_info.png'))
   page.keyboard.press('Escape');wait_js(page,"!document.getElementById('contaDialog').open")
@@ -139,7 +139,11 @@ try:
   # F5 keeps the account; the player's data downloads.
   page.reload(wait_until='load');wait_js(page,"document.querySelector('#pilotAccount:not([hidden]) span')?.textContent==='Piloto Teste'")
   assert not page.evaluate(STRIP)['dialog']
-  page.click('#pilotAccount')
+  page.click('#pilotAccount');assert page.locator('#contaExtra').is_hidden(),'the gear\'s part starts closed'
+  assert page.is_visible('#contaSair') and not page.is_visible('#contaApagar') and not page.is_visible('#contaDados'),'name, Salvar, Sair and the gear only'
+  page.screenshot(path=str(RENDERS/'conta_janela_simples.png'))
+  page.click('#contaMais');wait_js(page,"!document.getElementById('contaExtra').hidden")
+  page.screenshot(path=str(RENDERS/'conta_janela_engrenagem.png'))
   with page.expect_download() as download:page.click('#contaDados')
   data=json.loads(Path(download.value.path()).read_text(encoding='utf-8'))
   assert data['conta']['apelido']=='Piloto Teste' and data['conta']['identificador_google']=='100000000000000000777',data
@@ -164,7 +168,7 @@ try:
   result['voltou']='Piloto Teste, sem janela'
 
   # Deleting: the first click asks, the second deletes.
-  page.click('#pilotAccount');page.click('#contaApagar')
+  page.click('#pilotAccount');page.click('#contaMais');page.click('#contaApagar')
   assert page.text_content('#contaApagar')=='Confirmar: apagar tudo' and page.evaluate(STRIP)['account']=='Piloto Teste'
   page.screenshot(path=str(RENDERS/'conta_apagar_confirmar.png'))
   page.click('#contaApagar');wait_js(page,"document.getElementById('contaRotulo').textContent==='Entrar com Google'")
