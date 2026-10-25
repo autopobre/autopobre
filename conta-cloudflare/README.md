@@ -1,6 +1,6 @@
-# Servidor das contas (login com Google)
+# Servidor das contas (login com Google) e dos recordes online
 
-Um Worker do Cloudflare com um banco D1 (`src/index.js`). Ele responde em `/api/` do próprio endereço do jogo; as páginas continuam no GitHub Pages. Por enquanto só existe no **dev.autopobre.com.br**, para os pilotos de teste.
+Um Worker do Cloudflare com um banco D1 (`src/index.js` para as contas, `src/recordes.js` para os recordes, `src/base.js` com o que os dois dividem). Ele responde em `/api/` do próprio endereço do jogo; as páginas continuam no GitHub Pages. Por enquanto só existe no **dev.autopobre.com.br**, para os pilotos de teste.
 
 O que o servidor garante, seja lá o que o navegador mande:
 
@@ -10,6 +10,23 @@ O que o servidor garante, seja lá o que o navegador mande:
 - **Sessão:** um valor aleatório no cookie `__Host-ap_sessao` (`HttpOnly; Secure; SameSite=Lax; Path=/`, sem `Domain`), válido por 30 dias. O banco guarda só o SHA-256 desse valor. São no máximo 10 sessões por conta, e um novo login no mesmo navegador encerra a sessão anterior.
 - **Escritas:** só aceitas com a origem exata da página (`ORIGEM`) e corpo JSON de até 4 KB. Para o navegador, o dev e o link principal são o mesmo "site", então o `SameSite` sozinho não impediria uma página de um mandar pedidos para o outro.
 - **Apelido:** de 3 a 20 letras latinas ou números, com espaço, ponto, traço ou sublinhado só entre eles. Não se repete entre pilotos, sem contar acentos nem maiúsculas ("João" e "joao" são o mesmo apelido).
+
+## Recordes online
+
+Cada piloto aparece com a melhor volta por pista, modo e carro (por enquanto só o Opala), com um selo:
+
+- **✓ conferido:** o servidor acompanhou a volta enquanto ela era pilotada.
+  - Ao entrar na pista, o jogo pede um **bilhete** (pista, modo, carro, versão do jogo). Depois manda um **pedaço** do relógio da física a cada 5 segundos e outro a cada passagem pela linha.
+  - O bilhete vai e volta selado (AES-GCM) a cada pedaço, então nada é gravado enquanto as voltas passam.
+  - Entre dois pedaços, o relógio do jogo precisa ter andado como o do servidor. Isso pega câmera lenta, relógio adiantado e silêncio de mais de 15 s.
+  - A volta, de linha a linha, precisa durar no relógio do servidor o que durou no jogo. Por isso volta com pausa não é conferida.
+  - O **fantasma** da volta (a mesma gravação que o jogo guarda) precisa ter o tempo da volta, começar na linha, percorrer a pista inteira (o comprimento vem do `circuits.js` do jogo), não andar mais rápido que um Opala e não ganhar pista sem andar por ela.
+  - Só a melhor volta de cada piloto fica guardada, com o fantasma.
+- **(!) não verificado:** um recorde antigo, de antes da conta. O jogo sobe os recordes do navegador uma única vez por conta (depois marca o navegador) e só até **30/11/2026**. Tempo impossível para a pista é descartado.
+
+O que o selo conferido não pega: volta pilotada por um programa, ou alguém deixando o jogo mais lento por um instante dentro de um pedaço. Isso fica para o próximo selo (homologado: o servidor refaz a volta a partir dos comandos do piloto).
+
+Pista nova no jogo: publique o Worker de novo (`.\wrangler deploy`), porque ele leva o `circuits.js` junto.
 
 ## Rotas
 
@@ -21,7 +38,12 @@ O que o servidor garante, seja lá o que o navegador mande:
 | `POST /api/conta/apelido` `{apelido}` | escolhe ou troca o apelido |
 | `POST /api/conta/sair` | encerra a sessão |
 | `GET /api/conta/meus-dados` | tudo o que existe da conta, como arquivo |
-| `POST /api/conta/apagar` `{confirmar: "APAGAR"}` | apaga a conta e as sessões |
+| `POST /api/conta/apagar` `{confirmar: "APAGAR"}` | apaga a conta, as sessões e os recordes |
+| `POST /api/recordes/bilhete` `{circuito, modo, carro, versao}` | o bilhete de uma corrida, com o melhor tempo conferido do piloto ali |
+| `POST /api/recordes/pedaco` `{bilhete, relogio, cruzou?, volta?}` | um pedaço do relógio; na linha, a volta com o fantasma; devolve o bilhete novo e o veredito |
+| `POST /api/recordes/importar` `{recordes}` | os recordes antigos do navegador, uma vez, até 30/11/2026 |
+| `GET /api/recordes?circuito=&modo=` | a tabela de uma pista (pública) |
+| `GET /api/recordes/melhores?modo=` | a melhor volta de cada pista (pública) |
 
 ## Publicar (uma vez)
 
@@ -53,6 +75,8 @@ Plano gratuito do Workers (100 mil requisições por dia) e do D1 (5 milhões de
 
 - `npm test`:
   - `teste/testar_conta.mjs`: o servidor no Node, com SQLite e um Google de mentira. Cobre login, cookies, o que o banco guarda, apelidos, a trava de origem, os logins que precisam falhar, sessões, sair, "meus dados" e apagar.
-  - `teste/testar_wrangler.mjs`: o mesmo login no runtime do Cloudflare (`wrangler dev`, banco local).
+  - `teste/testar_recordes.mjs`: os recordes no servidor, num relógio que o teste controla. Cobre a volta conferida, as recusadas (pausa, câmera lenta, relógio adiantado, rápida demais, fantasmas falsos), o bilhete adulterado ou vencido, a subida dos antigos com prazo, a tabela e os recordes ao apagar a conta.
+  - `teste/testar_recordes_jogo.mjs`: o código do próprio jogo (`recordes-online.js`) correndo contra o servidor, quadro a quadro.
+  - `teste/testar_wrangler.mjs`: o mesmo login, bilhete e tabela no runtime do Cloudflare (`wrangler dev`, banco local).
 - `npm run local`: o servidor de contas na porta 8788, com o Google de mentira (entra direto). O preview do jogo (`servidor.py`) repassa `/api/` para ele, então no `…/pista_interlagos/teste/` do preview o menu mostra "Entrar com Google".
 - `python pista_interlagos/scripts/verificar_conta.py [porta]` (da raiz do projeto, com o Python que tem o Playwright). Sobe os dois servidores sozinho e passa pela conta inteira no navegador, inclusive no celular.

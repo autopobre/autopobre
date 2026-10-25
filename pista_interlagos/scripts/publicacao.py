@@ -40,7 +40,7 @@ EDITOR = ('editor-tracado.html', 'editor-tracado.js')
 DEV_PAGES = ('bancada-som.html', 'editor-tracado.html')
 # Accounts (sign in with Google): only the dev.autopobre.com.br build (preparar_publicacao.py --conta), where the
 # accounts server (conta-cloudflare) answers /api/conta/. The main link and the old /dev/ folder leave them out.
-CONTA = ('conta.js', 'conta.css')
+CONTA = ('conta.js', 'conta.css', 'recordes-online.js')
 ASSETS = (
     'branding/old_stock_preparada_v1.jpg',
     'branding/patrocinio_omp_v1.webp', 'branding/patrocinio_rtj_v1.webp', 'branding/patrocinio_eletric_v1.webp',

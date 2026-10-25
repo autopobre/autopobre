@@ -35,7 +35,15 @@ try{
  assert.equal((await post('/api/conta/apelido',{apelido:nick})).status,200);
  assert.equal((await (await go('/api/conta/eu')).json()).conta.apelido,nick);
  assert.equal((await go('/api/conta/meus-dados')).status,200);
+ // The records: the game's circuits.js inside the bundle, the ticket sealed and opened, the board's SQL.
+ const ticket=await (await post('/api/recordes/bilhete',{circuito:'interlagos',modo:'normal',carro:'opala',versao:'wrangler'})).json();
+ assert.ok(ticket.bilhete&&ticket.intervalo===5,JSON.stringify(ticket));
+ const chunk=await (await post('/api/recordes/pedaco',{bilhete:ticket.bilhete,relogio:0,cruzou:true})).json();assert.ok(chunk.bilhete);
+ assert.equal((await post('/api/recordes/importar',{recordes:[{circuito:'cascavel',modo:'normal',volta_ms:95000}]})).status,200);
+ const board=await (await go('/api/recordes?circuito=cascavel&modo=normal')).json();
+ assert.deepEqual(board.recordes.map(r=>[r.apelido,r.selo,r.volta_ms,r.meu]),[[nick,'nao_verificado',95000,true]]);
+ assert.equal((await (await go('/api/recordes/melhores?modo=normal')).json()).melhores.cascavel,95000);
  assert.equal((await post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
  assert.deepEqual(await (await go('/api/conta/eu')).json(),{conta:null});
- console.log('ok: entrar, apelido, meus dados e apagar no runtime do Cloudflare (wrangler dev)');
+ console.log('ok: entrar, apelido, meus dados, bilhete, recordes e apagar no runtime do Cloudflare (wrangler dev)');
 }finally{stop();await google.close();}

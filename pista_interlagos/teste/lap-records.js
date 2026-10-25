@@ -53,7 +53,7 @@ export function trackRecords(storage,circuit,mode,pilot='',limit=8){
 }
 export const RECORD_VIEW_KEY='autopobre-record-view-v1';
 function recordStorage(){try{return globalThis.localStorage;}catch{return null;}}
-export function readRecordView(storage){try{const v=JSON.parse(storage?.getItem(RECORD_VIEW_KEY)||'null');return v&&typeof v.circuit==='string'&&Object.hasOwn(CIRCUITS,v.circuit)&&['normal','immersive'].includes(v.mode)&&['human','ai','all'].includes(v.source)?{circuit:v.circuit,mode:v.mode,source:v.source}:null;}catch{return null;}}
+export function readRecordView(storage){try{const v=JSON.parse(storage?.getItem(RECORD_VIEW_KEY)||'null');return v&&typeof v.circuit==='string'&&Object.hasOwn(CIRCUITS,v.circuit)&&['normal','immersive'].includes(v.mode)&&['human','ai','all','online'].includes(v.source)?{circuit:v.circuit,mode:v.mode,source:v.source}:null;}catch{return null;}}
 // The circuit dropdown borrows each track's outline and place from its card on the track screen
 // (index.html); a circuit without a card still gets its name and length.
 const circuitCard=id=>document.querySelector(`.track-cards [data-circuit="${id}"]`);
@@ -65,7 +65,7 @@ export class LapRecords {
   this.storage=storage;const view=readRecordView(storage);this.viewSaved=!!view;
   this.circuit=circuitId(circuit);this.selectedCircuit=view?.circuit??this.circuit;this.selectedMode=view?.mode??'normal';this.selectedSource=view?.source??'all';
   this.dialog=document.createElement('dialog');this.dialog.id='lapRecords';this.dialog.setAttribute('aria-labelledby','recordsTitle');this.dialog.innerHTML=`<div class="records-head"><div><span>AUTO-POBRE RACING</span><h2 id="recordsTitle">RECORDES DE TEMPO</h2></div><button id="recordsClose" aria-label="Fechar recordes">✕</button></div><p id="recordCandidate" hidden></p><div class="records-filters"><fieldset id="recordsCircuit"><legend id="recordsCircuitLegend">AUTÓDROMO</legend><div class="records-pick"><button type="button" id="recordsCircuitPick" aria-haspopup="listbox" aria-expanded="false" aria-controls="recordsCircuitList" aria-labelledby="recordsCircuitLegend recordsCircuitName"><svg viewBox="0 0 120 60" aria-hidden="true"><path/></svg><b id="recordsCircuitName"></b><small id="recordsCircuitLength"></small><i aria-hidden="true"></i></button><ul id="recordsCircuitList" role="listbox" tabindex="-1" aria-labelledby="recordsCircuitLegend" hidden></ul></div></fieldset><fieldset id="recordsMode"><legend>MODALIDADE</legend><div class="records-mode-options"><button type="button" data-records-mode="normal" aria-pressed="true">Corrida normal <span>corrida em 3 voltas</span></button><button type="button" data-records-mode="immersive" aria-pressed="false">Imersiva <span>corrida em 3 voltas</span></button></div></fieldset><fieldset id="recordsSource"><legend>QUEM PILOTOU</legend><div class="records-source-options"><button type="button" data-records-source="all" aria-pressed="true">Todos</button><button type="button" data-records-source="human" aria-pressed="false" aria-label="Pessoas" title="Pessoas">🧑</button><button type="button" data-records-source="ai" aria-pressed="false" aria-label="Inteligência artificial" title="Inteligência artificial">🤖</button></div></fieldset></div><div class="records-list"><table><thead><tr><th>POS</th><th>PILOTO</th><th>MELHOR VOLTA</th><th>MELHOR CORRIDA</th></tr></thead><tbody></tbody></table><p id="recordsEmpty">O primeiro recorde pode ser seu. Complete uma volta válida para registrar seu tempo automaticamente.</p></div><p id="recordsSourceNote" class="records-note"></p><p id="recordsMessage" role="status"></p>`;
-  document.body.append(this.dialog);const $=id=>this.dialog.querySelector('#'+id);$('recordsClose').onclick=()=>this.dialog.close();
+  document.body.append(this.dialog);const $=id=>this.dialog.querySelector('#'+id);$('recordsClose').onclick=()=>this.dialog.close();this.emptyText=$('recordsEmpty').textContent;this.online=null;this.onlineDraw=0;
   for(const button of this.dialog.querySelectorAll('[data-records-source]'))button.onclick=()=>{this.selectedSource=button.dataset.recordsSource;this.saveView();this.render();};
   this.circuitPicker();
   for(const button of this.dialog.querySelectorAll('[data-records-mode]'))button.onclick=()=>{this.selectedMode=button.dataset.recordsMode;this.saveView();this.render();};
@@ -117,6 +117,35 @@ export class LapRecords {
   if(!Object.hasOwn(CIRCUITS,id))return;
   this.selectedCircuit=id;this.showCircuits(false);this.pickButton.focus();this.saveView();this.render();
  }
+ // The accounts' board (recordes-online.js, only where the accounts are): a fourth source, Online, read
+ // from the server; each pilot once, at their best lap, ✓ checked as it was driven or (!) an old record
+ // of some browser, unchecked.
+ addOnline(online){
+  if(this.online)return;this.online=online;
+  const button=document.createElement('button');button.type='button';button.dataset.recordsSource='online';button.setAttribute('aria-pressed','false');
+  button.setAttribute('aria-label','Online: recordes das contas');button.title='Online: recordes das contas';button.textContent='🌐';
+  button.onclick=()=>{this.selectedSource='online';this.saveView();this.render();};
+  this.dialog.querySelector('.records-source-options').append(button);
+  if(this.dialog.open)this.render();
+ }
+ async renderOnline(circuit,mode){
+  const draw=++this.onlineDraw,body=this.dialog.querySelector('tbody'),empty=this.dialog.querySelector('#recordsEmpty');
+  empty.textContent='Carregando os recordes online…';empty.hidden=false;
+  let rows,bests;
+  try{[rows,bests]=await Promise.all([this.online.board(circuit,mode),this.online.bests(mode)]);}
+  catch(error){if(draw===this.onlineDraw)empty.textContent=error.message;return;}
+  if(draw!==this.onlineDraw)return;
+  for(const li of this.pickList.children){
+   const ms=bests[li.dataset.recordsCircuit],best=li.querySelector('em');best.classList.toggle('records-pick-none',!ms);best.replaceChildren();
+   if(ms){const label=document.createElement('span');label.textContent='MELHOR VOLTA';best.append(label,formatTime(ms/1000));}else best.textContent='sem tempos';}
+  rows.forEach((row,i)=>{
+   const tr=document.createElement('tr');tr.dataset.source='online';if(row.mine)tr.dataset.mine='';
+   for(const value of [`${i+1}º`,row.name,formatTime(row.bestLap),'—']){const td=document.createElement('td');td.textContent=value;tr.append(td);}
+   const checked=row.badge==='conferido',badge=document.createElement('span'),label=checked?'Volta conferida pelo servidor enquanto foi pilotada':'Recorde antigo de um navegador, não verificado';
+   badge.className='record-source-badge record-online-badge'+(checked?'':' record-unchecked');badge.title=label;badge.setAttribute('role','img');badge.setAttribute('aria-label',label);badge.textContent=checked?'✓':'(!)';
+   tr.children[1].append(badge);body.append(tr);});
+  empty.textContent='Ainda não há recordes online nesta pista e modo. Entre com a sua conta e complete uma volta sem pausa para registrar a primeira.';empty.hidden=rows.length>0;
+ }
  saveView(){this.viewSaved=true;try{this.storage?.setItem(RECORD_VIEW_KEY,JSON.stringify({circuit:this.selectedCircuit,mode:this.selectedMode,source:this.selectedSource}));}catch{}}
  open(mode=null){
   const $=id=>this.dialog.querySelector('#'+id);this.candidate=mode&&!mode.recordAssisted&&validTime(mode.finishBest)&&validTime(mode.finishTime)?{circuit:circuitId(mode.data?.meta.id),mode:mode.active?'immersive':'normal',bestLap:mode.finishBest,bestRace:mode.finishTime}:null;
@@ -129,10 +158,13 @@ export class LapRecords {
  }
  render(){
   const storage=this.storage;
-  let rows=this.selectedSource==='ai'?[]:readRecords(storage).map(r=>({...r,source:'human'}));
-  if(this.selectedSource!=='human')rows.push(...readAIRecords(storage));
+  // Online without the accounts here (a view saved on dev.autopobre.com.br, opened elsewhere): everyone.
+  if(this.selectedSource==='online'&&!this.online)this.selectedSource='all';
+  const online=this.selectedSource==='online';this.onlineDraw++;this.dialog.querySelector('#recordsEmpty').textContent=this.emptyText;
+  let rows=this.selectedSource==='ai'||online?[]:readRecords(storage).map(r=>({...r,source:'human'}));
+  if(this.selectedSource!=='human'&&!online)rows.push(...readAIRecords(storage));
   for(const button of this.dialog.querySelectorAll('[data-records-source]'))button.setAttribute('aria-pressed',String(button.dataset.recordsSource===this.selectedSource));
-  this.dialog.querySelector('#recordsSourceNote').textContent=this.selectedSource==='human'?'Pessoas: recordes salvos automaticamente neste navegador.':'Pessoas: recordes deste navegador. IA: tempos do jogo, não dos pilotos reais.';
+  this.dialog.querySelector('#recordsSourceNote').textContent=online?'Online: o melhor de cada piloto com conta. ✓ volta conferida pelo servidor · (!) recorde antigo, não verificado.':this.selectedSource==='human'?'Pessoas: recordes salvos automaticamente neste navegador.':'Pessoas: recordes deste navegador. IA: tempos do jogo, não dos pilotos reais.';
   const mode=this.selectedMode;
   for(const button of this.dialog.querySelectorAll('[data-records-mode]'))button.setAttribute('aria-pressed',String(button.dataset.recordsMode===mode));
   const circuit=CIRCUITS[this.selectedCircuit],button=this.pickButton;button.dataset.circuit=circuit.id;
@@ -146,5 +178,6 @@ export class LapRecords {
   rows=rows.filter(r=>r.mode===mode&&r.circuit===this.selectedCircuit).sort((a,b)=>a.bestLap-b.bestLap);
   const body=this.dialog.querySelector('tbody');body.replaceChildren();
   rows.forEach((row,i)=>{const tr=document.createElement('tr');tr.dataset.source=row.source;for(const value of [`${i+1}º`,row.name,formatTime(row.bestLap),formatTime(row.bestRace)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}const badge=document.createElement('span');badge.className='record-source-badge';const label=row.source==='ai'?`Inteligência artificial · carro #${row.number}`:'Pessoa';badge.title=label;badge.setAttribute('role','img');badge.setAttribute('aria-label',label);badge.textContent=row.source==='ai'?`🤖 · #${row.number}`:'🧑';tr.children[1].append(badge);body.append(tr);});this.dialog.querySelector('#recordsEmpty').hidden=rows.length>0;
+  if(online)this.renderOnline(this.selectedCircuit,mode);
  }
 }

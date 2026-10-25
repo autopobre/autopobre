@@ -145,7 +145,7 @@ jobs:
           # The accounts go only to dev.autopobre.com.br (autopobre/dev): neither address here has their server.
           for pasta in principal dev; do
             [ -d "$pasta/dist" ] || continue
-            for arquivo in conta.js conta.css; do
+            for arquivo in conta.js conta.css recordes-online.js; do
               if [ -e "$pasta/dist/$arquivo" ]; then
                 echo "::error::A versao de $pasta tem as contas ($arquivo); elas so podem ir para dev.autopobre.com.br."
                 exit 1

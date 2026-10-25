@@ -3,14 +3,16 @@
 // carries this module (preparar_publicacao.py --conta; main.js asks for it only there). Where
 // /api/conta/ does not answer (the local preview without the accounts server), nothing shows.
 //
-// Signed out, the menu gets a line under its tools: "Entrar com Google". Signed in with a nickname, that
+// Signed out, the menu gets a line under its pilot: "Entrar com Google". Signed in with a nickname, that
 // nickname is the pilot (the menu's Piloto shows it instead of the name field: one name, not two) and the
 // line goes. Either opens "Sua conta": the nickname shown on the records, the date the account was made,
 // the player's data as a file, sign-out, and deleting the account (a second click confirms).
+import {OnlineRecords} from './recordes-online.js';
 const API='/api/conta/';
 // Set just before leaving for Google: back on the page, the player hears how it went.
 const SIGNING_IN='autopobre-conta-entrando';
-const PERSON='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>';
+// Signing in: an arrow through a door (the pilot's own line already has the person).
+const SIGN_IN='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l4-4-4-4M14 12H3"/></svg>';
 
 function session(){try{return globalThis.sessionStorage;}catch{return null;}}
 async function call(path,body){
@@ -23,23 +25,36 @@ async function call(path,body){
 
 export class Conta {
  // pilot(): the name chosen on the menu, offered as the first nickname. usePilot(name, open): the account's
- // nickname becomes the menu's pilot (null gives the name field back); open() shows this dialog.
- constructor({pilot=()=>'',usePilot=()=>{}}={}){
-  this.pilot=pilot;this.usePilot=usePilot;this.account=null;this.available=false;this.pilotGiven='';this.confirmTimer=0;
+ // nickname becomes the menu's pilot (null gives the name field back); open() shows this dialog. records:
+ // the records dialog (lap-records.js), which gets the Online tab. online: the laps that go online
+ // (recordes-online.js), which main.js feeds every frame.
+ constructor({pilot=()=>'',usePilot=()=>{},records=null}={}){
+  this.pilot=pilot;this.usePilot=usePilot;this.records=records;this.account=null;this.available=false;this.pilotGiven='';this.confirmTimer=0;
+  this.online=new OnlineRecords();
   const link=document.createElement('link');link.rel='stylesheet';link.href='./conta.css'+new URL(import.meta.url).search;document.head.append(link);
   this.strip=document.createElement('div');this.strip.id='contaFaixa';this.strip.hidden=true;
-  this.strip.innerHTML=`<button id="contaBotao" type="button">${PERSON}<span id="contaRotulo">Entrar com Google</span></button><span id="contaDica">Teste: seus recordes na sua conta.</span>`;
-  document.querySelector('#menu .menu-tools')?.after(this.strip);
+  this.strip.innerHTML=`<button id="contaBotao" type="button">${SIGN_IN}<span id="contaRotulo">Entrar com Google</span></button>`;
+  (document.getElementById('pilotPicker')??document.querySelector('#menu .menu-tools'))?.after(this.strip);
   this.dialog=document.createElement('dialog');this.dialog.id='contaDialog';this.dialog.setAttribute('aria-labelledby','contaTitulo');
   this.dialog.innerHTML=`<div class="records-head"><div><span>AUTO-POBRE RACING</span><h2 id="contaTitulo">SUA CONTA</h2></div><button id="contaFechar" type="button" aria-label="Fechar">✕</button></div>
 <div class="conta-corpo">
- <section id="contaFora"><p>Entre com a sua conta Google para guardar seus recordes em qualquer navegador. Por enquanto é um teste, só para os pilotos convidados.</p><button id="contaEntrar" class="conta-principal" type="button">${PERSON}Entrar com Google</button></section>
+ <section id="contaFora"><p>Entre com a sua conta Google para guardar seus recordes em qualquer navegador. Por enquanto é um teste, só para os pilotos convidados.</p><button id="contaEntrar" class="conta-principal" type="button">${SIGN_IN}Entrar com Google</button></section>
  <section id="contaDentro" hidden>
   <form id="contaApelidoForm"><label for="contaApelido">SEU APELIDO NOS RECORDES</label><div class="conta-linha"><input id="contaApelido" maxlength="20" autocomplete="nickname" spellcheck="false" required><button id="contaSalvar" class="conta-principal" type="submit">Salvar</button></div><small>3 a 20 letras ou números. Todo mundo vê este nome.</small></form>
   <p id="contaDesde"></p>
   <div class="conta-acoes"><a id="contaDados" href="${API}meus-dados" download="autopobre-meus-dados.json">Baixar meus dados</a><button id="contaSair" type="button">Sair</button><button id="contaApagar" class="conta-perigo" type="button">Apagar conta</button></div>
  </section>
- <p class="conta-privacidade">Guardamos só o número que o Google dá à sua conta, o apelido e as datas em que você entrou. Nada de nome, e-mail ou foto.</p>
+ <details class="conta-info"><summary><span class="conta-i" aria-hidden="true">i</span>Guardamos só o número que o Google dá à sua conta, o apelido e as datas em que você entrou. Nada de nome, e-mail ou foto.</summary>
+  <h3>Como funciona, tecnicamente</h3>
+  <ul>
+   <li><b>Login:</b> OpenID Connect com o Google, no fluxo <i>authorization code</i> com PKCE, <i>state</i> e <i>nonce</i>, feito pelo servidor do jogo. A página não carrega nenhum script do Google.</li>
+   <li><b>O que o Google entrega:</b> o jogo pede só o escopo <code>openid</code>. Chega o identificador da conta (<code>sub</code>), um número que não revela nome, e-mail nem foto. O token do Google é conferido e descartado.</li>
+   <li><b>Sessão:</b> um cookie <code>__Host-ap_sessao</code> (HttpOnly, Secure, SameSite=Lax) que dura 30 dias. O servidor guarda só o SHA-256 dele, nunca o valor. Sair apaga a sessão também no servidor.</li>
+   <li><b>Onde fica:</b> num banco Cloudflare D1, no leste dos EUA. Ficam a conta (identificador, apelido, datas), as sessões e os recordes.</li>
+   <li><b>Recordes:</b> pista, modo, tempo, versão do jogo, data e o fantasma da volta. Uma volta é <i>conferida</i> quando o servidor acompanha o relógio dela, com pedaços enviados a cada 5 segundos, e confere o trajeto. Os recordes antigos deste navegador sobem uma vez, marcados como (!) não verificados.</li>
+   <li><b>Seus direitos (LGPD):</b> "Baixar meus dados" entrega tudo num arquivo JSON, e "Apagar conta" apaga a conta, as sessões e os recordes.</li>
+  </ul>
+ </details>
  <p id="contaAviso" role="status" aria-live="polite"></p>
 </div>`;
   document.body.append(this.dialog);
@@ -57,7 +72,8 @@ export class Conta {
  // Whether the accounts server answers here; then the menu line shows.
  async start(){
   let data;try{data=await call('eu');}catch{return false;}
-  this.available=true;this.show(data.conta);
+  // The menu's pilot before the account takes its place: their old records here are this account's too.
+  this.available=true;this.firstPilot=this.pilot();this.records?.addOnline(this.online);this.show(data.conta);
   const store=session();
   if(store?.getItem(SIGNING_IN)){
    store.removeItem(SIGNING_IN);
@@ -71,8 +87,9 @@ export class Conta {
   this.strip.hidden=!this.available||!!nickname;
   // Only a change reaches the menu: redrawing the name field would drop what someone is typing there.
   if(nickname!==this.pilotGiven){this.pilotGiven=nickname;this.usePilot(nickname||null,()=>this.open());}
+  this.online.setAccount(account);
+  if(nickname)this.online.importOld(account,[nickname,this.firstPilot]);
   $('contaRotulo').textContent=account?account.apelido||'Escolha seu apelido':'Entrar com Google';
-  $('contaDica').hidden=!!account;
   $('contaFora').hidden=!!account;$('contaDentro').hidden=!account;
   if(account){
    $('contaApelido').value=account.apelido||this.pilot()||'';

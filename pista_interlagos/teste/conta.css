@@ -1,27 +1,29 @@
-/* The account line under the menu's tools and the "Sua conta" dialog (conta.js; only the build with accounts). */
-#contaFaixa{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;margin:10px 0 0}
-#contaFaixa[hidden],#contaDica[hidden]{display:none}
+/* The account line under the menu's pilot (signed out) and the "Sua conta" dialog (conta.js; only the build with accounts). */
+#contaFaixa{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;margin:-6px 0 14px}
+#contaFaixa[hidden]{display:none}
 /* Mid-race (the pause menu) or on the results, signing in would leave the page and the race: as the pilot field, the line goes. */
 #menu:is(.in-session,.race-finished) #contaFaixa{display:none}
 /* Signed in with a nickname, the menu's pilot is the account's (pilot-profile.js #pilotAccount): the name, and a click opens the account. */
 #pilotAccount[hidden]{display:none}
-#pilotAccount{display:inline-flex;align-items:baseline;gap:8px;width:auto;margin:0;padding:6px 10px;-webkit-tap-highlight-color:transparent}
-#pilotAccount small{font-size:11px;font-weight:600;opacity:.75}
+/* Centred as the name field it stands for; its tag keeps none of the margin the pilot's message (also a small) has. */
+#menu #pilotAccount{display:inline-flex;align-items:center;gap:8px;width:auto;min-height:0;height:auto;margin:0;padding:6px 10px;-webkit-tap-highlight-color:transparent}
+#menu #pilotAccount small{margin:0;font-size:11px;font-weight:600;opacity:.75}
 .menus-paddock #menu #pilotAccount{padding:4px 2px 5px;border:0;border-bottom:1.5px solid #f3ecdc55;border-radius:0;background:transparent;color:var(--mp-ink);font:500 19px/1.2 var(--mp-text);text-shadow:0 1px 6px #000c;cursor:pointer}
 .menus-paddock #menu #pilotAccount small{font:500 13px/1 var(--mp-text);color:var(--mp-yellow);opacity:1}
+/* Under the pilot, the sign-in line takes the pilot's gap to the modes. */
+.menus-paddock #menu:not(.in-session):not(.race-finished) #pilotPicker:has(+ #contaFaixa:not([hidden])){margin-bottom:6px}
+.menus-paddock #menu #contaFaixa{margin:0 0 clamp(10px,2.4vh,24px)}
 .menus-paddock body:not(.touch-device) #menu #pilotAccount:hover{border-bottom-color:var(--mp-yellow)}
 #contaBotao{display:inline-flex;align-items:center;gap:8px;width:auto;margin:0;-webkit-tap-highlight-color:transparent}
 #contaFaixa svg,#contaDialog svg{width:18px;height:18px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-#contaDica{font-size:12px;opacity:.8}
 /* The paddock menu: like its tools (menus.css .menu-tools), on a computer and on a touch screen. */
-.menus-paddock #menu #contaBotao{padding:6px 0;border:0;border-radius:0;background:none;color:var(--mp-ink);font:500 19px/1 var(--mp-text);text-shadow:0 1px 6px #000c}
+.menus-paddock #menu #contaBotao{padding:4px 0;border:0;border-radius:0;background:none;color:var(--mp-ink);font:500 16px/1 var(--mp-text);text-shadow:0 1px 6px #000c}
 .menus-paddock body:not(.touch-device) #menu #contaBotao:hover{color:var(--mp-hot)}
-.menus-paddock #menu #contaBotao svg{width:21px;height:21px;color:var(--mp-yellow)}
-.menus-paddock #menu #contaDica{opacity:1;color:var(--mp-dim);font:400 14px/1.3 var(--mp-text);text-shadow:0 1px 6px #000c}
+.menus-paddock #menu #contaBotao svg{width:19px;height:19px;color:var(--mp-yellow)}
 .menus-paddock .touch-device #menu #contaBotao{min-height:36px;padding:4px 0;font-size:14px;gap:6px}
 @media(max-height:520px){
- #contaFaixa{margin-top:2px}
- #contaDica{display:none}
+ .menus-paddock #menu #contaFaixa{margin:0 0 6px}
+ .menus-paddock .touch-device #menu #contaBotao{min-height:30px}
  .menus-paddock .touch-device #menu #contaBotao{font-size:12px}
  .menus-paddock .touch-device #menu #contaBotao svg{width:17px;height:17px}
  .menus-paddock #menu #pilotAccount{font-size:16px}
@@ -40,7 +42,25 @@
 .conta-acoes{display:flex;flex-wrap:wrap;gap:6px}
 .conta-corpo .conta-perigo{background:#fff;color:#a32020;border-color:#d9a3a3}
 .conta-corpo .conta-perigo[data-confirmar]{background:#a32020;color:#fff;border-color:#a32020}
-.conta-corpo .conta-privacidade{font-size:11px;color:#516859;border-top:1px solid #cfd9c6;padding-top:10px;margin-top:14px}
+/* What is kept: the plain line, an "i" that opens the technical account below it. */
+.conta-info{border-top:1px solid #cfd9c6;margin-top:14px;padding-top:10px;font-size:11px;line-height:1.45;color:#516859}
+.conta-info summary{display:flex;align-items:flex-start;gap:8px;cursor:pointer;list-style:none}
+.conta-info summary::-webkit-details-marker{display:none}
+.conta-i{flex-shrink:0;display:inline-grid;place-items:center;width:17px;height:17px;border-radius:50%;background:#28558a;color:#fff;font:italic 800 11px/1 Georgia,serif}
+.conta-info[open] .conta-i{background:#197746}
+.conta-info summary:focus-visible{outline:2px solid #28558a;outline-offset:2px;border-radius:3px}
+.conta-info h3{margin:10px 0 4px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#28558a}
+.conta-info ul{margin:0;padding-left:18px}
+.conta-info li{margin:0 0 5px}
+.conta-info code{font-size:10.5px;background:#e4e9dc;padding:0 3px;border-radius:3px}
 #contaAviso{font-size:12px;font-weight:700;color:#227241;margin:6px 0 0}
 #contaAviso:empty{display:none}
 #contaAviso.erro{color:#a32020}
+
+/* The online records: the verdict on a lap (recordes-online.js) and the Online tab's badges (lap-records.js). */
+#recordeOnline{position:fixed;left:50%;top:max(14px,env(safe-area-inset-top));transform:translateX(-50%);z-index:60;max-width:min(560px,calc(100vw - 24px));padding:9px 16px;border-radius:8px;background:#197746e6;color:#fff;font:700 14px/1.35 system-ui,sans-serif;text-align:center;box-shadow:0 6px 24px #0008;pointer-events:none}
+#recordeOnline.aviso{background:#5c3a06e6}
+#recordeOnline[hidden]{display:none}
+.record-online-badge{font-weight:900;color:#197746}
+.record-online-badge.record-unchecked{color:#b06a00}
+#lapRecords tr[data-mine] td{font-weight:800;background:#fff3b7}

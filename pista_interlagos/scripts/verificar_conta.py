@@ -27,7 +27,7 @@ URL=f'http://127.0.0.1:{PORT}/pista_interlagos/teste/?intro=0&cinema=off'
 RENDERS=Path(__file__).resolve().parents[1]/'renders';RENDERS.mkdir(exist_ok=True)
 node=os.environ.get('INTERLAGOS_NODE') or shutil.which('node')
 assert node,'node not found: set INTERLAGOS_NODE'
-STRIP="()=>({shown:!document.getElementById('contaFaixa')?.hidden&&!!document.getElementById('contaFaixa'),label:document.getElementById('contaRotulo')?.textContent??null,dialog:!!document.getElementById('contaDialog')?.open,notice:document.getElementById('contaAviso')?.textContent??'',account:document.getElementById('pilotAccount')?.hidden===false?document.querySelector('#pilotAccount span').textContent:null,field:!document.getElementById('pilotName').hidden,typed:document.getElementById('pilotName').value})"
+STRIP="()=>({shown:!document.getElementById('contaFaixa')?.hidden&&!!document.getElementById('contaFaixa'),label:document.getElementById('contaRotulo')?.textContent??null,dialog:!!document.getElementById('contaDialog')?.open,notice:document.getElementById('contaAviso')?.textContent??'',account:document.getElementById('pilotAccount')?.hidden===false?document.querySelector('#pilotAccount span').textContent:null,field:!document.getElementById('pilotName').hidden||!document.getElementById('pilotSelect').hidden,typed:document.getElementById('pilotSelect').hidden?document.getElementById('pilotName').value:document.getElementById('pilotSelect').value})"
 errors=[];result={};servers=[]
 
 def start(args,ready):
@@ -54,7 +54,7 @@ try:
   browser=p.chromium.launch(executable_path=browser_executable(),headless=True,args=browser_args())
   context=browser.new_context(viewport={'width':1280,'height':800},accept_downloads=True)
   page=context.new_page();page.set_default_timeout(120000);page.on('pageerror',lambda e:errors.append(str(e)))
-  page.goto(URL,wait_until='load');wait_js(page,"!document.getElementById('contaFaixa')?.hidden")
+  page.goto(URL,wait_until='load');wait_js(page,"document.getElementById('contaFaixa')?.hidden===false")
   s=page.evaluate(STRIP);assert s['shown'] and s['label']=='Entrar com Google',s
   page.screenshot(path=str(RENDERS/'conta_menu_fora.png'))
   page.click('#contaBotao');wait_js(page,"document.getElementById('contaDialog').open")
@@ -62,11 +62,15 @@ try:
   pilot=page.evaluate("()=>document.getElementById('pilotName')?.value||''")
   result['fora']={'faixa':s['label'],'piloto_do_menu':pilot}
 
+  # An old record of this browser, under the name the pilot will take: it goes up once, flagged unchecked.
+  page.evaluate("""localStorage.setItem('autopobre-records-v1',JSON.stringify([{circuit:'interlagos',name:'Piloto Teste',mode:'normal',bestLap:98.765,bestRace:null,raceLaps:3,date:'2026-10-01T12:00:00Z'},
+   {circuit:'interlagos',name:'Outra Pessoa',mode:'normal',bestLap:90,bestRace:null,raceLaps:3,date:''}]))""")
   # To Google and back: the dialog asks for the nickname, the menu's pilot offered.
   accounts(sub='100000000000000000777')
   page.click('#contaEntrar');page.wait_for_url(URL,timeout=60000);wait_js(page,"document.getElementById('contaDialog')?.open")
   s=page.evaluate(STRIP);assert s['label']=='Escolha seu apelido' and 'escolha o apelido' in s['notice'],s
-  offered=page.input_value('#contaApelido');assert offered==pilot,(offered,pilot)
+  pilot=page.input_value('#pilotName')   # the menu learns the names of this browser's records: the old one's now
+  offered=page.input_value('#contaApelido');assert offered==pilot=='Piloto Teste',(offered,pilot)
   cookie=next(c for c in context.cookies() if c['name']=='__Host-ap_sessao')
   assert cookie['httpOnly'] and cookie['secure'] and cookie['sameSite']=='Lax' and cookie['path']=='/' and cookie['domain']=='127.0.0.1',cookie
   assert not any(c['name']=='__Host-ap_login' for c in context.cookies())
@@ -85,6 +89,20 @@ try:
   page.click('#start');wait_js(page,"!document.getElementById('cars').classList.contains('hidden')")
   assert page.text_content('#carsPilot').startswith('Piloto: Piloto Teste'),page.text_content('#carsPilot')
   page.click('#carsBack');wait_js(page,"!document.getElementById('menu').classList.contains('hidden')")
+  # The old record went up (the browser is marked), and the records' Online tab shows it flagged (!), the pilot's own row.
+  wait_js(page,"!!localStorage.getItem('autopobre-recordes-importados-v1')")
+  page.click('#recordsButton');page.click('[data-records-source=online]')
+  wait_js(page,"[...document.querySelectorAll('#lapRecords tbody tr')].some(tr=>tr.textContent.includes('Piloto Teste'))")
+  rows=page.evaluate("[...document.querySelectorAll('#lapRecords tbody tr')].map(tr=>({text:tr.textContent,mine:tr.hasAttribute('data-mine'),badge:tr.querySelector('.record-online-badge')?.textContent}))")
+  assert len(rows)==1 and '01:38.765' in rows[0]['text'] and rows[0]['badge']=='(!)' and rows[0]['mine'],rows
+  page.screenshot(path=str(RENDERS/'conta_recordes_online.png'))
+  page.keyboard.press('Escape');wait_js(page,"!document.getElementById('lapRecords').open")
+  result['recordes_online']={'linha':rows[0]['text'],'selo':rows[0]['badge']}
+  # What is kept: an "i" that opens the technical account.
+  page.click('#pilotAccount');page.click('.conta-info summary')
+  assert page.evaluate("document.querySelector('.conta-info').open&&document.querySelector('.conta-info').textContent.includes('openid')")
+  page.screenshot(path=str(RENDERS/'conta_info.png'))
+  page.keyboard.press('Escape');wait_js(page,"!document.getElementById('contaDialog').open")
   result['entrou']={'faixa':s['label'],'cookie':{k:cookie[k] for k in ('name','httpOnly','secure','sameSite','path')}}
 
   # F5 keeps the account; the player's data downloads.
@@ -124,7 +142,7 @@ try:
   # On a phone, lying down.
   phone=browser.new_context(viewport={'width':844,'height':390},is_mobile=True,has_touch=True,device_scale_factor=2)
   mobile=phone.new_page();mobile.on('pageerror',lambda e:errors.append(str(e)))
-  mobile.goto(URL,wait_until='load');wait_js(mobile,"!document.getElementById('contaFaixa')?.hidden")
+  mobile.goto(URL,wait_until='load');wait_js(mobile,"document.getElementById('contaFaixa')?.hidden===false")
   mobile.screenshot(path=str(RENDERS/'conta_celular_menu.png'))
   mobile.tap('#contaBotao');wait_js(mobile,"document.getElementById('contaDialog').open")
   box=mobile.locator('#contaDialog').bounding_box();assert box['width']<=844 and box['height']<=390,box

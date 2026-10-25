@@ -514,6 +514,7 @@ function recordGhost(command){
  const driving=sessionStarted&&!automatic&&!immersive.recordAssisted&&!immersive.finishing&&(immersive.active?immersive.state.phase==='race':!immersive.freeFinished);
  const lap=ghostRecorder.step(car,driving,command?.brake??0),key=lap&&ghostOwner();
  if(key?.pilot&&saveGhost(pilotStorage(),{...key,lap})){ghostKey='';ghostSavedAt=car.lapStart;}
+ if(key)contaOnline?.lapDone({...key,lap,end:car.lapStart});
 }
 // Each frame: the ghost where its lap was at this point of the lap being driven. It waits at its
 // start until the clock runs, fades out once its lap is over, and fades near the camera and the
@@ -837,7 +838,14 @@ $('soundBench').hidden=!MULTIPLAYER;$('soundBenchState').textContent=carAudio.tu
 // Accounts (conta.js: sign in with Google, the nickname on the records). Only the dev.autopobre.com.br build carries
 // them (preparar_publicacao.py --conta, its server answering /api/conta/ there); the others turn this off.
 const CONTA=true;
-if(CONTA)import('./conta.js').then(m=>m.startConta({pilot:()=>pilotPicker.profiles.selected,usePilot:(name,open)=>pilotPicker.useAccount(name,open)})).catch(()=>{});
+// The online records (recordes-online.js, through conta.js): fed the run every frame (onlineRun) and each lap that counts (recordGhost).
+let contaOnline=null;
+if(CONTA)import('./conta.js').then(m=>m.startConta({pilot:()=>pilotPicker.profiles.selected,usePilot:(name,open)=>pilotPicker.useAccount(name,open),records:lapRecords}))
+ .then(conta=>{contaOnline=conta?.online??null;}).catch(()=>{});
+// The run as the online records see it: the Opala's clock and laps while the pilot drives a race they count (not
+// the recon lap's autopilot, a run that used it, the Arena, nor a multiplayer room, whose clock the room may move).
+const onlineRun=()=>({circuit:circuit.id,mode:immersive.active?'immersive':'normal',car:raceModel,clock:car.clock,lapStart:car.lapStart,
+ driving:sessionStarted&&ready&&!automatic&&!immersive.recordAssisted&&!arenaMode&&!multiplayer});
 const roomWanted=MULTIPLAYER&&new URLSearchParams(window.location.hash.slice(1)).has('desafio');let multiplayer=null;
 let pitstop,rivalGarages=null,peekView=null,walker=null,walkView=null,immersive,car,data,roadSurface,roadRails,roadCurbs,driver,wheels=[],trunkInterior=[],model,carStructure,paused=true,automatic=false,mode='chase',ready=false,loadToken=0,activeLivery='';
 // The car raced now ('99', or Modo Corrida's choice), the car at the back of its grid whose driver
@@ -1604,7 +1612,7 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
    const far=Math.hypot(c.x-camera.position.x,c.y+camera.position.z);if(far<1600)carAudio.effect('explosion',{strength:c===car?1.4:Math.max(.25,1.3-far/900)});}
   explosions.update(dt*fallView.timeScale);
  }
- automaticRecords.update(immersive);automaticAIRecords.update(immersive);updateRecordTvs(performance.now());
+ automaticRecords.update(immersive);automaticAIRecords.update(immersive);updateRecordTvs(performance.now());if(contaOnline&&immersive&&car)contaOnline.frame(onlineRun());
  skidMarks.flush();
  tyreSmoke.clearView(...(isInside()?[1.5,9]:followsCar(mode)?[.6,Math.max(2,(CAMERA_FRAMES[mode]?.back??9)*.45)]:[.5,2]));tyreSmoke.update(car,skidMarks.wheels,paused||frozen?0:dt,renderer.domElement.height);if(!paused&&!frozen)for(const r of immersive?.rivals??[])if(r.broken?.smokeLeft>0)tyreSmoke.plume(r.car,dt);lakeContact?.update(paused?0:dt,renderer.domElement.height);treeField?.update(paused?0:dt,renderer.domElement.height);
  const actionImpact=Math.max(frameImpact,immersive?.takeKnock()??0);
