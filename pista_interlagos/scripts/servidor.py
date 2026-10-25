@@ -1,6 +1,11 @@
-"""Local preview only. Serves the explicit public file list, never the workspace."""
+"""Local preview only. Serves the explicit public file list, never the workspace.
+
+/api/ goes on to the accounts server on this machine (conta-cloudflare: `npm run local`, or wrangler dev), on
+--conta-porta (8788), so the page and its account share one origin as on dev.autopobre.com.br. Without it
+running, /api/ answers 204 (nothing, and no error in the browser's console) and the game shows no account."""
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 import argparse
+import http.client
 import socket
 import webbrowser
 import io
@@ -19,9 +24,60 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
-    def send_head(self):
+    def allowed_host(self):
         port = self.server.server_port
-        if self.headers.get('Host', '').lower() not in {f'127.0.0.1:{port}', f'localhost:{port}'}:
+        return self.headers.get('Host', '').lower() in {f'127.0.0.1:{port}', f'localhost:{port}'}
+
+    def do_GET(self):
+        if urlsplit(self.path).path.startswith('/api/'):
+            return self.pass_to_accounts()
+        return super().do_GET()
+
+    def do_HEAD(self):
+        if urlsplit(self.path).path.startswith('/api/'):
+            return self.pass_to_accounts()
+        return super().do_HEAD()
+
+    def do_POST(self):
+        if urlsplit(self.path).path.startswith('/api/'):
+            return self.pass_to_accounts()
+        self.send_error(405, 'Method not allowed')
+
+    # The request as the browser sent it (cookies, Origin, JSON), and the answer as the server gave it
+    # (redirects not followed: the sign-in sends the browser to Google and back).
+    PASSED_IN = {'cookie', 'origin', 'content-type', 'accept', 'sec-fetch-site', 'sec-fetch-mode', 'sec-fetch-dest', 'user-agent'}
+    PASSED_OUT = {'content-type', 'location', 'set-cookie', 'cache-control', 'content-disposition'}
+
+    def pass_to_accounts(self):
+        if not self.allowed_host():
+            self.send_error(403, 'Forbidden')
+            return
+        length = int(self.headers.get('Content-Length') or 0)
+        if length > 65536:
+            self.send_error(413, 'Too large')
+            return
+        body = self.rfile.read(length) if length else None
+        headers = {k: v for k, v in self.headers.items() if k.lower() in self.PASSED_IN}
+        try:
+            connection = http.client.HTTPConnection('127.0.0.1', getattr(self.server, 'accounts_port', 8788), timeout=20)
+            connection.request(self.command, self.path, body=body, headers=headers)
+            answer = connection.getresponse()
+            data = answer.read()
+        except OSError:
+            self.send_response(204)
+            self.end_headers()
+            return
+        self.send_response(answer.status)
+        for name, value in answer.getheaders():
+            if name.lower() in self.PASSED_OUT:
+                self.send_header(name, value)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        if self.command != 'HEAD':
+            self.wfile.write(data)
+
+    def send_head(self):
+        if not self.allowed_host():
             self.send_error(403, 'Forbidden')
             return None
         if self.headers.get('Sec-Fetch-Site') == 'cross-site' and self.headers.get('Sec-Fetch-Mode') != 'navigate':
@@ -97,6 +153,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('port', nargs='?', type=int, default=8799)
     parser.add_argument('--no-browser', action='store_true')
+    parser.add_argument('--conta-porta', type=int, default=8788, help='the accounts server on this machine (/api/)')
     args = parser.parse_args()
     for candidate in range(args.port, min(args.port + 10, 65536)):
         url = f'http://127.0.0.1:{candidate}/' + GAME
@@ -112,6 +169,7 @@ def main():
             pass
         try:
             server = LocalServer(('127.0.0.1', candidate), Handler)
+            server.accounts_port = args.conta_porta
             break
         except OSError:
             pass

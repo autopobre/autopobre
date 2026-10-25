@@ -17,8 +17,10 @@ def main():
     if not (dist / 'index.html').is_file():
         raise SystemExit('Build the release first: python pista_interlagos/scripts/preparar_publicacao.py')
     report = {'checks': {}, 'browser_errors': []}
-    # The main link's build leaves the multiplayer out; a --multiplayer build is the /dev/ one.
+    # The main link's build leaves the multiplayer out; a --multiplayer build is the /dev/ one. The accounts come
+    # only with --conta (dev.autopobre.com.br), whose server answers /api/conta/ on the same origin.
     multiplayer = (dist / 'multiplayer.js').is_file()
+    conta = (dist / 'conta.js').is_file()
 
     def check(name, value):
         report['checks'][name] = bool(value)
@@ -26,6 +28,14 @@ def main():
         assert value, name
 
     class ReleaseHandler(SimpleHTTPRequestHandler):
+        # No accounts server here: /api/ answers nothing, as servidor.py does when that server is not running.
+        def do_GET(self):
+            if self.path.startswith('/api/'):
+                self.send_response(204)
+                self.end_headers()
+                return
+            super().do_GET()
+
         def translate_path(self, path):
             translated = super().translate_path(path.removeprefix('/preview'))
             return translated
@@ -129,7 +139,11 @@ def main():
                 page.wait_for_selector('#start:not([disabled])')
                 check('room_address_ignored_without_multiplayer', page.locator('#mpRoom').count() == 0
                       and not any('/multiplayer.' in url or '/net-' in url for url in requests))
-            check('no_external_network', all(url.startswith(base) or url.startswith('blob:') or url.startswith('data:') for url in requests))
+            # The accounts' own API sits at the site's root (/api/conta/), the same origin, only in the --conta build.
+            account_api = f'http://127.0.0.1:{release.server_port}/api/conta/'
+            check('account_api_only_with_accounts', conta or not any('/api/' in url for url in requests))
+            check('account_hidden_without_its_server', page.locator('#contaFaixa:not([hidden])').count() == 0)
+            check('no_external_network', all(url.startswith(base) or url.startswith('blob:') or url.startswith('data:') or (conta and url.startswith(account_api)) for url in requests))
             check('no_unexpected_browser_errors', not report['browser_errors'] and not console_errors)
             page.evaluate("()=>{const s=document.createElement('script');s.textContent='window.inlineInjectionRan=true';document.body.append(s)}")
             check('csp_blocks_inline_script', page.evaluate('window.inlineInjectionRan!==true'))

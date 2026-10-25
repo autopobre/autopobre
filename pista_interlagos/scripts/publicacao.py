@@ -38,6 +38,9 @@ BANCADA = ('bancada-som.html', 'bancada-som.js')
 # Its reference folders (fontes/<circuito>/referencias/) stay on the user's machine; the page opens them from disk.
 EDITOR = ('editor-tracado.html', 'editor-tracado.js')
 DEV_PAGES = ('bancada-som.html', 'editor-tracado.html')
+# Accounts (sign in with Google): only the dev.autopobre.com.br build (preparar_publicacao.py --conta), where the
+# accounts server (conta-cloudflare) answers /api/conta/. The main link and the old /dev/ folder leave them out.
+CONTA = ('conta.js', 'conta.css')
 ASSETS = (
     'branding/old_stock_preparada_v1.jpg',
     'branding/patrocinio_omp_v1.webp', 'branding/patrocinio_rtj_v1.webp', 'branding/patrocinio_eletric_v1.webp',
@@ -99,7 +102,7 @@ THREE = (
     'examples/jsm/utils/BufferGeometryUtils.js', 'examples/jsm/utils/SkeletonUtils.js',
     'LICENSE',
 )
-PUBLIC_FILES = {name: GAME + name for name in MODULES + MULTIPLAYER + BANCADA + EDITOR}
+PUBLIC_FILES = {name: GAME + name for name in MODULES + MULTIPLAYER + BANCADA + EDITOR + CONTA}
 PUBLIC_FILES.update({'assets/' + name: GAME + 'assets/' + name for name in ASSETS})
 PUBLIC_FILES.update({'vendor/three/' + name: GAME + 'node_modules/three/' + name for name in THREE})
 PUBLIC_FILES.update({

@@ -122,7 +122,7 @@ jobs:
             sed -i '0,/<script type="importmap">/s//<script src="\/migration-check.js"><\/script><script type="importmap">/' "$pagina"
           done
       # A commit from before the build knew --multiplayer always packs it: that one cannot go to the main link.
-      - name: Conferir que o multiplayer e a bancada de som ficaram so em /dev/
+      - name: Conferir que o multiplayer e a bancada de som ficaram so em /dev/ e as contas fora deste site
         run: |
           for pasta in principal; do
             for arquivo in multiplayer.js multiplayer.css net-room.js net-cars.js net-link.js net-verify.js; do
@@ -141,6 +141,16 @@ jobs:
               echo "::error::A versao de $pasta conecta ao servidor das salas; o multiplayer so pode ir para /dev/."
               exit 1
             fi
+          done
+          # The accounts go only to dev.autopobre.com.br (autopobre/dev): neither address here has their server.
+          for pasta in principal dev; do
+            [ -d "$pasta/dist" ] || continue
+            for arquivo in conta.js conta.css; do
+              if [ -e "$pasta/dist/$arquivo" ]; then
+                echo "::error::A versao de $pasta tem as contas ($arquivo); elas so podem ir para dev.autopobre.com.br."
+                exit 1
+              fi
+            done
           done
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0

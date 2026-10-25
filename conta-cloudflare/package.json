@@ -1,0 +1,14 @@
+{
+  "name": "conta-autopobre",
+  "private": true,
+  "description": "Servidor das contas do Auto-Pobre Racing (login com Google): Cloudflare Worker + D1.",
+  "type": "module",
+  "scripts": {
+    "local": "node --no-warnings teste/local.mjs",
+    "deploy": "wrangler deploy",
+    "test": "node --no-warnings teste/testar_conta.mjs && wrangler d1 migrations apply conta-autopobre-dev --local && node --no-warnings teste/testar_wrangler.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.149.0"
+  }
+}

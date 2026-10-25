@@ -1,0 +1,36 @@
+/* The account line under the menu's tools and the "Sua conta" dialog (conta.js; only the build with accounts). */
+#contaFaixa{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;margin:10px 0 0}
+#contaFaixa[hidden],#contaDica[hidden]{display:none}
+#contaBotao{display:inline-flex;align-items:center;gap:8px;width:auto;margin:0;-webkit-tap-highlight-color:transparent}
+#contaFaixa svg,#contaDialog svg{width:18px;height:18px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#contaDica{font-size:12px;opacity:.8}
+/* The paddock menu: like its tools (menus.css .menu-tools), on a computer and on a touch screen. */
+.menus-paddock #menu #contaBotao{padding:6px 0;border:0;border-radius:0;background:none;color:var(--mp-ink);font:500 19px/1 var(--mp-text);text-shadow:0 1px 6px #000c}
+.menus-paddock body:not(.touch-device) #menu #contaBotao:hover{color:var(--mp-hot)}
+.menus-paddock #menu #contaBotao svg{width:21px;height:21px;color:var(--mp-yellow)}
+.menus-paddock #menu #contaDica{opacity:1;color:var(--mp-dim);font:400 14px/1.3 var(--mp-text);text-shadow:0 1px 6px #000c}
+.menus-paddock .touch-device #menu #contaBotao{min-height:36px;padding:4px 0;font-size:14px;gap:6px}
+@media(max-height:520px){
+ #contaFaixa{margin-top:2px}
+ #contaDica{display:none}
+ .menus-paddock .touch-device #menu #contaBotao{font-size:12px}
+ .menus-paddock .touch-device #menu #contaBotao svg{width:17px;height:17px}
+}
+
+#contaDialog{width:min(460px,calc(100vw - 20px));max-height:calc(100dvh - 16px);border:1px solid #d6e0c5;border-radius:10px;padding:14px 20px 16px;background:#f1f3e9;color:#214b3b;box-shadow:0 15px 80px #0009;overflow:auto}
+#contaDialog::backdrop{background:#061b17d9;backdrop-filter:blur(4px)}
+.conta-corpo p{font-size:13px;line-height:1.4;margin:10px 0}
+.conta-corpo label{display:block;font-size:10px;font-weight:800;letter-spacing:.08em;margin:14px 0 4px;color:#28558a}
+.conta-corpo small{display:block;font-size:11px;color:#516859;margin-top:4px}
+.conta-linha{display:flex;gap:6px}
+#contaApelido{flex:1;min-width:0;margin:0;padding:8px 10px;border:1px solid #afbea5;border-radius:4px;background:#fff;color:#214b3b;font-family:inherit;font-size:15px;font-weight:700;line-height:1.2}
+.conta-corpo :is(button,a){display:inline-flex;align-items:center;gap:8px;margin:0;padding:8px 12px;min-height:34px;border:1px solid #afbea5;border-radius:4px;background:#e4e9dc;color:#214b3b;font-size:12px;font-weight:800;text-decoration:none;cursor:pointer;width:auto}
+.conta-corpo :is(button,a):hover{filter:brightness(1.06)}
+.conta-corpo .conta-principal{background:#197746;color:#fff;border-color:#197746;box-shadow:inset 0 -2px #f3ca12}
+.conta-acoes{display:flex;flex-wrap:wrap;gap:6px}
+.conta-corpo .conta-perigo{background:#fff;color:#a32020;border-color:#d9a3a3}
+.conta-corpo .conta-perigo[data-confirmar]{background:#a32020;color:#fff;border-color:#a32020}
+.conta-corpo .conta-privacidade{font-size:11px;color:#516859;border-top:1px solid #cfd9c6;padding-top:10px;margin-top:14px}
+#contaAviso{font-size:12px;font-weight:700;color:#227241;margin:6px 0 0}
+#contaAviso:empty{display:none}
+#contaAviso.erro{color:#a32020}

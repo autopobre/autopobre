@@ -1,5 +1,27 @@
 # Revisão para publicação — 13/09/2026
 
+## Atualização — 25/10/2026: endereço próprio para o dev e login com Google
+
+A versão de testes ganhou endereço próprio, **dev.autopobre.com.br**. Ela é publicada pelo repositório `autopobre/dev`, que só tem o fluxo de publicação; o código continua aqui. Por ser outra origem, saves, preferências e cookies do dev não se misturam com os do link principal. O registro DNS passa pelo proxy do Cloudflare, e a Transform Rule de cabeçalhos agora vale para `autopobre.com.br`, `www.autopobre.com.br` e `dev.autopobre.com.br`. O domínio verificado na organização do GitHub protege o subdomínio contra tomada. O `/dev/` antigo continua no ar até o dono decidir o que fazer com ele.
+
+O login com Google (`conta-cloudflare/`, detalhes no README de lá) existe só no dev:
+
+| Risco | Como foi tratado |
+|---|---|
+| Guardar dados pessoais demais | O login pede só o escopo `openid`. O banco guarda o identificador da conta Google, o apelido, as datas e as sessões; nada de nome, e-mail ou foto. O próprio piloto baixa tudo ("Baixar meus dados") e apaga tudo ("Apagar conta"). |
+| Roubo ou reaproveitamento da sessão | Cookie `__Host-ap_sessao`, com `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/` e sem `Domain`: o JavaScript da página não lê, ele não vai para outros subdomínios, e outro subdomínio não consegue plantar um igual. O banco guarda só o SHA-256 do valor. Sair encerra a sessão também no servidor. |
+| Um subdomínio mandar pedidos para outro | Para o navegador, o dev e o link principal são o mesmo site, e o `SameSite` não separa os dois. Toda escrita exige o cabeçalho `Origin` exato da página e corpo JSON. |
+| Login forjado ou código do Google interceptado | O fluxo é *authorization code* com PKCE, `state` e `nonce`, todos guardados num cookie criptografado (AES-GCM) de 10 minutos e preso ao navegador que começou o login. O token do Google vem direto do servidor dele e é conferido: emissor, cliente, validade e nonce. A volta só aceita caminhos do próprio site. |
+| Script de terceiros na página | Nenhum. O login acontece todo no servidor, e a CSP continua sem fontes externas. |
+| Gastar a cota do banco | Começar um login não grava nada. O banco só recebe escritas depois de o Google devolver um código válido, e no modo de teste do Google só entram as contas da lista de pilotos. |
+
+Os arquivos da conta só entram no pacote do dev (`preparar_publicacao.py --conta`). Sem essa opção, o build desliga a chave no `main.js` e falha se não encontrar a chave. O fluxo do link principal falha se o site principal ou a pasta `/dev/` vierem com eles.
+
+**Antes de abrir o login para todo mundo:**
+- Página de privacidade, que o Google também exige para sair do modo de teste.
+- Uma regra de limite de pedidos no WAF para `/api/conta/`.
+- Uma revisão do ECA Digital (Lei 15.211/2025, em vigor desde 17/03/2026), porque o jogo tem acesso provável de crianças e adolescentes.
+
 ## Atualização — 19/10/2026
 
 Nova revisão do multiplayer, das entradas de texto, dos saves, da migração e da publicação. As entradas de texto continuam bem protegidas: nomes sempre como texto (`textContent`), escape nos poucos lugares que montam HTML, limpeza de caracteres de controle e invisíveis nos dois lados, e validação de cada mensagem e de cada save ao carregar. Corrigido nesta rodada:

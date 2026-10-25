@@ -4,8 +4,9 @@ name: Montar a versao de testes (dev.autopobre.com.br)
 # code: it only gives the test version its own Pages site, on its own origin, with saves and cookies
 # apart from the main link's. Everything else stays here: this workflow checks out this repository at
 # `versao`, runs that version's own publishing checks (scripts/testes_publicacao.txt, the list pages.yml
-# runs too), builds the /dev/ package (multiplayer test room, sound bench and track editor) and uploads
-# it as the run's Pages artifact; the caller deploys it. It leaves out the saves migration of the old
+# runs too), builds the /dev/ package (multiplayer test room, sound bench and track editor) with the
+# accounts, whose server answers /api/conta/ only on this address, and uploads it as the run's Pages
+# artifact; the caller deploys it. It leaves out the saves migration of the old
 # address, which only brings saves to the main link.
 on:
   workflow_call:
@@ -55,8 +56,12 @@ jobs:
           for teste in $(grep -v '^#' "$lista"); do
             (cd dev && node "pista_interlagos/scripts/$teste.mjs")
           done
-      - name: Gerar somente os arquivos publicos (com multiplayer, bancada de som e editor)
-        run: (cd dev && python pista_interlagos/scripts/preparar_publicacao.py --multiplayer)
+      # The accounts (sign in with Google) too, from the version that has them: only this address has their server.
+      - name: Gerar somente os arquivos publicos (com multiplayer, bancada de som, editor e contas)
+        run: |
+          opcoes=--multiplayer
+          if grep -q -- "'--conta'" dev/pista_interlagos/scripts/preparar_publicacao.py; then opcoes="$opcoes --conta"; fi
+          (cd dev && python pista_interlagos/scripts/preparar_publicacao.py $opcoes)
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Enviar o jogo para publicacao

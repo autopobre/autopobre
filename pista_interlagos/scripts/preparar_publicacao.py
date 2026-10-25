@@ -1,16 +1,17 @@
 """Build only approved game files into dist/. No dependencies beyond Python 3.10+.
 
 By default the build is the main link's: without the multiplayer test room, the sound bench and the track editor.
-Only the /dev/ address is built with --multiplayer, which brings them."""
+Only the /dev/ address is built with --multiplayer, which brings them. --conta adds the accounts (sign in with Google),
+only for dev.autopobre.com.br, whose /api/conta/ is the accounts server."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import re
-from publicacao import ROOT, PUBLIC_FILES, OPTIONAL_AUDIO, MULTIPLAYER, BANCADA, EDITOR, DEV_PAGES, ROOM_SERVER, audio_manifest, contained_file, content_policy, security_headers
+from publicacao import ROOT, PUBLIC_FILES, OPTIONAL_AUDIO, MULTIPLAYER, BANCADA, EDITOR, CONTA, DEV_PAGES, ROOM_SERVER, audio_manifest, contained_file, content_policy, security_headers
 
 
-def build(multiplayer=False):
+def build(multiplayer=False, conta=False):
     dist = ROOT / 'dist'
     # A previous build may be replaced, but unexpected files are never published or deleted.
     if dist.is_symlink() or (hasattr(dist, 'is_junction') and dist.is_junction()):
@@ -28,12 +29,17 @@ def build(multiplayer=False):
             if p.is_file() and p.relative_to(dist).as_posix() not in expected:
                 raise ValueError('dist contains an unexpected file; inspect it before building')
     payload = {out: contained_file(ROOT, src).read_bytes() for out, src in PUBLIC_FILES.items()
-               if multiplayer or out not in MULTIPLAYER + BANCADA + EDITOR}
+               if (multiplayer or out not in MULTIPLAYER + BANCADA + EDITOR) and (conta or out not in CONTA)}
     if not multiplayer:
         # main.js then never reads #desafio=NOME nor asks for multiplayer.js, which is not published.
         if payload['main.js'].count(b'const MULTIPLAYER=true;') != 1:
             raise ValueError('main.js: multiplayer switch not found; the build cannot leave the multiplayer out')
         payload['main.js'] = payload['main.js'].replace(b'const MULTIPLAYER=true;', b'const MULTIPLAYER=false;')
+    if not conta:
+        # main.js then never asks for conta.js nor /api/conta/, which only dev.autopobre.com.br has.
+        if payload['main.js'].count(b'const CONTA=true;') != 1:
+            raise ValueError('main.js: accounts switch not found; the build cannot leave the accounts out')
+        payload['main.js'] = payload['main.js'].replace(b'const CONTA=true;', b'const CONTA=false;')
     tracks = audio_manifest()
     payload['assets/audio/tracks.json'] = json.dumps(tracks).encode('utf-8')
     for name in tracks:
@@ -84,26 +90,29 @@ def build(multiplayer=False):
             raise ValueError('Private data candidate in public file: ' + name)
     dist.mkdir(exist_ok=True)
     # Remove only known retired assets, optional songs removed by the owner, or the multiplayer, sound
-    # bench and track editor files of an earlier --multiplayer build.
-    for name in set(OPTIONAL_AUDIO) | retired_files | set(MULTIPLAYER) | set(BANCADA) | set(EDITOR):
+    # bench and track editor files of an earlier --multiplayer build, and the accounts of a --conta one.
+    for name in set(OPTIONAL_AUDIO) | retired_files | set(MULTIPLAYER) | set(BANCADA) | set(EDITOR) | set(CONTA):
         if name not in payload and (dist / name).is_file():
             contained_file(dist, name).unlink()
     for name, data in payload.items():
         p = dist / name
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(data)
-    report = {'files': len(payload), 'bytes': sum(map(len, payload.values())), 'multiplayer': multiplayer, 'artifacts': {
+    report = {'files': len(payload), 'bytes': sum(map(len, payload.values())), 'multiplayer': multiplayer, 'conta': conta, 'artifacts': {
         name: {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()} for name, data in payload.items()
     }}
     audit = ROOT / '.audit-local'
     audit.mkdir(exist_ok=True)
     (audit / 'publicacao.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(f"dist/: {report['files']} files, {report['bytes'] / 1000000:.1f} MB, "
-          f"{'with the multiplayer, the sound bench and the track editor (/dev/ only)' if multiplayer else 'without the multiplayer'}. Publish only this directory.")
+          f"{'with the multiplayer, the sound bench and the track editor (/dev/ only)' if multiplayer else 'without the multiplayer'}"
+          f"{', with the accounts (dev.autopobre.com.br only)' if conta else ''}. Publish only this directory.")
     return report
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--multiplayer', action='store_true', help='include the multiplayer test room and the sound bench (only for /dev/)')
-    build(parser.parse_args().multiplayer)
+    parser.add_argument('--conta', action='store_true', help='include the accounts, sign in with Google (only for dev.autopobre.com.br)')
+    args = parser.parse_args()
+    build(args.multiplayer, args.conta)
