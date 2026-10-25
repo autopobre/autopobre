@@ -3,9 +3,10 @@
 // carries this module (preparar_publicacao.py --conta; main.js asks for it only there). Where
 // /api/conta/ does not answer (the local preview without the accounts server), nothing shows.
 //
-// The menu gets a line under its tools: "Entrar com Google", or the nickname once signed in. It opens
-// "Sua conta": the nickname shown on the records, the date the account was made, the player's data as
-// a file, sign-out, and deleting the account (a second click confirms).
+// Signed out, the menu gets a line under its tools: "Entrar com Google". Signed in with a nickname, that
+// nickname is the pilot (the menu's Piloto shows it instead of the name field: one name, not two) and the
+// line goes. Either opens "Sua conta": the nickname shown on the records, the date the account was made,
+// the player's data as a file, sign-out, and deleting the account (a second click confirms).
 const API='/api/conta/';
 // Set just before leaving for Google: back on the page, the player hears how it went.
 const SIGNING_IN='autopobre-conta-entrando';
@@ -21,9 +22,10 @@ async function call(path,body){
 }
 
 export class Conta {
- // pilot(): the name chosen on the menu, offered as the first nickname.
- constructor({pilot=()=>''}={}){
-  this.pilot=pilot;this.account=null;this.confirmTimer=0;
+ // pilot(): the name chosen on the menu, offered as the first nickname. usePilot(name, open): the account's
+ // nickname becomes the menu's pilot (null gives the name field back); open() shows this dialog.
+ constructor({pilot=()=>'',usePilot=()=>{}}={}){
+  this.pilot=pilot;this.usePilot=usePilot;this.account=null;this.available=false;this.pilotGiven='';this.confirmTimer=0;
   const link=document.createElement('link');link.rel='stylesheet';link.href='./conta.css'+new URL(import.meta.url).search;document.head.append(link);
   this.strip=document.createElement('div');this.strip.id='contaFaixa';this.strip.hidden=true;
   this.strip.innerHTML=`<button id="contaBotao" type="button">${PERSON}<span id="contaRotulo">Entrar com Google</span></button><span id="contaDica">Teste: seus recordes na sua conta.</span>`;
@@ -55,7 +57,7 @@ export class Conta {
  // Whether the accounts server answers here; then the menu line shows.
  async start(){
   let data;try{data=await call('eu');}catch{return false;}
-  this.show(data.conta);this.strip.hidden=false;
+  this.available=true;this.show(data.conta);
   const store=session();
   if(store?.getItem(SIGNING_IN)){
    store.removeItem(SIGNING_IN);
@@ -65,7 +67,10 @@ export class Conta {
   return true;
  }
  show(account){
-  this.account=account;const $=id=>document.getElementById(id);
+  this.account=account;const $=id=>document.getElementById(id),nickname=account?.apelido||'';
+  this.strip.hidden=!this.available||!!nickname;
+  // Only a change reaches the menu: redrawing the name field would drop what someone is typing there.
+  if(nickname!==this.pilotGiven){this.pilotGiven=nickname;this.usePilot(nickname||null,()=>this.open());}
   $('contaRotulo').textContent=account?account.apelido||'Escolha seu apelido':'Entrar com Google';
   $('contaDica').hidden=!!account;
   $('contaFora').hidden=!!account;$('contaDentro').hidden=!account;

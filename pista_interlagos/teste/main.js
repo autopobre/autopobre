@@ -837,7 +837,7 @@ $('soundBench').hidden=!MULTIPLAYER;$('soundBenchState').textContent=carAudio.tu
 // Accounts (conta.js: sign in with Google, the nickname on the records). Only the dev.autopobre.com.br build carries
 // them (preparar_publicacao.py --conta, its server answering /api/conta/ there); the others turn this off.
 const CONTA=true;
-if(CONTA)import('./conta.js').then(m=>m.startConta({pilot:()=>pilotPicker.profiles.selected})).catch(()=>{});
+if(CONTA)import('./conta.js').then(m=>m.startConta({pilot:()=>pilotPicker.profiles.selected,usePilot:(name,open)=>pilotPicker.useAccount(name,open)})).catch(()=>{});
 const roomWanted=MULTIPLAYER&&new URLSearchParams(window.location.hash.slice(1)).has('desafio');let multiplayer=null;
 let pitstop,rivalGarages=null,peekView=null,walker=null,walkView=null,immersive,car,data,roadSurface,roadRails,roadCurbs,driver,wheels=[],trunkInterior=[],model,carStructure,paused=true,automatic=false,mode='chase',ready=false,loadToken=0,activeLivery='';
 // The car raced now ('99', or Modo Corrida's choice), the car at the back of its grid whose driver

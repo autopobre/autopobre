@@ -1,10 +1,12 @@
 """The account in the browser, as on dev.autopobre.com.br: the local preview (servidor.py) passes /api/ on to the
 accounts server on this machine (conta-cloudflare/teste/local.mjs, with its stand-in Google), so page and account
 share one origin. The menu line says "Entrar com Google"; signing in goes to Google and back, opens "Sua conta" to
-pick the nickname (the menu's pilot offered), and the line then shows it; the session cookie is __Host-, HttpOnly,
-Secure, SameSite=Lax; typing the nickname drives nothing; F5 keeps the account; the player's data downloads;
-sign-out, a cancelled sign-in (told on the way back), signing in again (the nickname kept, no dialog), deleting
-the account (a second click confirms); with the accounts server down the menu shows no account. Also on a phone.
+pick the nickname (the menu's pilot offered); then the nickname is the menu's pilot (shown, not typed: one name) and
+the line goes, the next screens say it; the session cookie is __Host-, HttpOnly, Secure, SameSite=Lax; typing the
+nickname drives nothing; F5 keeps the account; the player's data downloads; sign-out gives the name field back (with
+the name) and the line; the line is gone mid-race; a cancelled sign-in (told on the way back), signing in again (the
+nickname kept, no dialog), deleting the account (a second click confirms); with the accounts server down the menu
+shows no account. Also on a phone.
 Usage: verificar_conta.py [porta] (the preview's; the accounts server takes porta+1000).
 Needs node (INTERLAGOS_NODE=node.exe when node is not on the PATH). Screens in renders/: conta_*.png."""
 import json
@@ -25,7 +27,7 @@ URL=f'http://127.0.0.1:{PORT}/pista_interlagos/teste/?intro=0&cinema=off'
 RENDERS=Path(__file__).resolve().parents[1]/'renders';RENDERS.mkdir(exist_ok=True)
 node=os.environ.get('INTERLAGOS_NODE') or shutil.which('node')
 assert node,'node not found: set INTERLAGOS_NODE'
-STRIP="()=>({shown:!document.getElementById('contaFaixa')?.hidden&&!!document.getElementById('contaFaixa'),label:document.getElementById('contaRotulo')?.textContent??null,dialog:!!document.getElementById('contaDialog')?.open,notice:document.getElementById('contaAviso')?.textContent??''})"
+STRIP="()=>({shown:!document.getElementById('contaFaixa')?.hidden&&!!document.getElementById('contaFaixa'),label:document.getElementById('contaRotulo')?.textContent??null,dialog:!!document.getElementById('contaDialog')?.open,notice:document.getElementById('contaAviso')?.textContent??'',account:document.getElementById('pilotAccount')?.hidden===false?document.querySelector('#pilotAccount span').textContent:null,field:!document.getElementById('pilotName').hidden,typed:document.getElementById('pilotName').value})"
 errors=[];result={};servers=[]
 
 def start(args,ready):
@@ -75,16 +77,20 @@ try:
   assert page.evaluate('window.__keys')==0,'a key left the dialog'
   page.fill('#contaApelido','Piloto Teste');page.click('#contaSalvar')
   wait_js(page,"document.getElementById('contaAviso').textContent==='Apelido salvo.'")
-  s=page.evaluate(STRIP);assert s['label']=='Piloto Teste',s
+  s=page.evaluate(STRIP);assert s['account']=='Piloto Teste' and not s['field'] and not s['shown'],s
   page.screenshot(path=str(RENDERS/'conta_janela_dentro.png'))
   page.keyboard.press('Escape');wait_js(page,"!document.getElementById('contaDialog').open")
   page.screenshot(path=str(RENDERS/'conta_menu_dentro.png'))
+  # The nickname is the pilot on the next screens too (the menu's commit takes the account's name).
+  page.click('#start');wait_js(page,"!document.getElementById('cars').classList.contains('hidden')")
+  assert page.text_content('#carsPilot').startswith('Piloto: Piloto Teste'),page.text_content('#carsPilot')
+  page.click('#carsBack');wait_js(page,"!document.getElementById('menu').classList.contains('hidden')")
   result['entrou']={'faixa':s['label'],'cookie':{k:cookie[k] for k in ('name','httpOnly','secure','sameSite','path')}}
 
   # F5 keeps the account; the player's data downloads.
-  page.reload(wait_until='load');wait_js(page,"document.getElementById('contaRotulo')?.textContent==='Piloto Teste'")
+  page.reload(wait_until='load');wait_js(page,"document.querySelector('#pilotAccount:not([hidden]) span')?.textContent==='Piloto Teste'")
   assert not page.evaluate(STRIP)['dialog']
-  page.click('#contaBotao')
+  page.click('#pilotAccount')
   with page.expect_download() as download:page.click('#contaDados')
   data=json.loads(Path(download.value.path()).read_text(encoding='utf-8'))
   assert data['conta']['apelido']=='Piloto Teste' and data['conta']['identificador_google']=='100000000000000000777',data
@@ -93,6 +99,10 @@ try:
   # Sign-out, then a cancelled sign-in, told on the way back.
   page.click('#contaSair');wait_js(page,"document.getElementById('contaRotulo').textContent==='Entrar com Google'")
   assert not any(c['name']=='__Host-ap_sessao' for c in context.cookies())
+  s=page.evaluate(STRIP);assert s['shown'] and s['account'] is None and s['field'] and s['typed']=='Piloto Teste',s
+  # Mid-race (the pause menu) the line is gone: signing in there would leave the race.
+  page.evaluate("document.getElementById('menu').classList.add('in-session')");assert not page.is_visible('#contaFaixa')
+  page.evaluate("document.getElementById('menu').classList.remove('in-session')");assert page.is_visible('#contaFaixa')
   accounts(spoil='cancel');page.click('#contaEntrar');page.wait_for_url(URL,timeout=60000)
   wait_js(page,"document.getElementById('contaDialog')?.open");s=page.evaluate(STRIP)
   assert s['label']=='Entrar com Google' and 'cancelado' in s['notice'],s
@@ -101,12 +111,12 @@ try:
 
   # Back in: the nickname is kept, so no dialog.
   accounts(sub='100000000000000000777');page.click('#contaEntrar');page.wait_for_url(URL,timeout=60000)
-  wait_js(page,"document.getElementById('contaRotulo')?.textContent==='Piloto Teste'");assert not page.evaluate(STRIP)['dialog']
+  wait_js(page,"document.querySelector('#pilotAccount:not([hidden]) span')?.textContent==='Piloto Teste'");assert not page.evaluate(STRIP)['dialog']
   result['voltou']='Piloto Teste, sem janela'
 
   # Deleting: the first click asks, the second deletes.
-  page.click('#contaBotao');page.click('#contaApagar')
-  assert page.text_content('#contaApagar')=='Confirmar: apagar tudo' and page.evaluate(STRIP)['label']=='Piloto Teste'
+  page.click('#pilotAccount');page.click('#contaApagar')
+  assert page.text_content('#contaApagar')=='Confirmar: apagar tudo' and page.evaluate(STRIP)['account']=='Piloto Teste'
   page.screenshot(path=str(RENDERS/'conta_apagar_confirmar.png'))
   page.click('#contaApagar');wait_js(page,"document.getElementById('contaRotulo').textContent==='Entrar com Google'")
   result['apagada']=page.evaluate(STRIP)['notice']

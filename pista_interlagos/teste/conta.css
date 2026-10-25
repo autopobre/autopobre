@@ -1,6 +1,15 @@
 /* The account line under the menu's tools and the "Sua conta" dialog (conta.js; only the build with accounts). */
 #contaFaixa{display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;margin:10px 0 0}
 #contaFaixa[hidden],#contaDica[hidden]{display:none}
+/* Mid-race (the pause menu) or on the results, signing in would leave the page and the race: as the pilot field, the line goes. */
+#menu:is(.in-session,.race-finished) #contaFaixa{display:none}
+/* Signed in with a nickname, the menu's pilot is the account's (pilot-profile.js #pilotAccount): the name, and a click opens the account. */
+#pilotAccount[hidden]{display:none}
+#pilotAccount{display:inline-flex;align-items:baseline;gap:8px;width:auto;margin:0;padding:6px 10px;-webkit-tap-highlight-color:transparent}
+#pilotAccount small{font-size:11px;font-weight:600;opacity:.75}
+.menus-paddock #menu #pilotAccount{padding:4px 2px 5px;border:0;border-bottom:1.5px solid #f3ecdc55;border-radius:0;background:transparent;color:var(--mp-ink);font:500 19px/1.2 var(--mp-text);text-shadow:0 1px 6px #000c;cursor:pointer}
+.menus-paddock #menu #pilotAccount small{font:500 13px/1 var(--mp-text);color:var(--mp-yellow);opacity:1}
+.menus-paddock body:not(.touch-device) #menu #pilotAccount:hover{border-bottom-color:var(--mp-yellow)}
 #contaBotao{display:inline-flex;align-items:center;gap:8px;width:auto;margin:0;-webkit-tap-highlight-color:transparent}
 #contaFaixa svg,#contaDialog svg{width:18px;height:18px;flex-shrink:0;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 #contaDica{font-size:12px;opacity:.8}
@@ -15,6 +24,7 @@
  #contaDica{display:none}
  .menus-paddock .touch-device #menu #contaBotao{font-size:12px}
  .menus-paddock .touch-device #menu #contaBotao svg{width:17px;height:17px}
+ .menus-paddock #menu #pilotAccount{font-size:16px}
 }
 
 #contaDialog{width:min(460px,calc(100vw - 20px));max-height:calc(100dvh - 16px);border:1px solid #d6e0c5;border-radius:10px;padding:14px 20px 16px;background:#f1f3e9;color:#214b3b;box-shadow:0 15px 80px #0009;overflow:auto}
