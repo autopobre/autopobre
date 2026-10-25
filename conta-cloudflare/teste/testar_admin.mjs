@@ -5,10 +5,12 @@
 // and the player's own events in their data.
 import assert from 'node:assert/strict';
 import {encodeGhost} from '../../pista_interlagos/teste/ghost-lap.js';
+import {packSteps,packKeys} from '../../pista_interlagos/teste/comandos-volta.js';
 import {CIRCUITS} from '../../pista_interlagos/teste/circuits.js';
 import {CHUNK_EVERY} from '../src/recordes.js';
 import {EVENT_DAYS} from '../src/eventos.js';
 import {startLocal} from './local.mjs';
+import {aiLaps,lapAt} from './voltas_ia.mjs';
 
 const realNow=Date.now;let now=Date.parse('2026-10-26T12:00:00Z');Date.now=()=>now;
 const local=await startLocal({port:0,adminSecret:' 400000000000000000009 ,outro'}),ORIGIN=`http://127.0.0.1:${local.port}`;
@@ -33,11 +35,8 @@ async function signIn(b,sub){
  const start=await b.go('/api/conta/entrar'),fromGoogle=await b.go(start.headers.get('Location'));await b.go(fromGoogle.headers.get('Location'));
 }
 async function pilot(sub,nickname){const b=browser();await signIn(b,sub);if(nickname)assert.equal((await b.post('/api/conta/apelido',{apelido:nickname})).status,200);return b;}
-const ghost=(circuit,time)=>{
- const L=CIRCUITS[circuit].length,R=L/(2*Math.PI),rate=20,n=Math.ceil(time*rate)+1,values=new Float64Array(n*7);
- for(let k=0;k<n;k++){const t=Math.min(k/rate,time),u=t/time,i=k*7;values[i]=R*Math.cos(2*Math.PI*u);values[i+2]=R*Math.sin(2*Math.PI*u);values[i+6]=L*u;}
- return encodeGhost({time,rate,values,brakes:[]});
-};
+// The AI's flying lap of the circuit on a clock of `time` seconds (voltas_ia.mjs), as the game encodes it.
+const ghost=(circuit,time)=>encodeGhost(lapAt(aiLaps(circuit)[1].lap,time));
 // A clean lap of `time` seconds at Interlagos, a ticket of its own.
 async function cleanLap(b,time){
  let ticket=(await b.post('/api/recordes/bilhete',{circuito:'interlagos',modo:'normal',carro:'opala',versao:'painel'})).bilhete;
@@ -45,9 +44,10 @@ async function cleanLap(b,time){
  await send({relogio:0,cruzou:true});
  for(let t=CHUNK_EVERY;t<time;t+=CHUNK_EVERY){now+=CHUNK_EVERY*1000;await send({relogio:t});}
  now+=Math.round((time-Math.floor((time-1e-9)/CHUNK_EVERY)*CHUNK_EVERY)*1000);
- return (await send({relogio:time,cruzou:true,volta:{fantasma:ghost('interlagos',time)}})).volta;
+ const steps=Math.round(time*120),comandos={v:1,n:steps,s:1,data:packSteps([[0,[100,0,0,0,-2,0]]],steps),keys:packKeys([]),r:0,dev:[steps,0,0,0,0]};
+ return (await send({relogio:time,cruzou:true,volta:{fantasma:ghost('interlagos',time),comandos}})).volta;
 }
-const ROUTES=['/api/admin/resumo','/api/admin/usuarios','/api/admin/eventos','/api/admin/recordes'];
+const ROUTES=['/api/admin/resumo','/api/admin/usuarios','/api/admin/eventos','/api/admin/recordes','/api/admin/voltas'];
 
 const boss=await pilot('400000000000000000001','Chefe Pista');
 sql("UPDATE usuarios SET admin=1 WHERE google_sub='400000000000000000001'");
@@ -85,7 +85,7 @@ await check('the summary, the accounts, the events page by page, the last record
   {contas:3,com_apelido:2,novas_7d:3,entradas_24h:4,com_sessao:2,conferidos:1,antigos:1,recusadas_7d:5});
  assert.equal(s.recusas_por_motivo[0].n,5);assert.match(s.recusas_por_motivo[0].motivo,/pausa/);assert.equal(s.eventos_por,EVENT_DAYS);
  const users=(await boss.get('/api/admin/usuarios')).usuarios;
- assert.deepEqual(Object.keys(users[0]).sort(),['admin','antigos','apelido','conferidos','criado_em','id','importou_em','recusadas_7d','sessoes','ultimo_login'],'no Google id');
+ assert.deepEqual(Object.keys(users[0]).sort(),['admin','antigos','apelido','conferidos','criado_em','id','importou_em','recusadas_7d','sessoes','sinalizadas_7d','ultimo_login'],'no Google id');
  const a=users.find(u=>u.apelido==='Ana Volta');assert.deepEqual([a.conferidos,a.antigos,a.recusadas_7d,a.sessoes,a.admin],[1,1,5,1,false],'one session: her second sign-in ended the first, same browser');
  assert.equal(users.find(u=>u.apelido==='Chefe Pista').admin,true);
  const refusals=(await boss.get('/api/admin/eventos?tipo=recusada')).eventos;assert.equal(refusals.length,5);assert.equal(refusals[0].apelido,'Ana Volta');
@@ -96,9 +96,28 @@ await check('the summary, the accounts, the events page by page, the last record
  assert.deepEqual(records.map(r=>[r.apelido,r.selo,r.volta_ms]).sort(),[['Ana Volta','conferido',121000],['Ana Volta','nao_verificado',80000]]);
 });
 
+await check('the laps with their signals, and a record taken off the boards',async()=>{
+ const laps=(await boss.get('/api/admin/voltas')).voltas;
+ assert.equal(laps.length,8);const clean=laps.find(v=>v.resultado==='recorde');
+ assert.deepEqual([clean.apelido,clean.tempo_ms,clean.aparelho,clean.sinais.sinais],['Ana Volta',121000,'teclado',[]]);assert.ok(!('freios' in clean),'brake points stay out');
+ assert.match(laps.find(v=>v.resultado!=='recorde').resultado,/pausa/);
+ assert.equal((await boss.get('/api/admin/voltas?sinalizadas=1')).voltas.length,0,'none flagged');
+ assert.equal((await boss.get('/api/admin/recordes')).recordes.find(r=>r.selo==='conferido').sinais.aparelho,'teclado','a record keeps its lap\'s signals');
+ const old=(await boss.get('/api/admin/recordes')).recordes.find(r=>r.selo==='nao_verificado');
+ assert.equal((await ana.post('/api/admin/remover',{recorde:old.id})).status,403,'a pilot cannot');
+ assert.equal((await browser().post('/api/admin/remover',{recorde:old.id})).status,401);
+ assert.equal((await boss.post('/api/admin/remover',{recorde:'x'})).status,400);
+ assert.equal((await boss.post('/api/admin/remover',{recorde:old.id})).removido,true);
+ assert.equal((await boss.post('/api/admin/remover',{recorde:old.id})).status,404,'gone already');
+ assert.ok(!(await boss.get('/api/admin/recordes')).recordes.some(r=>r.id===old.id));
+ const told=(await boss.get('/api/admin/eventos?tipo=removido')).eventos[0];
+ assert.equal(told.apelido,'Ana Volta');assert.deepEqual(told.detalhe,{circuito:'cascavel',modo:'normal',selo:'nao_verificado',volta_ms:80000});
+});
+
 await check('the player\'s own events in their data, and gone with the account',async()=>{
  const mine=await (await ana.go('/api/conta/meus-dados')).json();
- assert.deepEqual(mine.eventos.map(e=>e.tipo),['conta_criada','apelido','entrou','importou','conferida','recusada','recusada','recusada','recusada','recusada']);
+ assert.deepEqual(mine.eventos.map(e=>e.tipo),['conta_criada','apelido','entrou','importou','conferida','recusada','recusada','recusada','recusada','recusada','removido']);
+ assert.equal(mine.voltas.length,8,'her laps: the clean one and the seven broken');
  assert.equal((await ana.post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
  const left=sql("SELECT tipo,usuario_id FROM eventos WHERE tipo='conta_apagada'");assert.deepEqual(left.map(e=>({...e})),[{tipo:'conta_apagada',usuario_id:null}]);
  assert.equal(sql("SELECT COUNT(*) AS n FROM eventos e LEFT JOIN usuarios u ON u.id=e.usuario_id WHERE e.usuario_id IS NOT NULL AND u.id IS NULL")[0].n,0,'none of hers left');

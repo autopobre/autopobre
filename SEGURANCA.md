@@ -1,5 +1,22 @@
 # Revisão para publicação — 13/09/2026
 
+## Atualização — 25/10/2026 (noite): conferência dos recordes mais robusta
+
+O selo ✓ podia ser forjado. Um "fantasma" inventado (um anel liso do tamanho da pista) ganhava ✓ a 1:36 em Interlagos, e uma volta real acelerada em até 10% também passava. Agora o servidor confere quatro coisas, todas calculadas com o próprio código do jogo:
+
+| O quê | Como | Resultado |
+|---|---|---|
+| **Traçado** (`src/trajeto.js`, `src/pistas.js`) | O carro precisa estar no asfalto do circuito ou numa margem que o jogo permite (área de escape, box, avenida da Pampulha, zonas da cidade só pelas entradas). A distância na pista precisa bater com onde o carro estava, e cortes são contados como o jogo conta. | Anéis, voltas deslocadas 40 m e atalhos recusados em todas as pistas; nenhuma volta que o jogo conta foi recusada. |
+| **Física do Opala** (`src/dinamica.js`, `src/envelope.js`) | Motor, freios, pneus e velocidade máxima do Opala do jogador no melhor caso (seco, motor da história, vácuo, descida), com folga para batidas. | Volta real de Interlagos acelerada 1,75% já é recusada; 482 voltas legítimas passaram. |
+| **Comandos** (`comandos-volta.js` no jogo, `src/comandos.js`) | A volta vai com o que a física recebeu a cada 1/120 s, as teclas e o aparelho. Os comandos precisam cobrir a volta e explicá-la (o carro não ganha velocidade sem acelerador nem ré). | Volta sem comandos, com comandos cortados ou sem acelerador: recusada. |
+| **Registro de voltas** (`voltas`, 90 dias, sem IP) | Toda volta fica com o resultado, o aparelho e sinais de programa (sem aparelho, teclas sintéticas, teclado sem teclas, pedal pela metade no teclado, toques curtos, teclas no mesmo instante, freadas idênticas a outra volta). Sinal nunca recusa: a administração olha. | A IA do jogo é marcada como "sem aparelho" e "freadas idênticas"; um piloto de teclado com ritmo humano, não. |
+
+O painel ganhou a lista de voltas (com o filtro "só com sinais"), os sinais de cada recorde e o botão **Remover**, que tira um recorde (✓ ou ⚠️) das tabelas e avisa o piloto nos dados dele.
+
+Duas regras antigas recusavam voltas legítimas e foram trocadas. "Ganhou pista sem andar por ela" pegava o lado de dentro dos grampos de Piracicaba e Chapecó e o pit lane de Velocitta; agora só pega saltos (3× o andado e uma folga). "Acelerou ou virou mais do que um Opala" pegava quase toda volta com batida ou rodada; saiu, porque a física nova cobre o que dá tempo (um empurrão para a frente acima de 4 m/s conta).
+
+Continua sem garantia: um programa que fabrica a volta e os comandos com a própria física do jogo, ou uma física alterada abaixo das margens (cerca de 2% do tempo). Isso é o selo homologado. Por enquanto, os sinais do registro e o botão Remover são a defesa.
+
 ## Atualização — 25/10/2026 (noite): segunda revisão do login e dos recordes
 
 Uma segunda revisão leu o servidor das contas, o painel, o jogo e a ponte, e atacou cada ponto suspeito contra o servidor local. Não encontrou injeção de SQL (tudo usa parâmetros) nem de HTML (só `textContent`; CSP estrita no ar), nem vazamento de dados pessoais. Os cabeçalhos no ar e os segredos do Worker (`SEAL_KEY`, `ADMINS`, `GOOGLE_CLIENT_SECRET`) foram conferidos. Corrigido:

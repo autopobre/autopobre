@@ -6,10 +6,12 @@
 // session, and a ticket sent again (no write it has not earned).
 import assert from 'node:assert/strict';
 import {encodeGhost} from '../../pista_interlagos/teste/ghost-lap.js';
+import {packSteps,packKeys} from '../../pista_interlagos/teste/comandos-volta.js';
 import {CIRCUITS} from '../../pista_interlagos/teste/circuits.js';
 import {readGhost,ghostProblem,IMPORT_UNTIL,CHUNK_EVERY} from '../src/recordes.js';
 import {LINE_TIMES} from '../src/pisos.js';
 import {startLocal} from './local.mjs';
+import {aiLaps,lapAt} from './voltas_ia.mjs';
 
 const realNow=Date.now;let now=Date.parse('2026-10-25T12:00:00Z');Date.now=()=>now;
 const local=await startLocal({port:0}),ORIGIN=`http://127.0.0.1:${local.port}`;
@@ -35,18 +37,24 @@ async function pilot(sub,nickname){
  if(nickname)assert.equal((await b.post('/api/conta/apelido',{apelido:nickname})).status,200);
  return b;
 }
-// A lap's ghost as the game would record it: once around a ring as long as the track, at even speed.
-// spoil changes one thing about it.
+// A lap's ghost as the game would record it: at Interlagos, the AI's flying lap on a clock of `time` seconds (voltas_ia.mjs).
+// spoil changes one thing about it, on a ring as long as the track at even speed (which the checks before the track's
+// shape and the Opala's physics already refuse): its length, a jump, a cut, standing still, the rate, its own time.
 function ghost(circuit,time,spoil={}){
+ const real=aiLaps('interlagos')[1].lap;   // (a lap quicker than it, refused for its time first, stays a ring)
+ if(circuit==='interlagos'&&!Object.keys(spoil).length&&time>=real.time)return encodeGhost(lapAt(real,time));
  const L=(spoil.length??1)*CIRCUITS[circuit].length,R=L/(2*Math.PI),rate=spoil.rate??20,n=Math.floor(time*rate)+1+(time*rate%1?1:0),values=new Float64Array(n*7);
  for(let k=0;k<n;k++){const t=k===n-1?time:k/rate,u=t/time,i=k*7;values[i]=spoil.parked?0:R*Math.cos(2*Math.PI*u);values[i+2]=spoil.parked?0:R*Math.sin(2*Math.PI*u);values[i+6]=L*u;}
  if(spoil.jump){const i=Math.floor(n/2)*7;values[i]+=200;}   // 200 m in a twentieth of a second (more than 327 m does not fit the game's format at all)
  if(spoil.cut){for(let k=Math.floor(n/2);k<n;k++)values[k*7+6]+=300;}
  return encodeGhost({time:spoil.time??time,rate,values,brakes:[]});
 }
+// A lap's controls as the game sends them (comandos-volta.js): the throttle held from the keyboard the whole lap (the
+// ring's even speed needs no more), `steps` of them.
+function keyboard(time,steps=Math.round(time*120)){return {v:1,n:steps,s:1,data:packSteps([[0,[100,0,0,0,-2,0]]],steps),keys:packKeys([]),r:0,dev:[steps,0,0,0,0]};}
 // A run: a ticket, then the game's chunks. lap() drives one lap of `time` seconds from the current
-// clock: a crossing to begin, a chunk every CHUNK_EVERY seconds, a crossing with the ghost to end. pace:
-// real seconds per game second (1: honest); gap: a silence of that many real seconds in the middle.
+// clock: a crossing to begin, a chunk every CHUNK_EVERY seconds, a crossing with the ghost and the controls to end.
+// pace: real seconds per game second (1: honest); gap: a silence of that many real seconds in the middle.
 async function run(b,{circuit='interlagos',mode='normal'}={}){
  const t=await b.post('/api/recordes/bilhete',{circuito:circuit,modo:mode,carro:'opala',versao:'teste1'});
  assert.equal(t.status,200,JSON.stringify(t));
@@ -55,7 +63,7 @@ async function run(b,{circuit='interlagos',mode='normal'}={}){
  return {
   best:t.melhor,send,
   get ticket(){return ticket;},set ticket(v){ticket=v;},
-  async lap(time,{pace=1,gap=0,fantasma=ghost(circuit,time),first=clock===0}={}){
+  async lap(time,{pace=1,gap=0,fantasma=ghost(circuit,time),comandos=keyboard(time),first=clock===0}={}){
    if(first)await send({relogio:clock,cruzou:true});
    const end=clock+time;
    for(let t=clock+CHUNK_EVERY;t<end;t+=CHUNK_EVERY){
@@ -63,7 +71,7 @@ async function run(b,{circuit='interlagos',mode='normal'}={}){
     await send({relogio:t});
    }
    now+=Math.round((end-Math.floor((time-1e-9)/CHUNK_EVERY)*CHUNK_EVERY-clock)*pace*1000);clock=end;
-   return (await send({relogio:end,cruzou:true,volta:{fantasma}})).volta;
+   return (await send({relogio:end,cruzou:true,volta:{fantasma,...(comandos&&{comandos})}})).volta;
   },
  };
 }
@@ -85,6 +93,9 @@ await check('a clean lap is checked, kept as the best, and on the board',async()
  const slower=await r.lap(123);assert.deepEqual(slower,{tempo_ms:123000,conferida:true,recorde:false},'a slower lap keeps the best');
  const quicker=await r.lap(119.5);assert.equal(quicker.recorde,true);
  assert.equal((await run(b)).best,119500,'the next ticket knows the best');
+ const log=rows("SELECT tempo_ms,resultado,aparelho,sinais FROM voltas v JOIN usuarios u ON u.id=v.usuario_id WHERE u.apelido='Bia Ventania' ORDER BY v.id");
+ assert.deepEqual(log.map(v=>[v.tempo_ms,v.resultado,v.aparelho]),[[120000,'recorde','teclado'],[123000,'conferida','teclado'],[119500,'recorde','teclado']],'every lap in the log');
+ assert.deepEqual(JSON.parse(log[0].sinais).sinais,[],'a keyboard\'s lap with nothing odd');
  const kept=rows("SELECT selo,volta_ms,versao,length(fantasma) AS g FROM recordes r JOIN usuarios u ON u.id=r.usuario_id WHERE u.apelido='Bia Ventania'");
  assert.equal(kept.length,1);assert.equal(kept[0].selo,'conferido');assert.equal(kept[0].volta_ms,119500);assert.equal(kept[0].versao,'teste1');assert.ok(kept[0].g>10000,'its ghost is kept');
  const board=await (await b.go('/api/recordes?circuito=interlagos&modo=normal')).json();
@@ -108,6 +119,9 @@ await check('laps the server refuses',async()=>{
  await refused({fantasma:ghost('interlagos',120,{parked:true})},/ganhou pista|não percorreu/);   // standing still, the track distance counting
  await refused({fantasma:ghost('interlagos',120,{rate:60})},/não foi gravado pelo jogo/);       // samples the game never takes
  await refused({fantasma:{v:1,time:120,rate:20,n:3,start:[0,0,0,0,0,0,0],data:'AAAA'}},/não pôde ser lido/);
+ await refused({comandos:null},/sem os comandos/);                                            // the controls never came
+ await refused({comandos:keyboard(120,120*120-60)},/não cobrem a volta/);                      // half a second of them missing
+ await refused({comandos:{...keyboard(120),data:'////'}},/sem os comandos/);                    // unreadable
  assert.equal(rows("SELECT COUNT(*) AS n FROM recordes r JOIN usuarios u ON u.id=r.usuario_id WHERE u.apelido='Caio Freio'")[0].n,0);
  // A lap begun before the ticket (no crossing seen) is not checked either.
  const late=await run(b);await late.send({relogio:30});now+=5000;await late.send({relogio:35});
@@ -127,7 +141,7 @@ await check('tickets: sealed, one way in time, with a life',async()=>{
  // A lap's ghost goes in with its own fields only (anything else it carries stays out).
  const extra=await run(b);await extra.lap(150,{fantasma:{...ghost('interlagos',150),nota:'<img src=x onerror=alert(1)>'}});
  assert.ok(!rows("SELECT fantasma FROM recordes r JOIN usuarios u ON u.id=r.usuario_id WHERE u.apelido='Duda Reta'")[0].fantasma.includes('onerror'));
- const big='x'.repeat(130000);
+ const big='x'.repeat(210000);   // past the ghost and the controls together
  assert.equal((await b.post('/api/recordes/pedaco',{bilhete:r.ticket,relogio:1,cruzou:true,volta:{fantasma:big}})).status,413);
 });
 
@@ -173,8 +187,11 @@ await check('the records are in the player\'s data and go with the account',asyn
  const b=await pilot('200000000000000000003');
  const data=await (await b.go('/api/conta/meus-dados')).json();
  assert.equal(data.recordes.length,1);assert.equal(data.recordes[0].volta_ms,119500);assert.equal(data.recordes[0].fantasma.v,1,'the lap\'s ghost comes too');
+ assert.deepEqual(data.voltas.map(v=>[v.tempo_ms,v.resultado,v.aparelho]),[[120000,'recorde','teclado'],[123000,'conferida','teclado'],[119500,'recorde','teclado']],'and the lap log');
+ assert.ok(Array.isArray(data.voltas[0].freios)&&data.voltas[0].sinais.medidas,'with what was kept of each');
  assert.equal((await b.post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
  assert.equal(rows("SELECT COUNT(*) AS n FROM recordes r LEFT JOIN usuarios u ON u.id=r.usuario_id WHERE u.id IS NULL")[0].n,0);
+ assert.equal(rows("SELECT COUNT(*) AS n FROM voltas v LEFT JOIN usuarios u ON u.id=v.usuario_id WHERE u.id IS NULL")[0].n,0,'the laps go too');
  assert.ok(!(await (await browser().go('/api/recordes?circuito=interlagos&modo=normal')).json()).recordes.some(x=>x.apelido==='Bia Ventania'));
 });
 
@@ -211,14 +228,18 @@ await check('a ticket sent again spends no writes: a record once, refusals and r
  const r=await run(b);await r.send({relogio:0,cruzou:true});
  for(let t=CHUNK_EVERY;t<120;t+=CHUNK_EVERY){now+=CHUNK_EVERY*1000;await r.send({relogio:t});}
  now+=1000*(120-Math.floor(119.999/CHUNK_EVERY)*CHUNK_EVERY);
- const before=r.ticket,fantasma=ghost('interlagos',120),verdicts=[];
- for(let i=0;i<10;i++)verdicts.push((await b.post('/api/recordes/pedaco',{bilhete:before,relogio:120,cruzou:true,volta:{fantasma}})).volta);
+ const before=r.ticket,fantasma=ghost('interlagos',120),comandos=keyboard(120),verdicts=[];
+ for(let i=0;i<10;i++)verdicts.push((await b.post('/api/recordes/pedaco',{bilhete:before,relogio:120,cruzou:true,volta:{fantasma,comandos}})).volta);
  assert.deepEqual(verdicts.map(v=>[v.conferida,v.recorde]),[[true,true],...Array(9).fill([true,false])]);
  assert.equal(count('conferida'),1);
  // 120 records in the hour: the next lap is checked but not written.
  const insert=local.DB.sqlite.prepare("INSERT INTO eventos (quando,tipo,usuario_id) VALUES (?,'conferida',?)");for(let i=1;i<120;i++)insert.run(now,id);
  assert.match((await (await run(b)).lap(118)).recusada,/muitos recordes/);
  assert.equal(rows(`SELECT volta_ms FROM recordes WHERE usuario_id=${id}`)[0].volta_ms,120000);
+ // 150 laps in the log in the hour: the next is answered, not logged.
+ const laps=()=>rows(`SELECT COUNT(*) AS n FROM voltas WHERE usuario_id=${id}`)[0].n;
+ const lapRow=local.DB.sqlite.prepare("INSERT INTO voltas (usuario_id,quando,circuito,modo,resultado) VALUES (?,?,'interlagos','normal','conferida')");for(let i=0;i<150;i++)lapRow.run(id,now);
+ const full=laps();await (await run(b)).lap(125);assert.equal(laps(),full);
 });
 
 await check('the ghost reader matches the game\'s encoder',async()=>{

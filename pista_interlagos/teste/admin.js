@@ -1,28 +1,35 @@
 // The admin panel (admin.html, in the dev build only: preparar_publicacao.py --conta). It reads the accounts server's
-// /api/admin/ (conta-cloudflare/src/admin.js), which answers only an account marked admin in its database: this page
-// decides nothing. Read only: the numbers, the accounts, what happened (events, kept 90 days) and the last records.
-// Everything shown goes in as text.
+// /api/admin/ (conta-cloudflare/src/admin.js), which answers only an administrator: this page decides nothing. The
+// numbers, the accounts, what happened (events, kept 90 days), every lap with what its controls look like, and the last
+// records, which an admin can take off the boards (a second click confirms). Everything shown goes in as text.
 import {CIRCUITS} from './circuits.js';
 
 const $=id=>document.getElementById(id);
 const KINDS={conta_criada:'Conta criada',entrou:'Entrou',saiu:'Saiu',apelido:'Trocou o apelido',importou:'Subiu recordes antigos',
- conferida:'Recorde conferido',recusada:'Volta recusada',conta_apagada:'Conta apagada'};
+ conferida:'Recorde conferido',recusada:'Volta recusada',removido:'Recorde removido',conta_apagada:'Conta apagada'};
+// The signals the server raises on a lap's controls (conta-cloudflare/src/comandos.js inputSignals): never a refusal,
+// a reason to look.
+const SIGNALS={sem_aparelho:'sem aparelho',sinteticas:'teclas sintéticas',sem_teclas:'teclado sem teclas',pedal_meio:'pedal pela metade no teclado',
+ curtas:'toques curtos demais',simultaneas:'teclas no mesmo instante',repetida:'freadas idênticas a outra volta'};
+const signals=s=>s?.sinais?.length?s.sinais.map(code=>SIGNALS[code]??code).join(' · '):'—';
+const RESULTS={recorde:'✓ recorde',conferida:'✓ conferida'};
 const MODES={normal:'Corrida normal',immersive:'Modo História'};
 const when=ms=>ms?new Date(ms).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'—';
 const lap=ms=>{if(!Number.isFinite(ms))return '—';const s=ms/1000,m=Math.floor(s/60);return `${m}:${(s-m*60).toFixed(3).padStart(6,'0')}`;};
 const track=id=>CIRCUITS[id]?.name??id??'—';
 
-async function get(path){
- const r=await fetch('/api/admin/'+path,{cache:'no-store',credentials:'same-origin'});
+async function get(path,post){
+ const r=await fetch('/api/admin/'+path,post?{method:'POST',cache:'no-store',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(post)}:{cache:'no-store',credentials:'same-origin'});
  const data=await r.json().catch(()=>null);
  if(!r.ok||!data)throw Object.assign(new Error(data?.erro||'O servidor de contas não respondeu.'),{status:r.status});
  return data;
 }
+// A column is [text of an item, its class]; a column whose class is 'acao' holds the button its function makes.
 function rows(id,list,columns,append=false){
  const body=$(id).querySelector('tbody');if(!append)body.replaceChildren();
  for(const item of list){
   const tr=document.createElement('tr');
-  for(const [value,kind] of columns){const td=document.createElement('td');td.textContent=value(item);if(kind)td.className=kind;tr.append(td);}
+  for(const [value,kind] of columns){const td=document.createElement('td');if(kind==='acao')td.append(value(item));else td.textContent=value(item);if(kind)td.className=kind;tr.append(td);}
   body.append(tr);
  }
  $(id).parentElement.querySelector('.vazio').hidden=body.children.length>0;
@@ -34,13 +41,15 @@ function detail(e){
   case 'importou':return `${d.recordes??0} recorde${d.recordes===1?'':'s'}`;
   case 'conferida':return `${track(d.circuito)} · ${MODES[d.modo]??d.modo} · ${lap(d.volta_ms)}`;
   case 'recusada':return `${track(d.circuito)} · ${lap(d.volta_ms)} · ${d.motivo??''}`;
+  case 'removido':return `${track(d.circuito)} · ${MODES[d.modo]??d.modo} · ${lap(d.volta_ms)} · ${d.selo==='conferido'?'✓':'⚠️'}`;
   default:return '';
  }
 }
 
 function summary(s){
  const cards=[['Contas',s.contas,`${s.com_apelido} com apelido`],['Novas na semana',s.novas_7d,''],['Entradas em 24 h',s.entradas_24h,`${s.entradas_7d} em 7 dias`],
-  ['Com sessão aberta',s.com_sessao,'contas'],['Recordes ✓',s.conferidos,'conferidos'],['Recordes ⚠️',s.antigos,'antigos'],['Voltas recusadas',s.recusadas_7d,'em 7 dias']];
+  ['Com sessão aberta',s.com_sessao,'contas'],['Recordes ✓',s.conferidos,'conferidos'],['Recordes ⚠️',s.antigos,'antigos'],['Voltas recusadas',s.recusadas_7d,'em 7 dias'],
+  ['Voltas na semana',s.voltas_7d,`${s.sinalizadas_7d??0} com sinais`]];
  $('resumo').replaceChildren(...cards.map(([label,value,note])=>{
   const card=document.createElement('div'),b=document.createElement('b'),span=document.createElement('span'),small=document.createElement('small');
   card.className='cartao';span.textContent=label;b.textContent=String(value??0);small.textContent=note;card.append(span,b,small);return card;}));
@@ -58,16 +67,38 @@ async function events(more=false){
  $('mais').hidden=list.length<100;
 }
 
+// Every lap that came in, with its verdict, the device and its signals (only the flagged ones when ticked).
+let oldestLap=null;
+async function laps(more=false){
+ const q=new URLSearchParams();if($('soSinais').checked)q.set('sinalizadas','1');if(more&&oldestLap)q.set('antes',oldestLap);
+ const list=(await get('voltas?'+q)).voltas;
+ rows('voltas',list,[[v=>when(v.quando)],[v=>v.apelido??'(apagada)'],[v=>`${track(v.circuito)} · ${MODES[v.modo]??v.modo}`],[v=>lap(v.tempo_ms),'num'],
+  [v=>RESULTS[v.resultado]??`✗ ${v.resultado}`],[v=>v.aparelho??'—'],[v=>signals(v.sinais),'sinais']],more);
+ if(list.length)oldestLap=list[list.length-1].id;
+ $('maisVoltas').hidden=list.length<100;
+}
+// Remover: the first click arms the button, the second (within 5 s) takes the record off the boards.
+function removeButton(record){
+ const b=document.createElement('button');b.type='button';b.textContent='Remover';
+ b.onclick=async()=>{
+  if(!b.classList.contains('armado')){b.classList.add('armado');b.textContent='Confirmar';setTimeout(()=>{b.classList.remove('armado');b.textContent='Remover';},5000);return;}
+  b.disabled=true;
+  try{await get('remover',{recorde:record.id});await load();}
+  catch(error){$('aviso').textContent=error.message;$('aviso').hidden=false;b.disabled=false;}
+ };
+ return b;
+}
+
 async function load(){
  $('aviso').textContent='Carregando…';$('aviso').hidden=false;
  try{
   const [s,u,r]=await Promise.all([get('resumo'),get('usuarios'),get('recordes')]);
   summary(s);
   rows('usuarios',u.usuarios,[[x=>(x.apelido??'(sem apelido)')+(x.admin?' · admin':'')],[x=>when(x.criado_em)],[x=>when(x.ultimo_login)],[x=>String(x.sessoes),'num'],
-   [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>x.importou_em?when(x.importou_em):'não'],[x=>String(x.recusadas_7d),'num']]);
+   [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>x.importou_em?when(x.importou_em):'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num']]);
   rows('recordes',r.recordes,[[x=>when(x.enviado_em)],[x=>x.apelido],[x=>track(x.circuito)],[x=>MODES[x.modo]??x.modo],[x=>lap(x.volta_ms),'num'],
-   [x=>x.selo==='conferido'?'✓ conferido':'⚠️ antigo'],[x=>x.versao]]);
-  oldest=null;await events();
+   [x=>x.selo==='conferido'?'✓ conferido':'⚠️ antigo'],[x=>x.versao],[x=>x.selo==='conferido'?signals(x.sinais):'—','sinais'],[removeButton,'acao']]);
+  oldest=null;oldestLap=null;await Promise.all([events(),laps()]);
   $('painel').hidden=false;$('aviso').hidden=true;$('atualizado').textContent=`Atualizado às ${new Date().toLocaleTimeString('pt-BR',{timeStyle:'short'})}`;
  }catch(error){
   $('painel').hidden=true;
@@ -78,5 +109,7 @@ async function load(){
 for(const [value,label] of Object.entries(KINDS)){const o=document.createElement('option');o.value=value;o.textContent=label;$('tipo').append(o);}
 $('tipo').onchange=()=>{kind=$('tipo').value;oldest=null;events().catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});};
 $('mais').onclick=()=>events(true).catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});
+$('soSinais').onchange=()=>{oldestLap=null;laps().catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});};
+$('maisVoltas').onclick=()=>laps(true).catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});
 $('atualizar').onclick=load;
 load();

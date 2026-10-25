@@ -35,7 +35,11 @@ td.tipo{font-weight:700;white-space:nowrap}
 tbody tr:nth-child(even){background:#eef2e7}
 .vazio{margin:8px 0 0;color:var(--apagado)}
 .vazio[hidden]{display:none}
-#mais{margin-top:10px}
-#mais[hidden]{display:none}
+#mais,#maisVoltas{margin-top:10px}
+:is(#mais,#maisVoltas)[hidden]{display:none}
+/* A lap's or record's signals: the codes the server raised, in red; none, a quiet dash. */
+td.sinais{color:#a32020;font-weight:700}
+td button{padding:3px 8px;font-size:12px}
+td button.armado{background:#a32020;border-color:#a32020;color:#fff}
 .nota{font-size:12px;color:var(--apagado)}
 @media(max-width:560px){h1{font-size:22px}.cartao b{font-size:22px}}

@@ -4,9 +4,10 @@
 //   one at every crossing of the line. The server times them against its own clock: a pause, slow motion
 //   or a lost line leave the lap unchecked. Nothing is sent while the clock stands (pause, 3-2-1), so a
 //   pause shows as the silence it is.
-// - A lap that would be the pilot's best online goes with the crossing that ends it, with its ghost
-//   (ghost-lap.js, the same recording the game keeps). The verdict shows on screen: a checked record, or
-//   why the lap was not checked.
+// - Every lap that counts goes with the crossing that ends it, with its ghost (ghost-lap.js, the same recording
+//   the game keeps) and the pilot's controls on it (comandos-volta.js, fed by main.js each physics step): the
+//   server keeps the best, and logs every lap with what its controls look like. The verdict shows on screen for
+//   a lap that would be the pilot's best: a checked record, or why it was not checked.
 // - The records dialog's Online tab reads the board (lap-records.js addOnline).
 // - The old records of the pilot that signs in go up once per account (then this browser is marked), flagged
 //   ⚠️ unchecked, until IMPORT_UNTIL: this address's, and the main link's. A browser keeps records per address,
@@ -16,6 +17,7 @@
 //   link someone else made (a key this tab never took) are not this pilot's, and do not go up.
 import {CIRCUITS} from './circuits.js';
 import {encodeGhost} from './ghost-lap.js';
+import {LapInputs} from './comandos-volta.js';
 import {readRecords} from './lap-records.js';
 import {formatTime} from './race-results.js';
 
@@ -61,6 +63,7 @@ export class OnlineRecords {
  // base: the server's address (a check on this machine passes its own); now(): the page's clock in ms.
  constructor({base=API,now=()=>performance.now()}={}){
   this.base=base;this.now=now;this.account=null;this.run=null;this.pending=null;this.queue=[];this.busy=false;this.importing=false;
+  this.inputs=new LapInputs();this.finished=null;
   this.toast=document.createElement('div');this.toast.id='recordeOnline';this.toast.setAttribute('role','status');this.toast.hidden=true;document.body.append(this.toast);
  }
  // The signed-in account; laps go online only with a nickname.
@@ -85,18 +88,23 @@ export class OnlineRecords {
   if(s.lapStart!==r.lapStart){
    r.lapStart=s.lapStart;r.sentAt=now;
    const lap=this.pending?.key===key&&Math.abs(this.pending.end-s.lapStart)<1e-6?this.pending:null;this.pending=null;
-   this.send({relogio:s.lapStart,cruzou:true,...(lap&&{volta:{fantasma:lap.ghost}})},lap);
+   this.send({relogio:s.lapStart,cruzou:true,...(lap&&{volta:{fantasma:lap.ghost,...(lap.inputs&&{comandos:lap.inputs})}})},lap);
    return;
   }
   if(now-r.sentAt>=r.every*1000){r.sentAt=now;this.send({relogio:s.clock});}
  }
- // A lap that counts, just completed (main.js recordGhost): kept for the crossing that ends it when it
- // would be the pilot's best online. end: the clock at the line.
+ // Each physics step (main.js recordGhost, before the ghost's): the controls, and those of the lap the step finished.
+ step(car,command,sources){
+  const done=this.inputs.step(car,command,sources);
+  if(done)this.finished={end:car.lapStart,inputs:done};
+ }
+ // A lap that counts, just completed (main.js recordGhost): kept, with its controls, for the crossing that ends it.
+ // end: the clock at the line. record: it would be the pilot's best online (the verdict goes on screen).
  lapDone({circuit,mode,car,lap,end}){
-  const key=`${circuit}|${mode}|${car}`,r=this.run;
-  if(!this.account||!r||r.key!==key||!r.ticket||r.best!==null&&lap.time*1000>=r.best)return;
+  const key=`${circuit}|${mode}|${car}`,r=this.run,inputs=this.finished?.end===end?this.finished.inputs:null;this.finished=null;
+  if(!this.account||!r||r.key!==key||!r.ticket)return;
   const ghost=encodeGhost(lap);
-  if(ghost)this.pending={key,end,time:lap.time,ghost};
+  if(ghost)this.pending={key,end,time:lap.time,ghost,inputs,record:r.best===null||lap.time*1000<r.best};
  }
  async begin(key,s){
   const [circuito,modo,carro]=key.split('|');
@@ -121,11 +129,12 @@ export class OnlineRecords {
    }
   }finally{this.busy=false;}
  }
- // The lap's own time on screen (a lap refused for its timing comes back without one).
+ // The lap's own time on screen (a lap refused for its timing comes back without one); a refusal only for a lap
+ // that would have been the pilot's best (the others go to the log quietly).
  verdict(v,r,lap){
   const time=formatTime(lap.time);
   if(v.conferida&&v.recorde){r.best=v.tempo_ms;this.say(`✓ Recorde online conferido: ${time}`);}
-  else if(!v.conferida)this.say(`Volta de ${time} não conferida: ${v.recusada}.`,true);
+  else if(!v.conferida&&lap.record)this.say(`Volta de ${time} não conferida: ${v.recusada}.`,true);
  }
  say(text,warning=false){
   this.toast.textContent=text;this.toast.classList.toggle('aviso',warning);this.toast.hidden=false;

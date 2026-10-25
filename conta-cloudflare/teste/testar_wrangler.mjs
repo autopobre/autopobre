@@ -8,6 +8,8 @@ import {spawn,execSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {startLocal,CLIENT_ID,CLIENT_SECRET} from './local.mjs';
 import {CHUNK_EVERY} from '../src/recordes.js';
+import {packSteps,packKeys} from '../../pista_interlagos/teste/comandos-volta.js';
+import {encodeGhost} from '../../pista_interlagos/teste/ghost-lap.js';
 
 const PORT=8790,API=`http://127.0.0.1:${PORT}`,ORIGIN='http://127.0.0.1:8799',google=await startLocal({port:0}),G=`http://127.0.0.1:${google.port}/falso-google`;
 const vars={ORIGEM:ORIGIN,GOOGLE_CLIENT_ID:CLIENT_ID,GOOGLE_CLIENT_SECRET:CLIENT_SECRET,GOOGLE_AUTH_URL:G+'/auth',GOOGLE_TOKEN_URL:G+'/token'};
@@ -40,6 +42,12 @@ try{
  const ticket=await (await post('/api/recordes/bilhete',{circuito:'interlagos',modo:'normal',carro:'opala',versao:'wrangler'})).json();
  assert.ok(ticket.bilhete&&ticket.intervalo===CHUNK_EVERY,JSON.stringify(ticket));
  const chunk=await (await post('/api/recordes/pedaco',{bilhete:ticket.bilhete,relogio:0,cruzou:true})).json();assert.ok(chunk.bilhete);
+ // A lap with its controls straight after (refused: no clean stretch yet), through the lap log's SQL and the hourly counts.
+ const comandos={v:1,n:120,s:1,data:packSteps([[0,[100,0,0,0,-2,0]]],120),keys:packKeys([[0,8|16],[9000,16]]),r:0,dev:[120,0,0,0,0]};
+ const fantasma=encodeGhost({time:1,rate:20,values:Float64Array.from({length:21*7},(_,i)=>i%7===6?Math.floor(i/7):0),brakes:[]});
+ const lap=await (await post('/api/recordes/pedaco',{bilhete:chunk.bilhete,relogio:1,cruzou:true,volta:{fantasma,comandos}})).json();
+ assert.match(lap.volta?.recusada??'',/pausa/,JSON.stringify(lap));
+ assert.deepEqual((await (await go('/api/conta/meus-dados')).json()).voltas.map(v=>[v.resultado.slice(0,12),v.aparelho]),[['a volta teve','teclado']],'the lap in the log, its controls read');
  assert.equal((await post('/api/recordes/importar',{recordes:[{circuito:'cascavel',modo:'normal',volta_ms:95000}]})).status,200);
  const board=await (await go('/api/recordes?circuito=cascavel&modo=normal')).json();
  // The local database keeps what an interrupted run left: this run's own row only.

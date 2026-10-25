@@ -22,6 +22,7 @@ Cada piloto aparece com a melhor volta por pista, modo e carro (por enquanto só
   - A volta, de linha a linha, precisa durar no relógio do servidor o que durou no jogo. Por isso volta com pausa não é conferida.
   - A volta não pode ser mais rápida que 85% do tempo da **linha ideal** do Opala naquela pista (`src/pisos.js`, gerado por `gerar_pisos.mjs` com o código do jogo).
   - O **fantasma** da volta (a mesma gravação que o jogo guarda) precisa ter o tempo da volta, ter sido gravado nas frequências do jogo, começar na linha e percorrer a pista inteira (o comprimento vem do `circuits.js` do jogo). O carro precisa cobrir de fato a pista, sem passar de 70 m/s, sem acelerar ou virar mais do que um Opala consegue (meio segundo a meio segundo) e sem ganhar pista que não andou.
+  - Os **comandos** da volta vão junto com o fantasma (`comandos-volta.js` no jogo, `src/comandos.js` aqui). São o que a física recebeu a cada passo de 1/120 s (acelerador, freio, direção, freio de mão e ré, marcha, embreagem), as teclas como o teclado mandou e qual aparelho pilotou. Eles precisam cobrir a volta inteira e explicá-la: o carro não pode ganhar velocidade sem acelerador nem ré. Sem comandos, a volta não é conferida.
   - O bilhete leva, selada, a conta Google de quem o pediu, e cada pedaço precisa vir com a sessão dessa mesma conta. Depois de **Sair**, de apagar a conta ou de entrar com outra conta no navegador, o bilhete para de valer (e uma conta nova que herdou o número de uma apagada não recebe nada dele).
   - O bilhete não guarda contagem em que o servidor confie: reenviado, um bilhete velho faria tudo de novo. Por isso o que cada conta pode gravar é contado no banco, por hora: 120 recordes, 5 recusas no registro de eventos e 10 trocas de apelido. A mesma passagem pela linha enviada de novo não grava nada.
   - Só a melhor volta de cada piloto fica guardada, com o fantasma.
@@ -57,6 +58,17 @@ O painel nunca mostra a conta Google de ninguém. Os **eventos** (`src/eventos.j
 
 Quando a conta é apagada, os eventos dela vão junto, e fica só um "conta apagada" sem dono. "Baixar meus dados" traz os eventos da própria pessoa.
 
+**Voltas e sinais de programa.** Toda volta que o jogo manda fica no registro de voltas (`voltas`, 90 dias, sem IP). Cada volta guarda o tempo, o resultado, o aparelho e os **sinais** dos comandos. Os sinais nunca recusam a volta: servem para a administração olhar. São eles:
+- **sem aparelho:** o carro andou sem teclado, toque, controle ou volante em uso;
+- **teclas sintéticas:** teclas criadas por um script da página, e não por um teclado;
+- **teclado sem teclas:** uma volta de teclado em que as teclas não foram apertadas;
+- **pedal pela metade no teclado:** só teclado, mas com pedal pela metade;
+- **toques curtos demais:** muitas teclas seguradas por menos de 25 ms;
+- **teclas no mesmo instante:** trocas de tecla no mesmo milissegundo, quase sempre;
+- **freadas idênticas a outra volta:** freou nos mesmos metros (menos de 0,5 m) que outra volta do piloto, como um programa que repete a volta.
+
+O painel mostra as voltas (com o filtro "só com sinais") e os sinais de cada recorde. O botão **Remover** de um recorde (o segundo clique confirma) tira o recorde das tabelas, conferido ou antigo, e o piloto vê "recorde removido" nos dados dele.
+
 ## Rotas
 
 | Rota | O que faz |
@@ -73,7 +85,8 @@ Quando a conta é apagada, os eventos dela vão junto, e fica só um "conta apag
 | `POST /api/recordes/importar` `{recordes}` | os recordes antigos do navegador, uma vez, até 30/11/2026 |
 | `GET /api/recordes?circuito=&modo=` | a tabela de uma pista (pública) |
 | `GET /api/recordes/melhores?modo=` | a melhor volta de cada pista (pública) |
-| `GET /api/admin/resumo`, `/usuarios`, `/eventos?tipo=&antes=`, `/recordes` | o painel (só administradores) |
+| `GET /api/admin/resumo`, `/usuarios`, `/eventos?tipo=&antes=`, `/recordes`, `/voltas?sinalizadas=1&antes=` | o painel (só administradores) |
+| `POST /api/admin/remover` `{recorde}` | tira um recorde das tabelas (só administradores) |
 
 ## Publicar (uma vez)
 
@@ -109,6 +122,10 @@ Plano gratuito do Workers (100 mil requisições por dia) e do D1 (5 milhões de
   - `teste/testar_conta.mjs`: o servidor no Node, com SQLite e um Google de mentira. Cobre login, cookies, o que o banco guarda, apelidos, a trava de origem, os logins que precisam falhar, sessões, sair, "meus dados" e apagar.
   - `teste/testar_recordes.mjs`: os recordes no servidor, num relógio que o teste controla. Cobre a volta conferida, as recusadas (pausa, câmera lenta, relógio adiantado, rápida demais, fantasmas falsos), o bilhete adulterado ou vencido, a subida dos antigos com prazo, a tabela e os recordes ao apagar a conta.
   - `teste/testar_recordes_jogo.mjs`: o código do próprio jogo (`recordes-online.js`) correndo contra o servidor, quadro a quadro.
+  - `teste/testar_admin.mjs`: o painel, as voltas com os sinais e o Remover.
+  - `teste/testar_comandos.mjs`: os comandos da volta (o formato, as recusas e cada sinal de programa), com voltas da IA do jogo.
+  - `teste/testar_dinamica.mjs` e `teste/testar_trajeto.mjs`: a física do Opala e o traçado da pista, com voltas da IA em todas as pistas (com batidas, erros e paradas no box) e voltas forjadas. As voltas reais de pilotos entram quando a variável `FANTASMAS_REAIS` aponta para um arquivo delas, que nunca vai para o repositório.
+  - Pista nova ou mudança no arquivo de uma pista: rode `node gerar_pistas.mjs` (o traçado) e `node gerar_pisos.mjs` (o piso). Mudança na física do Opala: `node gerar_envelope.mjs`.
   - `teste/testar_wrangler.mjs`: o mesmo login, bilhete e tabela no runtime do Cloudflare (`wrangler dev`, banco local).
 - `npm run local`: o servidor de contas na porta 8788, com o Google de mentira (entra direto). O preview do jogo (`servidor.py`) repassa `/api/` para ele, então no `…/pista_interlagos/teste/` do preview o menu mostra "Entrar com Google".
 - `python pista_interlagos/scripts/verificar_conta.py [porta]` (da raiz do projeto, com o Python que tem o Playwright). Sobe os dois servidores sozinho e passa pela conta inteira no navegador, inclusive no celular.

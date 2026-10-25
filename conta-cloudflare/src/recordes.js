@@ -10,27 +10,33 @@
 // - A lap is its two crossings: its game time against the real time between them, and no quicker than the
 //   driving line itself allows (FLOOR of its lap time, pisos.js).
 // - Its ghost (the game's own recording, ghost-lap.js) must match: recorded at the game's rates, as long as
-//   the lap, from the line around the whole track (circuits.js), the car covering it, never faster than an
-//   Opala goes, never pushed or turned harder than one can be, never gaining track it did not drive.
+//   the lap, from the line around the whole track (circuits.js), the car covering it with no jump (ghostProblem);
+//   on that circuit's road, its track distance where the car was, no cut (trajeto.js, pistas.js); and what an Opala
+//   can do along it: its engine, brakes, tyres and top speed, a few contacts aside (dinamica.js, envelope.js).
+// - Its controls (the game's comandos-volta.js) must explain it: the whole lap's steps, and no speed gained with
+//   nothing pushing (comandos.js). What they look like (a person's hands or a program's) goes to the lap log.
 // - The ticket is the account's as it was then (its Google account, sealed in it), and every chunk comes with that
 //   account's session: signed out, deleted, or another account in the browser (one that took a deleted account's
 //   number too), the ticket ends.
-// Only a pilot's best goes in, with its ghost ("ver a volta", later). The ticket keeps no count the server trusts:
-// sent again, an old one would write again, so what an account may write (records, refusals in the panel's events)
-// is counted per hour in the database (eventos.js recent).
+// Only a pilot's best goes in, with its ghost ("ver a volta", later); every lap goes to the lap log. The ticket keeps
+// no count the server trusts: sent again, an old one would write again, so what an account may write (records, laps,
+// refusals in the panel's events) is counted per hour in the database.
 //
 // nao_verificado: an old record of a browser, from before the account (/importar), once per account (the
 // server keeps when), until IMPORT_UNTIL, and the board shows them flagged ⚠️. A pilot with a checked lap
 // shows by it.
 //
-// What this cannot tell: a lap driven by a program, a ghost made up to look driven (a smooth ring as long as
-// the track passes until the server knows each track's shape), the physics changed in the pilot's browser, or a
-// second of slow motion inside one chunk. That is the next badge's work (homologado: the server re-running the
-// lap from the pilot's inputs with the game's own physics).
+// What this cannot tell: a ghost and controls made up together with the game's own physics (a program driving the
+// real game leaves signals for the admin to see, not a refusal), the physics changed by less than the margins (about
+// 2% of lap time), or a second of slow motion inside one chunk. That is the next badge's work (homologado: the server
+// re-running the lap from the pilot's controls with the game's own physics).
 import {CIRCUITS} from '../../pista_interlagos/teste/circuits.js';
 import {LINE_TIMES} from './pisos.js';
 import {json,seal,unseal,signedIn,notSignedIn} from './base.js';
 import {event,recent,HOUR} from './eventos.js';
+import {readInputs,inputsProblem,inputSignals,INPUT_CHARS} from './comandos.js';
+import {dynamicsProblem} from './dinamica.js';
+import {trackProblem} from './trajeto.js';
 
 const TICKET='bilhete-v1';
 export const CHUNK_EVERY=10;  // seconds of the game's clock between chunks (the game keeps this pace)
@@ -58,11 +64,13 @@ const fastest=circuit=>Math.ceil(1000*(LINE_TIMES[circuit]?LINE_TIMES[circuit]*F
 const GHOST_BYTES=120000;     // a lap's ghost as the game encodes it (3600 samples at most: ~70 kB)
 const LOGGED_REFUSALS=5;      // refused laps an account writes to the panel's events in an hour (the rest only answer)
 const SAVED_LAPS=120;         // records an account may write in an hour: more than a pilot sets, even at Curvelo's 32 s
-export const RECORDS_BODY={'/api/recordes/pedaco':GHOST_BYTES+4096,'/api/recordes/importar':16384};
+const LOGGED_LAPS=150;        // laps an account writes to the lap log in an hour (Curvelo's 32 s laps make 112)
+const PREVIOUS_LAPS=10;       // earlier laps a lap's brakes are compared with (inputSignals: a replay brakes where they did)
+export const RECORDS_BODY={'/api/recordes/pedaco':GHOST_BYTES+INPUT_CHARS+4096,'/api/recordes/importar':16384};
 const known=(c,m,k)=>typeof c==='string'&&Object.hasOwn(CIRCUITS,c)&&MODES.includes(m)&&CARS.includes(k);
-const UPSERT=`INSERT INTO recordes (usuario_id,circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma) VALUES (?,?,?,?,?,?,?,?,?,?)
+const UPSERT=`INSERT INTO recordes (usuario_id,circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma,sinais) VALUES (?,?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(usuario_id,circuito,modo,carro,selo) DO UPDATE SET volta_ms=excluded.volta_ms,versao=excluded.versao,feito_em=excluded.feito_em,
- enviado_em=excluded.enviado_em,fantasma=excluded.fantasma WHERE excluded.volta_ms<recordes.volta_ms`;
+ enviado_em=excluded.enviado_em,fantasma=excluded.fantasma,sinais=excluded.sinais WHERE excluded.volta_ms<recordes.volta_ms`;
 
 // A ghost as ghost-lap.js packs it (v1: the first sample whole, then 16-bit steps; x, y, z and the track
 // distance in centimetres, the three angles in 1e-4 rad), read with its sizes checked first. Only its own
@@ -87,12 +95,15 @@ export function readGhost(entry){
  }catch{return null;}
 }
 const RATES=new Set([20,10,5,4]);   // the game records 20 samples a second and thins a long lap to 10, 5 or 4
-const MAX_SPEED=70;          // m/s between two samples (an Opala tops out near 60: a long downhill and a tow)
-const MAX_PUSH=15;           // m/s² of speed gained over half a second (its engine gives a third of that; a shove more)
-const MAX_TURN=25;           // m/s² across its way over half a second (its tyres hold about 11)
-const SPIKES=3;              // half-seconds past those (a wall, a rival) a lap may have
+const MAX_SPEED=70;          // m/s between two samples: no jump (the Opala's real top speed is dinamica.js's to check)
+// Track gained against ground covered between two samples: the inside of a hairpin gains up to 2.5 times what it drives,
+// a pit lane's own track distance (Velocitta) 6 times; 3 times and GAIN_SLACK m per second of sample spacing over it
+// leave those, and stop a jump along the road (where a cut is, trajeto.js knows).
+const GAIN=3,GAIN_SLACK=60;
 const DRIVEN=.85;            // of the track's length the car must cover (the racing line cuts inside the bends)
-// Why a ghost cannot be this lap, or null when it can.
+// Why a ghost cannot be this lap, or null when it can: read, recorded by the game, the lap's time, from the line round the
+// whole track, no jump, and the ground covered. What an Opala can do along it is dinamica.js's (contacts and spins pull
+// and turn far past an Opala for a moment, and buy no time), where the road is trajeto.js's.
 export function ghostProblem(ghost,time,circuit){
  if(!ghost)return 'o fantasma da volta não pôde ser lido';
  if(!RATES.has(ghost.rate))return 'o fantasma não foi gravado pelo jogo';
@@ -101,25 +112,16 @@ export function ghostProblem(ghost,time,circuit){
  const first=v[6],last=v[(n-1)*FIELDS+6];
  if(Math.abs(first)>30)return 'a volta não começa na linha';
  if(Math.abs(last-first-L)>L*.03+30)return 'a volta não percorre a pista inteira';
- const vel=[null];let covered=0;
+ let covered=0;
  for(let k=1;k<n;k++){
   const a=(k-1)*FIELDS,b=k*FIELDS,dt=at(k)-at(k-1);
   if(!(dt>0))return 'o fantasma tem o tempo fora de ordem';
-  const d=[v[b]-v[a],v[b+1]-v[a+1],v[b+2]-v[a+2]],moved=Math.hypot(...d),gained=v[b+6]-v[a+6];
+  const moved=Math.hypot(v[b]-v[a],v[b+1]-v[a+1],v[b+2]-v[a+2]),gained=v[b+6]-v[a+6];
   if(moved>MAX_SPEED*dt+.05)return 'o carro andou mais rápido do que um Opala anda';
-  // Track gained against ground covered: the inside of a hairpin gains more than it drives, a cut gains it all.
-  if(gained<-5||gained>moved*1.8+MAX_SPEED*dt*.1)return 'o carro ganhou pista sem andar por ela';
-  covered+=moved;vel.push(d.map(x=>x/dt));
+  if(gained<-5||gained>moved*GAIN+GAIN_SLACK*dt)return 'o carro ganhou pista sem andar por ela';
+  covered+=moved;
  }
  if(covered<DRIVEN*L)return 'o carro não percorreu a pista';
- // Over each half second: speed gained along the way and the push across it (whatever way is up).
- const w=Math.max(1,Math.round(ghost.rate/2));let spikes=0;
- for(let k=1;k+w<n;k++){
-  const p=vel[k],q=vel[k+w],dt=at(k+w)-at(k),speed=Math.hypot(...p);
-  const acc=q.map((x,i)=>(x-p[i])/dt),along=speed>1?acc.reduce((s,x,i)=>s+x*p[i],0)/speed:0;
-  const across=speed>1?Math.sqrt(Math.max(0,acc.reduce((s,x)=>s+x*x,0)-along*along)):0;
-  if((along>MAX_PUSH||across>MAX_TURN)&&++spikes>SPIKES)return 'o carro acelerou ou virou mais do que um Opala consegue';
- }
  return null;
 }
 
@@ -159,26 +161,40 @@ async function chunk(request,env,body){
  return json(out);
 }
 
-// The lap that ends at game time g: checked, and kept when it is the pilot's best. A record goes to the panel's events,
-// and so does a refusal with its reason, up to LOGGED_REFUSALS an hour for the account.
+// The lap that ends at game time g: checked, and kept when it is the pilot's best. Every lap goes to the lap log with
+// what its controls look like (comandos.js inputSignals, against the pilot's last laps here), up to LOGGED_LAPS an hour.
+// A record goes to the panel's events, and so does a refusal with its reason, up to LOGGED_REFUSALS an hour.
 async function judge(env,t,g,now,from,lap){
- const verdict=await check(env,t,g,now,from,lap);
+ const ghost=readGhost(lap?.fantasma),inputs=readInputs(lap?.comandos);
+ let signals=null;
+ if(ghost&&inputs)try{
+  const before=(await env.DB.prepare('SELECT freios FROM voltas WHERE usuario_id=? AND circuito=? AND modo=? AND freios IS NOT NULL ORDER BY quando DESC LIMIT ?').bind(t.u,t.c,t.m,PREVIOUS_LAPS).all()).results;
+  signals=inputSignals(inputs,ghost,before.map(r=>JSON.parse(r.freios)).filter(Array.isArray));
+ }catch{}
+ const verdict=await check(env,t,g,now,from,ghost,inputs,signals);
+ try{
+  if((await env.DB.prepare('SELECT COUNT(*) AS n FROM voltas WHERE usuario_id=? AND quando>?').bind(t.u,now-HOUR).first('n'))<LOGGED_LAPS)
+   await env.DB.prepare('INSERT INTO voltas (usuario_id,quando,circuito,modo,tempo_ms,resultado,aparelho,sinais,freios) VALUES (?,?,?,?,?,?,?,?,?)')
+    .bind(t.u,now,t.c,t.m,verdict.tempo_ms??(ghost?Math.round(ghost.time*1000):null),verdict.recorde?'recorde':verdict.conferida?'conferida':verdict.recusada,
+     signals?.aparelho??null,signals?JSON.stringify({sinais:signals.sinais,medidas:signals.medidas}):null,signals?JSON.stringify(signals.freios):null).run();
+ }catch{}
  if(!verdict.conferida)try{
   if(await recent(env,t.u,['recusada'],HOUR)<LOGGED_REFUSALS)
    await event(env,'recusada',t.u,{circuito:t.c,modo:t.m,volta_ms:verdict.tempo_ms??null,motivo:verdict.recusada}).run();
  }catch{}
  return verdict;
 }
-async function check(env,t,g,now,from,lap){
+async function check(env,t,g,now,from,ghost,inputs,signals){
  if(!from)return {recusada:'a volta teve pausa, ficou sem sinal ou o jogo rodou mais devagar que o relógio'};
  const time=g-from.g,ms=Math.round(time*1000),real=now-from.s;
  if(Math.abs(real-ms)>LAP_SLACK+ms*.01)return {tempo_ms:ms,recusada:'o tempo da volta não bate com o relógio do servidor'};
  if(ms<fastest(t.c))return {tempo_ms:ms,recusada:'a volta foi rápida demais para esta pista'};
- const ghost=readGhost(lap?.fantasma),why=ghostProblem(ghost,time,t.c);
+ const why=ghostProblem(ghost,time,t.c)??trackProblem(ghost,t.c)??dynamicsProblem(ghost,t.c)??inputsProblem(inputs,ghost);
  if(why)return {tempo_ms:ms,recusada:why};
- // Written only when it beats the pilot's best (the same crossing sent again changes nothing).
+ // Written only when it beats the pilot's best (the same crossing sent again changes nothing), with its signals.
  if(await recent(env,t.u,['conferida'],HOUR)>=SAVED_LAPS)return {tempo_ms:ms,recusada:'muitos recordes gravados nesta hora: tente de novo mais tarde'};
- const r=await env.DB.prepare(UPSERT).bind(t.u,t.c,t.m,t.k,'conferido',ms,t.v,now,now,JSON.stringify(ghost.stored)).run(),record=r.meta.changes>0;
+ const kept=signals?JSON.stringify({aparelho:signals.aparelho,sinais:signals.sinais,medidas:signals.medidas}):null;
+ const r=await env.DB.prepare(UPSERT).bind(t.u,t.c,t.m,t.k,'conferido',ms,t.v,now,now,JSON.stringify(ghost.stored),kept).run(),record=r.meta.changes>0;
  if(record)await event(env,'conferida',t.u,{circuito:t.c,modo:t.m,volta_ms:ms}).run().catch(()=>{});
  return {tempo_ms:ms,conferida:true,recorde:record};
 }
@@ -202,7 +218,7 @@ async function importOld(request,env,body){
  if(!(await env.DB.prepare('UPDATE usuarios SET importou_em=? WHERE id=? AND importou_em IS NULL').bind(now,s.id).run()).meta.changes)
   return json({erro:'Os recordes antigos desta conta já subiram.'},409);
  const made=when=>Number.isFinite(when)&&when>=GAME_START&&when<=now?when:now;
- const steps=[...best.values()].map(r=>env.DB.prepare(UPSERT).bind(s.id,r.c,r.m,'opala','nao_verificado',r.ms,'local',made(r.when),now,null));
+ const steps=[...best.values()].map(r=>env.DB.prepare(UPSERT).bind(s.id,r.c,r.m,'opala','nao_verificado',r.ms,'local',made(r.when),now,null,null));
  await env.DB.batch([...steps,event(env,'importou',s.id,{recordes:steps.length})]);
  return json({importados:steps.length});
 }

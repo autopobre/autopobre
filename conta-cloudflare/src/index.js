@@ -18,7 +18,7 @@
 // would let a page of one post to the other.
 import {SESSION_COOKIE,LOGIN_COOKIE,b64url,fromB64url,random,sha256,hashed,sameText,readCookies,setCookie,json,redirect,seal,unseal,session,signedOut,signedIn,notSignedIn,readPost,isAdmin} from './base.js';
 import {RECORDS_GETS,RECORDS_POSTS,RECORDS_BODY} from './recordes.js';
-import {ADMIN_GETS} from './admin.js';
+import {ADMIN_GETS,ADMIN_POSTS} from './admin.js';
 import {event,forgetOld,recent,HOUR} from './eventos.js';
 
 const SESSION_DAYS=30;        // a session's life; signing in again makes a new one
@@ -96,7 +96,7 @@ async function googleBack(request,env,url){
  const now=Date.now();
  const user=await env.DB.prepare('INSERT INTO usuarios (google_sub,criado_em,ultimo_login) VALUES (?1,?2,?2) ON CONFLICT(google_sub) DO UPDATE SET ultimo_login=?2 RETURNING id,criado_em').bind(claims.sub,now).first();
  const value=b64url(random(32)),steps=[
-  event(env,user.criado_em===now?'conta_criada':'entrou',user.id),forgetOld(env),
+  event(env,user.criado_em===now?'conta_criada':'entrou',user.id),...forgetOld(env),
   env.DB.prepare('INSERT INTO sessoes (id,usuario_id,criada_em,expira_em) VALUES (?,?,?,?)').bind(await hashed(value),user.id,now,now+SESSION_DAYS*86400000),
   env.DB.prepare('DELETE FROM sessoes WHERE expira_em<=?').bind(now),
   env.DB.prepare('DELETE FROM sessoes WHERE usuario_id=?1 AND id NOT IN (SELECT id FROM sessoes WHERE usuario_id=?1 ORDER BY criada_em DESC LIMIT ?2)').bind(user.id,MAX_SESSIONS)];
@@ -131,8 +131,8 @@ async function signOut(request,env){
 async function deleteAccount(request,env,body){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
  if(body.confirmar!=='APAGAR')return json({erro:'Confirme para apagar a conta.'},400);
- // Its records, sessions and events go with it; the panel keeps only that an account was deleted, by nobody.
- await env.DB.batch(['recordes','sessoes','eventos'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE usuario_id=?`).bind(s.id))
+ // Its records, laps, sessions and events go with it; the panel keeps only that an account was deleted, by nobody.
+ await env.DB.batch(['recordes','voltas','sessoes','eventos'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE usuario_id=?`).bind(s.id))
   .concat(env.DB.prepare('DELETE FROM usuarios WHERE id=?').bind(s.id),event(env,'conta_apagada')));
  return json({conta:null,apagada:true},200,{cookies:[signedOut()]});
 }
@@ -143,6 +143,7 @@ async function myData(request,env){
  const sessions=(await env.DB.prepare('SELECT criada_em,expira_em FROM sessoes WHERE usuario_id=? ORDER BY criada_em').bind(s.id).all()).results;
  const records=(await env.DB.prepare('SELECT circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma FROM recordes WHERE usuario_id=? ORDER BY circuito,modo,selo').bind(s.id).all()).results;
  const events=(await env.DB.prepare('SELECT quando,tipo,detalhe FROM eventos WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
+ const laps=(await env.DB.prepare('SELECT quando,circuito,modo,tempo_ms,resultado,aparelho,sinais,freios FROM voltas WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
  const ghost=text=>{try{return text?JSON.parse(text):null;}catch{return null;}};
  const when=ms=>new Date(ms).toISOString();
  return json({
@@ -153,11 +154,12 @@ async function myData(request,env){
   recordes:records.map(r=>({circuito:r.circuito,modo:r.modo,carro:r.carro,selo:r.selo,volta_ms:r.volta_ms,versao_do_jogo:r.versao,feito_em:when(r.feito_em),enviado_em:when(r.enviado_em),fantasma:ghost(r.fantasma)})),
   subida_dos_recordes_antigos:s.importou_em?when(s.importou_em):null,
   eventos:events.map(e=>({quando:when(e.quando),tipo:e.tipo,detalhe:ghost(e.detalhe)})),
+  voltas:laps.map(v=>({quando:when(v.quando),circuito:v.circuito,modo:v.modo,tempo_ms:v.tempo_ms,resultado:v.resultado,aparelho:v.aparelho,sinais:ghost(v.sinais),freios:ghost(v.freios)})),
  },200,{headers:{'Content-Disposition':'attachment; filename="autopobre-meus-dados.json"'}});
 }
 
 const GETS={'/api/conta/eu':me,'/api/conta/entrar':signIn,'/api/conta/google':googleBack,'/api/conta/meus-dados':myData,...RECORDS_GETS,...ADMIN_GETS};
-const POSTS={'/api/conta/apelido':setNickname,'/api/conta/sair':signOut,'/api/conta/apagar':deleteAccount,...RECORDS_POSTS};
+const POSTS={'/api/conta/apelido':setNickname,'/api/conta/sair':signOut,'/api/conta/apagar':deleteAccount,...RECORDS_POSTS,...ADMIN_POSTS};
 
 export default {
  async fetch(request,env){

@@ -1,11 +1,12 @@
 // The game's own online records code (pista_interlagos/teste/recordes-online.js) talking to the accounts
 // server on this machine (teste/local.mjs), on one clock the test moves for both. A run as main.js feeds it
 // (a frame every tenth of a second): the ticket, the first crossing at the lights, chunks at the server's
-// pace, a best lap with its ghost (checked; the verdict on screen), a slower lap (not even sent), a lap with
+// pace, a best lap with its ghost and controls (checked; the verdict on screen), a slower lap (logged quietly), a lap with
 // a pause (refused, and why), a reset (a new ticket), the Fusca and a signed-out pilot (nothing sent), the
 // old records' import (only the pilot's, once), and the board as the records dialog reads it.
 import assert from 'node:assert/strict';
 import {startLocal} from './local.mjs';
+import {aiLaps,lapAt} from './voltas_ia.mjs';
 import {CIRCUITS} from '../../pista_interlagos/teste/circuits.js';
 
 // The page around the module: a status element, this browser's storage, and fetch as a browser sends it
@@ -37,26 +38,27 @@ const account=await (await fetch('/api/conta/eu')).json().then(d=>d.conta);
 
 const online=new OnlineRecords({base:ORIGIN+'/api/recordes',now:()=>now});
 async function settle(){for(let i=0;i<400;i++){await new Promise(r=>setTimeout(r,1));if(!online.busy&&!online.queue.length&&(!online.run||online.run.ticket||online.run.failed))return;}throw new Error('the module did not settle');}
-// The lap the game would record: once around a ring as long as the track.
-function lapOf(circuit,time){
- const L=CIRCUITS[circuit].length,R=L/(2*Math.PI),rate=20,n=Math.ceil(time*rate)+1,values=new Float64Array(n*7);
- for(let k=0;k<n;k++){const t=Math.min(k/rate,time),u=t/time,i=k*7;values[i]=R*Math.cos(2*Math.PI*u);values[i+2]=R*Math.sin(2*Math.PI*u);values[i+6]=L*u;}
- return {time,rate,values,brakes:[]};
-}
-// The race as main.js sees it, a frame every 0.1 s of real time.
+// The lap the game would record: the AI's flying lap of the circuit on a clock of `time` seconds (voltas_ia.mjs).
+const lapOf=(circuit,time)=>lapAt(aiLaps(circuit)[1].lap,time);
+// The race as main.js sees it: a frame every 0.1 s of real time, twelve physics steps in each, whose controls (the
+// throttle held, from the keyboard) go to the module as main.js recordGhost sends them; then the frame.
 const race={circuit:'interlagos',mode:'normal',car:'opala',clock:0,lapStart:0,driving:true};
+let steps=0;
+const physics=()=>{steps++;race.clock=steps/120;online.step({clock:race.clock,lapStart:race.lapStart},{throttle:1},()=>1);};
 async function frames(seconds,{running=true}={}){
- for(let i=0;i<Math.round(seconds*10);i++){now+=100;if(running)race.clock=Math.round((race.clock+.1)*1e6)/1e6;online.frame({...race});await settle();}
+ for(let i=0;i<Math.round(seconds*10);i++){now+=100;if(running)for(let k=0;k<12;k++)physics();online.frame({...race});await settle();}
 }
-// Drives to the line `time` seconds after the lap began; the crossing's step hands the lap over first.
+// Drives to the line `time` seconds after the lap began; the crossing's step hands the lap's controls and then its
+// ghost over first.
 async function lap(time,{pauseAt=null}={}){
- const end=race.lapStart+time;
- while(race.clock+.1<end-1e-9){   // up to the last frame before the line: the crossing's frame moves the clock too
+ const end=Math.round((race.lapStart+time)*120);
+ while(steps+12<end){   // up to the last frame before the line: the crossing's frame moves the clock too
   if(pauseAt!==null&&race.clock>=race.lapStart+pauseAt){pauseAt=null;await frames(20,{running:false});}
   await frames(.1);
  }
- race.clock=end;race.lapStart=end;now+=100;
- online.lapDone({circuit:race.circuit,mode:race.mode,car:race.car,lap:lapOf(race.circuit,time),end});
+ now+=100;while(steps<end-1)physics();
+ steps++;race.clock=race.lapStart=steps/120;online.step({clock:race.clock,lapStart:race.lapStart},{throttle:1},()=>1);
+ online.lapDone({circuit:race.circuit,mode:race.mode,car:race.car,lap:lapOf(race.circuit,time),end:race.lapStart});
  online.frame({...race});await settle();
 }
 const pedacos=()=>sent.filter(u=>u.startsWith('/api/recordes/pedaco')).length;
@@ -72,10 +74,12 @@ await check('a run: the ticket, the start, a best lap checked and shown',async()
  assert.ok(pedacos()>=12&&pedacos()<=15,`a chunk every 10 s and the two crossings (${pedacos()})`);
 });
 
-await check('a slower lap is not even sent; a lap with a pause is refused, and the screen says why',async()=>{
+await check('a slower lap goes to the log quietly; a lap with a pause is refused, and the screen says why',async()=>{
  toast.hidden=true;const before=sent.join('|').length;
  await lap(123);
- assert.equal(online.pending,null);assert.equal(toast.hidden,true,'nothing to say');
+ assert.equal(toast.hidden,true,'nothing to say');
+ const logged=local.DB.sqlite.prepare('SELECT tempo_ms,resultado,aparelho FROM voltas ORDER BY id DESC').get();
+ assert.deepEqual({...logged},{tempo_ms:123000,resultado:'conferida',aparelho:'teclado'},'checked, logged, with the keyboard that drove it');
  await lap(117,{pauseAt:40});
  assert.equal(toast.hidden,false);assert.match(toast.textContent,/Volta de 01:57.000 não conferida: a volta teve pausa/);
  assert.equal(local.DB.sqlite.prepare("SELECT volta_ms FROM recordes WHERE selo='conferido'").get().volta_ms,120000);
@@ -86,7 +90,7 @@ await check('a slower lap is not even sent; a lap with a pause is refused, and t
 
 await check('a reset asks for a new ticket; the Fusca and a signed-out pilot send nothing',async()=>{
  const tickets=()=>sent.filter(u=>u.endsWith('/bilhete')).length,t0=tickets();
- race.clock=0;race.lapStart=0;await frames(1);
+ race.clock=0;race.lapStart=0;steps=0;await frames(1);
  assert.equal(tickets(),t0+1,'the clock went back: a new run');
  const n=sent.length;
  race.car='fusca';await frames(12);race.car='opala';

@@ -512,6 +512,7 @@ function currentGhost(){
 // command: the step's, whose brake the ghost's brake lights replay.
 function recordGhost(command){
  const driving=sessionStarted&&!automatic&&!immersive.recordAssisted&&!immersive.finishing&&(immersive.active?immersive.state.phase==='race':!immersive.freeFinished);
+ contaOnline?.step(car,command,inputSources);   // the step's controls, for the lap that goes online with its ghost
  const lap=ghostRecorder.step(car,driving,command?.brake??0),key=lap&&ghostOwner();
  if(key?.pilot&&saveGhost(pilotStorage(),{...key,lap})){ghostKey='';ghostSavedAt=car.lapStart;}
  if(key)contaOnline?.lapDone({...key,lap,end:car.lapStart});
@@ -846,6 +847,11 @@ if(CONTA)import('./conta.js').then(m=>m.startConta({pilot:()=>pilotPicker.profil
 // the recon lap's autopilot, a run that used it, the Arena, nor a multiplayer room, whose clock the room may move).
 const onlineRun=()=>({circuit:circuit.id,mode:immersive.active?'immersive':'normal',car:raceModel,clock:car.clock,lapStart:car.lapStart,
  driving:sessionStarted&&ready&&!automatic&&!immersive.recordAssisted&&!arenaMode&&!multiplayer});
+// Which devices drive this step, for the online lap log (comandos-volta.js): 1 the keyboard, 2 touch, 4 a controller
+// (its stick and triggers, or a button holding a driving key), 8 a wheel. A program driving the car leaves none.
+const DRIVING_KEYS=Object.freeze(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyQ','Space','KeyN']);
+const inputSources=()=>(DRIVING_KEYS.some(code=>keys.has(code))?1:0)|(mobile&&(mobile.throttle||mobile.brake||mobile.steering||mobile.pressed.size)?2:0)
+ |(gamepad.driving||DRIVING_KEYS.some(code=>gamepad.holds(code))?4:0)|(wheel.throttle||wheel.brake||Math.abs(wheel.steering)>.02||DRIVING_KEYS.some(code=>wheel.holds(code))?8:0);
 const roomWanted=MULTIPLAYER&&new URLSearchParams(window.location.hash.slice(1)).has('desafio');let multiplayer=null;
 let pitstop,rivalGarages=null,peekView=null,walker=null,walkView=null,immersive,car,data,roadSurface,roadRails,roadCurbs,driver,wheels=[],trunkInterior=[],model,carStructure,paused=true,automatic=false,mode='chase',ready=false,loadToken=0,activeLivery='';
 // The car raced now ('99', or Modo Corrida's choice), the car at the back of its grid whose driver
