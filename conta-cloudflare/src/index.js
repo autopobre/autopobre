@@ -19,11 +19,12 @@
 import {SESSION_COOKIE,LOGIN_COOKIE,b64url,fromB64url,random,sha256,hashed,sameText,readCookies,setCookie,json,redirect,seal,unseal,session,signedOut,signedIn,notSignedIn,readPost,isAdmin} from './base.js';
 import {RECORDS_GETS,RECORDS_POSTS,RECORDS_BODY} from './recordes.js';
 import {ADMIN_GETS} from './admin.js';
-import {event,forgetOld} from './eventos.js';
+import {event,forgetOld,recent,HOUR} from './eventos.js';
 
 const SESSION_DAYS=30;        // a session's life; signing in again makes a new one
 const MAX_SESSIONS=10;        // per account (browsers, phones): the oldest go first
 const LOGIN_MINUTES=10;       // to come back from Google
+const NICKNAME_CHANGES=10;    // per account and hour: each one is a write
 const GOOGLE_AUTH='https://accounts.google.com/o/oauth2/v2/auth',GOOGLE_TOKEN='https://oauth2.googleapis.com/token';
 const ISSUERS=new Set(['https://accounts.google.com','accounts.google.com']);
 const SUB=/^[\x21-\x7e]{1,255}$/;
@@ -110,6 +111,8 @@ async function setNickname(request,env,body){
  const nick=cleanNickname(body.apelido);if(!nick)return json({erro:NICKNAME_RULE},400);
  const key=nicknameKey(nick),taken=()=>json({erro:'Esse apelido já é de outro piloto.'},409);
  if(RESERVED.has(key))return json({erro:'Esse apelido é reservado. Escolha outro.'},409);
+ if(nick===s.apelido)return json({conta:account(s,env)});   // the same again: nothing to write
+ if(await recent(env,s.id,['apelido'],HOUR)>=NICKNAME_CHANGES)return json({erro:'Muitas trocas de apelido seguidas. Tente de novo daqui a uma hora.'},429);
  if(await env.DB.prepare('SELECT id FROM usuarios WHERE apelido_chave=? AND id<>?').bind(key,s.id).first())return taken();
  try{await env.DB.batch([env.DB.prepare('UPDATE usuarios SET apelido=?,apelido_chave=? WHERE id=?').bind(nick,key,s.id),event(env,'apelido',s.id,{apelido:nick})]);}
  catch(error){if(/UNIQUE/i.test(String(error?.message)))return taken();throw error;}

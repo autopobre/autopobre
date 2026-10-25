@@ -83,6 +83,18 @@ await check('nicknames: rules, uniqueness without accents or case',async()=>{
   const r=await c.post('/api/conta/apelido',{apelido:reserved});assert.equal(r.status,409,reserved);assert.match((await r.json()).erro,/reservado/,reserved);}
 });
 
+await check('nicknames: the same again writes nothing, and at most 10 changes an hour',async()=>{
+ local.google.next.sub='100000000000000000012';
+ const b=browser();await b.signIn();
+ const id=rows("SELECT id FROM usuarios WHERE google_sub='100000000000000000012'")[0].id,changes=()=>rows(`SELECT COUNT(*) AS n FROM eventos WHERE usuario_id=${id} AND tipo='apelido'`)[0].n;
+ for(let i=0;i<10;i++)assert.equal((await b.post('/api/conta/apelido',{apelido:'Troca '+i})).status,200);
+ assert.equal((await b.post('/api/conta/apelido',{apelido:'Troca 9'})).status,200,'the same again');
+ const r=await b.post('/api/conta/apelido',{apelido:'Troca 10'});assert.equal(r.status,429);assert.match((await r.json()).erro,/daqui a uma hora/);
+ assert.equal(changes(),10,'the same again was not written');assert.equal((await b.me()).apelido,'Troca 9');
+ local.DB.sqlite.prepare('UPDATE eventos SET quando=quando-3600001 WHERE usuario_id=?').run(id);
+ assert.equal((await b.post('/api/conta/apelido',{apelido:'Troca 10'})).status,200,'an hour later');
+});
+
 await check('writes need the exact origin, JSON and a session',async()=>{
  local.google.next.sub='100000000000000000005';
  const b=browser();await b.signIn();

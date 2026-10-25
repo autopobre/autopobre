@@ -22,13 +22,14 @@ Cada piloto aparece com a melhor volta por pista, modo e carro (por enquanto só
   - A volta, de linha a linha, precisa durar no relógio do servidor o que durou no jogo. Por isso volta com pausa não é conferida.
   - A volta não pode ser mais rápida que 85% do tempo da **linha ideal** do Opala naquela pista (`src/pisos.js`, gerado por `gerar_pisos.mjs` com o código do jogo).
   - O **fantasma** da volta (a mesma gravação que o jogo guarda) precisa ter o tempo da volta, ter sido gravado nas frequências do jogo, começar na linha e percorrer a pista inteira (o comprimento vem do `circuits.js` do jogo). O carro precisa cobrir de fato a pista, sem passar de 70 m/s, sem acelerar ou virar mais do que um Opala consegue (meio segundo a meio segundo) e sem ganhar pista que não andou.
-  - O bilhete leva, selada, a conta Google de quem o pediu: volta de conta apagada (ou de outra que herdou o número dela) não entra.
+  - O bilhete leva, selada, a conta Google de quem o pediu, e cada pedaço precisa vir com a sessão dessa mesma conta. Depois de **Sair**, de apagar a conta ou de entrar com outra conta no navegador, o bilhete para de valer (e uma conta nova que herdou o número de uma apagada não recebe nada dele).
+  - O bilhete não guarda contagem em que o servidor confie: reenviado, um bilhete velho faria tudo de novo. Por isso o que cada conta pode gravar é contado no banco, por hora: 120 recordes, 5 recusas no registro de eventos e 10 trocas de apelido. A mesma passagem pela linha enviada de novo não grava nada.
   - Só a melhor volta de cada piloto fica guardada, com o fantasma.
 - **⚠️ não verificado** ("Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros"): um recorde antigo, de antes da conta. O jogo sobe os recordes do navegador uma única vez por conta (depois marca o navegador) e só até **30/11/2026**. Tempo impossível para a pista é descartado.
 
 O que o selo conferido não pega: volta pilotada por um programa, ou alguém deixando o jogo mais lento por um instante dentro de um pedaço. Isso fica para o próximo selo (homologado: o servidor refaz a volta a partir dos comandos do piloto).
 
-**Os recordes do autopobre.com.br:** cada endereço guarda os recordes à parte no navegador, então o dev não enxerga os do site principal. Para a subida pegar também esses, o site principal tem uma página-ponte, `levar-recordes.html` (em `pista_interlagos/ponte/`, publicada na raiz pelo `pages.yml`, sem conta nem servidor). Na primeira vez, o jogo no dev dá um pulo até ela. A ponte lê os recordes e o piloto escolhido lá e devolve o jogador ao dev com eles no pedaço do link depois do `#`, que não vai a servidor nenhum. Ela só sabe voltar para o `dev.autopobre.com.br`. O pulo só acontece quando a variável `PONTE_RECORDES` do `wrangler.jsonc` aponta para o site que tem a ponte (`https://autopobre.com.br`): ligue-a depois de a ponte estar no ar.
+**Os recordes do autopobre.com.br:** cada endereço guarda os recordes à parte no navegador, então o dev não enxerga os do site principal. Para a subida pegar também esses, o site principal tem uma página-ponte, `levar-recordes.html` (em `pista_interlagos/ponte/`, publicada na raiz pelo `pages.yml`, sem conta nem servidor). Na primeira vez, o jogo no dev dá um pulo até ela. A ponte lê os recordes e o piloto escolhido lá e devolve o jogador ao dev com eles no pedaço do link depois do `#`, que não vai a servidor nenhum. Ela só sabe voltar para o `dev.autopobre.com.br`. Na ida, o dev põe no caminho de volta uma chave aleatória que só aquela aba conhece, e na volta só aceita os recordes que trazem essa chave: um link montado por outra pessoa, com recordes inventados, é ignorado (a ponte não precisou mudar, porque a chave vai e volta dentro do caminho). O pulo só acontece quando a variável `PONTE_RECORDES` do `wrangler.jsonc` aponta para o site que tem a ponte (`https://autopobre.com.br`): ligue-a depois de a ponte estar no ar.
 
 Pista nova no jogo: rode `node gerar_pisos.mjs` (o piso dela) e publique o Worker de novo (`.\wrangler deploy`), porque ele leva o `circuits.js` e os pisos junto.
 
@@ -51,7 +52,7 @@ Uma conta com `admin=1` no banco também é administradora; essa marca fica para
 O painel nunca mostra a conta Google de ninguém. Os **eventos** (`src/eventos.js`) não guardam IP e ficam 90 dias:
 - conta criada, entrou, saiu;
 - trocou o apelido, subiu recordes antigos;
-- volta conferida, volta recusada com o motivo (no máximo 5 recusas registradas por bilhete);
+- recorde conferido (só quando a volta passa a ser o melhor tempo do piloto), volta recusada com o motivo (no máximo 5 recusas registradas por conta a cada hora);
 - conta apagada.
 
 Quando a conta é apagada, os eventos dela vão junto, e fica só um "conta apagada" sem dono. "Baixar meus dados" traz os eventos da própria pessoa.
@@ -100,7 +101,7 @@ Para trocar o segredo do Google, rode `.\wrangler secret put GOOGLE_CLIENT_SECRE
 
 ## Custos
 
-Plano gratuito do Workers (100 mil requisições por dia) e do D1 (5 milhões de leituras e 100 mil escritas por dia). Abrir o jogo faz uma leitura. Só o login, o apelido, sair e apagar escrevem.
+Plano gratuito do Workers (100 mil requisições por dia) e do D1 (5 milhões de leituras e 100 mil escritas por dia). Abrir o jogo faz uma leitura, e cada pedaço de uma volta faz outra (a sessão). Escrevem: o login, o apelido, sair, apagar, a subida dos recordes antigos, cada recorde novo e até 5 recusas por hora. Os limites por conta acima seguram quem tentar gastar a cota. A regra do Cloudflare (30 pedidos a cada 10 s por IP) segura rajadas, mas não impede alguém insistente de gastar devagar as 100 mil requisições do dia.
 
 ## Testar neste PC
 

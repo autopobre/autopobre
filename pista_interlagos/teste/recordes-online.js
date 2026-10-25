@@ -12,7 +12,8 @@
 //   ⚠️ unchecked, until IMPORT_UNTIL: this address's, and the main link's. A browser keeps records per address,
 //   so the main link's come through its bridge (pista_interlagos/ponte/levar-recordes.html): the page hops there
 //   once and comes back with them in the link's "#" part. The server turns the hop on (/api/conta/eu says where
-//   the bridge is) once the bridge is published.
+//   the bridge is) once the bridge is published. The way back carries a random key this tab keeps: records in a
+//   link someone else made (a key this tab never took) are not this pilot's, and do not go up.
 import {CIRCUITS} from './circuits.js';
 import {encodeGhost} from './ghost-lap.js';
 import {readRecords} from './lap-records.js';
@@ -23,9 +24,10 @@ const API='/api/recordes';
 // link's, through the bridge. v2 went out before the bridge was on, so the accounts that sent this address's alone
 // then send once more; the server's own mark was cleared with it, and it keeps the best.)
 const IMPORTED='autopobre-recordes-importados-v3';
-// The bridge's records in the link back, and the hop under way in this tab (a bridge that did not answer is not
-// asked again: this address's records go up alone).
-const BRIDGE_PARAM='recordes-do-principal',HOPPING='autopobre-ponte-recordes';
+// The bridge's records in the link back, the key the way back carries, and the hop under way in this tab (its key;
+// a bridge that did not answer is not asked again: this address's records go up alone).
+const BRIDGE_PARAM='recordes-do-principal',BRIDGE_KEY='chave-da-ponte',HOPPING='autopobre-ponte-recordes';
+const newKey=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
 const BRIDGES=/^(?:https:\/\/autopobre\.com\.br|http:\/\/127\.0\.0\.1:\d{2,5})$/;
 const IMPORT_UNTIL=Date.parse('2026-12-01T03:00:00Z');
 // The build (preparar_publicacao.py versions every module); 'local' in the preview.
@@ -113,8 +115,8 @@ export class OnlineRecords {
     const r=this.run,{body,lap}=this.queue.shift(),answer=await call(this.base,'/pedaco',{bilhete:r.ticket,...body});
     if(this.run!==r)continue;
     if(answer.data.bilhete)r.ticket=answer.data.bilhete;
-    // An outdated ticket or a clock that went back: a new ticket on the next frame.
-    else if(answer.status===409){this.run=null;this.queue=[];break;}
+    // An outdated ticket, a clock that went back or a session that ended: a new ticket on the next frame.
+    else if(answer.status===409||answer.status===401){this.run=null;this.queue=[];break;}
     if(answer.data.volta&&lap)this.verdict(answer.data.volta,r,lap);
    }
   }finally{this.busy=false;}
@@ -146,16 +148,21 @@ export class OnlineRecords {
   if(this.importing||!store||!account?.apelido||Date.now()>=IMPORT_UNTIL)return;
   let done;try{done=JSON.parse(store.getItem(IMPORTED)||'{}')||{};}catch{done={};}
   if(done[account.desde])return;
-  // Back from the bridge: its records, and the link cleaned of them. Not yet there: the hop, once per tab.
-  const hash=new URLSearchParams(place?.hash?.slice(1)??''),packed=hash.get(BRIDGE_PARAM),hops=session();
-  let main=null;
-  if(packed!==null){
-   main=unpackBridge(packed);hash.delete(BRIDGE_PARAM);hops?.removeItem(HOPPING);
-   const rest=hash.toString();globalThis.history?.replaceState(null,'',place.pathname+place.search+(rest?'#'+rest:''));
-  }else if(typeof bridge==='string'&&BRIDGES.test(bridge)&&hops&&!hops.getItem(HOPPING)){
-   hops.setItem(HOPPING,'1');
+  // Back from the bridge with this tab's key: its records (none, when it could not read them), and the link cleaned
+  // of them. Records under another key, or none: a link that only looks like the way back, left out. Not yet there:
+  // the hop, once per tab.
+  const hash=new URLSearchParams(place?.hash?.slice(1)??''),packed=hash.get(BRIDGE_PARAM),key=hash.get(BRIDGE_KEY),hops=session(),waiting=hops?.getItem(HOPPING);
+  let main=null,own=place?.hash??'';
+  if(packed!==null||key!==null){
+   if(packed!==null&&/^[0-9a-f]{32}$/.test(waiting??'')&&key===waiting){main=unpackBridge(packed)??{records:[],pilot:''};hops.removeItem(HOPPING);}
+   hash.delete(BRIDGE_PARAM);hash.delete(BRIDGE_KEY);
+   const rest=hash.toString();own=rest?'#'+rest:'';globalThis.history?.replaceState(null,'',place.pathname+place.search+own);
+  }
+  if(!main&&typeof bridge==='string'&&BRIDGES.test(bridge)&&hops&&!waiting){
+   const fresh=newKey();hops.setItem(HOPPING,fresh);
    const local=bridge.startsWith('http://127.0.0.1:')?`&porta=${encodeURIComponent(place.port)}`:'';
-   place.assign(`${bridge}/levar-recordes.html#volta=${encodeURIComponent(place.pathname+place.search+place.hash)}${local}`);
+   const back=place.pathname+place.search+(own.length>1?own+'&':'#')+BRIDGE_KEY+'='+fresh;
+   place.assign(`${bridge}/levar-recordes.html#volta=${encodeURIComponent(back)}${local}`);
    return;
   }
   this.importing=true;

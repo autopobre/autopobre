@@ -2,7 +2,8 @@
 // a clean lap (checked, kept as the pilot's best, on the board), and every lap the server must refuse
 // (pause, slow motion, a clock running ahead, a lap too quick for the track, ghosts that are not the lap),
 // tampered and outdated tickets, the old records' one-way import and its deadline, the board, the
-// circuits' bests, and the records in the player's data and gone with the account.
+// circuits' bests, the records in the player's data and gone with the account, a ticket without its account's
+// session, and a ticket sent again (no write it has not earned).
 import assert from 'node:assert/strict';
 import {encodeGhost} from '../../pista_interlagos/teste/ghost-lap.js';
 import {CIRCUITS} from '../../pista_interlagos/teste/circuits.js';
@@ -177,17 +178,47 @@ await check('the records are in the player\'s data and go with the account',asyn
  assert.ok(!(await (await browser().go('/api/recordes?circuito=interlagos&modo=normal')).json()).recordes.some(x=>x.apelido==='Bia Ventania'));
 });
 
-await check('a ticket is its account\'s as it was: one that took the number of a deleted account gets nothing from it',async()=>{
- // The newest account takes a ticket and leaves; the next to arrive gets its number (SQLite reuses the highest).
- const gone=await pilot('200000000000000000020','Sumido'),r=await run(gone);await r.send({relogio:0,cruzou:true});
+await check('a ticket goes with its account\'s session: signed out, another account, or one that took a deleted account\'s number, it ends',async()=>{
+ const b=await pilot('200000000000000000022','Saiu Cedo'),r=await run(b);await r.send({relogio:0,cruzou:true});
+ const other=await pilot('200000000000000000023','Outra Pessoa');now+=CHUNK_EVERY*1000;
+ assert.equal((await other.post('/api/recordes/pedaco',{bilhete:r.ticket,relogio:CHUNK_EVERY})).status,409,'another account\'s session');
+ assert.equal((await b.post('/api/conta/sair',{})).status,200);
+ assert.equal((await b.post('/api/recordes/pedaco',{bilhete:r.ticket,relogio:CHUNK_EVERY,cruzou:true,volta:{}})).status,401,'signed out');
+ // The newest account takes a ticket and is deleted; the next to arrive gets its number (SQLite reuses the highest).
+ const gone=await pilot('200000000000000000020','Sumido'),g=await run(gone);await g.send({relogio:0,cruzou:true});
+ const goneId=rows("SELECT id FROM usuarios WHERE apelido='Sumido'")[0].id;
  assert.equal((await gone.post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
- const victim=await pilot('200000000000000000021','Vitima');
- const id=rows("SELECT id FROM usuarios WHERE apelido='Vitima'")[0].id;
+ const victim=await pilot('200000000000000000021','Vitima'),id=rows("SELECT id FROM usuarios WHERE apelido='Vitima'")[0].id;
+ assert.equal(id,goneId,'the number came back');
+ for(let t=CHUNK_EVERY;t<120;t+=CHUNK_EVERY){now+=CHUNK_EVERY*1000;assert.equal((await victim.post('/api/recordes/pedaco',{bilhete:g.ticket,relogio:t})).status,409);}
+ now+=1000*(120-Math.floor(119.999/CHUNK_EVERY)*CHUNK_EVERY);
+ assert.equal((await victim.post('/api/recordes/pedaco',{bilhete:g.ticket,relogio:120,cruzou:true,volta:{fantasma:ghost('interlagos',120)}})).status,409);
+ assert.equal(rows(`SELECT COUNT(*) AS n FROM recordes WHERE usuario_id=${id}`)[0].n,0);
+ assert.deepEqual(rows(`SELECT tipo FROM eventos WHERE usuario_id=${id} ORDER BY id`).map(e=>e.tipo),['conta_criada','apelido'],'nothing of the old ticket on her account');
+});
+
+await check('a ticket sent again spends no writes: a record once, refusals and records counted per account and hour',async()=>{
+ const b=await pilot('200000000000000000024','Repete Muito'),id=rows("SELECT id FROM usuarios WHERE apelido='Repete Muito'")[0].id;
+ const count=tipo=>rows(`SELECT COUNT(*) AS n FROM eventos WHERE usuario_id=${id} AND tipo='${tipo}'`)[0].n;
+ // A fresh ticket's first chunk sent with a lap again and again, and fresh tickets too: refused each time, 5 written.
+ const fresh=(await run(b)).ticket;
+ for(let i=0;i<8;i++)assert.match((await b.post('/api/recordes/pedaco',{bilhete:fresh,relogio:0,cruzou:true,volta:{}})).volta.recusada,/pausa/);
+ for(let i=0;i<3;i++)await b.post('/api/recordes/pedaco',{bilhete:(await run(b)).ticket,relogio:0,cruzou:true,volta:{}});
+ assert.equal(count('recusada'),5);
+ now+=3600001;await b.post('/api/recordes/pedaco',{bilhete:fresh,relogio:0,cruzou:true,volta:{}});
+ assert.equal(count('recusada'),6,'an hour later, one more');
+ // A clean lap's last crossing sent ten times: checked each time, written once.
+ const r=await run(b);await r.send({relogio:0,cruzou:true});
  for(let t=CHUNK_EVERY;t<120;t+=CHUNK_EVERY){now+=CHUNK_EVERY*1000;await r.send({relogio:t});}
  now+=1000*(120-Math.floor(119.999/CHUNK_EVERY)*CHUNK_EVERY);
- const lap=(await r.send({relogio:120,cruzou:true,volta:{fantasma:ghost('interlagos',120)}})).volta;
- assert.match(lap.recusada,/conta não existe mais/);
- assert.equal(rows(`SELECT COUNT(*) AS n FROM recordes WHERE usuario_id=${id}`)[0].n,0);
+ const before=r.ticket,fantasma=ghost('interlagos',120),verdicts=[];
+ for(let i=0;i<10;i++)verdicts.push((await b.post('/api/recordes/pedaco',{bilhete:before,relogio:120,cruzou:true,volta:{fantasma}})).volta);
+ assert.deepEqual(verdicts.map(v=>[v.conferida,v.recorde]),[[true,true],...Array(9).fill([true,false])]);
+ assert.equal(count('conferida'),1);
+ // 120 records in the hour: the next lap is checked but not written.
+ const insert=local.DB.sqlite.prepare("INSERT INTO eventos (quando,tipo,usuario_id) VALUES (?,'conferida',?)");for(let i=1;i<120;i++)insert.run(now,id);
+ assert.match((await (await run(b)).lap(118)).recusada,/muitos recordes/);
+ assert.equal(rows(`SELECT volta_ms FROM recordes WHERE usuario_id=${id}`)[0].volta_ms,120000);
 });
 
 await check('the ghost reader matches the game\'s encoder',async()=>{

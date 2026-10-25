@@ -1,7 +1,8 @@
 // The records' bridge from autopobre.com.br to dev.autopobre.com.br (pista_interlagos/ponte/levar-recordes.js) and
 // the test version's side of it (recordes-online.js unpackBridge, importOld): what is packed, that it goes back only
-// to the test version, the link back keeping the game's own "#" part, the hop made once per tab, and the main
-// link's records joining this address's in the one-time import (the pilot's best of each circuit and mode).
+// to the test version, the link back keeping the game's own "#" part, the hop made once per tab with a key that
+// must come back (records in a link someone else made stay out), and the main link's records joining this
+// address's in the one-time import (the pilot's best of each circuit and mode).
 import assert from 'node:assert/strict';
 import {packRecords,backTo,linkBack,DEV,PARAM} from '../ponte/levar-recordes.js';
 
@@ -44,18 +45,28 @@ let replaced=null;globalThis.history={replaceState:(a,b,url)=>{replaced=url;}};
 globalThis.fetch=async(url,init)=>{sent.push({url,body:JSON.parse(init.body)});return new Response('{"importados":2}',{headers:{'Content-Type':'application/json'}});};
 const online=new OnlineRecords({base:'/api/recordes',now:()=>0}),account={apelido:'Bob',desde:'2026-10-25T10:00:00.000Z'};
 let went=null;const page=hash=>({hash,pathname:'/',search:'?intro=0',port:'8869',assign:url=>{went=url;}});
-await online.importOld(account,['Bob'],'https://autopobre.com.br',page('#desafio=sala'));
-assert.equal(went,'https://autopobre.com.br/levar-recordes.html#volta=%2F%3Fintro%3D0%23desafio%3Dsala','to the bridge, with the way back');
-assert.equal(sent.length,0);assert.equal(tab.getItem('autopobre-ponte-recordes'),'1');
-went=null;
+// A link someone else made, records in it, in a tab that never hopped: they stay out, and the hop goes on.
 await online.importOld(account,['Bob'],'https://autopobre.com.br',page(`#desafio=sala&${PARAM}=${packed}`));
-assert.equal(went,null);assert.equal(replaced,'/?intro=0#desafio=sala','the link loses the records, keeps the room');
+assert.equal(sent.length,0,'records in a link this tab did not ask for');assert.equal(replaced,'/?intro=0#desafio=sala','and the link loses them');
+const key=tab.getItem('autopobre-ponte-recordes');assert.match(key,/^[0-9a-f]{32}$/,'the hop keeps a random key');
+assert.equal(went,`https://autopobre.com.br/levar-recordes.html#volta=${encodeURIComponent(`/?intro=0#desafio=sala&chave-da-ponte=${key}`)}`,'to the bridge, with the way back and the key in it');
+// The bridge's own code sends the pilot back with the records, the key riding in the way back.
+const answer=new URL(linkBack(backTo(new URL(went).hash,prod),packed));
+assert.equal(answer.origin+answer.pathname+answer.search,DEV+'/?intro=0');
+went=null;replaced=null;
+await online.importOld(account,['Bob'],'https://autopobre.com.br',page(answer.hash));
+assert.equal(went,null);assert.equal(replaced,'/?intro=0#desafio=sala','the link loses the records and the key, keeps the room');
+assert.equal(tab.getItem('autopobre-ponte-recordes'),null);
 assert.equal(sent.length,1);
 assert.deepEqual(sent[0].body.recordes.sort((a,b)=>a.circuito.localeCompare(b.circuito)),[
  {circuito:'chapeco',modo:'normal',volta_ms:95000,data:null},{circuito:'interlagos',modo:'normal',volta_ms:99000,data:null}],
  'the best of both addresses (99 here beats 101.25 there), the main link\'s other pilot left out');
 assert.ok(JSON.parse(dev.getItem('autopobre-recordes-importados-v3'))[account.desde],'marked');
 await online.importOld(account,['Bob'],'https://autopobre.com.br',page(''));assert.equal(sent.length,1,'never again');
+// Records under a key this tab did not take (a link dressed as the way back) never go up: Zé's Cascavel lap stays out.
+tab.setItem('autopobre-ponte-recordes','a'.repeat(32));went=null;
+await online.importOld({apelido:'Zé Ninguém',desde:'2026-10-25T10:30:00.000Z'},['Zé Ninguém'],'https://autopobre.com.br',page(answer.hash));
+assert.equal(went,null);assert.equal(sent.length,1,'another key: not this tab\'s answer');
 // A tab whose hop did not come back (the bridge did not answer) sends this address's records alone, once.
 const other={apelido:'Ana',desde:'2026-10-25T11:00:00.000Z'};tab.setItem('autopobre-ponte-recordes','1');went=null;
 await online.importOld(other,['Ana'],'https://autopobre.com.br',page(''));assert.equal(went,null);assert.ok(JSON.parse(dev.getItem('autopobre-recordes-importados-v3'))[other.desde]);

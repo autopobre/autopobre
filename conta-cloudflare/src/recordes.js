@@ -12,9 +12,12 @@
 // - Its ghost (the game's own recording, ghost-lap.js) must match: recorded at the game's rates, as long as
 //   the lap, from the line around the whole track (circuits.js), the car covering it, never faster than an
 //   Opala goes, never pushed or turned harder than one can be, never gaining track it did not drive.
-// - The ticket is the account's as it was then (its Google account, sealed in it): a lap for an account deleted
-//   since, or for a new one that took its number, is refused.
-// Only a pilot's best goes in, with its ghost ("ver a volta", later).
+// - The ticket is the account's as it was then (its Google account, sealed in it), and every chunk comes with that
+//   account's session: signed out, deleted, or another account in the browser (one that took a deleted account's
+//   number too), the ticket ends.
+// Only a pilot's best goes in, with its ghost ("ver a volta", later). The ticket keeps no count the server trusts:
+// sent again, an old one would write again, so what an account may write (records, refusals in the panel's events)
+// is counted per hour in the database (eventos.js recent).
 //
 // nao_verificado: an old record of a browser, from before the account (/importar), once per account (the
 // server keeps when), until IMPORT_UNTIL, and the board shows them flagged ⚠️. A pilot with a checked lap
@@ -27,7 +30,7 @@
 import {CIRCUITS} from '../../pista_interlagos/teste/circuits.js';
 import {LINE_TIMES} from './pisos.js';
 import {json,seal,unseal,signedIn,notSignedIn} from './base.js';
-import {event} from './eventos.js';
+import {event,recent,HOUR} from './eventos.js';
 
 const TICKET='bilhete-v1';
 export const CHUNK_EVERY=10;  // seconds of the game's clock between chunks (the game keeps this pace)
@@ -53,7 +56,8 @@ const GAME_START=Date.parse('2026-09-01T00:00:00Z');
 const FLOOR=.85;
 const fastest=circuit=>Math.ceil(1000*(LINE_TIMES[circuit]?LINE_TIMES[circuit]*FLOOR:CIRCUITS[circuit].length/70));
 const GHOST_BYTES=120000;     // a lap's ghost as the game encodes it (3600 samples at most: ~70 kB)
-const LOGGED_REFUSALS=5;      // refused laps a ticket writes to the panel's events (the rest only answer: no writes to spend)
+const LOGGED_REFUSALS=5;      // refused laps an account writes to the panel's events in an hour (the rest only answer)
+const SAVED_LAPS=120;         // records an account may write in an hour: more than a pilot sets, even at Curvelo's 32 s
 export const RECORDS_BODY={'/api/recordes/pedaco':GHOST_BYTES+4096,'/api/recordes/importar':16384};
 const known=(c,m,k)=>typeof c==='string'&&Object.hasOwn(CIRCUITS,c)&&MODES.includes(m)&&CARS.includes(k);
 const UPSERT=`INSERT INTO recordes (usuario_id,circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma) VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -134,6 +138,8 @@ async function ticket(request,env,body){
 async function chunk(request,env,body){
  const t=await unseal(env,TICKET,body.bilhete),now=Date.now(),g=body.relogio;
  if(!t||now-t.s0>RUN_HOURS*3600000)return json({erro:'Bilhete vencido ou inválido: peça outro.'},409);
+ const s=await signedIn(request,env);if(!s)return notSignedIn();
+ if(s.id!==t.u||s.google_sub!==t.sb)return json({erro:'Bilhete de outra conta: peça outro.'},409);
  if(typeof g!=='number'||!Number.isFinite(g)||g<0||g>86400)return json({erro:'Relógio inválido.'},400);
  if(t.gl!==null&&g<t.gl-1e-6)return json({erro:'O relógio voltou: peça outro bilhete.'},409);
  let clean=false;
@@ -153,12 +159,14 @@ async function chunk(request,env,body){
  return json(out);
 }
 
-// The lap that ends at game time g: checked, and kept when it is the pilot's best. Its verdict goes to the panel's
-// events too (a refusal with its reason, up to LOGGED_REFUSALS a ticket).
+// The lap that ends at game time g: checked, and kept when it is the pilot's best. A record goes to the panel's events,
+// and so does a refusal with its reason, up to LOGGED_REFUSALS an hour for the account.
 async function judge(env,t,g,now,from,lap){
  const verdict=await check(env,t,g,now,from,lap);
- if(!verdict.conferida&&(t.rf=(t.rf??0)+1)<=LOGGED_REFUSALS)
-  await event(env,'recusada',t.u,{circuito:t.c,modo:t.m,volta_ms:verdict.tempo_ms??null,motivo:verdict.recusada}).run().catch(()=>{});
+ if(!verdict.conferida)try{
+  if(await recent(env,t.u,['recusada'],HOUR)<LOGGED_REFUSALS)
+   await event(env,'recusada',t.u,{circuito:t.c,modo:t.m,volta_ms:verdict.tempo_ms??null,motivo:verdict.recusada}).run();
+ }catch{}
  return verdict;
 }
 async function check(env,t,g,now,from,lap){
@@ -168,10 +176,11 @@ async function check(env,t,g,now,from,lap){
  if(ms<fastest(t.c))return {tempo_ms:ms,recusada:'a volta foi rápida demais para esta pista'};
  const ghost=readGhost(lap?.fantasma),why=ghostProblem(ghost,time,t.c);
  if(why)return {tempo_ms:ms,recusada:why};
- if(!await env.DB.prepare('SELECT 1 FROM usuarios WHERE id=? AND google_sub=?').bind(t.u,t.sb).first())return {tempo_ms:ms,recusada:'a conta não existe mais'};
- const [r]=await env.DB.batch([env.DB.prepare(UPSERT).bind(t.u,t.c,t.m,t.k,'conferido',ms,t.v,now,now,JSON.stringify(ghost.stored)),
-  event(env,'conferida',t.u,{circuito:t.c,modo:t.m,volta_ms:ms})]);
- return {tempo_ms:ms,conferida:true,recorde:r.meta.changes>0};
+ // Written only when it beats the pilot's best (the same crossing sent again changes nothing).
+ if(await recent(env,t.u,['conferida'],HOUR)>=SAVED_LAPS)return {tempo_ms:ms,recusada:'muitos recordes gravados nesta hora: tente de novo mais tarde'};
+ const r=await env.DB.prepare(UPSERT).bind(t.u,t.c,t.m,t.k,'conferido',ms,t.v,now,now,JSON.stringify(ghost.stored)).run(),record=r.meta.changes>0;
+ if(record)await event(env,'conferida',t.u,{circuito:t.c,modo:t.m,volta_ms:ms}).run().catch(()=>{});
+ return {tempo_ms:ms,conferida:true,recorde:record};
 }
 
 // A browser's records from before the account, once per account (the server keeps when: whatever browsers say),

@@ -6,7 +6,7 @@ import {CIRCUITS} from './circuits.js';
 
 const $=id=>document.getElementById(id);
 const KINDS={conta_criada:'Conta criada',entrou:'Entrou',saiu:'Saiu',apelido:'Trocou o apelido',importou:'Subiu recordes antigos',
- conferida:'Volta conferida',recusada:'Volta recusada',conta_apagada:'Conta apagada'};
+ conferida:'Recorde conferido',recusada:'Volta recusada',conta_apagada:'Conta apagada'};
 const MODES={normal:'Corrida normal',immersive:'Modo História'};
 const when=ms=>ms?new Date(ms).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'—';
 const lap=ms=>{if(!Number.isFinite(ms))return '—';const s=ms/1000,m=Math.floor(s/60);return `${m}:${(s-m*60).toFixed(3).padStart(6,'0')}`;};

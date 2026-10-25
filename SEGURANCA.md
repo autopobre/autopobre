@@ -1,5 +1,20 @@
 # Revisão para publicação — 13/09/2026
 
+## Atualização — 25/10/2026 (noite): segunda revisão do login e dos recordes
+
+Uma segunda revisão leu o servidor das contas, o painel, o jogo e a ponte, e atacou cada ponto suspeito contra o servidor local. Não encontrou injeção de SQL (tudo usa parâmetros) nem de HTML (só `textContent`; CSP estrita no ar), nem vazamento de dados pessoais. Os cabeçalhos no ar e os segredos do Worker (`SEAL_KEY`, `ADMINS`, `GOOGLE_CLIENT_SECRET`) foram conferidos. Corrigido:
+
+| Achado | Correção |
+|---|---|
+| O bilhete fica com o jogo, e o limite de "5 recusas por bilhete" morava dentro dele. Reenviar o mesmo bilhete gravava um evento a cada vez: 40 reenvios deram 40 recusas, e a mesma passagem pela linha reenviada 10 vezes deu 10 "conferida". Mesmo com o limite de pedidos do Cloudflare, um IP esgotava em poucas horas as escritas do dia do D1. O apelido também podia ser trocado sem limite. | O que cada conta grava é contado no banco, por hora: até 120 recordes, 5 recusas no registro e 10 trocas de apelido. O evento "conferida" só é gravado quando a volta vira o melhor tempo do piloto, e o mesmo apelido de novo não grava nada. A migração `0005_limites.sql` troca o índice dos eventos por (conta, hora). |
+| O pedaço do relógio não conferia a sessão. Um bilhete valia por até 8 horas depois de **Sair** ou de apagar a conta. Como o banco reaproveita o número de uma conta apagada, as recusas do bilhete velho caíam na conta nova. | Cada pedaço precisa vir com a sessão da conta do bilhete (o mesmo número e a mesma conta Google). Sem sessão: 401. Com outra conta: 409. O jogo pede um bilhete novo nos dois casos. |
+| A volta da ponte (`#recordes-do-principal=`) era aceita de qualquer link. Bastava um link montado por outra pessoa, aberto por um piloto logado que ainda não tinha subido os antigos, para mandar recordes inventados em nome dele (por exemplo, 1:36 em Interlagos) e gastar a subida única da conta. | Na ida, o dev guarda na aba uma chave aleatória e a põe no caminho de volta. Na volta, só aceita os recordes com essa chave. Um link de fora é ignorado e limpo, e o pulo para a ponte acontece normalmente. A ponte não mudou, porque a chave viaja dentro do caminho de volta que ela já devolve. |
+
+Continua em aberto:
+- **Selos:** uma volta inventada (um anel liso) de 96,3 s ganha ✓ em Interlagos, onde o piso é 85% da linha ideal e o melhor real é 1:49,2. Os limites de física do fantasma são cerca do dobro do que um Opala faz, então uma volta real acelerada em 10% também passaria. Um ⚠️ antigo no piso fica acima de todos os ✓, porque a tabela ordena só pelo tempo. Falta decidir a ordem ✓/⚠️ e apertar os limites a partir dos fantasmas reais.
+- **Cookie no GitHub:** o navegador manda o cookie de sessão em todo pedido de arquivo do dev, e o GitHub Pages o recebe. Fecha com uma Transform Rule do Cloudflare que remove o `Cookie` fora de `/api/` (não conferido).
+- **Cota de requisições do Worker:** a regra de 30 pedidos a cada 10 s por IP segura rajadas, mas alguém insistente ainda gasta as 100 mil do dia.
+
 ## Atualização — 25/10/2026 (noite): painel de administração
 
 `dev.autopobre.com.br/admin.html` mostra resumo, usuários, eventos e últimos recordes. É só leitura, e é do pacote do dev; o link principal e o `/dev/` antigo não o recebem, e a trava da publicação também procura `/api/admin`.

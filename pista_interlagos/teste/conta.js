@@ -58,7 +58,7 @@ export class Conta {
    <li><b>Sessão:</b> um cookie <code>__Host-ap_sessao</code> (HttpOnly, Secure, SameSite=Lax) que dura 30 dias. O servidor guarda só o SHA-256 dele, nunca o valor. Sair apaga a sessão também no servidor.</li>
    <li><b>Onde fica:</b> num banco Cloudflare D1, no leste dos EUA. Ficam a conta (identificador, apelido, datas), as sessões e os recordes.</li>
    <li><b>Recordes:</b> pista, modo, tempo, versão do jogo, data e o fantasma da volta. Uma volta é <i>conferida</i> quando o servidor acompanha o relógio dela, com pedaços enviados a cada 10 segundos, não deixa passar volta absurdamente mais rápida que a linha ideal do Opala, e confere o trajeto. Os recordes antigos (deste navegador e do autopobre.com.br) sobem uma única vez por conta, marcados com ⚠️ (recordes de versões anteriores do Auto Pobre podem conter erros).</li>
-   <li><b>Registro de eventos:</b> quando a conta foi criada, entradas e saídas, troca de apelido, a subida dos recordes antigos e as voltas conferidas ou recusadas (com o motivo). Sem IP, guardado por 90 dias e visto só pela administração do jogo.</li>
+   <li><b>Registro de eventos:</b> quando a conta foi criada, entradas e saídas, troca de apelido, a subida dos recordes antigos, os recordes conferidos e as voltas recusadas (com o motivo). Sem IP, guardado por 90 dias e visto só pela administração do jogo.</li>
    <li><b>Seus direitos (LGPD):</b> "Baixar meus dados" entrega tudo num arquivo JSON, e "Apagar conta" apaga a conta, as sessões e os recordes. As cópias de segurança automáticas do banco somem em até 7 dias.</li>
   </ul>
  </details>
