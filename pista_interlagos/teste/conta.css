@@ -5,11 +5,12 @@
 #menu:is(.in-session,.race-finished) #contaFaixa{display:none}
 /* Signed in with a nickname, the menu's pilot is the account's (pilot-profile.js #pilotAccount): the name, and a click opens the account. */
 #pilotAccount[hidden]{display:none}
-/* Centred as the name field it stands for; its tag keeps none of the margin the pilot's message (also a small) has. */
+/* Centred as the name field it stands for. */
 #menu #pilotAccount{display:inline-flex;align-items:center;gap:8px;width:auto;min-height:0;height:auto;margin:0;padding:6px 10px;-webkit-tap-highlight-color:transparent}
-#menu #pilotAccount small{margin:0;font-size:11px;font-weight:600;opacity:.75}
+/* Google's G in a white disc: signed in with Google. */
+#menu #pilotAccount .pilot-account-g{display:inline-grid;place-items:center;flex-shrink:0;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 4px #0006}
+#menu #pilotAccount .pilot-account-g svg{display:block;width:14px;height:14px}
 .menus-paddock #menu #pilotAccount{padding:4px 2px 5px;border:0;border-bottom:1.5px solid #f3ecdc55;border-radius:0;background:transparent;color:var(--mp-ink);font:500 19px/1.2 var(--mp-text);text-shadow:0 1px 6px #000c;cursor:pointer}
-.menus-paddock #menu #pilotAccount small{font:500 13px/1 var(--mp-text);color:var(--mp-yellow);opacity:1}
 /* Under the pilot, the sign-in line takes the pilot's gap to the modes. */
 .menus-paddock #menu:not(.in-session):not(.race-finished) #pilotPicker:has(+ #contaFaixa:not([hidden])){margin-bottom:6px}
 .menus-paddock #menu #contaFaixa{margin:0 0 clamp(10px,2.4vh,24px)}

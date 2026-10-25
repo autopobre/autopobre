@@ -22,6 +22,7 @@ from browser_config import browser_executable,browser_args,wait_js
 
 PORT=int(sys.argv[1]) if len(sys.argv)>1 else 8869
 API=PORT+1000
+MAIN=PORT+2000   # the main link's stand-in: only the records' bridge (pista_interlagos/ponte), on its own origin
 ROOT=Path(__file__).resolve().parents[2]
 URL=f'http://127.0.0.1:{PORT}/pista_interlagos/teste/?intro=0&cinema=off'
 RENDERS=Path(__file__).resolve().parents[1]/'renders';RENDERS.mkdir(exist_ok=True)
@@ -44,16 +45,31 @@ def start(args,ready):
 def accounts(**params):
  with urlopen(f'http://127.0.0.1:{API}/falso-google/proxima?'+'&'.join(f'{k}={v}' for k,v in params.items())) as r:return json.load(r)
 
+# Across the hop to the bridge and back the page reloads: wait on this browser's mark, whatever page is showing.
+def wait_after_hop(page,seconds=60):
+ for _ in range(seconds*5):
+  try:
+   if page.evaluate("location.port===%r&&!!localStorage.getItem('autopobre-recordes-importados-v2')" % str(PORT)):return
+  except Exception:pass
+  sleep(.2)
+ raise AssertionError('the records did not come back from the bridge')
+
 def stop_accounts():
  servers[0].terminate();servers[0].wait(10)
 
 try:
- start([node,'--no-warnings','conta-cloudflare/teste/local.mjs','--porta',str(API),'--origem',f'http://127.0.0.1:{PORT}'],f'http://127.0.0.1:{API}/api/conta/eu')
+ start([node,'--no-warnings','conta-cloudflare/teste/local.mjs','--porta',str(API),'--origem',f'http://127.0.0.1:{PORT}','--ponte',f'http://127.0.0.1:{MAIN}'],f'http://127.0.0.1:{API}/api/conta/eu')
+ start([sys.executable,'-m','http.server',str(MAIN),'--bind','127.0.0.1','--directory','pista_interlagos/ponte'],f'http://127.0.0.1:{MAIN}/levar-recordes.js')
  start([sys.executable,'pista_interlagos/scripts/servidor.py',str(PORT),'--no-browser','--conta-porta',str(API)],f'http://127.0.0.1:{PORT}/pista_interlagos/teste/')
  with sync_playwright() as p:
   browser=p.chromium.launch(executable_path=browser_executable(),headless=True,args=browser_args())
   context=browser.new_context(viewport={'width':1280,'height':800},accept_downloads=True)
   page=context.new_page();page.set_default_timeout(120000);page.on('pageerror',lambda e:errors.append(str(e)))
+  # The main link's records, on its own address: a slower Interlagos lap and a Cascavel lap of this pilot, and another pilot's.
+  page.goto(f'http://127.0.0.1:{MAIN}/',wait_until='load')
+  page.evaluate("""localStorage.setItem('autopobre-records-v1',JSON.stringify([{circuit:'interlagos',name:'Piloto Teste',mode:'normal',bestLap:101,bestRace:null,raceLaps:3,date:''},
+   {circuit:'cascavel',name:'Piloto Teste',mode:'normal',bestLap:80.5,bestRace:null,raceLaps:3,date:''},{circuit:'chapeco',name:'Alguém',mode:'normal',bestLap:90,bestRace:null,raceLaps:3,date:''}]));
+   localStorage.setItem('autopobre-pilots-v1',JSON.stringify({selected:'Piloto Teste',names:['Piloto Teste','Alguém']}))""")
   page.goto(URL,wait_until='load');wait_js(page,"document.getElementById('contaFaixa')?.hidden===false")
   s=page.evaluate(STRIP);assert s['shown'] and s['label']=='Entrar com Google',s
   page.screenshot(path=str(RENDERS/'conta_menu_fora.png'))
@@ -80,8 +96,16 @@ try:
   page.fill('#contaApelido','');page.type('#contaApelido','Piloto Teste');page.keyboard.press('KeyM')
   assert page.evaluate('window.__keys')==0,'a key left the dialog'
   page.fill('#contaApelido','Piloto Teste');page.click('#contaSalvar')
-  wait_js(page,"document.getElementById('contaAviso').textContent==='Apelido salvo.'")
+  # With the nickname, the one-time import: a hop to the main link's bridge and back with its records, the link cleaned.
+  wait_after_hop(page);wait_js(page,"document.querySelector('#pilotAccount:not([hidden]) span')?.textContent==='Piloto Teste'")
+  assert 'recordes-do-principal' not in page.url,page.url
+  board=page.evaluate("fetch('/api/recordes?circuito=cascavel&modo=normal').then(r=>r.json())")
+  assert [(r['apelido'],r['selo'],r['volta_ms']) for r in board['recordes']]==[('Piloto Teste','nao_verificado',80500)],board
+  result['ponte']='recordes do principal subiram (Cascavel 01:20.500 ⚠️)'
   s=page.evaluate(STRIP);assert s['account']=='Piloto Teste' and not s['field'] and not s['shown'],s
+  assert page.evaluate("!!document.querySelector('#pilotAccount .pilot-account-g svg')"),'the Google G beside the name'
+  page.screenshot(path=str(RENDERS/'conta_menu_g.png'),clip={'x':40,'y':330,'width':560,'height':120})
+  page.click('#pilotAccount');wait_js(page,"document.getElementById('contaDialog').open")
   page.screenshot(path=str(RENDERS/'conta_janela_dentro.png'))
   page.keyboard.press('Escape');wait_js(page,"!document.getElementById('contaDialog').open")
   page.screenshot(path=str(RENDERS/'conta_menu_dentro.png'))
@@ -90,7 +114,7 @@ try:
   assert page.text_content('#carsPilot').startswith('Piloto: Piloto Teste'),page.text_content('#carsPilot')
   page.click('#carsBack');wait_js(page,"!document.getElementById('menu').classList.contains('hidden')")
   # The old record went up (the browser is marked), and the records' Online tab shows it flagged ⚠️, the pilot's own row.
-  wait_js(page,"!!localStorage.getItem('autopobre-recordes-importados-v1')")
+  wait_js(page,"!!localStorage.getItem('autopobre-recordes-importados-v2')")
   page.click('#recordsButton');page.click('[data-records-source=online]')
   wait_js(page,"[...document.querySelectorAll('#lapRecords tbody tr')].some(tr=>tr.textContent.includes('Piloto Teste'))")
   rows=page.evaluate("[...document.querySelectorAll('#lapRecords tbody tr')].map(tr=>({text:tr.textContent,mine:tr.hasAttribute('data-mine'),badge:tr.querySelector('.record-online-badge')?.textContent}))")

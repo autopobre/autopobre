@@ -73,7 +73,8 @@ export class Conta {
  async start(){
   let data;try{data=await call('eu');}catch{return false;}
   // The menu's pilot before the account takes its place: their old records here are this account's too.
-  this.available=true;this.firstPilot=this.pilot();this.records?.addOnline(this.online);this.show(data.conta);
+  // bridge: where the main link's records can come from (null until that bridge is published; recordes-online.js).
+  this.available=true;this.firstPilot=this.pilot();this.bridge=data.ponte??null;this.records?.addOnline(this.online);this.show(data.conta);
   const store=session();
   if(store?.getItem(SIGNING_IN)){
    store.removeItem(SIGNING_IN);
@@ -88,7 +89,7 @@ export class Conta {
   // Only a change reaches the menu: redrawing the name field would drop what someone is typing there.
   if(nickname!==this.pilotGiven){this.pilotGiven=nickname;this.usePilot(nickname||null,()=>this.open());}
   this.online.setAccount(account);
-  if(nickname)this.online.importOld(account,[nickname,this.firstPilot]);
+  if(nickname)this.online.importOld(account,[nickname,this.firstPilot],this.bridge);
   $('contaRotulo').textContent=account?account.apelido||'Escolha seu apelido':'Entrar com Google';
   $('contaFora').hidden=!!account;$('contaDentro').hidden=!account;
   if(account){

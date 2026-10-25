@@ -54,3 +54,4 @@ testar_historia
 testar_combustivel
 testar_linha_ideal
 testar_paradas_rivais
+testar_ponte_recordes

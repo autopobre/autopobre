@@ -104,7 +104,7 @@ await check('the old records go up once: the pilot\'s only, then the browser is 
  assert.equal(imports(),1);
  const kept=local.DB.sqlite.prepare("SELECT circuito,volta_ms FROM recordes WHERE selo='nao_verificado' ORDER BY circuito").all().map(r=>[r.circuito,r.volta_ms]);
  assert.deepEqual(kept,[['cascavel',80000],['interlagos',96500]],'the nickname\'s and the menu\'s old pilot, not the others');
- assert.ok(JSON.parse(store.get('autopobre-recordes-importados-v1'))[account.desde],'marked');
+ assert.ok(JSON.parse(store.get('autopobre-recordes-importados-v2'))[account.desde],'marked');
  await online.importOld(account,['Fefe Rapida']);assert.equal(imports(),1,'never again from this browser');
 });
 

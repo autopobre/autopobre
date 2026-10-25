@@ -8,22 +8,42 @@
 //   (ghost-lap.js, the same recording the game keeps). The verdict shows on screen: a checked record, or
 //   why the lap was not checked.
 // - The records dialog's Online tab reads the board (lap-records.js addOnline).
-// - The old records of this browser, of the pilot that signs in, go up once per account (then this browser
-//   is marked), flagged ⚠️ unchecked, until IMPORT_UNTIL.
+// - The old records of the pilot that signs in go up once per account (then this browser is marked), flagged
+//   ⚠️ unchecked, until IMPORT_UNTIL: this address's, and the main link's. A browser keeps records per address,
+//   so the main link's come through its bridge (pista_interlagos/ponte/levar-recordes.html): the page hops there
+//   once and comes back with them in the link's "#" part. The server turns the hop on (/api/conta/eu says where
+//   the bridge is) once the bridge is published.
 import {CIRCUITS} from './circuits.js';
 import {encodeGhost} from './ghost-lap.js';
 import {readRecords} from './lap-records.js';
 import {formatTime} from './race-results.js';
 
 const API='/api/recordes';
-// Per account (its creation date): this browser sent its old records. Never again after that.
-const IMPORTED='autopobre-recordes-importados-v1';
+// Per account (its creation date): this browser sent its old records. Never again after that. (v2: with the main
+// link's, through the bridge: the accounts that sent this address's alone send once more; the server keeps the best.)
+const IMPORTED='autopobre-recordes-importados-v2';
+// The bridge's records in the link back, and the hop under way in this tab (a bridge that did not answer is not
+// asked again: this address's records go up alone).
+const BRIDGE_PARAM='recordes-do-principal',HOPPING='autopobre-ponte-recordes';
+const BRIDGES=/^(?:https:\/\/autopobre\.com\.br|http:\/\/127\.0\.0\.1:\d{2,5})$/;
 const IMPORT_UNTIL=Date.parse('2026-12-01T03:00:00Z');
 // The build (preparar_publicacao.py versions every module); 'local' in the preview.
 const VERSION=new URL(import.meta.url).searchParams.get('v')||'local';
 const RETRY=60000;            // ms before asking again for a ticket the server refused or did not answer
 
 function storage(){try{return globalThis.localStorage;}catch{return null;}}
+function session(){try{return globalThis.sessionStorage;}catch{return null;}}
+// The main link's records from the bridge's packing (levar-recordes.js packRecords), checked again here:
+// [{circuit, mode, name, bestLap, date}] and the pilot chosen there.
+export function unpackBridge(text){
+ try{
+  const raw=atob(String(text).replace(/-/g,'+').replace(/_/g,'/')),data=JSON.parse(new TextDecoder().decode(Uint8Array.from(raw,c=>c.charCodeAt(0))));
+  if(data?.v!==1||!Array.isArray(data.r))return null;
+  const records=data.r.filter(x=>Array.isArray(x)&&Object.hasOwn(CIRCUITS,x[0])&&['normal','immersive'].includes(x[1])&&typeof x[2]==='string'&&x[2].trim()&&Number.isFinite(x[3])&&x[3]>0&&x[3]<86400)
+   .slice(0,400).map(x=>({circuit:x[0],mode:x[1],name:x[2].trim().slice(0,32),bestLap:x[3],date:typeof x[4]==='string'?x[4]:''}));
+  return {records,pilot:typeof data.p==='string'?data.p.trim().slice(0,32):''};
+ }catch{return null;}
+}
 async function call(base,path,body){
  try{
   const r=await fetch(base+path,body===undefined?{cache:'no-store',credentials:'same-origin'}:{method:'POST',cache:'no-store',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -113,17 +133,34 @@ export class OnlineRecords {
   return r.data.recordes.map(x=>({name:x.apelido,bestLap:x.volta_ms/1000,badge:x.selo,mine:!!x.meu}));
  }
  async bests(mode){const r=await call(this.base,`/melhores?modo=${encodeURIComponent(mode)}`);return r.ok?r.data.melhores:{};}
- // This browser's records of the pilots in `names` (the nickname, and the pilot the menu had before the
- // account), once per account: the browser is marked even when it had none, and never sends again.
- async importOld(account,names){
+ // The old records of the pilots in `names` (the nickname, and the pilot the menu had before the account), once
+ // per account: this browser's, and the main link's through the bridge when the server names one (bridge). The
+ // browser is marked even when there were none, and never sends again. place: the page's address (a check passes its own).
+ async importOld(account,names,bridge=null,place=globalThis.location){
   const store=storage();
   if(this.importing||!store||!account?.apelido||Date.now()>=IMPORT_UNTIL)return;
   let done;try{done=JSON.parse(store.getItem(IMPORTED)||'{}')||{};}catch{done={};}
   if(done[account.desde])return;
+  // Back from the bridge: its records, and the link cleaned of them. Not yet there: the hop, once per tab.
+  const hash=new URLSearchParams(place?.hash?.slice(1)??''),packed=hash.get(BRIDGE_PARAM),hops=session();
+  let main=null;
+  if(packed!==null){
+   main=unpackBridge(packed);hash.delete(BRIDGE_PARAM);hops?.removeItem(HOPPING);
+   const rest=hash.toString();globalThis.history?.replaceState(null,'',place.pathname+place.search+(rest?'#'+rest:''));
+  }else if(typeof bridge==='string'&&BRIDGES.test(bridge)&&hops&&!hops.getItem(HOPPING)){
+   hops.setItem(HOPPING,'1');
+   const local=bridge.startsWith('http://127.0.0.1:')?`&porta=${encodeURIComponent(place.port)}`:'';
+   place.assign(`${bridge}/levar-recordes.html#volta=${encodeURIComponent(place.pathname+place.search+place.hash)}${local}`);
+   return;
+  }
   this.importing=true;
   try{
-   const pilots=names.filter(Boolean);
-   const mine=readRecords(store).filter(r=>pilots.some(p=>same(p,r.name))).map(r=>({circuito:r.circuit,modo:r.mode,volta_ms:Math.round(r.bestLap*1000),data:r.date||null}));
+   const pilots=[...names,main?.pilot].filter(Boolean);
+   const all=[...readRecords(store),...(main?.records??[])];
+   // The pilot's best on each circuit and mode, of both addresses.
+   const best=new Map();
+   for(const r of all)if(pilots.some(p=>same(p,r.name))){const k=r.circuit+'|'+r.mode,o=best.get(k);if(!o||r.bestLap<o.bestLap)best.set(k,r);}
+   const mine=[...best.values()].map(r=>({circuito:r.circuit,modo:r.mode,volta_ms:Math.round(r.bestLap*1000),data:r.date||null}));
    if(mine.length){const r=await call(this.base,'/importar',{recordes:mine.slice(0,64)});if(!r.ok&&r.status!==410)return;}
    done[account.desde]=new Date().toISOString();
    try{store.setItem(IMPORTED,JSON.stringify(done));}catch{}

@@ -46,10 +46,12 @@ const redirectUri=env=>env.ORIGEM+'/api/conta/google';
 
 const account=row=>({apelido:row.apelido??null,desde:new Date(row.criado_em).toISOString()});
 
+// The account, and where the main link's old records can come from (PONTE_RECORDES: the origin of the bridge page,
+// levar-recordes.html, set once that page is published there; the game hops to it once per account).
 async function me(request,env){
- const s=await session(request,env);
- if(!s||s.gone)return json({conta:null},200,{cookies:s?.gone?[signedOut()]:[]});
- return json({conta:account(s)});
+ const s=await session(request,env),bridge=env.PONTE_RECORDES?{ponte:env.PONTE_RECORDES}:{};
+ if(!s||s.gone)return json({conta:null,...bridge},200,{cookies:s?.gone?[signedOut()]:[]});
+ return json({conta:account(s),...bridge});
 }
 
 async function signIn(request,env,url){
