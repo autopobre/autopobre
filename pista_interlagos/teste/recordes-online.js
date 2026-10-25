@@ -52,7 +52,8 @@ async function call(base,path,body){
   return {ok:r.ok&&!!data,status:r.status,data:data??{}};
  }catch{return {ok:false,status:0,data:{}};}
 }
-const same=(a,b)=>a.toLocaleLowerCase('pt-BR')===b.toLocaleLowerCase('pt-BR');
+// A pilot's name as a person reads it: no case, no accents ("João" is "joao").
+const fold=name=>String(name).normalize('NFD').replace(/\p{M}/gu,'').trim().toLocaleLowerCase('pt-BR');
 
 export class OnlineRecords {
  // base: the server's address (a check on this machine passes its own); now(): the page's clock in ms.
@@ -135,9 +136,11 @@ export class OnlineRecords {
   return r.data.recordes.map(x=>({name:x.apelido,bestLap:x.volta_ms/1000,badge:x.selo,mine:!!x.meu}));
  }
  async bests(mode){const r=await call(this.base,`/melhores?modo=${encodeURIComponent(mode)}`);return r.ok?r.data.melhores:{};}
- // The old records of the pilots in `names` (the nickname, and the pilot the menu had before the account), once
- // per account: this browser's, and the main link's through the bridge when the server names one (bridge). The
- // browser is marked even when there were none, and never sends again. place: the page's address (a check passes its own).
+ // The old records of the person signing in, once per account: this browser's, and the main link's through the bridge
+ // when the server names one (bridge). Address by address, a browser may hold several pilots (a family's computer):
+ // the one named as the account's nickname is the person when there is one (the owner's rule), else the pilot that
+ // address's menu had last (names[1] here; the bridge brings the main link's). The browser is marked even when there
+ // were none, and never sends again. place: the page's address (a check passes its own).
  async importOld(account,names,bridge=null,place=globalThis.location){
   const store=storage();
   if(this.importing||!store||!account?.apelido||Date.now()>=IMPORT_UNTIL)return;
@@ -157,11 +160,12 @@ export class OnlineRecords {
   }
   this.importing=true;
   try{
-   const pilots=[...names,main?.pilot].filter(Boolean);
-   const all=[...readRecords(store),...(main?.records??[])];
-   // The pilot's best on each circuit and mode, of both addresses.
+   const nick=fold(account.apelido);
+   const whose=(records,last)=>{const named=records.filter(r=>fold(r.name)===nick);return named.length?named:last?records.filter(r=>fold(r.name)===fold(last)):[];};
+   const all=[...whose(readRecords(store),names[1]),...whose(main?.records??[],main?.pilot)];
+   // The person's best on each circuit and mode, of both addresses.
    const best=new Map();
-   for(const r of all)if(pilots.some(p=>same(p,r.name))){const k=r.circuit+'|'+r.mode,o=best.get(k);if(!o||r.bestLap<o.bestLap)best.set(k,r);}
+   for(const r of all){const k=r.circuit+'|'+r.mode,o=best.get(k);if(!o||r.bestLap<o.bestLap)best.set(k,r);}
    const mine=[...best.values()].map(r=>({circuito:r.circuit,modo:r.mode,volta_ms:Math.round(r.bestLap*1000),data:r.date||null}));
    // 410: the deadline passed; 409: this account's went up already (from another browser). Either way, done here.
    if(mine.length){const r=await call(this.base,'/importar',{recordes:mine.slice(0,64)});if(!r.ok&&r.status!==410&&r.status!==409)return;}

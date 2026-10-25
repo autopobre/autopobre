@@ -61,6 +61,17 @@ const other={apelido:'Ana',desde:'2026-10-25T11:00:00.000Z'};tab.setItem('autopo
 await online.importOld(other,['Ana'],'https://autopobre.com.br',page(''));assert.equal(went,null);assert.ok(JSON.parse(dev.getItem('autopobre-recordes-importados-v3'))[other.desde]);
 // A bridge the server names elsewhere is never used: no hop, this address's records alone.
 tab.removeItem('autopobre-ponte-recordes');went=null;const before=sent.length;
-await online.importOld({apelido:'Caio',desde:'2026-10-25T12:00:00.000Z'},['Bob'],'https://evil.example',page(''));
+await online.importOld({apelido:'Caio',desde:'2026-10-25T12:00:00.000Z'},['Caio','Bob'],'https://evil.example',page(''));
 assert.equal(went,null,'no hop to another site');assert.equal(sent.length,before+1);
+// Whose records, in a browser with several pilots (the owner's rule): the one named as the nickname, whoever played last;
+// with no such pilot, the one the menu had last. Accents and case do not tell names apart.
+dev.setItem('autopobre-records-v1',JSON.stringify([{circuit:'goiania',mode:'normal',name:'Joana',bestLap:112,bestRace:null,raceLaps:3,date:''},
+ {circuit:'brasilia',mode:'normal',name:'Irmão',bestLap:140,bestRace:null,raceLaps:3,date:''}]));
+tab.setItem('autopobre-ponte-recordes','1');
+let n=sent.length;await online.importOld({apelido:'JOANA',desde:'2026-10-25T13:00:00.000Z'},['JOANA','Irmão'],'https://autopobre.com.br',page(''));
+assert.deepEqual(sent.slice(n).map(s=>s.body.recordes.map(r=>r.circuito)),[['goiania']],'her own, though her brother played last');
+n=sent.length;await online.importOld({apelido:'Irmao',desde:'2026-10-25T14:00:00.000Z'},['Irmao','Joana'],'https://autopobre.com.br',page(''));
+assert.deepEqual(sent.slice(n).map(s=>s.body.recordes.map(r=>r.circuito)),[['brasilia']],'"Irmao" is "Irmão"');
+n=sent.length;await online.importOld({apelido:'Zeca',desde:'2026-10-25T15:00:00.000Z'},['Zeca','Joana'],'https://autopobre.com.br',page(''));
+assert.deepEqual(sent.slice(n).map(s=>s.body.recordes.map(r=>r.circuito)),[['goiania']],'no pilot named so: the last one played');
 console.log('Records bridge checks passed: packing, the way back to the test version only, the hop once, both addresses joined.');
