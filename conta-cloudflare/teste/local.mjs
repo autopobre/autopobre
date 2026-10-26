@@ -85,7 +85,8 @@ function fakeGoogle(){
 }
 
 // adminSecret: the Worker's ADMINS secret, as Cloudflare would pass it.
-export async function startLocal({port=8788,origem,banco=':memory:',ponte=null,admins=[],adminSecret=null}={}){
+// salaPasse: the rooms' secret (ROOM_PASS_SECRET; a check may give a short one, or none).
+export async function startLocal({port=8788,origem,banco=':memory:',ponte=null,admins=[],adminSecret=null,salaPasse=ROOM_PASS_SECRET}={}){
  const google=fakeGoogle(),DB=localD1(banco,admins);
  const server=http.createServer(async(req,res)=>{
   try{
@@ -94,7 +95,7 @@ export async function startLocal({port=8788,origem,banco=':memory:',ponte=null,a
    const headers=new Headers();for(const [k,v] of Object.entries(req.headers))if(typeof v==='string')headers.set(k,v);
    const request=new Request(url,{method:req.method,headers,body:['GET','HEAD'].includes(req.method)?undefined:Buffer.concat(chunks)});
    const env={DB,ORIGEM:origem??`http://127.0.0.1:${server.address().port}`,GOOGLE_CLIENT_ID:CLIENT_ID,GOOGLE_CLIENT_SECRET:CLIENT_SECRET,
-    GOOGLE_AUTH_URL:`http://127.0.0.1:${server.address().port}/falso-google/auth`,GOOGLE_TOKEN_URL:`http://127.0.0.1:${server.address().port}/falso-google/token`,SALA_PASSE:ROOM_PASS_SECRET,...(ponte&&{PONTE_RECORDES:ponte}),...(adminSecret&&{ADMINS:adminSecret})};
+    GOOGLE_AUTH_URL:`http://127.0.0.1:${server.address().port}/falso-google/auth`,GOOGLE_TOKEN_URL:`http://127.0.0.1:${server.address().port}/falso-google/token`,SALA_PASSE:salaPasse,...(ponte&&{PONTE_RECORDES:ponte}),...(adminSecret&&{ADMINS:adminSecret})};
    const response=url.pathname.startsWith('/falso-google/')?await google.handle(request,url):await worker.fetch(request,env);
    const out={};for(const [k,v] of response.headers)if(k!=='set-cookie')out[k]=v;
    const cookies=response.headers.getSetCookie();if(cookies.length)out['set-cookie']=cookies;

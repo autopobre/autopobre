@@ -42,5 +42,20 @@ await check('the pass: that room, that nickname, the account as an HMAC',async()
  assert.equal((await b.post('/api/conta/passe-sala',{sala:'amigos'},{Origin:'https://autopobre.com.br'})).status,403);
  assert.equal((await b.go('/api/conta/passe-sala?sala=amigos')).status,405,'a write only');
 });
+// Without the rooms' secret, or with one too short to be one (passe.js SECRET_MIN): the rooms are off, a 503 the
+// game shows as such (never a 500, which it would take for this server down and ask again for ever).
+await check('the rooms switched off: no secret, or a short one',async()=>{
+ for(const salaPasse of [null,'curto','x'.repeat(15)]){
+  const off=await startLocal({port:0,salaPasse}),base=`http://127.0.0.1:${off.port}`,jar=new Map();
+  const go=async(url,init={})=>{const headers=new Headers(init.headers);if(jar.size)headers.set('Cookie',[...jar].map(([k,v])=>`${k}=${v}`).join('; '));const r=await fetch(new URL(url,base),{...init,headers,redirect:'manual'});for(const c of r.headers.getSetCookie()){const [pair]=c.split('; '),i=pair.indexOf('=');jar.set(pair.slice(0,i),pair.slice(i+1));}return r;};
+  const post=(path,body)=>go(path,{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  off.google.next.sub='100000000000000000079';
+  const start=await go('/api/conta/entrar?volta=/');const fromGoogle=await go(start.headers.get('Location'));await go(fromGoogle.headers.get('Location'));
+  assert.equal((await post('/api/conta/apelido',{apelido:'Desligado'})).status,200);
+  const r=await post('/api/conta/passe-sala',{sala:'amigos'});
+  assert.equal(r.status,503,String(salaPasse));assert.match((await r.json()).erro,/não estão ligadas/);
+  await off.close();
+ }
+});
 await local.close();
 console.log(`${passed} grupos de verificações do passe das salas passaram.`);

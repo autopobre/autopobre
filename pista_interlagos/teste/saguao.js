@@ -49,6 +49,7 @@ export class Lobby {
    let m;try{m=JSON.parse(e.data);}catch{return;}
    if(m?.t==='welcome')this.tries=0;
    else if(m?.t==='convite')this.invited(m);
+   else if(m?.t==='convite-cancelado'&&this.offer?.id===m.id)this.withdrawn();
   };
   ws.onclose=e=>{
    if(ws!==this.ws)return;this.ws=null;
@@ -64,30 +65,34 @@ export class Lobby {
  // room server took it), and the room's own token.
  invited(m){
   const from=playerName(m.de)||'Um anfitrião',address=typeof m.sala==='string'&&/^[A-Za-z0-9_-]{1,48}$/.test(m.sala)?m.sala:null,room=address&&roomName(address);
-  if(!room||typeof m.convite!=='string'||m.convite.length>1024)return;
-  this.show({from,address,room,token:m.convite});
+  if(!room||typeof m.convite!=='string'||m.convite.length>1024||!/^[0-9a-f]{16}$/.test(m.id??''))return;
+  this.show({from,address,room,token:m.convite,id:m.id});
  }
  show(offer){
   this.offer={...offer,until:performance.now()/1000+SHOWN};
   if(!this.root)this.build();
-  this.who.textContent=offer.from;
+  this.who.textContent=offer.from;this.text.hidden=false;this.gone.hidden=true;this.row.hidden=false;
   this.accept.textContent=this.racing()?'Sair da corrida e entrar':'Entrar na sala';
   this.root.hidden=false;
  }
  build(){
   const link=document.createElement('link');link.rel='stylesheet';link.href='./convites.css'+new URL(import.meta.url).search;document.head.append(link);
   const root=this.root=document.createElement('section');root.id='conviteSala';root.setAttribute('role','alertdialog');root.setAttribute('aria-label','Convite para uma sala');root.hidden=true;
-  const text=document.createElement('p');this.who=document.createElement('b');
-  text.append(this.who,' convidou você para uma corrida. Você entra direto na sala, sem senha.');
-  const row=document.createElement('div');
+  // (only the invitation and yes or no: the host is the one told it lets the pilot in without a password)
+  const text=this.text=document.createElement('p');this.who=document.createElement('b');
+  text.append(this.who,' convidou você para uma corrida.');
+  this.gone=document.createElement('p');this.gone.hidden=true;this.gone.textContent='O anfitrião cancelou o convite.';
+  const row=this.row=document.createElement('div');
   this.accept=document.createElement('button');this.accept.type='button';this.accept.className='convite-sim';this.accept.onclick=()=>this.take();
   const no=document.createElement('button');no.type='button';no.textContent='Agora não';no.onclick=()=>this.dismiss();
-  row.append(this.accept,no);root.append(text,row);
+  row.append(this.accept,no);root.append(text,this.gone,row);
   // Its keys are its own (main.js reads keys on the document: Enter or Space here never drive).
   root.addEventListener('keydown',e=>e.stopPropagation());
   document.body.append(root);
  }
- dismiss(){this.offer=null;if(this.root)this.root.hidden=true;}
+ dismiss(){this.offer=null;clearTimeout(this.goneTimer);if(this.root)this.root.hidden=true;}
+ // Its host cancelled it before it was taken: said for a moment, then the notice goes.
+ withdrawn(){this.offer=null;this.text.hidden=true;this.row.hidden=true;this.gone.hidden=false;clearTimeout(this.goneTimer);this.goneTimer=setTimeout(()=>{if(!this.offer&&this.root)this.root.hidden=true;},4000);}
  // Taken: the invitation kept for that room, its secret too, and the room opened at its hidden address.
  take(){
   const offer=this.offer;if(!offer)return;this.dismiss();
@@ -96,7 +101,7 @@ export class Lobby {
   // (on this machine the room server is the local one too)
   this.open(address.shown+(this.server===LOCAL_SERVER?'&servidor=local':''));
  }
- info(){return {online:this.ws?.readyState===1,offer:this.offer&&{from:this.offer.from}};}
+ info(){return {online:this.ws?.readyState===1,offer:this.offer&&{from:this.offer.from,id:this.offer.id},shown:!!this.root&&!this.root.hidden,cancelled:!!this.gone&&!this.gone.hidden};}
 }
 
 // The lobby's server for this page: the room server online; on this machine only the local one, and only

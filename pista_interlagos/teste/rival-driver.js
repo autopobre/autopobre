@@ -30,8 +30,9 @@ export function rivalKit(color,number){
  const scheme=[{base:color,pin:contrast,crown:contrast},{base:contrast,pin:color,crown:color},{base:color,pin:contrast,crown:color}][k%3];
  return {suit:color,...scheme,visor:VISORS[(k>>2)%3]};
 }
-export function createRivalDriver({color,number}){
- const kit=rivalKit(color,number),parts=[[],[]];
+// kit: another suit and helmet (rivalKit's fields): a multiplayer pilot's own look (multiplayer.js lookKit).
+export function createRivalDriver({color,number,kit:own=null}){
+ const kit=own??rivalKit(color,number),parts=[[],[]];
  // Every part is one bone's, in that bone's frame, with one colour; cloth (0) or gloss (1).
  function add(g,bone,hex,gloss=0){
   for(const key of Object.keys(g.attributes))if(key!=='position'&&key!=='normal')g.deleteAttribute(key);

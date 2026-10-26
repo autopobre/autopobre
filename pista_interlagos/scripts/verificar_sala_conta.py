@@ -8,8 +8,10 @@ dev.autopobre.com.br: the local preview (servidor.py) passes /api/ on to the acc
   is tried again by itself and asks for the password; the host's opens it: she hosts;
 - Dora, with the pilots' password, opens another room nobody opened: she waits at its door;
 - Bia signs in (nickname Bia) and stays on the opening, no room: her page is online for invitations;
-- Ana's card: Convidar pilotos online lists Bia (with her record on the track, or none); Convidar;
-- Bia's page shows the invitation (from Ana; the room's name never shows); Entrar na sala opens it and she is in at
+- Ana's card: Convidar pilotos online lists Bia (with her record on the track, or none; the list tells the host the
+  invited come in without a password); she invites Dora by mistake and cancels before Dora takes it: Dora's notice
+  says it was cancelled and goes; then Convidar for Bia;
+- Bia's page shows the invitation (from Ana; neither the room's name nor any word on passwords); Entrar na sala opens it and she is in at
   once: no password typed, no door;
 - the chat: T, a line, Enter both ways, under the accounts' names; a link stays in the box, nothing sent;
   Shift+T hides and shows the chat window.
@@ -162,14 +164,25 @@ with sync_playwright() as p:
     listed = ana.evaluate("[...document.querySelectorAll('#mpOnline li')].map(li=>li.innerText.replace(/\\s+/g,' '))")
     assert not any('Ana' in r for r in listed), listed
     ana.screenshot(path=str(SHOTS / '5_ana_pilotos_online.png'))
+    assert 'sem senha' in ana.inner_text('#mpOnline'), 'the host is told the invited need no password'
+    # Dora invited by mistake: cancelled before she takes it, her notice says so and goes.
+    wrong = ana.locator('#mpOnline li', has_text='Dora')
+    wrong.get_by_role('button', name='Convidar').click()
+    wait_js(dora, "document.getElementById('conviteSala')?.hidden===false&&!!window.interlagosSaguao?.info().offer", timeout=15000)
+    wrong.get_by_role('button', name='Cancelar').click()
+    wait_js(dora, "window.interlagosSaguao.info().cancelled", timeout=15000)
+    dora.screenshot(path=str(SHOTS / '5_dora_convite_cancelado.png'))
+    assert 'cancelou' in dora.inner_text('#conviteSala'), dora.inner_text('#conviteSala')
+    wait_js(dora, "document.getElementById('conviteSala').hidden", timeout=10000)
+    report['cancelado'] = 'ok'
     row.get_by_role('button', name='Convidar').click()
-    wait_js(ana, "[...document.querySelectorAll('#mpOnline li button')].some(b=>b.textContent==='Convite enviado ✓')", timeout=15000)
+    wait_js(ana, "[...document.querySelectorAll('#mpOnline li')].some(li=>li.innerText.includes('Bia')&&li.innerText.includes('Convite enviado ✓')&&li.querySelector('button.mp-cancel'))", timeout=15000)
     report['online'] = listed
 
     # Bia's page shows it; taken, she is in the room at once: no password, no door.
     wait_js(bia, "document.getElementById('conviteSala')?.hidden===false", timeout=15000)
     invite = bia.inner_text('#conviteSala')
-    assert 'Ana' in invite and ROOM not in invite, invite
+    assert 'Ana' in invite and ROOM not in invite and 'senha' not in invite.lower(), invite
     bia.screenshot(path=str(SHOTS / '6_bia_convite.png'))
     bia.click('#conviteSala .convite-sim')
     wait_js(bia, "window.interlagosSala?.info().role==='guest'&&interlagosSala.info().pending===false&&interlagosSala.info().members.some(m=>m.name==='Ana')", timeout=90000)

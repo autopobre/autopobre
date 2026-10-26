@@ -16,7 +16,7 @@
 //   account kicked stays out of that room, from any tab);
 // - invitations: the host sees who is online (the Saguão: every page of a signed-in pilot keeps a line
 //   to it) and invites one; the invitation, signed by the room for that account, takes the place of the
-//   password and of the door;
+//   password and of the door, while the room still has it: the host may cancel it until it is taken;
 // - the line check: an echo the server answers itself, so a player's game can tell a dead connection;
 // - limits: message size, messages and bytes per second per connection, players per room, guests
 //   waiting at the door (per IP and per account too), nothing but the key before the key, failed
@@ -51,16 +51,20 @@ const CHAT_BURST=4,CHAT_WINDOW=8000;
 // Invitations: who is online, asked no more than once per ONLINE_EVERY ms; INVITES_PER_MINUTE a room,
 // each pilot again only after INVITE_AGAIN ms. The lobby: LOBBY_MAX lines at once, LOBBY_PER_IP from one
 // IP, LOBBY_TABS pages of one account (the oldest goes).
-const ONLINE_EVERY=2000,ONLINE_MAX=50,INVITES_PER_MINUTE=10,INVITE_AGAIN=20000,LOBBY_MAX=400,LOBBY_PER_IP=8,LOBBY_TABS=4;
-const HOST_TYPES=new Set(['lobby','go','snap','pong','admit','deny','kick','config','bye','online','convidar']);
+// The invitations a room keeps (one per account, the last), at most MAX_INVITES.
+const ONLINE_EVERY=2000,ONLINE_MAX=50,INVITES_PER_MINUTE=10,INVITE_AGAIN=20000,MAX_INVITES=200,LOBBY_MAX=400,LOBBY_PER_IP=8,LOBBY_TABS=4;
+const HOST_TYPES=new Set(['lobby','go','snap','pong','admit','deny','kick','config','bye','online','convidar','desconvidar']);
 const GUEST_TYPES=new Set(['hello','ready','state','ping','bye']);
 const ROOM=/^[a-z0-9-]{1,24}$/,ID=/^[0-9a-f]{8}$/,TOKEN=/^[0-9a-f]{32}$/;
 // Close codes the game explains to the player (net-link.js); late (no key within AUTH_WAIT: a slow
 // connection, not a wrong key) and door (the door is full: room is made as the host lets guests in)
 // it just tries again, as it does a socket that sent something else before its key (1008). account:
-// no pass, or not a sound one for this room (the key is the password; the pass comes with it).
-export const CLOSE={key:4001,full:4002,denied:4003,kicked:4004,flood:4008,busy:4009,elsewhere:4010,origin:4011,late:4012,door:4013,account:4014};
-import {readPass,readInvite,makeInvite,LOBBY,ACCOUNT} from './passe.js';
+// no pass, or not a sound one for this room (the key is the password; the pass comes with it). off: this
+// server has no SALA_PASSE, or one too short to be a secret (passe.js SECRET_MIN): the rooms are switched
+// off, and the game says so instead of taking every pilot's account for a bad one. uninvited: an
+// invitation this room no longer has (its host cancelled it, or the room started anew) and no password.
+export const CLOSE={key:4001,full:4002,denied:4003,kicked:4004,flood:4008,busy:4009,elsewhere:4010,origin:4011,late:4012,door:4013,account:4014,off:4015,uninvited:4016};
+import {readPass,readInvite,makeInvite,secretReady,LOBBY,ACCOUNT,INVITE_ID,INVITE_LIFE} from './passe.js';
 import {chatText,chatLink} from '../../pista_interlagos/teste/chat-text.js';
 const hex=bytes=>[...crypto.getRandomValues(new Uint8Array(bytes))].map(b=>b.toString(16).padStart(2,'0')).join('');
 // The chat's text rules are the game's own file (chat-text.js): cleaned the same way on both sides, and a
@@ -142,6 +146,7 @@ export class Sala {
   this.tokens=new Map();
   this.banned=new Set();       // kicked tokens, retained with their bounded token history
   this.bannedAccounts=new Map(); // kicked accounts -> when: kept as long as a token's history
+  this.issued=new Map();       // account -> {id, at, used}: the invitation this room gave it (its last)
   this.pending=new Set();      // sockets that have not authenticated yet
   this.hostId=null;this.hostToken=null;this.hostAwayTimer=null;this.porteiro=true;this.racing=false;
   // The room's own name (its address): a pass is good for one room only.
@@ -213,15 +218,18 @@ export class Sala {
  grade(key){const host=sameKey(key,this.env.SENHA_ANFITRIAO),pilot=sameKey(key,this.env.SENHA_PILOTOS);return host?'host':pilot?'pilot':null;}
  async auth(peer,m){
   // The account first: without a sound pass for this room (passe.js) nobody even tries a password.
+  if(!secretReady(this.env.SALA_PASSE)){this.shut(peer,CLOSE.off,'Salas desligadas');return;}
   peer.authing=true;
   const who=await readPass(this.env.SALA_PASSE,m.passe,{room:this.name});
   peer.authing=false;
   if(peer.shut)return;
   if(!who){this.shut(peer,CLOSE.account,'Entre com a sua conta');return;}
-  // An invitation of this room for this account stands for the pilots' password, and for the door.
-  const invited=!this.grade(m.key)&&m.convite!==undefined&&await readInvite(this.env.SALA_PASSE,m.convite,{room:this.name,account:who.account});
+  // An invitation of this room for this account stands for the pilots' password, and for the door, while
+  // the room still has it (issued: not cancelled; a room started anew has none).
+  const inviteId=!this.grade(m.key)&&m.convite!==undefined?await readInvite(this.env.SALA_PASSE,m.convite,{room:this.name,account:who.account}):null;
   if(peer.shut)return;
-  const now=Date.now();
+  const now=Date.now(),offer=inviteId?this.issued.get(who.account):null;
+  const invited=!!offer&&offer.id===inviteId&&now-offer.at<INVITE_LIFE;
   this.pruneTokens(now);
   const token=typeof m.token==='string'&&TOKEN.test(m.token)?m.token:null;
   const grade=this.grade(m.key)??(invited?'pilot':null),canHost=grade==='host';
@@ -243,7 +251,8 @@ export class Sala {
    if(++a.count>=FAILS_PER_MINUTE)a.until=now+60000;
    if(!this.attempts.has(ip)&&this.attempts.size>=MAX_AUTH_SOURCES)this.attempts.delete(this.attempts.keys().next().value);
    this.attempts.set(ip,a);
-   this.settle(peer,true);this.shut(peer,CLOSE.key,'Senha errada');return;
+   // (an invitation brought in its place: one the room no longer has, which the game says as such)
+   this.settle(peer,true);if(m.convite!==undefined)this.shut(peer,CLOSE.uninvited,'Convite cancelado');else this.shut(peer,CLOSE.key,'Senha errada');return;
   }
   if(token&&this.banned.has(token)||this.bannedAccounts.has(who.account)){this.shut(peer,CLOSE.kicked,'Removido pelo anfitrião');return;}
   const old=entry?this.peers.get(entry.id):null;
@@ -264,7 +273,7 @@ export class Sala {
   // The same tab again (a reload, or a duplicated tab): the newer connection keeps the identity.
   if(old&&old!==peer){this.peers.delete(entry.id);this.shut(old,CLOSE.elsewhere,'Aberta em outra aba');}
   if(!entry){this.pruneTokens(now,true);entry={id:this.newId(),token:hex(16),admitted:false,since:now,account:who.account,host:canHost};this.tokens.set(entry.token,entry);}
-  entry.lastSeen=now;entry.name=who.name;if(invited)entry.admitted=true;
+  entry.lastSeen=now;entry.name=who.name;if(invited){entry.admitted=true;offer.used=true;}
   peer.token=entry.token;peer.id=entry.id;peer.name=who.name;peer.account=who.account;peer.canHost=canHost;peer.authed=true;clearTimeout(peer.authTimer);
   this.pending.delete(peer);this.settle(peer);
   this.peers.set(peer.id,peer);
@@ -320,7 +329,8 @@ export class Sala {
    case 'kick':{
     if(!to||to===peer)return;
     const account=to.account!==peer.account?to.account:null;
-    if(account){this.bannedAccounts.delete(account);this.bannedAccounts.set(account,Date.now());if(this.bannedAccounts.size>MAX_TOKENS)this.bannedAccounts.delete(this.bannedAccounts.keys().next().value);}
+    // (its invitation too, if it had one: kicked is out, invited or not)
+    if(account){this.bannedAccounts.delete(account);this.bannedAccounts.set(account,Date.now());if(this.bannedAccounts.size>MAX_TOKENS)this.bannedAccounts.delete(this.bannedAccounts.keys().next().value);this.issued.delete(account);}
     for(const p of [...this.peers.values()])if(p===to||account&&p.account===account&&p!==peer){this.banned.add(p.token);this.shut(p,CLOSE.kicked,'Removido pelo anfitrião');}
     return;
    }
@@ -329,6 +339,7 @@ export class Sala {
    // (the room's answer comes later: the lobby is asked first; the checks wait for it)
    case 'online':return this.online(peer);
    case 'convidar':return this.invite(peer,m);
+   case 'desconvidar':return this.uninvite(peer,m);
    // (the host's lobby says whether its race is under way: how long its place waits, gone)
    case 'lobby':this.racing=m.race?.state==='racing';this.toGuests(this.named(m));return;
    case 'go':this.toGuests(this.named(m));return;
@@ -366,7 +377,9 @@ export class Sala {
   const list=await this.lobby('/interno/online');
   if(this.peers.get(this.hostId)!==peer||!Array.isArray(list))return;
   const here=new Set([...this.peers.values()].map(p=>p.account));
-  this.send(peer,{t:'online',pilotos:list.filter(p=>!here.has(p.conta)&&!this.bannedAccounts.has(p.conta)).slice(0,ONLINE_MAX)});
+  // (convidado: one with an invitation it has not taken yet, which the host may still cancel)
+  const pending=account=>{const o=this.issued.get(account);return !!o&&!o.used&&now-o.at<INVITE_LIFE;};
+  this.send(peer,{t:'online',pilotos:list.filter(p=>!here.has(p.conta)&&!this.bannedAccounts.has(p.conta)).slice(0,ONLINE_MAX).map(p=>({conta:p.conta,nome:p.nome,...(pending(p.conta)&&{convidado:true})}))});
  }
  // The host invites a pilot (conta: as the lobby listed it) to this room, by the address it opened
  // (endereco: the room's name as written, its secret too: the room is the same once read as a name). The
@@ -376,11 +389,25 @@ export class Sala {
   if(!account||!address||address.toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,24)!==this.name||this.bannedAccounts.has(account))return;
   const now=Date.now();
   this.invited=(this.invited??[]).filter(x=>now-x.at<60000);
-  if(this.invited.length>=INVITES_PER_MINUTE||this.invited.some(x=>x.account===account&&now-x.at<INVITE_AGAIN))return;
+  // (too soon: the host hears so, its button is given back)
+  if(this.invited.length>=INVITES_PER_MINUTE||this.invited.some(x=>x.account===account&&now-x.at<INVITE_AGAIN)){this.send(peer,{t:'convidado',conta:account,entregue:false,cedo:true});return;}
   this.invited.push({account,at:now});
-  const convite=await makeInvite(this.env.SALA_PASSE,{account,room:this.name,host:peer.name});
-  const r=await this.lobby('/interno/convite',{conta:account,de:peer.name,sala:address,convite});
+  // (a new one takes the place of that pilot's last; the oldest go past MAX_INVITES)
+  const id=hex(8);this.issued.delete(account);this.issued.set(account,{id,at:now,used:false});
+  while(this.issued.size>MAX_INVITES)this.issued.delete(this.issued.keys().next().value);
+  const convite=await makeInvite(this.env.SALA_PASSE,{account,room:this.name,host:peer.name,id});
+  const r=await this.lobby('/interno/convite',{conta:account,de:peer.name,sala:address,convite,id});
   this.send(peer,{t:'convidado',conta:account,entregue:(r?.entregue??0)>0});
+ }
+ // The host cancels an invitation not taken yet (a wrong pilot invited): the room forgets it, so it lets
+ // nobody in, and that pilot's pages hear so (the notice goes). One already taken is not cancelled: that
+ // pilot is in the room (the host may kick).
+ async uninvite(peer,m){
+  const account=typeof m.conta==='string'&&ACCOUNT.test(m.conta)?m.conta:null,offer=account?this.issued.get(account):null;
+  if(!account)return;
+  const ok=!!offer&&!offer.used;
+  if(ok){this.issued.delete(account);await this.lobby('/interno/cancelado',{conta:account,id:offer.id});}
+  if(this.peers.get(this.hostId)===peer)this.send(peer,{t:'desconvidado',conta:account,ok});
  }
  toHost(m){const host=this.peers.get(this.hostId);if(host)this.send(host,m);}
  toGuests(m){const data=JSON.stringify(m);for(const p of this.peers.values())if(p.id!==this.hostId&&this.tokens.get(p.token)?.admitted){try{p.socket.send(data);}catch{}}}
@@ -430,6 +457,7 @@ export class Saguao {
   const url=new URL(request.url);
   if(url.pathname==='/interno/online')return Response.json(this.online());
   if(url.pathname==='/interno/convite')return Response.json({entregue:this.deliver(await request.json().catch(()=>null))});
+  if(url.pathname==='/interno/cancelado')return Response.json({entregue:this.cancelled(await request.json().catch(()=>null))});
   if(request.headers.get('Upgrade')!=='websocket')return new Response('Esperava WebSocket',{status:426});
   const now=Date.now(),ip=request.headers.get('CF-Connecting-IP')||'local';this.sweep(now);
   const lines=this.state.getWebSockets();
@@ -445,6 +473,7 @@ export class Saguao {
   if(a.account||a.authing)return;
   let m;try{m=JSON.parse(data);}catch{m=null;}
   if(m?.t!=='auth'){this.close(ws,1008,'Esperava a conta');return;}
+  if(!secretReady(this.env.SALA_PASSE)){this.close(ws,CLOSE.off,'Salas desligadas');return;}
   ws.serializeAttachment({...a,authing:true});
   const who=await readPass(this.env.SALA_PASSE,m.passe,{room:LOBBY});
   if(!who){this.close(ws,CLOSE.account,'Entre com a sua conta');return;}
@@ -462,9 +491,10 @@ export class Saguao {
  online(){const seen=new Map();for(const s of this.state.getWebSockets()){const a=this.of(s);if(a.account&&!seen.has(a.account))seen.set(a.account,{conta:a.account,nome:a.name});}return [...seen.values()];}
  // An invitation to every page of that account; how many got it.
  deliver(m){
-  if(!m||typeof m.conta!=='string'||!ACCOUNT.test(m.conta)||typeof m.convite!=='string'||typeof m.sala!=='string'||typeof m.de!=='string')return 0;
-  const data=JSON.stringify({t:'convite',de:m.de,sala:m.sala,convite:m.convite});let n=0;
-  for(const s of this.state.getWebSockets())if(this.of(s).account===m.conta){try{s.send(data);n++;}catch{}}
-  return n;
+  if(!m||typeof m.conta!=='string'||!ACCOUNT.test(m.conta)||typeof m.convite!=='string'||typeof m.sala!=='string'||typeof m.de!=='string'||!INVITE_ID.test(m.id??''))return 0;
+  return this.toAccount(m.conta,{t:'convite',de:m.de,sala:m.sala,convite:m.convite,id:m.id});
  }
+ // An invitation cancelled by its host: that account's pages put its notice away.
+ cancelled(m){return m&&typeof m.conta==='string'&&ACCOUNT.test(m.conta)&&INVITE_ID.test(m.id??'')?this.toAccount(m.conta,{t:'convite-cancelado',id:m.id}):0;}
+ toAccount(account,m){const data=JSON.stringify(m);let n=0;for(const s of this.state.getWebSockets())if(this.of(s).account===account){try{s.send(data);n++;}catch{}}return n;}
 }

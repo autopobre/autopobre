@@ -11,8 +11,11 @@ export const ROOM_SERVER='wss://sala.autopobre.com.br';
 export const LOCAL_SERVER='ws://127.0.0.1:8787';
 // Why the server closed the connection (sala-cloudflare/src/index.js CLOSE): the game says so. Its
 // 4012 (the key came too late: a slow connection) is not here: a line that dropped, tried again.
-export const CLOSED=Object.freeze({4001:'chave',4002:'cheia',4003:'recusado',4004:'expulso',4008:'excesso',4009:'ocupada',4010:'outra-aba',4011:'origem',4014:'passe'});
+export const CLOSED=Object.freeze({4001:'chave',4002:'cheia',4003:'recusado',4004:'expulso',4008:'excesso',4009:'ocupada',4010:'outra-aba',4011:'origem',4014:'passe',4016:'convite'});
 const MAX_BYTES=65536,RETRIES=[1000,2000,4000,8000,15000];
+// The rooms switched off (no SALA_PASSE on a server: the accounts server says 503, the room server closes
+// 4015): asked again this often (ms), not as a dropped line.
+const OFF_RETRY=60000;
 // A pass is used again for a new connection (a dropped line) while it has this long left (ms).
 const PASS_SPARE=60000;
 const TOKEN=/^[0-9a-f]{32}$/;
@@ -22,7 +25,8 @@ export class ServerLink {
  // host's invitation to this room kept in this browser (instead of the password), forgetInvite() when the
  // server took it for nothing (it ran out). pass(room):
  // the account's pass for this room, {passe, validade} or {problema: 'conta' (not signed in),
- // 'apelido' (no nickname yet) or 'contas' (the accounts server did not answer)}.
+ // 'apelido' (no nickname yet), 'salas' (the rooms are switched off) or 'contas' (the accounts server did
+ // not answer)}.
  // socket: how to open the WebSocket (the Node checks add the Origin a browser sends).
  constructor({url,room,key,pass,invite=()=>null,forgetInvite=()=>{},storage=session(),socket=url=>new WebSocket(url),now=()=>Date.now()}){
   Object.assign(this,{url,room,key,pass,invite,forgetInvite,storage,socket,now});this.ws=null;this.tries=0;this.closing=false;this.onmessage=null;this.onclose=null;this.onopen=null;
@@ -41,7 +45,7 @@ export class ServerLink {
   if(this.fresh)return this.ticket;
   let r;try{r=await this.pass(this.room);}catch{r=null;}
   if(typeof r?.passe==='string'&&r.passe){const life=Number(r.validade);this.ticket={passe:r.passe,until:this.now()+(life>0?Math.min(life,3600000):0)};return this.ticket;}
-  return {problema:['conta','apelido'].includes(r?.problema)?r.problema:'contas'};
+  return {problema:['conta','apelido','salas'].includes(r?.problema)?r.problema:'contas'};
  }
  // A fresh pass connects at once; otherwise a new one is asked for first.
  open(){
@@ -55,6 +59,7 @@ export class ServerLink {
   // Not signed in, or no nickname: the player sees why (and signs in); the accounts server out of
   // reach: tried again, as a dropped line.
   if(pass.problema==='contas'){this.lost('contas');return;}
+  if(pass.problema==='salas'){this.off();return;}
   if(pass.problema){this.shutAll();this.onclose?.(pass.problema);return;}
   // No password typed yet, nor an invitation: asked for at once (the server would only say it is wrong).
   const key=String(this.key()??''),invite=this.invite()||null;if(!key&&!invite){this.onclose?.('chave');return;}
@@ -77,8 +82,10 @@ export class ServerLink {
    this.ws=null;if(this.live===ws)this.live=null;
    // (a pass the server did not take is never offered again)
    if(e.code===4014)this.ticket=null;
-   // (an invitation the server did not take: out, the password asked for instead)
-   if(e.code===4001&&invite)this.forgetInvite();
+   if(e.code===4015){this.off();return;}
+   // (an invitation the server did not take, or one its host cancelled (4016): out, the password asked
+   // for instead)
+   if((e.code===4001||e.code===4016)&&invite)this.forgetInvite();
    const reason=CLOSED[e.code];if(reason||this.closing){this.onclose?.(reason??'saiu');return;}
    // A new connection that failed while the old one still works (the alarm was false): that one goes on.
    if(this.live?.readyState===1){this.ws=this.live;return;}
@@ -94,6 +101,8 @@ export class ServerLink {
   if(this.closing)return;const delay=RETRIES[Math.min(this.tries++,RETRIES.length-1)];
   this.onclose?.(why==='reconectando'&&this.tries>RETRIES.length?'fora':why);clearTimeout(this.retry);this.retry=setTimeout(()=>this.open(),delay);
  }
+ // The rooms switched off on a server: the player hears so, and the room is asked again in OFF_RETRY.
+ off(){if(this.closing)return;this.onclose?.('salas');clearTimeout(this.retry);this.retry=setTimeout(()=>this.open(),OFF_RETRY);}
  // The room went quiet (net-room.js): this connection may be dead though the browser has not noticed
  // (it may take it a minute). A new one takes its place at once; the old one is left open, for the
  // server to close once the new one is in (the same token: no goodbye reaches the room, so a false

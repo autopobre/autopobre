@@ -2789,6 +2789,11 @@ if(roomWanted)import('./multiplayer.js').then(({startMultiplayer})=>{multiplayer
  camera:()=>camera,
  playerAnchor:out=>walker?.active?out.copy(walker.hero.position).setY(walker.hero.position.y+2.05):out.copy(carRoot.position).setY(carRoot.position.y+1.45),
  keyName,
+ // What this window's car carries beside its motion: its pilot out of it (free-walk.js: where he stands, the way he faces,
+ // running, crouched, off the ground) and its parts held open (car-openings.js openMask); and the pilot's look (pilot-look.js),
+ // which the others see on him and at the wheel.
+ onFoot:()=>{if(!walker?.active)return null;const f=walker.footInfo();return {x:f.x,y:f.y,z:f.z,facing:f.facing,running:f.running,crouch:walker.foot?.crouchAmount??0,lift:f.lift};},
+ openMask:()=>openings.openMask(),look:()=>pilotLook(),
  autopilot:on=>{if(on!==undefined&&ready&&sessionStarted&&!immersive.active){if(on)automatic=true;else takeWheel();}return automatic;},
  hasCircuit:id=>Object.hasOwn(CIRCUITS,id),
  // The weather a host announces with its race (weather.js; Aleatório's draw, never 'aleatorio'), and a guest racing

@@ -75,7 +75,7 @@ O painel mostra as voltas (com o filtro "só com sinais") e os sinais de cada re
 
 ## Salas multiplayer
 
-A sala multiplayer (`sala-cloudflare`) só deixa entrar quem está com a conta conectada e tem apelido. O jogo pede aqui um passe para a sala (`/api/conta/passe-sala`), e o servidor de salas o confere com o segredo `SALA_PASSE`, que os dois Workers têm igual (`.wrangler secret put SALA_PASSE` nas duas pastas). Nada é gravado: o passe leva o apelido e um código da conta (HMAC do identificador do Google, nunca o identificador). O mesmo passe, para `@saguao`, diz ao servidor de salas quem está online para os convites dos anfitriões.
+A sala multiplayer (`sala-cloudflare`) só deixa entrar quem está com a conta conectada e tem apelido. O jogo pede aqui um passe para a sala (`/api/conta/passe-sala`), e o servidor de salas o confere com o segredo `SALA_PASSE`, que os dois Workers têm igual (`.\wrangler secret put SALA_PASSE` nas duas pastas; 16 caracteres ou mais, de preferência 32 bytes aleatórios). Sem ele, ou curto demais, `/passe-sala` responde 503 e o jogo diz que as salas estão desligadas. Nada é gravado: o passe leva o apelido e um código da conta (HMAC do identificador do Google, nunca o identificador). O mesmo passe, para `@saguao`, diz ao servidor de salas quem está online para os convites dos anfitriões.
 
 ## Rotas
 
@@ -88,7 +88,7 @@ A sala multiplayer (`sala-cloudflare`) só deixa entrar quem está com a conta c
 | `POST /api/conta/sair` | encerra a sessão |
 | `GET /api/conta/meus-dados` | tudo o que existe da conta, como arquivo |
 | `POST /api/conta/apagar` `{confirmar: "APAGAR"}` | apaga a conta, as sessões e os recordes |
-| `POST /api/conta/passe-sala` `{sala}` | o passe de uma sala multiplayer (ou do saguão, `@saguao`): o apelido, a sala, 5 minutos, assinado com `SALA_PASSE`; só com apelido (409 sem ele) |
+| `POST /api/conta/passe-sala` `{sala}` | o passe de uma sala multiplayer (ou do saguão, `@saguao`): o apelido, a sala, 5 minutos, assinado com `SALA_PASSE`; só com apelido (409 sem ele); 503 com as salas desligadas (sem `SALA_PASSE` ou curto demais) |
 | `POST /api/recordes/bilhete` `{circuito, modo, carro, versao}` | o bilhete de uma corrida, com o melhor tempo conferido do piloto ali |
 | `POST /api/recordes/pedaco` `{bilhete, relogio, cruzou?, volta?}` | um pedaço do relógio; na linha, a volta com o fantasma; devolve o bilhete novo e o veredito |
 | `POST /api/recordes/importar` `{recordes}` | os recordes antigos do navegador, uma vez, até 30/11/2026 |

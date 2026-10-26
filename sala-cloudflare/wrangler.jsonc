@@ -1,6 +1,7 @@
 // Servidor das salas multiplayer (src/index.js). Publicar: .\wrangler deploy
 // Os segredos ficam só no Cloudflare: .\wrangler secret put SENHA_ANFITRIAO, SENHA_PILOTOS e SALA_PASSE
-// (este, o mesmo do servidor de contas, conta-cloudflare: é com ele que os passes das contas são conferidos).
+// (este, o mesmo do servidor de contas, conta-cloudflare: é com ele que os passes das contas são conferidos;
+// 16 caracteres ou mais, de preferência 32 bytes aleatórios. Faltando ou curto, as salas ficam desligadas).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "sala-autopobre",

@@ -19,6 +19,7 @@ import {CAR_CHOICES} from './race-roster.js';
 import {readCar} from './net-cars.js';
 import {TIMES_OF_DAY,RAIN_LEVELS} from './weather.js';
 import {CHAT_LENGTH,chatText,chatLink} from './chat-text.js';
+import {normalizeLook,LOOK_FIELDS} from './pilot-look.js';
 // The seats, the 99 first: the car of a pilot who asks for none (or for one already taken).
 export const SEATS=Object.freeze(CAR_CHOICES.map(e=>e.number));
 // Seconds: a silent player (or host) is gone after SILENT; a window hosts once ELECTION passes
@@ -40,7 +41,7 @@ export const SEATS=Object.freeze(CAR_CHOICES.map(e=>e.number));
 const SILENT=3,ONLINE_SILENT=30,ELECTION=.9,READY_WAIT=60,FROZEN=.25,TIE=.5,BEACON=1,PING=1,HELLO=2,RATE=240,HOST_GRACE=10,RECLAIM=30,TWIN=3,ECHO=1,ECHO_LATE=2.5,LINK_QUIET=10,RACE_HOST_WAIT=600;
 const SAVED='autopobre-sala-id-',SAVED_SEAT='autopobre-sala-carro-';
 // Why a connection ended that is tried again (net-link.js), the tab still who it was in the room.
-const LINE_TROUBLE=new Set(['reconectando','fora','contas']);
+const LINE_TROUBLE=new Set(['reconectando','fora','contas','salas']);
 const sessionStore=()=>{try{return globalThis.sessionStorage??null;}catch{return null;}};
 function readSaved(storage,room){
  try{const v=JSON.parse(storage?.getItem(SAVED+room)||'null');return v&&isId(v.id)&&typeof v.host==='boolean'&&isNum(v.at,0,1e14)?{...v,since:isNum(v.since,0,1e14)?v.since:null,number:SEATS.includes(v.number)?v.number:null}:null;}catch{return null;}
@@ -118,6 +119,15 @@ export function roomParams(hash){
  const num=(key,hi)=>{const v=Number(q.get(key));return Number.isFinite(v)?clamp(v,0,hi):0;},car=q.get('carro');
  return {room,address,label:roomLabel(q.get(ROOM_KEY)),car:SEATS.includes(car)?car:null,auto:q.get('auto')==='1',ghosts:q.get('fantasmas')==='1',local:q.get('local')==='1',server:q.get('servidor')==='local'?'local':null,lag:num('lag',1000),loss:num('perda',50)/100};
 }
+// A pilot's look (pilot-look.js: the Visual screen's choices, by name): only its own fields, short names; taken
+// through normalizeLook on arrival, so an unknown choice becomes the default one. null: no look of their own.
+const validLook=v=>v===undefined||v===null||!!v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length<=LOOK_FIELDS.length&&Object.entries(v).every(([k,x])=>LOOK_FIELDS.includes(k)&&typeof x==='string'&&x.length<=24);
+// What a car carries beside its motion (multiplayer.js extras): its pilot out of it on foot (pe: x, y, z, the way he
+// faces, running 0/1, crouched 0..1, off the ground in m) and the car's parts held open (ab: car-openings.js
+// SHARED_OPENINGS bits). Seen only: nothing here moves a car or counts in a race.
+const validWalk=v=>Array.isArray(v)&&v.length===7&&isNum(v[0],-1e5,1e5)&&isNum(v[1],-1e5,1e5)&&isNum(v[2],-2000,9000)&&isNum(v[3],-1e3,1e3)&&(v[4]===0||v[4]===1)&&isNum(v[5],0,1)&&isNum(v[6],0,60);
+const validMask=v=>v===undefined||isInt(v,0,127);
+export const validExtra=e=>!!e&&typeof e==='object'&&!Array.isArray(e)&&(e.pe===undefined||validWalk(e.pe))&&validMask(e.ab);
 const validSeat=s=>s&&typeof s==='object'&&isId(s.id)&&typeof s.name==='string'&&s.name.length<=64&&SEATS.includes(s.number);
 const validSeats=v=>Array.isArray(v)&&v.length<=SEATS.length&&v.every(validSeat);
 const validPick=v=>v===undefined||isInt(v,0,1e9);
@@ -138,15 +148,15 @@ function validRace(r){
 export function validMessage(m){
  if(!m||typeof m!=='object'||typeof m.t!=='string'||!isId(m.from))return false;
  switch(m.t){
-  case 'hello':return typeof m.name==='string'&&m.name.length<=64&&(m.want===null||SEATS.includes(m.want))&&validPick(m.pick)&&validWait(m.wait);
+  case 'hello':return typeof m.name==='string'&&m.name.length<=64&&(m.want===null||SEATS.includes(m.want))&&validPick(m.pick)&&validWait(m.wait)&&validLook(m.look);
   case 'bye':return true;
-  case 'lobby':return typeof m.name==='string'&&m.name.length<=64&&isNum(m.age,0,1e7)&&Array.isArray(m.players)&&m.players.length<=32&&m.players.every(p=>p&&isId(p.id)&&typeof p.name==='string'&&p.name.length<=64&&(p.number===null||SEATS.includes(p.number))&&validPick(p.pick)&&validWait(p.wait))&&validRace(m.race)&&validStops(m.stops);
+  case 'lobby':return typeof m.name==='string'&&m.name.length<=64&&isNum(m.age,0,1e7)&&Array.isArray(m.players)&&m.players.length<=32&&m.players.every(p=>p&&isId(p.id)&&typeof p.name==='string'&&p.name.length<=64&&(p.number===null||SEATS.includes(p.number))&&validPick(p.pick)&&validWait(p.wait)&&validLook(p.look))&&validRace(m.race)&&validStops(m.stops);
   case 'ready':return isId(m.race);
   case 'go':return isId(m.race)&&validSeats(m.seats);
   case 'ping':return isInt(m.n,0,1e9);
   case 'pong':return isId(m.to)&&isInt(m.n,0,1e9);
-  case 'state':return isId(m.race)&&isInt(m.seq,0,1e9)&&isNum(m.lat,0,5)&&isCar(m.car);
-  case 'snap':return isId(m.race)&&isInt(m.seq,0,1e9)&&Array.isArray(m.cars)&&m.cars.length<=SEATS.length&&m.cars.every(c=>Array.isArray(c)&&c.length===3&&SEATS.includes(c[0])&&isNum(c[1],0,5)&&isCar(c[2]));
+  case 'state':return isId(m.race)&&isInt(m.seq,0,1e9)&&isNum(m.lat,0,5)&&isCar(m.car)&&(m.pe===undefined||validWalk(m.pe))&&validMask(m.ab);
+  case 'snap':return isId(m.race)&&isInt(m.seq,0,1e9)&&Array.isArray(m.cars)&&m.cars.length<=SEATS.length&&m.cars.every(c=>Array.isArray(c)&&(c.length===3||c.length===4&&validExtra(c[3]))&&SEATS.includes(c[0])&&isNum(c[1],0,5)&&isCar(c[2]));
   case 'chat':return typeof m.name==='string'&&m.name.length<=64&&typeof m.text==='string'&&m.text.length<=4*CHAT_LENGTH;
   default:return false;
  }
@@ -164,8 +174,10 @@ export function validControl(m){
   case 'admitted':return m.host===undefined||m.host===null||isId(m.host);
   case 'host-away':return true;
   // (the host's: who is online, for its invitations, and whether one reached the pilot)
-  case 'online':return Array.isArray(m.pilotos)&&m.pilotos.length<=50&&m.pilotos.every(p=>p&&typeof p==='object'&&ACCOUNT.test(p.conta)&&typeof p.nome==='string'&&p.nome.length<=64);
-  case 'convidado':return ACCOUNT.test(m.conta)&&typeof m.entregue==='boolean';
+  // (convidado: invited, not taken yet; cedo: an invitation asked for too soon after the last)
+  case 'online':return Array.isArray(m.pilotos)&&m.pilotos.length<=50&&m.pilotos.every(p=>p&&typeof p==='object'&&ACCOUNT.test(p.conta)&&typeof p.nome==='string'&&p.nome.length<=64&&(p.convidado===undefined||p.convidado===true));
+  case 'convidado':return ACCOUNT.test(m.conta)&&typeof m.entregue==='boolean'&&(m.cedo===undefined||m.cedo===true);
+  case 'desconvidado':return ACCOUNT.test(m.conta)&&typeof m.ok==='boolean';
   default:return false;
  }
 }
@@ -173,7 +185,7 @@ export function validControl(m){
 // does not rely on that (a lying host could send bidi overrides or zero-width characters).
 const cleanSeats=seats=>seats.map(s=>({...s,name:playerName(s.name)||'Piloto'}));
 function cleanNames(m){
- if(m.t==='lobby')return {...m,name:playerName(m.name)||'Anfitrião',players:m.players.map(p=>({...p,name:playerName(p.name)||'Piloto'})),race:m.race&&{...m.race,seats:cleanSeats(m.race.seats)}};
+ if(m.t==='lobby')return {...m,name:playerName(m.name)||'Anfitrião',players:m.players.map(p=>({...p,name:playerName(p.name)||'Piloto',look:normalizeLook(p.look)})),race:m.race&&{...m.race,seats:cleanSeats(m.race.seats)}};
  if(m.t==='go')return {...m,seats:cleanSeats(m.seats)};
  if(m.t==='chat')return {...m,name:playerName(m.name)||'Piloto',text:chatText(m.text)};
  return m;
@@ -289,8 +301,9 @@ export class Room {
    }break;
    // (from the door too: whoever has the host's password takes a room left without a host)
    case 'role':this.pending=false;this.becomeHost(now);break;
-   case 'online':if(this.role==='host')this.emit('online',m.pilotos.map(p=>({conta:p.conta,nome:playerName(p.nome)||'Piloto'})));break;
-   case 'convidado':if(this.role==='host')this.emit('invited',m.conta,m.entregue);break;
+   case 'online':if(this.role==='host')this.emit('online',m.pilotos.map(p=>({conta:p.conta,nome:playerName(p.nome)||'Piloto',convidado:!!p.convidado})));break;
+   case 'convidado':if(this.role==='host')this.emit('invited',m.conta,m.entregue,!!m.cedo);break;
+   case 'desconvidado':if(this.role==='host')this.emit('uninvited',m.conta,m.ok);break;
   }
   this.emit('change');
  }
@@ -298,6 +311,8 @@ export class Room {
  // to this room by its address (its name as written, its secret too: the invited pilot's game opens it).
  askOnline(){if(this.role==='host'&&this.online)this.send({t:'online'});}
  invite(account,address){if(this.role==='host'&&this.online&&ACCOUNT.test(account??''))this.send({t:'convidar',conta:account,endereco:address});}
+ // Host, online: an invitation not taken yet is cancelled (the 'uninvited' event says whether it was).
+ uninvite(account){if(this.role==='host'&&this.online&&ACCOUNT.test(account??''))this.send({t:'desconvidar',conta:account});}
  // Host, online: let a guest in, turn it away, or send it out for good.
  admit(id){if(this.role!=='host')return;this.knocks.delete(id);this.send({t:'admit',to:id});this.emit('change');}
  deny(id){if(this.role!=='host')return;this.knocks.delete(id);this.send({t:'deny',to:id});this.emit('change');}
@@ -312,11 +327,13 @@ export class Room {
  // machine room has no line of its own.
  lineQuiet(now=this.clock()){return this.online&&(this.problem!==null||this.echo!==undefined&&now-this.echo>ECHO_LATE);}
  // A guest still at the door (online) says its new name too: the host sees who is knocking.
+ // This pilot's look (pilot-look.js), for the others to see on foot and at the wheel; told only when it changed.
+ setLook(value){const look=normalizeLook(value),key=look?LOOK_FIELDS.map(k=>look[k]).join('|'):'';if(key===(this.lookKey??''))return;this.lookKey=key;this.look=look;if(this.role==='host'){const p=this.players.get(this.id);if(p)p.look=look;this.beacon();}else if(this.role==='guest'&&!this.pending)this.hello();}
  setName(value){const name=playerName(value)||'Piloto';if(name===this.name)return;this.name=name;if(this.role==='host'){this.players.get(this.id).name=name;this.beacon();}else if(this.role==='guest')this.hello();}
  send(m){m.from=this.id;if(this.online){this.link.send(m);return;}try{this.channel.postMessage(m);}catch{}}
  // The car asked for (asking), the choice it answers (pick: the host acts on a new one only) and
  // whether this guest waits for the start.
- hello(){this.helloAt=this.clock();this.nextHello=this.helloAt+HELLO;this.send({t:'hello',name:this.name,want:this.asking(),pick:this.pick,wait:this.waiting});}
+ hello(){this.helloAt=this.clock();this.nextHello=this.helloAt+HELLO;this.send({t:'hello',name:this.name,want:this.asking(),pick:this.pick,wait:this.waiting,look:this.look??null});}
  elect(){this.role=null;this.hostId=null;this.lobby=null;this.electUntil=this.clock()+ELECTION+this.lag/500;this.hello();this.emit('change');}
  arrive(m){
   if(this.loss&&(m?.t==='state'||m?.t==='snap')&&this.random()<this.loss)return;
@@ -334,7 +351,7 @@ export class Room {
   const now=this.clock();if(!this.allow(m.from,now))return;
   const host=this.role==='host',fromHost=this.role==='guest'&&m.from===this.hostId;
   switch(m.t){
-   case 'hello':if(host)this.join(m.from,m.name,m.want,m.pick??0,now,!!m.wait);break;
+   case 'hello':if(host)this.join(m.from,m.name,m.want,m.pick??0,now,!!m.wait,normalizeLook(m.look));break;
    case 'bye':if(host){this.note('bye '+m.from);this.drop(m.from);}else if(fromHost){this.hostLeft=now;this.emit('change');}break;
    case 'lobby':this.heardHost(m,now);break;
    case 'ready':if(host&&this.race?.id===m.race&&this.race.state==='waiting'&&this.race.seats.some(s=>s.id===m.from)&&!this.ready.has(m.from)){this.touch(m.from,now);this.ready.add(m.from);this.emit('change');}break;
@@ -388,7 +405,7 @@ export class Room {
   // Its car: a choice the host it replaces had not answered yet, else the one it had (back from a
   // reload, or as a guest of that host), else its choice.
   const number=this.asking()??SEATS[0];this.acked=this.pick;
-  this.players.set(this.id,{id:this.id,name:this.name,number,pick:this.pick,done:this.pick,wait:true,seen:now});this.save();this.beacon(now);this.emit('change');
+  this.players.set(this.id,{id:this.id,name:this.name,look:this.look??null,number,pick:this.pick,done:this.pick,wait:true,seen:now});this.save();this.beacon(now);this.emit('change');
   // The server's doorman stays on: every guest waits until the host lets it in.
   if(this.online)this.send({t:'config',porteiro:true});
  }
@@ -398,15 +415,15 @@ export class Room {
  // way has left it (the menu's way out): out of its seat, its car left without a driver ('leave',
  // multiplayer.js). A guest whose line dropped during that race and who still races it (wait) gets its
  // seat back, and its car where it stands.
- join(id,name,want,pick,now,wait=false){
+ join(id,name,want,pick,now,wait=false,look=null){
   const p=this.players.get(id);
   if(p){
    const quit=p.wait&&!wait&&this.race?.state==='racing'&&this.race.seats.some(s=>s.id===id);
-   p.name=playerName(name)||p.name;p.seen=now;p.wait=wait;if(pick&&pick!==p.pick){p.pick=pick;p.wish=want;this.grant();}
+   p.name=playerName(name)||p.name;p.seen=now;p.wait=wait;p.look=look;if(pick&&pick!==p.pick){p.pick=pick;p.wish=want;this.grant();}
    if(quit){this.race.seats=this.race.seats.filter(s=>s.id!==id);this.note('deixou a corrida '+id);this.emit('leave',p);}
   }
   else{
-   const back=wait&&this.race?.state==='racing'?this.away.get(id):null,q={id,name:playerName(name)||'Piloto',number:this.freeSeat(back?.number??want,id),pick,done:pick,wait,seen:now};
+   const back=wait&&this.race?.state==='racing'?this.away.get(id):null,q={id,name:playerName(name)||'Piloto',look,number:this.freeSeat(back?.number??want,id),pick,done:pick,wait,seen:now};
    this.players.set(id,q);this.away.delete(id);
    if(back&&q.number===back.number){this.race.seats.push({id,name:q.name,number:q.number});this.note('voltou '+id);this.emit('seats',this.race);}
    else this.note('entrou '+id);
@@ -454,7 +471,7 @@ export class Room {
  touch(id,now){const p=this.players.get(id);if(p)p.seen=now;}
  beacon(now=this.clock()){
   if(this.role!=='host')return;this.nextBeacon=now+BEACON;const r=this.race;
-  this.send({t:'lobby',name:this.name,age:Math.round((now-this.hostSince)*100)/100,players:[...this.players.values()].map(({id,name,number,done,wait})=>({id,name,number,pick:done,wait:!!wait})),race:r&&{id:r.id,circuit:r.circuit,laps:r.laps,seed:r.seed,car:r.car,ace:r.ace,level:r.level,retirements:r.retirements,ghosts:r.ghosts,seats:r.seats,state:r.state},stops:r?.state==='racing'?this.stops:[]});
+  this.send({t:'lobby',name:this.name,age:Math.round((now-this.hostSince)*100)/100,players:[...this.players.values()].map(({id,name,number,done,wait,look})=>({id,name,number,pick:done,wait:!!wait,look:look??null})),race:r&&{id:r.id,circuit:r.circuit,laps:r.laps,seed:r.seed,car:r.car,ace:r.ace,level:r.level,retirements:r.retirements,ghosts:r.ghosts,seats:r.seats,state:r.state},stops:r?.state==='racing'?this.stops:[]});
  }
  // Host (multiplayer.js, every frame): the cars waiting for their pilots; a change is told at once.
  setStops(list){if(this.role!=='host'||sameStops(list,this.stops))return;this.stops=list.map(({number,stage,back=true,side})=>({number,stage,back:!!back,...(side===1||side===-1?{side}:{})}));this.beacon();}
@@ -476,7 +493,8 @@ export class Room {
   this.send({t:'go',race:r.id,seats:r.seats});this.beacon();this.emit('go',r);this.emit('change');
  }
  sendReady(){if(this.role==='guest'&&this.race)this.send({t:'ready',race:this.race.id});}
- sendState(car,seq){if(this.role==='guest'&&this.race)this.send({t:'state',race:this.race.id,seq,lat:clamp(this.latency,0,5),car});}
+ // (extra: validExtra's pe and ab, when there are any)
+ sendState(car,seq,extra=null){if(this.role==='guest'&&this.race)this.send({t:'state',race:this.race.id,seq,lat:clamp(this.latency,0,5),car,...extra});}
  sendSnapshot(cars,seq){if(this.role==='host'&&this.race)this.send({t:'snap',race:this.race.id,seq,cars});}
  // Beacons, pings, the election and the silent players: once per frame.
  tick(){

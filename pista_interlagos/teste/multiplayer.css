@@ -104,6 +104,8 @@ body.mp-room #cars{padding-bottom:58px}
 #mpOnline .mp-online-list li small{font-variant-numeric:tabular-nums;opacity:.85;white-space:nowrap}
 #mpOnline .mp-online-list li button:not(:disabled){background:var(--lime);border-color:var(--lime);color:var(--ink)}
 #mpOnline .mp-online-list li button:disabled{opacity:.8;cursor:default}
+#mpOnline .mp-online-list li em{font-style:normal;font-size:11px;color:var(--lime);white-space:nowrap}
+#mpOnline .mp-online-list li button.mp-cancel{background:#ffffff14;border-color:#fff4;color:#f5f6ed}
 #mpOnline .mp-online-empty{justify-content:center;opacity:.7}
 #mpOnline .mp-online-note{margin:8px 0 0;font-size:11px;opacity:.7}
 @media(max-width:850px){#mpOnline{right:12px;width:min(300px,calc(100vw - 24px))}}

@@ -2,7 +2,7 @@
 // prediction under network delay, and RaceField's remote and ghost cars.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {Room,roomParams,roomName,roomLabel,roomAddress,roomIn,HIDDEN,playerName,validMessage,SEATS,chatText,chatLink,CHAT_LENGTH,keepInvite,savedInvite,dropInvite} from '../teste/net-room.js';
+import {Room,roomParams,roomName,roomLabel,roomAddress,roomIn,HIDDEN,playerName,validMessage,validExtra,SEATS,chatText,chatLink,CHAT_LENGTH,keepInvite,savedInvite,dropInvite} from '../teste/net-room.js';
 import {fieldRoster} from '../teste/race-roster.js';
 import {RemoteCar,packCar,readCar,CAR_FIELDS} from '../teste/net-cars.js';
 import {RaceField,TOW_ARRIVE,FAINTED,faintedInput,inTheWay,pitRoute} from '../teste/race-field.js';
@@ -456,7 +456,21 @@ const report={};
  key='senha';const before=asked;link.open();assert.equal(sockets.length,2);assert.equal(asked,before);
  sockets[1].readyState=1;sockets[1].onopen();assert.equal(sockets[1].sent[0].key,'senha');assert.equal(sockets[1].sent[0].convite,undefined);
  sockets[1].onclose({code:4014});assert.equal(reasons.at(-1),'passe');link.open();await wait();assert.equal(asked,before+1,'a refused pass is asked for anew');
+ // An invitation its host cancelled (4016): said as such, and gone from this browser.
+ key='';invite='convite-y';const n=sockets.length;link.open();await wait();const s3=sockets[n];s3.readyState=1;s3.onopen();assert.equal(s3.sent[0].convite,'convite-y');
+ s3.onclose({code:4016});assert.equal(reasons.at(-1),'convite');assert.equal(forgot,2);assert.equal(invite,null);
+ // The rooms switched off (the accounts server's 503, the room server's 4015): said as such, asked again in a
+ // minute, never as a dropped line tried every 15 s.
  link.close();
+ {
+  let problem={problema:'salas'};const said=[],socks=[];
+  const off=new ServerLink({url:'ws://x',room:'desligada',key:()=>'k',pass:async()=>problem,storage:null,socket:()=>{const ws={readyState:0,send(){},close(){}};socks.push(ws);return ws;}});
+  off.onclose=r=>said.push(r);off.open();await wait();
+  assert.deepEqual(said,['salas']);assert.equal(socks.length,0);assert(off.retry,'asked again later');assert.equal(off.tries,0,'not counted as a dropped line');clearTimeout(off.retry);
+  problem={passe:'p',validade:300000};off.open();await wait();socks[0].readyState=1;socks[0].onopen();socks[0].onclose({code:4015});
+  assert.deepEqual(said,['salas','salas']);assert(off.retry);off.close();
+  assert.equal(CLOSED[4015],undefined,'not a refusal the player answers');
+ }
 }
 // The chat (net-room.js say, chat-text.js): cleaned, no links, one line every CHAT_GAP, not from the door;
 // a line from the room is cleaned on arrival too. A room nobody opened: a guest waits at the door without a
@@ -478,11 +492,16 @@ const report={};
  const H=new Room({room:'convites',name:'Ana',link,clock});H.start();H.receive({t:'welcome',id:'0000000d',token:'1'.repeat(32),role:'host',host:'0000000d',pending:false});
  const lists=[],answers=[];H.on('online',l=>lists.push(l)).on('invited',(a,d)=>answers.push([a,d]));
  const conta='A'.repeat(22);H.askOnline();assert.deepEqual(sent.at(-1),{t:'online',from:'0000000d'});
- H.receive({t:'online',pilotos:[{conta,nome:'Eva‮'}]});assert.deepEqual(lists,[[{conta,nome:'Eva'}]]);
+ H.receive({t:'online',pilotos:[{conta,nome:'Eva‮',convidado:true}]});assert.deepEqual(lists,[[{conta,nome:'Eva',convidado:true}]]);
  H.receive({t:'online',pilotos:[{conta:'curta',nome:'X'}]});assert.equal(lists.length,1,'checked as it comes');
  H.invite(conta,'Convites_x');assert.deepEqual(sent.at(-1),{t:'convidar',conta,endereco:'Convites_x',from:'0000000d'});
  H.receive({t:'convidado',conta,entregue:true});assert.deepEqual(answers,[[conta,true]]);
- const count=sent.length;G.askOnline();G.invite(conta,'x');assert.equal(sent.length,count,'a guest asks for neither');
+ // An invitation cancelled before it is taken (the wrong pilot): asked, and the answer heard.
+ const undone=[];H.on('uninvited',(a,ok)=>undone.push([a,ok]));H.uninvite(conta);assert.deepEqual(sent.at(-1),{t:'desconvidar',conta,from:'0000000d'});
+ H.receive({t:'desconvidado',conta,ok:true});H.receive({t:'desconvidado',conta:'x',ok:true});assert.deepEqual(undone,[[conta,true]],'checked as it comes');
+ const early=[];H.on('invited',(a,d,e)=>early.push(e));H.receive({t:'convidado',conta,entregue:false,cedo:true});assert.deepEqual(early,[true],'too soon: said so');
+ const count=sent.length;G.askOnline();G.invite(conta,'x');G.uninvite(conta);assert.equal(sent.length,count,'a guest asks for none of it');
+ assert.equal(CLOSED[4016],'convite','a cancelled invitation is told as such');
  assert.ok(chatLink('acesse meusite . com')&&chatLink('http://x')&&!chatLink('Bom. Com certeza')&&!chatLink('1:23.456'));
  assert.equal(chatText('ㅤ'),'');assert.equal([...chatText('é'.repeat(200))].length,CHAT_LENGTH);
  // The invitation a pilot took is kept for that room only, and goes when refused.
@@ -490,6 +509,35 @@ const report={};
  keepInvite(fakeStore,'convites','tok');keepInvite(fakeStore,'Outra Sala','x');assert.equal(savedInvite(fakeStore,'convites'),'tok');assert.equal(store.size,1,'a room\'s name only');
  dropInvite(fakeStore,'convites');assert.equal(savedInvite(fakeStore,'convites'),null);
  report.chat='ok';
+}
+// What a car carries beside its motion (net-room.js validExtra): its pilot on foot and its parts held open, in a
+// guest's state and in each car of the host's snapshot; ranges checked. The pilots' looks (pilot-look.js) in hello
+// and in the host's list, taken through normalizeLook (an unknown choice becomes the default).
+{
+ const walk=[10.5,-20.25,3.1,1.57,1,0.5,0];
+ assert(validExtra({pe:walk})&&validExtra({ab:5})&&validExtra({pe:walk,ab:127})&&validExtra({}));
+ for(const bad of [{pe:[1,2,3]},{pe:[1e6,0,0,0,0,0,0]},{pe:[0,0,0,0,2,0,0]},{pe:[0,0,0,0,0,1.5,0]},{pe:[0,0,0,0,0,0,99]},{ab:128},{ab:-1},{ab:1.5},null,[],'x'])assert(!validExtra(bad),JSON.stringify(bad));
+ const base={t:'state',from:'0000000a',race:'0000000b',seq:1,lat:0,car:packCar({x:0,y:0,z:0,heading:0,pitch:0,roll:0,vx:0,vy:0,vz:0,yaw:0,pitchRate:0,rollRate:0,steer:0,spin:0,rearSpin:0,rpm:900,gear:1,latAccel:0,longAccel:0,rearSlipSpeed:0,laps:0,best:null,surface:{z:0}})};
+ assert(validMessage({...base,pe:walk,ab:3}));assert(!validMessage({...base,pe:[0]}));assert(!validMessage({...base,ab:999}));
+ const snap=c=>validMessage({t:'snap',from:'0000000a',race:'0000000b',seq:1,cars:[c]});
+ assert(snap(['64',0,base.car])&&snap(['64',0,base.car,{pe:walk}])&&snap(['64',0,base.car,{ab:1}]));
+ assert(!snap(['64',0,base.car,{pe:[0]}])&&!snap(['64',0,base.car,'x'])&&!snap(['64',0,base.car,{},1]));
+ // Looks: a guest's hello carries its own; the host's list hands each one on; an unknown choice becomes the default.
+ let now=0;const sent=[],link={open(){},send(m){sent.push(m);},close(){},reconnect(){}},clock=()=>now;
+ const G=new Room({room:'visual',name:'Gil',link,clock});G.start();G.receive({t:'welcome',id:'0000000a',token:'0'.repeat(32),role:'guest',host:'0000000b',pending:false});
+ const look={gender:'mulher',suit:'azul',gloves:'branca',hair:'rabo',hairColor:'ruivo',beard:'barba',helmet:'topo',helmetColor:'prata',helmetDetail:'azul',visor:'dourada'};
+ G.setLook(look);const hello=sent.filter(m=>m.t==='hello').at(-1);assert.equal(hello.look.suit,'azul');assert.equal(hello.look.beard,'sem','a woman wears no beard');
+ const n=sent.length;G.setLook({...look});assert.equal(sent.length,n,'the same look again: nothing said');
+ assert(!validMessage({...hello,look:{suit:{x:1}}})&&!validMessage({...hello,look:{nada:'x'}})&&validMessage({...hello,look:null}));
+ const H=new Room({room:'visual',name:'Ana',link,clock});H.start();H.receive({t:'welcome',id:'0000000b',token:'1'.repeat(32),role:'host',host:'0000000b',pending:false});
+ H.setLook({suit:'verde'});H.receive({...hello,from:'0000000a',look:{...look,suit:'arco-iris'}});
+ const lobby=sent.filter(m=>m.t==='lobby').at(-1);assert.equal(lobby.players.find(p=>p.id==='0000000b').look.suit,'verde');
+ assert.equal(lobby.players.find(p=>p.id==='0000000a').look.suit,'vermelho','an unknown suit: the default');
+ G.receive(lobby);assert.equal(G.members.find(m=>m.id==='0000000b').look.suit,'verde','the guest knows the host\'s look');
+ // A guest's state carries its extras; the host hears them with it.
+ G.race={id:'0000000c',state:'racing',seats:[]};G.sendState(base.car,2,{pe:walk,ab:8});const st=sent.at(-1);assert.deepEqual([st.pe,st.ab],[walk,8]);
+ G.sendState(base.car,3,null);assert(!('pe' in sent.at(-1))&&!('ab' in sent.at(-1)),'none: nothing extra');
+ report.extras='ok';
 }
 // Two windows opened at once: both host for a moment, then the smaller id keeps the room.
 {

@@ -10,7 +10,7 @@
 //
 // An invitation (makeInvite) is the same kind of token, signed by a room for one account: its host asked
 // for it (index.js), and it lets that pilot in without a password and without waiting at the door, for
-// INVITE_LIFE. The lobby's pass (LOBBY: no room's name can be it) says who is online, for the invitations.
+// INVITE_LIFE, while the room still has it (its id, i: the host may cancel it before it is taken). The lobby's pass (LOBBY: no room's name can be it) says who is online, for the invitations.
 export const PASS_LIFE=5*60*1000;   // ms; the game reuses a pass for reconnections while it is fresh
 export const INVITE_LIFE=12*60*60*1000;
 export const LOBBY='@saguao';
@@ -21,9 +21,13 @@ const fromB64url=text=>Uint8Array.from(atob(text.replace(/-/g,'+').replace(/_/g,
 const encode=text=>new TextEncoder().encode(text);
 // A nickname as a room shows it (the accounts server's rules are stricter; this only keeps a pass sane).
 const cleanName=value=>(typeof value==='string'?value:'').replace(/\p{C}/gu,'').replace(/\s+/g,' ').trim().slice(0,24);
+// SALA_PASSE: SECRET_MIN characters at least (32 random ones, base64url, is the way to make it). A shorter
+// one is no secret: both Workers take it as rooms switched off (secretReady), never as a server down.
+export const SECRET_MIN=16;
+export const secretReady=secret=>typeof secret==='string'&&secret.length>=SECRET_MIN;
 const keys=new Map();
 function hmacKey(secret){
- if(typeof secret!=='string'||secret.length<16)throw new Error('SALA_PASSE is not set');
+ if(!secretReady(secret))throw new Error(`SALA_PASSE is missing or shorter than ${SECRET_MIN} characters`);
  if(!keys.has(secret))keys.set(secret,crypto.subtle.importKey('raw',encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign','verify']));
  return keys.get(secret);
 }
@@ -50,9 +54,12 @@ export async function readPass(secret,text,{room,now=Date.now()}){
   const name=cleanName(p.n);return name?{account:p.c,name}:null;
  }catch{return null;}
 }
-// A room's invitation for one account (host: who invited, as shown to the pilot).
-export const makeInvite=(secret,{account,room,host,now=Date.now()})=>make(secret,INVITE,{c:account,s:room,h:cleanName(host),e:now+INVITE_LIFE});
-// Whether this is a sound invitation of this room for this account, still good.
+// A room's invitation for one account (host: who invited, as shown to the pilot; id: the room's own
+// number for it, INVITE_ID).
+export const INVITE_ID=/^[0-9a-f]{16}$/;
+export const makeInvite=(secret,{account,room,host,id,now=Date.now()})=>make(secret,INVITE,{c:account,s:room,h:cleanName(host),i:id,e:now+INVITE_LIFE});
+// The id of a sound invitation of this room for this account, still good; null otherwise (the room then
+// asks whether it still has that one).
 export async function readInvite(secret,text,{room,account,now=Date.now()}){
- try{const p=await read(secret,INVITE,text);return !!p&&p.s===room&&ROOM.test(p.s)&&p.c===account&&p.e>now&&p.e<=now+INVITE_LIFE+60000;}catch{return false;}
+ try{const p=await read(secret,INVITE,text);return p&&p.s===room&&ROOM.test(p.s)&&p.c===account&&p.e>now&&p.e<=now+INVITE_LIFE+60000&&INVITE_ID.test(p.i??'')?p.i:null;}catch{return null;}
 }

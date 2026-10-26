@@ -151,13 +151,14 @@ export class Conta {
 
 // A pass for a multiplayer room (multiplayer.js, through net-link.js): the room server's proof that this
 // pilot is signed in, and under which nickname (conta-cloudflare sala.js). {passe, validade} or {problema:
-// 'conta' (not signed in), 'apelido' (no nickname yet) or 'contas' (the accounts server did not answer)}.
+// 'conta' (not signed in), 'apelido' (no nickname yet), 'salas' (the rooms are switched off: 503) or 'contas'
+// (the accounts server did not answer)}.
 export async function roomPass(room){
  let r,data=null;
  try{r=await fetch(API+'passe-sala',{method:'POST',cache:'no-store',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({sala:room})});
   if((r.headers.get('Content-Type')??'').startsWith('application/json'))data=await r.json().catch(()=>null);}catch{return {problema:'contas'};}
  if(r.ok&&typeof data?.passe==='string')return {passe:data.passe,validade:data.validade};
- return {problema:r.status===401?'conta':r.status===409?'apelido':'contas'};
+ return {problema:r.status===401?'conta':r.status===409?'apelido':r.status===503?'salas':'contas'};
 }
 
 // A track's online records, the Opala's (the room's car): [{apelido, selo, volta_ms}] (a host's invitations show them).

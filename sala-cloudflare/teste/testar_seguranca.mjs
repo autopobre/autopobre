@@ -35,7 +35,9 @@ try{
   assert.equal((await connect(room,{passe:await pass('g-ana','Ana',LOBBY)})).closed[0],CLOSE.account,'the lobby\'s pass opens no room');
   assert.equal((await connect(room,{passe:await makePass('outro-segredo-qualquer',{account:await accountKey(SECRET,'g-x'),name:'X',room:ROOM})})).closed[0],CLOSE.account,'another secret');
   assert.equal(room.attempts.size,0,'no wrong password counted');
-  assert.equal((await connect(make({SALA_PASSE:undefined}))).closed[0],CLOSE.account,'a server without the secret lets nobody in');
+  // A server without the secret, or with one too short to be one (passe.js SECRET_MIN): the rooms are off (4015),
+  // which the game says as such; no pass is read and no password counted.
+  for(const SALA_PASSE of [undefined,'curto','x'.repeat(15)]){const off=make({SALA_PASSE});assert.equal((await connect(off)).closed[0],CLOSE.off,String(SALA_PASSE));assert.equal(off.attempts.size,0);}
  }
  // The passwords: only the host's opens a room; the pilots' enters one someone opened (at the door,
  // knocking under the account's nickname); a room nobody opened keeps them at the door, and the first
@@ -110,36 +112,54 @@ try{
   assert.equal(chatText('a'.repeat(300)).length,80);assert.equal([...chatText('😀'.repeat(90))].length,80);assert.equal(chatText('ㅤ⠀'),'');
   assert(chatLink('ｓｉｔｅ．ｃｏｍ')&&chatLink('sïte.cóm')&&!chatLink('Bom. Com certeza'));
  }
- // Invitations: the host asks who is online (through the lobby; not those in its room, nor the kicked)
- // and invites one; the invitation, this room's for that account, lets it in without a password and
- // without the door. Another account's, another room's, an expired one: worth nothing.
+ // Invitations: the host asks who is online (through the lobby; not those in its room, nor the kicked;
+ // those invited and not in yet marked) and invites one; the invitation, this room's for that account,
+ // lets it in without a password and without the door, while the room has it: the host may cancel it
+ // until it is taken. Another account's, another room's, an expired one, a cancelled one, one from a room
+ // started anew: worth nothing, and said as such (4016).
  {
-  const delivered=[],lobbyList=[];
-  const lobby={idFromName:n=>n,get:()=>({fetch:async(url,init)=>{const path=new URL(url).pathname;if(path==='/interno/online')return Response.json(lobbyList);delivered.push(JSON.parse(init.body));return Response.json({entregue:1});}})};
-  const room=make({SAGUAO:lobby}),ana=await connect(room,{sub:'g-ana',name:'Ana'}),eva=await accountKey(SECRET,'g-eva'),kicked=await connect(room,{key:PILOT,sub:'g-kim',name:'Kim'});
+  const calls=[],lobbyList=[];
+  const lobby={idFromName:n=>n,get:()=>({fetch:async(url,init)=>{const path=new URL(url).pathname;if(path==='/interno/online')return Response.json(lobbyList);calls.push({path,...JSON.parse(init.body)});return Response.json({entregue:1});}})};
+  const invites=()=>calls.filter(c=>c.path==='/interno/convite'),again=r=>{r.onlineAt=-Infinity;};
+  const room=make({SAGUAO:lobby}),ana=await connect(room,{sub:'g-ana',name:'Ana'}),eva=await accountKey(SECRET,'g-eva'),kimAccount=await accountKey(SECRET,'g-kim'),fil=await accountKey(SECRET,'g-fil');
+  const kicked=await connect(room,{key:PILOT,sub:'g-kim',name:'Kim'});
+  await send(room,ana,{t:'convidar',conta:kimAccount,endereco:ROOM});const kimInvite=invites()[0].convite;
   send(room,ana,{t:'kick',to:kicked.peer.id});
-  lobbyList.push({conta:await accountKey(SECRET,'g-ana'),nome:'Ana'},{conta:eva,nome:'Eva'},{conta:await accountKey(SECRET,'g-kim'),nome:'Kim'});
-  await send(room,ana,{t:'online'});
-  assert.deepEqual(ana.messages.find(m=>m.t==='online').pilotos.map(p=>p.nome),['Eva'],'not the host itself, nor the kicked');
+  lobbyList.push({conta:await accountKey(SECRET,'g-ana'),nome:'Ana'},{conta:eva,nome:'Eva'},{conta:kimAccount,nome:'Kim'},{conta:fil,nome:'Fil'});
+  again(room);await send(room,ana,{t:'online'});
+  assert.deepEqual(ana.messages.filter(m=>m.t==='online').at(-1).pilotos.map(p=>p.nome),['Eva','Fil'],'not the host itself, nor the kicked');
   await send(room,ana,{t:'online'});assert.equal(ana.messages.filter(m=>m.t==='online').length,1,'asked again too soon: nothing');
-  await send(room,ana,{t:'convidar',conta:eva,endereco:'outra_sala'});assert.equal(delivered.length,0,'only to this room');
+  await send(room,ana,{t:'convidar',conta:eva,endereco:'outra_sala'});assert.equal(invites().length,1,'only to this room');
   await send(room,ana,{t:'convidar',conta:eva,endereco:'Te_ste'});
-  assert.equal(delivered.length,1);assert.deepEqual(ana.messages.at(-1),{t:'convidado',conta:eva,entregue:true});
-  assert.equal(delivered[0].sala,'Te_ste');assert.equal(delivered[0].de,'Ana');
-  await send(room,ana,{t:'convidar',conta:eva,endereco:ROOM});assert.equal(delivered.length,1,'the same pilot again only after a while');
+  assert.equal(invites().length,2);assert.deepEqual(ana.messages.at(-1),{t:'convidado',conta:eva,entregue:true});
+  const evaCall=invites()[1];assert.equal(evaCall.sala,'Te_ste');assert.equal(evaCall.de,'Ana');assert.match(evaCall.id,/^[0-9a-f]{16}$/);
+  await send(room,ana,{t:'convidar',conta:eva,endereco:ROOM});assert.equal(invites().length,2,'the same pilot again only after a while');
+  assert.deepEqual(ana.messages.at(-1),{t:'convidado',conta:eva,entregue:false,cedo:true},'and the host hears it was too soon');
+  again(room);await send(room,ana,{t:'online'});
+  assert.deepEqual(ana.messages.filter(m=>m.t==='online').at(-1).pilotos.map(p=>[p.nome,!!p.convidado]),[['Eva',true],['Fil',false]],'the invited one is marked');
   const bia=await connect(room,{key:PILOT,sub:'g-bia'});send(room,ana,{t:'admit',to:bia.peer.id});
-  await send(room,bia,{t:'convidar',conta:await accountKey(SECRET,'g-fil'),endereco:ROOM});await send(room,bia,{t:'online'});
-  assert.equal(delivered.length,1,'a guest invites nobody');assert.equal(bia.messages.filter(m=>m.t==='online').length,0,'nor sees who is online');
-  const invite=delivered[0].convite;
-  const evaIn=await connect(room,{key:'',sub:'g-eva',name:'Eva',convite:invite});
+  await send(room,bia,{t:'convidar',conta:fil,endereco:ROOM});await send(room,bia,{t:'online'});await send(room,bia,{t:'desconvidar',conta:eva});
+  assert.equal(invites().length,2,'a guest invites nobody');assert.equal(bia.messages.filter(m=>m.t==='online'||m.t==='desconvidado').length,0,'nor sees who is online, nor cancels');
+  // Fil invited by mistake: cancelled before taking it, the invitation lets nobody in, and Fil's pages hear so.
+  await send(room,ana,{t:'convidar',conta:fil,endereco:ROOM});const filInvite=invites().at(-1);
+  await send(room,ana,{t:'desconvidar',conta:fil});
+  assert.deepEqual(ana.messages.at(-1),{t:'desconvidado',conta:fil,ok:true});
+  assert.deepEqual(calls.at(-1),{path:'/interno/cancelado',conta:fil,id:filInvite.id},'Fil\'s pages put the notice away');
+  assert.equal((await connect(room,{key:'',sub:'g-fil',name:'Fil',convite:filInvite.convite})).closed[0],CLOSE.uninvited,'a cancelled invitation lets nobody in');
+  assert((await connect(room,{key:PILOT,sub:'g-fil',name:'Fil'})).peer.authed,'Fil may still knock with the pilots\' password');
+  // Eva takes hers: in at once; once taken it is not cancelled (the host kicks, if it must).
+  const evaIn=await connect(room,{key:'',sub:'g-eva',name:'Eva',convite:evaCall.convite});
   assert.equal(evaIn.messages[0].pending,false,'invited: in, no password, no door');assert.equal(evaIn.messages[0].role,'guest');
-  assert.equal((await connect(room,{key:'',sub:'g-zeca',convite:invite})).closed[0],CLOSE.key,'another account\'s invitation is nothing');
+  assert(await connect(room,{key:'',sub:'g-eva',name:'Eva',convite:evaCall.convite,token:evaIn.peer.token}).then(c=>c.peer.authed),'a reload comes back with it');
+  await send(room,ana,{t:'desconvidar',conta:eva});assert.deepEqual(ana.messages.at(-1),{t:'desconvidado',conta:eva,ok:false},'taken: not cancelled');
+  assert.equal((await connect(room,{key:'',sub:'g-zeca',convite:evaCall.convite})).closed[0],CLOSE.uninvited,'another account\'s invitation is nothing');
   const elsewhere=make();elsewhere.name='outra';
-  assert.equal((await connect(elsewhere,{key:'',passe:await pass('g-eva','Eva','outra'),convite:invite})).closed[0],CLOSE.key,'nor in another room');
-  const old=await makeInvite(SECRET,{account:eva,room:ROOM,host:'Ana',now:originalNow()-13*3600000});
-  assert.equal((await connect(room,{key:'',sub:'g-eva',convite:old})).closed[0],CLOSE.key,'nor once it ran out');
-  const kim=await makeInvite(SECRET,{account:await accountKey(SECRET,'g-kim'),room:ROOM,host:'Ana'});
-  assert.equal((await connect(room,{key:'',sub:'g-kim',convite:kim})).closed[0],CLOSE.kicked,'a kicked account stays out, invited or not');
+  assert.equal((await connect(elsewhere,{key:'',passe:await pass('g-eva','Eva','outra'),convite:evaCall.convite})).closed[0],CLOSE.uninvited,'nor in another room');
+  const anew=make();assert.equal((await connect(anew,{key:'',sub:'g-eva',convite:evaCall.convite})).closed[0],CLOSE.uninvited,'nor in the room started anew');
+  const old=await makeInvite(SECRET,{account:eva,room:ROOM,host:'Ana',id:'0123456789abcdef',now:originalNow()-13*3600000});
+  assert.equal((await connect(room,{key:'',sub:'g-eva',convite:old})).closed[0],CLOSE.uninvited,'nor once it ran out');
+  assert.equal((await connect(room,{key:'',sub:'g-kim',convite:kimInvite})).closed[0],CLOSE.uninvited,'a kick takes that account\'s invitation away');
+  assert.equal((await connect(room,{key:PILOT,sub:'g-kim'})).closed[0],CLOSE.kicked,'and the kicked account stays out');
  }
  // The lobby (Saguão): its lines show their pass for LOBBY first; who is online once per account; an
  // invitation reaches every page of that account; bounded per IP and per account.
@@ -157,11 +177,18 @@ try{
   const roomPass=await line('g-caio','Caio');
   let s;try{s=await open();}catch{s=sockets.at(-1);}await lobby.webSocketMessage(s,JSON.stringify({t:'auth',passe:await pass('g-caio','Caio',ROOM)}));
   assert.equal(s.closed,CLOSE.account,'a room\'s pass is not the lobby\'s');
+  const offLobby=new Saguao(state,{SALA_PASSE:'curto'});
+  try{await offLobby.fetch(new Request('https://saguao/saguao',{headers:{Upgrade:'websocket','CF-Connecting-IP':'198.51.100.77'}}));}catch{}
+  const shortLine=sockets.at(-1);await offLobby.webSocketMessage(shortLine,JSON.stringify({t:'auth',passe:await pass('g-zed','Zed',LOBBY)}));
+  assert.equal(shortLine.closed,CLOSE.off,'a short secret: the lobby is off too');
   try{s=await open();}catch{s=sockets.at(-1);}await lobby.webSocketMessage(s,JSON.stringify({t:'chat',text:'oi'}));assert.equal(s.closed,1008,'nothing before the pass');
   const ana=await accountKey(SECRET,'g-ana');
-  assert.equal(lobby.deliver({conta:ana,de:'Bia',sala:'teste',convite:'x.y'}),2,'every page of that account');
-  assert.equal(a2.sent.at(-1).t,'convite');assert.equal(b.sent.length,1,'nobody else');
-  assert.equal(lobby.deliver({conta:'nada',de:'x',sala:'y',convite:'z'}),0);
+  const id='0123456789abcdef';
+  assert.equal(lobby.deliver({conta:ana,de:'Bia',sala:'teste',convite:'x.y',id}),2,'every page of that account');
+  assert.deepEqual(a2.sent.at(-1),{t:'convite',de:'Bia',sala:'teste',convite:'x.y',id});assert.equal(b.sent.length,1,'nobody else');
+  assert.equal(lobby.deliver({conta:'nada',de:'x',sala:'y',convite:'z',id}),0);assert.equal(lobby.deliver({conta:ana,de:'x',sala:'y',convite:'z'}),0,'no id, no invitation');
+  assert.equal(lobby.cancelled({conta:ana,id}),2,'a cancelled one: every page of that account hears it');assert.deepEqual(a2.sent.at(-1),{t:'convite-cancelado',id});
+  assert.equal(lobby.cancelled({conta:ana,id:'nada'}),0);
   for(let i=0;i<4;i++)await line('g-zeca','Zeca','203.0.113.1');
   assert.equal(sockets.filter(x=>!x.closed&&x.attachment?.account===(sockets.at(-1).attachment.account)).length,4,'four pages of one account at most');
   await line('g-zeca','Zeca','203.0.113.1');assert(sockets.filter(x=>x.closed===CLOSE.elsewhere).length>=1,'the oldest gives way');
@@ -221,7 +248,7 @@ try{
   const room=make();
   assert.equal((await connect(room,{key:{toString:null}})).closed[0],CLOSE.key);
   assert.equal((await connect(room,{passe:{toString:null}})).closed[0],CLOSE.account);
-  assert.equal((await connect(room,{convite:{toString:null},key:''})).closed[0],CLOSE.key);
+  assert.equal((await connect(room,{convite:{toString:null},key:''})).closed[0],CLOSE.uninvited);
   const host=await connect(room);
   room.message(host.peer,JSON.stringify({t:'eco',text:'é'.repeat(9000)}));
   assert.equal(host.closed[0],CLOSE.flood,'the size limit counts UTF-8 bytes, not string characters');

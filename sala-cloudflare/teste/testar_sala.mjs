@@ -245,8 +245,17 @@ const report={};
  const end2=Date.now()+3000;while(!(eva.got.some(m=>m.t==='convite')&&eva2.got.some(m=>m.t==='convite'))&&Date.now()<end2)await wait(20);
  const offer=eva.got.find(m=>m.t==='convite');assert(offer&&eva2.got.some(m=>m.t==='convite'),'every page of hers');assert(!gil.got.some(m=>m.t==='convite'),'nobody else');
  assert.equal(offer.de,'Ana');assert.equal(offer.sala,room);
+ assert.match(offer.id,/^[0-9a-f]{16}$/);
+ // Gil invited by mistake: the host cancels before he takes it; his page hears so, and it lets nobody in.
+ const gilAccount=online.pilotos.find(p=>p.nome==='Gil').conta;
+ ana.send({t:'convidar',conta:gilAccount,endereco:room});await ana.until(()=>ana.of('convidado').some(m=>m.conta===gilAccount));
+ const gilOffer=await (async()=>{const end=Date.now()+3000;while(!gil.got.some(m=>m.t==='convite')&&Date.now()<end)await wait(20);return gil.got.find(m=>m.t==='convite');})();
+ ana.send({t:'desconvidar',conta:gilAccount});const undone=await ana.until(()=>ana.of('desconvidado')[0]);assert.deepEqual({conta:undone.conta,ok:undone.ok},{conta:gilAccount,ok:true});
+ {const end=Date.now()+3000;while(!gil.got.some(m=>m.t==='convite-cancelado')&&Date.now()<end)await wait(20);}
+ assert.deepEqual(gil.got.find(m=>m.t==='convite-cancelado'),{t:'convite-cancelado',id:gilOffer.id},'his pages put the notice away');
+ const gilIn=await open(room,{name:'Gil',key:'',convite:gilOffer.convite});assert.equal(gilIn.closed?.code,4016,'a cancelled invitation lets nobody in');
  const evaIn=await open(room,{name:'Eva',key:'',convite:offer.convite});assert.equal(evaIn.me?.pending,false,'invited: straight in, no password');
- const zeca=await open(room,{name:'Zeca',key:'',convite:offer.convite});assert.equal(zeca.closed?.code,4001,'her invitation is hers only');
+ const zeca=await open(room,{name:'Zeca',key:'',convite:offer.convite});assert.equal(zeca.closed?.code,4016,'her invitation is hers only');
  for(const c of [ana,evaIn,eva,eva2,gil])c.ws.close();
  report.invitations='ok';
 }
