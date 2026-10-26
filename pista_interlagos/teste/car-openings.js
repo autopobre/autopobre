@@ -15,16 +15,22 @@ const SWING={porta:1.4,capo:.7,porta_malas:.8,tampa_motor:.8,tampa_combustivel:3
 export const SPOT_ROLE=Object.freeze({capo:'front',porta_malas:'rear',porta_carona:'passengerDoor'});
 // A part as the HUD names it, with its article ("abrir o capô", "fechar a tampa do motor").
 export function partName(name){return name===OPENINGS.engineLid?'a tampa do motor':name===OPENINGS.trunk?'o porta-malas':name===OPENINGS.hood?'o capô':name===OPENINGS.passengerDoor?'a porta do carona':'a porta';}
+// The parts other windows of a multiplayer room see open or shut (openMask, showMask: one bit each, in this order).
+export const SHARED_OPENINGS=Object.freeze([OPENINGS.hood,OPENINGS.trunk,OPENINGS.engineLid,OPENINGS.driverDoor,OPENINGS.passengerDoor,...OPENINGS.fuelCaps]);
 const ease=t=>t*t*(3-2*t),turn=new THREE.Quaternion();
 const hinged=o=>Array.isArray(o.userData?.eixo_gltf)&&!!o.userData.angulo_gltf_graus;
 
 export class CarOpenings {
  constructor(){this.parts=new Map();}
- // Hinges of a freshly loaded car, all shut; call again after a livery swap.
+ // Hinges of a freshly loaded car, all shut; call again after a livery swap. Its parts shut first: attached again
+ // with a door open (a race begun anew right after the pilot got out), the open door was taken for the shut one,
+ // and shutting it swung it further (the team's report, 10-26). A hinge keeps the rest it was first seen at.
  attach(model){
+  for(const p of this.parts.values()){p.open=0;this.pose(p);}
   this.parts.clear();
   model?.traverse(o=>{if(!hinged(o))return;const u=o.userData;
-   this.parts.set(o.name,{obj:o,kind:u.peca,rest:o.quaternion.clone(),axis:new THREE.Vector3(...u.eixo_gltf).normalize(),
+   if(!Array.isArray(u.repouso)||u.repouso.length!==4)u.repouso=o.quaternion.toArray();
+   this.parts.set(o.name,{obj:o,kind:u.peca,rest:new THREE.Quaternion().fromArray(u.repouso),axis:new THREE.Vector3(...u.eixo_gltf).normalize(),
     angle:THREE.MathUtils.degToRad(u.angulo_gltf_graus),open:0,reasons:new Set(),timers:new Map()});});
   return this;
  }
@@ -54,6 +60,10 @@ export class CarOpenings {
  release(reason){for(const p of this.parts.values()){p.reasons.delete(reason);p.timers.delete(reason);}}
  closeAll(instant=false){for(const p of this.parts.values()){p.reasons.clear();p.timers.clear();if(instant){p.open=0;this.pose(p);}}}
  isOpen(name){return (this.parts.get(name)?.open??0)>.02;}
+ // For a multiplayer room (multiplayer.js): which shared parts this car has open or opening (any reason holds
+ // it), as bits of SHARED_OPENINGS; and another window's car showing those (reason: the room's word only).
+ openMask(){let mask=0;SHARED_OPENINGS.forEach((name,i)=>{if(this.parts.get(name)?.reasons.size)mask|=1<<i;});return mask;}
+ showMask(mask,reason='sala'){SHARED_OPENINGS.forEach((name,i)=>this.hold(name,reason,!!(mask>>i&1)));}
  // How far open, as posed (0 shut, 1 open).
  amount(name){return ease(this.parts.get(name)?.open??0);}
  update(dt){

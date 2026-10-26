@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import * as THREE from '../teste/node_modules/three/build/three.module.js';
-import {CarOpenings,OPENINGS,shutOpenings,carSpot,partName} from '../teste/car-openings.js';
+import {CarOpenings,OPENINGS,SHARED_OPENINGS,shutOpenings,carSpot,partName} from '../teste/car-openings.js';
 import {PitStop} from '../teste/pitstop.js';
 const ASSETS=new URL('../teste/assets/',import.meta.url);
 // The GLB's JSON chunk: node names, translations and extras (no textures needed here).
@@ -121,4 +121,17 @@ for(const livery of ['seiva_danilo','assinaturas_omp']){
  assert.equal(pit.openingLabel('porta_malas'),'Abrir a tampa do motor · ver o motor');assert.equal(pit.openingLabel('capo'),'Abrir o capô · ver o tanque');
  assert.equal(pit.toggleOpening('rear'),true);assert(o.held(OPENINGS.engineLid,'manual'));assert.equal(pit.openingLabel('porta_malas'),'Fechar '+partName(OPENINGS.engineLid));
  pit.service.jobs=[{id:'motor'}];assert.equal(pit.openingLabel('porta_malas'),'Ver o motor · equipe trabalhando');}
+// A race begun anew with the driver's door open (the car's hinges attached again, main.js showFusca): it shuts, and
+// shutting it never swings it further (the team's report, 10-26: it began open, and closing opened it more).
+{const car=carFrom(glbNodes('opala99_seiva_danilo.glb')),o=new CarOpenings().attach(car),closed=tip(car,OPENINGS.driverDoor);
+ o.hold(OPENINGS.driverDoor,'manual');run(o,3);assert(tip(car,OPENINGS.driverDoor).distanceTo(closed)>.8,'open');
+ o.attach(car);o.closeAll(true);assert(tip(car,OPENINGS.driverDoor).distanceTo(closed)<1e-6,'attached again: shut where it was');
+ o.toggle(OPENINGS.driverDoor);run(o,3);o.toggle(OPENINGS.driverDoor);run(o,3);assert(tip(car,OPENINGS.driverDoor).distanceTo(closed)<1e-6,'opened and shut again: shut');
+ const twin=car.clone(),t=new CarOpenings().attach(twin);o.hold(OPENINGS.driverDoor,'manual');run(o,3);const t2=new CarOpenings().attach(car.clone());t2.closeAll(true);
+ assert(t.has(OPENINGS.driverDoor)&&t2.parts.get(OPENINGS.driverDoor).rest.angleTo(o.parts.get(OPENINGS.driverDoor).rest)<1e-6,'a clone made with the door open keeps the shut rest');
+ // A multiplayer room: the shared parts held open go as bits, and another car shows them.
+ const other=new CarOpenings().attach(carFrom(glbNodes('opala99_seiva_danilo.glb')));o.closeAll(true);o.hold([OPENINGS.hood,OPENINGS.passengerDoor],'manual');
+ const mask=o.openMask();assert.equal(mask,(1<<SHARED_OPENINGS.indexOf(OPENINGS.hood))|(1<<SHARED_OPENINGS.indexOf(OPENINGS.passengerDoor)));
+ other.showMask(mask);run(other,3);assert(other.isOpen(OPENINGS.hood)&&other.isOpen(OPENINGS.passengerDoor)&&!other.isOpen(OPENINGS.driverDoor));
+ other.showMask(0);run(other,3);assert(!other.isOpen(OPENINGS.hood)&&!other.isOpen(OPENINGS.passengerDoor));}
 console.log('aberturas ok');
