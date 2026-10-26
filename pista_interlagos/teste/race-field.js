@@ -995,6 +995,14 @@ export class RaceField {
   if(r.recover>0){r.recover-=dt;Object.assign(input,{reverse:1,throttle:0,brake:0,left:alpha<0?1:0,right:alpha>0?1:0});}
   return input;
  }
+ // A spot for a car taken off the track (multiplayer.js: a human past the flag, parked at once): the parking row's
+ // index-th from its far end (the in-lap's cars take the row from the other end, first come first served); null
+ // without a pit lane.
+ parkingSpot(index=0){
+  const R=this.route,slots=R?.slots;if(!slots?.length)return null;
+  const slot=slots[Math.max(0,slots.length-1-index)],p=R.at(slot.u);
+  return {x:p.x-p.ty*slot.d,y:p.y+p.tx*slot.d,heading:Math.atan2(p.ty,p.tx)};
+ }
  // Back on the track at the lane's end: racing again from where the car is, easing over to its line.
  endStop(r){
   const c=r.car,f=this.view(r).F(c);if(this.spotCars.get(r.pit.slot)===r)this.spotCars.delete(r.pit.slot);

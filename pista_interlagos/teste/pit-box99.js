@@ -323,12 +323,16 @@ export function createBox99({pit,c,lerp,at,root,obstacles,textures,people,crowd,
  const guests=[[[-12.2,F+3.4],[-12.8,F+5.6],[-10.6,F+3.2]],[[-15.9,F+5.8],[-15.6,F+2.6],[-13,F+2.4]],[[-2.2,F+10.6],[-2.2,F+12.8],[-1.4,F+14.2]],[[1,F+13],[.4,F+11.4],[1.2,F+14.6]]].map((list,k)=>{
   const at=list.find(free),way=k<2?route.slice(0,4):boxWay.every((p,i)=>i===0||free(p))?boxWay.map(([x,d])=>world(x,d)):null;
   return at&&way?{at:world(...at),path:way.map(p=>p.clone())}:null;});
+ // Where a multiplayer room's pilots meet before the start, and those done past the flag (main.js meetingSpots; the
+ // team's wish, 10-26): free floor on the café's customer side, a step apart, nearest its middle first.
+ const meeting=[];for(let x=-17;x<=-7.1;x+=1.4)for(let d=F+1.9;d<=F+7.9;d+=1.3)if(free([x,d]))meeting.push([x,d]);
+ meeting.sort((a,b)=>Math.hypot(a[0]+12.5,a[1]-F-4.6)-Math.hypot(b[0]+12.5,b[1]-F-4.6));
  const layout={
   pit,anchor:{x:spotWorld.x,y:spotWorld.y+.055,z:spotWorld.z,heading:h0},label:'INTERLAGOS · BOX 99',title:'Cuida do Opala!',name:'Box 99 de Interlagos',...labels,scenery:true,
   // lists: one per board, each {subtitle, rows: trackRecords rows (lap-records.js)}. recordsShown keeps what the TVs show.
   showRecords:({title,boards:lists})=>{layout.recordsShown={title,boards:lists};lists.forEach((list,i)=>boards[i]?.show({title,...list}));},
   inBox:surface=>inServiceSpot(spot,surface),
-  crew,cafeSeat:route.at(-1).clone(),cafeSign:world(-13.2,F+9.6,2.95),route,guests,heroHeading:h0+Math.PI/2,pitView:[5.6,-6.4,2.9],
+  crew,cafeSeat:route.at(-1).clone(),cafeSign:world(-13.2,F+9.6,2.95),route,guests,meeting:meeting.map(([x,d])=>world(x,d)),heroHeading:h0+Math.PI/2,pitView:[5.6,-6.4,2.9],
   makeHero:()=>people.person(OUTFITS.driver),
   // elevation: the height of the pilot's feet (the team stand is climbed step by step).
   walk:(pos,elevation=pos.y)=>{

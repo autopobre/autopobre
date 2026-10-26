@@ -871,6 +871,23 @@ for(let trial=0;trial<6;trial++){
  records.update({data:{meta:{id:'interlagos'}},active:false,freeTotalLaps:3,fullGrid:true,rivals:[rival('73',60,true),rival('00',61,false)]});
  assert.equal(reference('73'),before73,'a remote car is no AI record');assert.equal(reference('00'),61,'a bot this window drives is');assert(before00>61);
 }
+// The host closes the room (Fechar sala): every window out with 'fechada' at once, none hosting it again on its own
+// nor hearing anything more; a guest cannot close it. Online the server's 4017 says the same, and drops the invitation.
+{
+ let now=0;const clock=()=>now,name='fechar-'+Math.random().toString(36).slice(2,8),advance=(rooms,to)=>{while(now<to-1e-9){now=Math.min(to,now+.1);for(const r of rooms)r.tick();}};
+ const A=new Room({room:name,name:'Ana',clock}),B=new Room({room:name,name:'Bia',want:'19',clock});
+ A.start();await wait();advance([A],1);B.start();await wait();await wait();assert.equal(B.role,'guest');
+ assert.equal(B.closeRoom(),false,'a guest cannot close it');await wait();assert.equal(A.role,'host');
+ assert.equal(A.closeRoom(),true);assert.equal(A.problem,'fechada');assert.equal(A.role,null);
+ await wait();assert.equal(B.problem,'fechada');assert.equal(B.role,null);
+ advance([A,B],30);assert.equal(A.role,null,'nobody hosts it again');assert.equal(B.role,null);
+ A.channel.close();B.channel.close();
+ assert.equal(CLOSED[4017],'fechada');
+ let forgot=0;const link=new ServerLink({url:'wss://sala.invalid',room:'x',key:()=>'',invite:()=>'convite',forgetInvite:()=>forgot++,pass:async()=>({passe:'p'}),socket:()=>{const ws={send(){},close(){}};queueMicrotask(()=>ws.onclose?.({code:4017}));return ws;}});
+ const heard=[];link.onclose=reason=>heard.push(reason);link.open();await wait();await wait();
+ assert.deepEqual(heard,['fechada']);assert.equal(forgot,1,'the invitation to a closed room is forgotten');
+ link.closing=true;clearTimeout(link.retry);
+}
 // The room server's address is the one the page's content policy allows (scripts/publicacao.py).
 {
  const policy=fs.readFileSync(new URL('./publicacao.py',import.meta.url),'utf8').match(/^ROOM_SERVER = '([^']+)'/m)?.[1];

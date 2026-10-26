@@ -224,6 +224,32 @@ with sync_playwright() as p:
     ana.keyboard.press('Shift+KeyT')
     wait_js(ana, "!document.getElementById('mpChat').classList.contains('mp-chat-closed')", timeout=5000)
     report['chat'] = ana.evaluate("interlagosSala.info().chat.lines")
+
+    # Ana closes the room (Fechar sala, asked twice): everybody out (the server's 4017), Bia's card says so with
+    # Voltar ao jogo, her invitation is forgotten; Ana's page is the game without the room, and so is Bia's once she
+    # clicks it.
+    assert bia.evaluate(f"localStorage.getItem('autopobre-convite-{ROOM}')"), 'Bia keeps her invitation while the room is open'
+    ana.click('#mpClose')
+    wait_js(ana, "document.getElementById('mpClose').classList.contains('mp-confirm')", timeout=5000)
+    assert 'de novo' in ana.inner_text('#mpClose'), 'the first click only asks'
+    ana.screenshot(path=str(SHOTS / '8_ana_fechar_confirma.png'))
+    assert bia.evaluate("interlagosSala.info().problem") is None, 'nothing closed yet'
+    ana.click('#mpClose')
+    wait_js(bia, "interlagosSala.info().problem==='fechada'", timeout=15000)
+    wait_js(bia, "document.querySelector('#mpRoom .mp-status')?.textContent.includes('fechou a sala')&&!document.querySelector('#mpRoom .mp-account').hidden", timeout=5000)
+    assert bia.inner_text('#mpRoom .mp-account') == 'Voltar ao jogo'
+    assert bia.evaluate(f"localStorage.getItem('autopobre-convite-{ROOM}')") is None, 'the invitation to a closed room is forgotten'
+    bia.screenshot(path=str(SHOTS / '8_bia_sala_fechada.png'))
+    wait_js(ana, "!location.hash.includes('desafio')&&!window.interlagosSala&&document.readyState==='complete'", timeout=20000)
+    ana.wait_for_timeout(3000)
+    assert not ana.evaluate("!!window.interlagosSala||!!document.getElementById('mpRoom')"), 'Ana is out of the room: the game alone'
+    bia.wait_for_timeout(4000)
+    assert bia.evaluate("interlagosSala.info().problem") == 'fechada', 'nobody tries again'
+    bia.click('#mpRoom .mp-account')
+    wait_js(bia, "!location.hash.includes('desafio')&&document.readyState==='complete'", timeout=20000)
+    bia.wait_for_timeout(3000)
+    assert not bia.evaluate("!!window.interlagosSala||!!document.getElementById('mpRoom')")
+    report['fechar_sala'] = 'ok'
     browser.close()
 
 stop_all()

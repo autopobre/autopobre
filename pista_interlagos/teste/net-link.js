@@ -11,7 +11,7 @@ export const ROOM_SERVER='wss://sala.autopobre.com.br';
 export const LOCAL_SERVER='ws://127.0.0.1:8787';
 // Why the server closed the connection (sala-cloudflare/src/index.js CLOSE): the game says so. Its
 // 4012 (the key came too late: a slow connection) is not here: a line that dropped, tried again.
-export const CLOSED=Object.freeze({4001:'chave',4002:'cheia',4003:'recusado',4004:'expulso',4008:'excesso',4009:'ocupada',4010:'outra-aba',4011:'origem',4014:'passe',4016:'convite'});
+export const CLOSED=Object.freeze({4001:'chave',4002:'cheia',4003:'recusado',4004:'expulso',4008:'excesso',4009:'ocupada',4010:'outra-aba',4011:'origem',4014:'passe',4016:'convite',4017:'fechada'});
 const MAX_BYTES=65536,RETRIES=[1000,2000,4000,8000,15000];
 // The rooms switched off (no SALA_PASSE on a server: the accounts server says 503, the room server closes
 // 4015): asked again this often (ms), not as a dropped line.
@@ -83,9 +83,9 @@ export class ServerLink {
    // (a pass the server did not take is never offered again)
    if(e.code===4014)this.ticket=null;
    if(e.code===4015){this.off();return;}
-   // (an invitation the server did not take, or one its host cancelled (4016): out, the password asked
-   // for instead)
-   if((e.code===4001||e.code===4016)&&invite)this.forgetInvite();
+   // (an invitation the server did not take, or one its host cancelled (4016), or its room closed (4017): out,
+   // the password asked for instead)
+   if((e.code===4001||e.code===4016||e.code===4017)&&invite)this.forgetInvite();
    const reason=CLOSED[e.code];if(reason||this.closing){this.onclose?.(reason??'saiu');return;}
    // A new connection that failed while the old one still works (the alarm was false): that one goes on.
    if(this.live?.readyState===1){this.ws=this.live;return;}

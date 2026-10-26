@@ -125,7 +125,7 @@ const validLook=v=>v===undefined||v===null||!!v&&typeof v==='object'&&!Array.isA
 // What a car carries beside its motion (multiplayer.js extras): its pilot out of it on foot (pe: x, y, z, the way he
 // faces, running 0/1, crouched 0..1, off the ground in m) and the car's parts held open (ab: car-openings.js
 // SHARED_OPENINGS bits). Seen only: nothing here moves a car or counts in a race.
-const validWalk=v=>Array.isArray(v)&&v.length===7&&isNum(v[0],-1e5,1e5)&&isNum(v[1],-1e5,1e5)&&isNum(v[2],-2000,9000)&&isNum(v[3],-1e3,1e3)&&(v[4]===0||v[4]===1)&&isNum(v[5],0,1)&&isNum(v[6],0,60);
+const validWalk=v=>Array.isArray(v)&&(v.length===7||v.length===8&&isInt(v[7],0,1023))&&isNum(v[0],-1e5,1e5)&&isNum(v[1],-1e5,1e5)&&isNum(v[2],-2000,9000)&&isNum(v[3],-1e3,1e3)&&(v[4]===0||v[4]===1)&&isNum(v[5],0,1)&&isNum(v[6],0,60);
 const validMask=v=>v===undefined||isInt(v,0,127);
 export const validExtra=e=>!!e&&typeof e==='object'&&!Array.isArray(e)&&(e.pe===undefined||validWalk(e.pe))&&validMask(e.ab);
 const validSeat=s=>s&&typeof s==='object'&&isId(s.id)&&typeof s.name==='string'&&s.name.length<=64&&SEATS.includes(s.number);
@@ -149,7 +149,7 @@ export function validMessage(m){
  if(!m||typeof m!=='object'||typeof m.t!=='string'||!isId(m.from))return false;
  switch(m.t){
   case 'hello':return typeof m.name==='string'&&m.name.length<=64&&(m.want===null||SEATS.includes(m.want))&&validPick(m.pick)&&validWait(m.wait)&&validLook(m.look);
-  case 'bye':return true;
+  case 'bye':case 'fechar':return true;
   case 'lobby':return typeof m.name==='string'&&m.name.length<=64&&isNum(m.age,0,1e7)&&Array.isArray(m.players)&&m.players.length<=32&&m.players.every(p=>p&&isId(p.id)&&typeof p.name==='string'&&p.name.length<=64&&(p.number===null||SEATS.includes(p.number))&&validPick(p.pick)&&validWait(p.wait)&&validLook(p.look))&&validRace(m.race)&&validStops(m.stops);
   case 'ready':return isId(m.race);
   case 'go':return isId(m.race)&&validSeats(m.seats);
@@ -316,6 +316,10 @@ export class Room {
  // Host, online: let a guest in, turn it away, or send it out for good.
  admit(id){if(this.role!=='host')return;this.knocks.delete(id);this.send({t:'admit',to:id});this.emit('change');}
  deny(id){if(this.role!=='host')return;this.knocks.delete(id);this.send({t:'deny',to:id});this.emit('change');}
+ // The host closes the room (Fechar sala; the team's wish, 10-26): online the server lets everybody go, this tab
+ // too (net-link.js CLOSED 4017: 'fechada', nobody tries again); here every window hears it and this one is out at
+ // once. False: not the host, or not in the room.
+ closeRoom(){if(this.role!=='host'||this.problem!==null)return false;this.note('sala fechada');this.send({t:'fechar'});if(!this.online)this.closed('fechada');return true;}
  kick(id){if(this.role!=='host'||id===this.id)return;this.knocks.delete(id);this.send({t:'kick',to:id});this.drop(id);this.away.delete(id);}
  // The tab's identity, for a reload: id, seat, whether it hosts and since when (wall clock).
  save(){this.lastNumber=this.number??this.lastNumber;try{if(this.lastNumber)this.seatStore?.setItem(SAVED_SEAT+this.room,this.lastNumber);}catch{}try{this.storage?.setItem(SAVED+this.room,JSON.stringify({id:this.id,host:this.role==='host',since:this.role==='host'?this.hostEpoch:null,number:this.lastNumber,at:Date.now()}));}catch{}}
@@ -342,6 +346,8 @@ export class Room {
  // No more than RATE messages a second from anyone.
  allow(id,now){const r=this.rates.get(id);if(!r||now-r.since>=1){this.rates.set(id,{since:now,count:1});return true;}return ++r.count<=RATE;}
  receive(m){
+  // (a room its host closed hears nothing more: closeRoom)
+  if(this.problem==='fechada')return;
   // The server's echo: the line is alive.
   if(this.online&&m?.t==='eco'){this.echo=this.clock();return;}
   if(this.online&&validControl(m)){this.control(m,this.clock());return;}
@@ -353,6 +359,8 @@ export class Room {
   switch(m.t){
    case 'hello':if(host)this.join(m.from,m.name,m.want,m.pick??0,now,!!m.wait,normalizeLook(m.look));break;
    case 'bye':if(host){this.note('bye '+m.from);this.drop(m.from);}else if(fromHost){this.hostLeft=now;this.emit('change');}break;
+   // (here, the windows of one browser; online the server lets everybody go itself, net-link.js CLOSED)
+   case 'fechar':if(fromHost&&!this.online)this.closed('fechada');break;
    case 'lobby':this.heardHost(m,now);break;
    case 'ready':if(host&&this.race?.id===m.race&&this.race.state==='waiting'&&this.race.seats.some(s=>s.id===m.from)&&!this.ready.has(m.from)){this.touch(m.from,now);this.ready.add(m.from);this.emit('change');}break;
    case 'go':if(fromHost&&this.race?.id===m.race&&this.race.state==='waiting'){this.hostSeen=now;this.race={...this.race,state:'racing',seats:m.seats};this.emit('go',this.race);this.emit('change');}break;
@@ -504,7 +512,7 @@ export class Room {
   const frozen=this.lastTick===undefined?0:Math.max(0,now-this.lastTick-FROZEN);this.lastTick=now;
   if(frozen){this.hostSeen+=frozen;if(this.echo!==undefined)this.echo+=frozen;for(const p of this.players.values())p.seen+=frozen;}
   // Online the server hosts the election: until its welcome there is nothing to do.
-  if(this.role===null){if(!this.online&&now>=this.electUntil)this.becomeHost(now);return;}
+  if(this.role===null){if(!this.online&&now>=this.electUntil&&this.problem!=='fechada')this.becomeHost(now);return;}
   // Online, the line itself: an echo asked for every ECHO, and none for LINK_QUIET is a dead line (a
   // new connection, the same player). Not before the server has echoed once.
   if(this.online&&this.problem===null){

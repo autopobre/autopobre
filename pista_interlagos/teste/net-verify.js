@@ -6,7 +6,8 @@ import {TestCar} from './physics.js';
 import {packCar,readCar} from './net-cars.js';
 import {branchPoint} from './branch-lane.js';
 
-const SPEED=120,JITTER=45,MAX_GAP=5,STEP=8;
+// (a finished car within PARKED metres of its parking spot, at rest, is parked there: receive)
+const SPEED=120,JITTER=45,MAX_GAP=5,STEP=8,PARKED=2.5;
 export class GuestRaceState {
  constructor(rival,{time=0,laps,lead=0}={}){
   this.probe=new TestCar(rival.car.data);this.laps=laps;this.lead=lead;
@@ -25,7 +26,10 @@ export class GuestRaceState {
  // Give the host's actual car the lap book as well: if the pilot disappears, the host's physics
  // continues these same checkpoints and times while that car coasts towards the grass.
  sync(car,time=this.probe.clock){Object.assign(car,this.probe.lapBooks(),{clock:time,excursion:this.probe.excursion?{...this.probe.excursion}:null});}
- receive(s,time,{running=true}={}){
+ // parking: where this car parks past its flag (multiplayer.js parkingSpotOf): a car past the flag at rest there is
+ // taken as it is, however far it went (its pilot's window takes it there at once, multiplayer.js finishAndWatch);
+ // nothing is booked for it.
+ receive(s,time,{running=true,parking=null}={}){
   const p=this.probe,L=p.data.meta.reconstructed_xy_m,dt=Math.max(0,time-this.at);
   const distance=Math.hypot(s.x-p.x,s.y-p.y),height=Math.abs(s.z-p.z),travel=Math.hypot(distance,height);
   const budget=Math.min(JITTER+SPEED*MAX_GAP,this.credit+SPEED*Math.min(dt,MAX_GAP));
@@ -36,6 +40,7 @@ export class GuestRaceState {
   const fork=p.forks&&p.surface.branch!=null?branchPoint(p.forks[p.surface.branch].geo,p.surface.branchS):null;
   const station=fork?[0,fork.x,fork.y,fork.z]:p.a[p.index],recovered=running&&distance>12&&Math.hypot(s.vx,s.vy,s.vz)<1
    &&Math.hypot(s.x-station[1],s.y-station[2])<2&&Math.abs(s.z-station[3])<4;
+  if(this.finished&&parking&&Math.hypot(s.vx,s.vy)<1&&Math.hypot(s.x-parking.x,s.y-parking.y)<PARKED)return this.park(s,time);
   if(Math.hypot(s.vx,s.vy)>SPEED||Math.abs(s.vz)>SPEED||(!running&&distance>2)
    ||!recovered&&(travel>budget||travel>stepLimit))return null;
   // A stopped race cannot advance through a stream of small packets. The last position may be
@@ -61,6 +66,14 @@ export class GuestRaceState {
   const progress=(p.awaitingStart?-L:p.laps*L)+p.surface.s+this.lead;
   const raw=packCar({...s,laps:p.laps,best:p.best},{progress,finished:this.finished,retired:this.retired,
    finishTime:this.finishTime,brake:s.brake,throttle:s.throttle,still:!running});
+  return {state:readCar(raw),raw};
+ }
+ // A finished car at rest on its parking spot: the probe goes there (its stretch found anew: the chord from the line
+ // to the pit lane crosses the infield), its lap book as it was.
+ park(s,time){
+  const p=this.probe;Object.assign(p,{x:s.x,y:s.y,z:s.z,clock:time});p.index=p.nearest(s.x,s.y,true,null,s.z).i;p.surface=p.sample(p.x,p.y);
+  this.at=time;this.credit=JITTER;
+  const raw=packCar({...s,laps:p.laps,best:p.best},{progress:(p.awaitingStart?-p.data.meta.reconstructed_xy_m:p.laps*p.data.meta.reconstructed_xy_m)+p.surface.s+this.lead,finished:true,retired:this.retired,finishTime:this.finishTime,brake:s.brake,throttle:s.throttle,still:true});
   return {state:readCar(raw),raw};
  }
 }

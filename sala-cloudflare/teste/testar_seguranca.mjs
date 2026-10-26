@@ -161,6 +161,31 @@ try{
   assert.equal((await connect(room,{key:'',sub:'g-kim',convite:kimInvite})).closed[0],CLOSE.uninvited,'a kick takes that account\'s invitation away');
   assert.equal((await connect(room,{key:PILOT,sub:'g-kim'})).closed[0],CLOSE.kicked,'and the kicked account stays out');
  }
+ // The host closes the room: everybody in it and at its door out with CLOSE.closed, its own tab last; its
+ // invitations not taken yet cancelled (their notices go, they let nobody in); the room forgets them all (the
+ // pilots' password knocks at an empty room nobody opened), the kicked still out; a guest cannot close it.
+ {
+  const calls=[];
+  const lobby={idFromName:n=>n,get:()=>({fetch:async(url,init)=>{calls.push({path:new URL(url).pathname,...JSON.parse(init.body)});return Response.json({entregue:1});}})};
+  const room=make({SAGUAO:lobby}),ana=await connect(room,{sub:'g-ana',name:'Ana'}),eva=await accountKey(SECRET,'g-eva'),leo=await accountKey(SECRET,'g-leo');
+  const bia=await connect(room,{key:PILOT,sub:'g-bia',name:'Bia'});send(room,ana,{t:'admit',to:bia.peer.id});
+  const door=await connect(room,{key:PILOT,sub:'g-caio',name:'Caio'}),kim=await connect(room,{key:PILOT,sub:'g-kim',name:'Kim'});
+  send(room,ana,{t:'admit',to:kim.peer.id});send(room,ana,{t:'kick',to:kim.peer.id});
+  await send(room,ana,{t:'convidar',conta:eva,endereco:ROOM});await send(room,ana,{t:'convidar',conta:leo,endereco:ROOM});
+  const [evaInvite,leoInvite]=calls.filter(c=>c.path==='/interno/convite');
+  const leoIn=await connect(room,{key:'',sub:'g-leo',name:'Leo',convite:leoInvite.convite});assert(leoIn.peer.authed);
+  await send(room,bia,{t:'fechar'});assert.equal(room.peers.size,4,'a guest cannot close the room');assert.equal(bia.closed.length,0);
+  await send(room,ana,{t:'fechar'});
+  for(const [who,c] of Object.entries({ana,bia,door,leoIn}))assert.deepEqual(c.closed,[CLOSE.closed],who);
+  assert.equal(room.peers.size,0);assert.equal(room.hostId,null);assert.equal(room.tokens.size,0);assert.equal(room.issued.size,0);
+  assert.deepEqual(calls.filter(c=>c.path==='/interno/cancelado').map(c=>c.id),[evaInvite.id],'Eva\'s invitation, not taken, is cancelled (not Leo\'s, taken)');
+  assert.equal((await connect(room,{key:'',sub:'g-eva',convite:evaInvite.convite})).closed[0],CLOSE.uninvited,'it lets nobody in');
+  const back=await connect(room,{key:PILOT,sub:'g-bia',name:'Bia',token:bia.peer.token});
+  assert.equal(back.messages[0].pending,true,'back with the pilots\' password: at the door');assert.equal(back.messages[0].host,null,'of a room nobody opened');
+  assert.equal((await connect(room,{key:PILOT,sub:'g-kim'})).closed[0],CLOSE.kicked,'the kicked still out');
+  const anew=await connect(room,{sub:'g-ana',name:'Ana'});assert.equal(anew.messages[0].role,'host','opened again by the host\'s password');
+  assert.deepEqual(anew.messages.filter(m=>m.t==='knock').map(m=>m.name),['Bia']);
+ }
  // The lobby (Saguão): its lines show their pass for LOBBY first; who is online once per account; an
  // invitation reaches every page of that account; bounded per IP and per account.
  {
@@ -323,5 +348,5 @@ try{
   const open=make(),boss=await connect(open);open.fromHost(boss.peer,{t:'config',porteiro:false});
   for(let i=0;i<12;i++)assert((await connect(open)).peer.authed,'without the doorman nobody waits at the door');
  }
- console.log('testar_seguranca: ok (the account\'s pass, the two passwords, names from the accounts, kicks per account, the handover, the chat and its links, invitations, the lobby, IP throttling here and in every room, reconnect capacity, reserved host, bounded sessions, malformed auth, the key first, the door)');
+ console.log('testar_seguranca: ok (the account\'s pass, the two passwords, names from the accounts, kicks per account, the handover, the chat and its links, invitations, the host closing the room, the lobby, IP throttling here and in every room, reconnect capacity, reserved host, bounded sessions, malformed auth, the key first, the door)');
 }finally{Date.now=originalNow;for(const room of rooms)clearTimeout(room.hostAwayTimer);}

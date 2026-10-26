@@ -1226,14 +1226,15 @@ window.addEventListener('pointerup',e=>{$('view').classList.remove('dragging');w
 const walkMouse={chute:false,passe:false};$('view').addEventListener('contextmenu',e=>{if(walker?.active)e.preventDefault();});
 $('view').addEventListener('pointercancel',()=>$('view').classList.remove('dragging'));
 $('view').addEventListener('wheel',e=>{if(walker?.active){if(!paused)walker.zoom(Math.sign(e.deltaY));return;}if(ready&&!paused&&!pitstop?.opened&&!immersive?.ownsMouse()){if(pointerLocked&&isInside()){e.stopImmediatePropagation();return;}orbitFromView();cameraReturn.manual(performance.now());}},{capture:true,passive:true});
-// The rival the cameras watch in the recon lap (null: the player's own car).
+// The rival the cameras watch in the recon lap, or a multiplayer pilot's past the flag, parked (null: the player's own car).
+const watchingOthers=()=>automatic||!!multiplayer?.spectating?.();
 function watchedRival(){
- if(!watched||!automatic||!immersive||immersive.active)return null;
+ if(!watched||!watchingOthers()||!immersive||immersive.active)return null;
  const obj=immersive.visual.rivals[watched-1],rival=immersive.rivals[watched-1];
  return obj&&rival?{obj,car:rival.car,entry:obj.userData.entry}:null;
 }
 function watchNext(step=1){
- if(!ready||!automatic||immersive.active)return;
+ if(!ready||!watchingOthers()||immersive.active)return;
  const n=immersive.visual.rivals.length+1;watched=((watched+step)%n+n)%n;
  followInitialized=false;tvCamera?.reset();headLook.yaw=headLook.pitch=0;lookBack.reset();
  const rival=watchedRival();if(rival)watchForward.set(1,0,0).applyQuaternion(rival.obj.quaternion);
@@ -1667,9 +1668,9 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  // its running phase puts him back in at once; then the walk and its camera.
  if(walker){
   if(walker.stopping&&pitstop?.opened){walker.cancel();pitstop.visitCafe();}
-  if(walker.busy&&!walkRace())walker.reset();
+  if(walker.busy&&!walkRace()&&!meetingWalk())walker.reset();
   walker.update(paused?0:dt,camera,{input:paused?undefined:input(),shift:pressed('ShiftLeft')||pressed('ShiftRight'),rivals:immersive?.rivals??[],visible:sessionStarted&&!paused,hold:{chute:pressed('KeyE')||walkMouse.chute,passe:pressed('KeyR')||walkMouse.passe}});
-  if(touchDevice){const show=!walker.active&&(walker.stopping||walkRace()),label=walker.stopping?'Parando…':'Sair do carro';if($('touchExit').hidden===show)$('touchExit').hidden=!show;if($('touchExit').textContent!==label)$('touchExit').textContent=label;}
+  if(touchDevice){const cafe=!walker.active&&!!multiplayer?.spectating?.()&&!!pitstop?.cafeSeat,show=!walker.active&&(walker.stopping||walkRace()||cafe),label=walker.stopping?'Parando…':cafe?'Lanchonete da Tia':'Sair do carro';if($('touchExit').hidden===show)$('touchExit').hidden=!show;if($('touchExit').textContent!==label)$('touchExit').textContent=label;}
  }
  // Specks in the air, the rivals' dust and the pushed verge grass; the pad buzzes on the kerbs.
  speedFx?.update(paused||frozen?0:dt,camera,{cars:carsThisFrame(),landscape,inside:isInside(),viewport:viewportThisFrame(),subject:watchedRival()?.car??car});gamepad.kerb(paused||frozen?0:car.kerbRide);
@@ -1854,12 +1855,36 @@ let held=false;
 // lap) with the car on the ground; not in the countdown, the opening shots, the grid, at the open box (its own walk), in
 // the arena's editor or after the flag.
 function walkRace(){return ready&&sessionStarted&&!intro.active&&!gridPreview()&&!car.fall&&!pitstop?.opened&&!arenaMode?.editing&&raceResults.root.hidden&&(immersive.active?immersive.state.phase==='race':!immersive.freeCountdown&&!immersive.freeResultReady&&!immersive.finishing);}
+// A multiplayer room's meeting at the Tia's café (multiplayer.js meet: before its start, and past the flag): on foot
+// away from the car, outside walkRace's times; over once the result sheet shows.
+function meetingWalk(){return !!walker?.away&&ready&&sessionStarted&&!intro.active&&raceResults.root.hidden;}
+// Where the room's pilots stand as they meet (index: theirs in the room): the Box 99 layout's spots by the café
+// (pit-box99.js meeting), one each, the next ones after it should one be taken; elsewhere round the Tia's counter.
+function meetingSpots(index){
+ const listed=pitstop?.layout?.meeting,k=listed?.length?index%listed.length:0;
+ if(listed?.length)return [...listed.slice(k),...listed.slice(0,k)].map(p=>p.clone());
+ const seat=pitstop.cafeSeat,spots=[];
+ for(let j=0;j<16;j++){const i=index+j,a=i*2.4,r=2.2+.45*(i%4);spots.push(new THREE.Vector3(seat.x+Math.cos(a)*r,seat.y,seat.z+Math.sin(a)*r));}
+ return spots;
+}
+// The room's hooks (multiplayer.js): the pilot on foot by the café (away: free-walk.js meet's), back in the car.
+function meetAtCafe(index,away){
+ if(!walker||!pitstop?.cafeSeat||!ready||!sessionStarted||intro.active||gridPreview()||!raceResults.root.hidden||pitstop.opened)return false;
+ if(walker.stopping)walker.cancel();
+ return walker.meet(meetingSpots(index),{face:pitstop.cafeSeat,away});
+}
 // F in the car: it stops and he gets out (the recon lap and the arena's demonstration hand the car over first); F again
-// while it brakes stays in.
+// while it brakes stays in. Past the flag in a room (parked, watching the others) F takes him to the Tia's café.
 function toggleWalk(){
+ if(walker&&!walker.active&&multiplayer?.spectating?.())return multiplayer.toCafe();
  if(!walker||walker.active||!walker.stopping&&!walkRace())return false;
  if(automatic)takeWheel();if(arenaMode?.demo)arenaMode.stopDemo('VOCÊ ASSUMIU O CARRO');
  return walker.request();
+}
+// A multiplayer room's pilot past the flag watches a car by its number (multiplayer.js finishAndWatch).
+function watchCar(number){
+ if(!ready||!immersive||immersive.active)return false;const k=immersive.rivals.findIndex(r=>(r.seat??r.entry.number)===number);if(k<0)return false;
+ watched=k;watchNext(1);return watched===k+1;
 }
 function takeWheel(){automatic=false;if(watched){watched=0;followInitialized=false;tvCamera?.reset();}}
 // Back from a pause in the middle of a race (P, Escape's menu, the window coming back), the picture stays frozen
@@ -2131,6 +2156,8 @@ document.addEventListener('keydown',e=>{
  if($('settings').open){if(e.code==='KeyM'){carAudio.toggleMute();audioControls();}return;}
  // The selfie's phone out (the photo under review: the mouse is free): Escape puts it away, back to the walk.
  if(e.code==='Escape'&&walker?.active&&walker.selfie.busy&&sessionStarted&&ready&&!paused){e.preventDefault();walker.selfie.close();return;}
+ // The Tia's menu open on foot: Escape closes it.
+ if(e.code==='Escape'&&walker?.active&&walker.snack.menu&&sessionStarted&&ready&&!paused){e.preventDefault();walker.closeMenu();return;}
  // Out of the car (free-walk.js) the walk takes the keys: F back in, E the hood or the trunk, Space, C, Shift and the
  // movement keys; Escape, P, M, Y and U do as in the car; nothing else (no camera, lights, ghost, gear or rescue).
  if(walker?.active&&sessionStarted&&ready&&!['Escape','KeyP','KeyM','KeyY','KeyU'].includes(e.code)){if(['INPUT','SELECT'].includes(e.target.tagName))return;e.preventDefault();if(e.code!=='Space')keys.add(e.code);if(!e.repeat&&!paused)walker.handleKey(e.code);return;}
@@ -2672,7 +2699,10 @@ async function loadCircuit(){
   selfie:{label:()=>circuit.name,pilot:()=>immersive?.pilotName||typedPilot(),freeMouse:()=>{if(document.pointerLockElement!==$('view'))return;mouseFreed=true;document.exitPointerLock();},
    lockMouse:()=>{if(!touchDevice&&!pointerLocked&&!lockUnavailable)try{$('view').requestPointerLock()?.catch?.(()=>{});}catch{}}},
   // On the Mineirão's floor the balls are his to kick (pampulha-futebol.js).
-  play:futebol?.game??null});
+  play:futebol?.game??null,
+  // The Box 99's café: the Tia's menu, paid from the team's money (pitstop.js: Modo Corrida's Verba da equipe, the
+  // story's cash).
+  cafe:pitstop?.cafeSeat?{seat:pitstop.cafeSeat,pay:cost=>pitstop.spend(cost),wallet:()=>pitstop.wallet}:null});
  futebol?.attach(walker);
  syncDamage(true);
  if(circuit.arena){
@@ -2792,8 +2822,14 @@ if(roomWanted)import('./multiplayer.js').then(({startMultiplayer})=>{multiplayer
  // What this window's car carries beside its motion: its pilot out of it (free-walk.js: where he stands, the way he faces,
  // running, crouched, off the ground) and its parts held open (car-openings.js openMask); and the pilot's look (pilot-look.js),
  // which the others see on him and at the wheel.
- onFoot:()=>{if(!walker?.active)return null;const f=walker.footInfo();return {x:f.x,y:f.y,z:f.z,facing:f.facing,running:f.running,crouch:walker.foot?.crouchAmount??0,lift:f.lift};},
+ onFoot:()=>{if(!walker?.active)return null;const f=walker.footInfo();return {x:f.x,y:f.y,z:f.z,facing:f.facing,running:f.running,crouch:walker.foot?.crouchAmount??0,lift:f.lift,hands:walker.handsCode()};},
+ // The room's meeting at the Tia's café (before its start; past the flag, F): on foot there (meetAtCafe), back in the
+ // car, whether there is a café at all and whether this pilot is there.
+ meet:meetAtCafe,unmeet:()=>{if(walker?.away)walker.leave();},hasCafe:()=>!!pitstop?.cafeSeat,meeting:()=>!!walker?.away,
  openMask:()=>openings.openMask(),look:()=>pilotLook(),
+ // Past the flag (multiplayer.js finishAndWatch): the car taken to the pit lane (its trails and smoke broken there), and the
+ // cameras on a car by its number (N and Shift+N then go round).
+ teleported:()=>{skidMarks.breakTrails();tyreSmoke.reset();driver?.reset();},watchCar,
  autopilot:on=>{if(on!==undefined&&ready&&sessionStarted&&!immersive.active){if(on)automatic=true;else takeWheel();}return automatic;},
  hasCircuit:id=>Object.hasOwn(CIRCUITS,id),
  // The weather a host announces with its race (weather.js; Aleatório's draw, never 'aleatorio'), and a guest racing

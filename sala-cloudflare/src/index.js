@@ -14,6 +14,7 @@
 //   guests; guests' messages (hello, ready, state, ping, bye) reach the host only;
 // - the doorman: a guest waits outside until the host admits it; the host can refuse or kick (the
 //   account kicked stays out of that room, from any tab);
+// - the host closes the room (fechar): everybody out, nobody tries again, its invitations cancelled;
 // - invitations: the host sees who is online (the Saguão: every page of a signed-in pilot keeps a line
 //   to it) and invites one; the invitation, signed by the room for that account, takes the place of the
 //   password and of the door, while the room still has it: the host may cancel it until it is taken;
@@ -53,7 +54,7 @@ const CHAT_BURST=4,CHAT_WINDOW=8000;
 // IP, LOBBY_TABS pages of one account (the oldest goes).
 // The invitations a room keeps (one per account, the last), at most MAX_INVITES.
 const ONLINE_EVERY=2000,ONLINE_MAX=50,INVITES_PER_MINUTE=10,INVITE_AGAIN=20000,MAX_INVITES=200,LOBBY_MAX=400,LOBBY_PER_IP=8,LOBBY_TABS=4;
-const HOST_TYPES=new Set(['lobby','go','snap','pong','admit','deny','kick','config','bye','online','convidar','desconvidar']);
+const HOST_TYPES=new Set(['lobby','go','snap','pong','admit','deny','kick','config','bye','online','convidar','desconvidar','fechar']);
 const GUEST_TYPES=new Set(['hello','ready','state','ping','bye']);
 const ROOM=/^[a-z0-9-]{1,24}$/,ID=/^[0-9a-f]{8}$/,TOKEN=/^[0-9a-f]{32}$/;
 // Close codes the game explains to the player (net-link.js); late (no key within AUTH_WAIT: a slow
@@ -63,7 +64,7 @@ const ROOM=/^[a-z0-9-]{1,24}$/,ID=/^[0-9a-f]{8}$/,TOKEN=/^[0-9a-f]{32}$/;
 // server has no SALA_PASSE, or one too short to be a secret (passe.js SECRET_MIN): the rooms are switched
 // off, and the game says so instead of taking every pilot's account for a bad one. uninvited: an
 // invitation this room no longer has (its host cancelled it, or the room started anew) and no password.
-export const CLOSE={key:4001,full:4002,denied:4003,kicked:4004,flood:4008,busy:4009,elsewhere:4010,origin:4011,late:4012,door:4013,account:4014,off:4015,uninvited:4016};
+export const CLOSE={key:4001,full:4002,denied:4003,kicked:4004,flood:4008,busy:4009,elsewhere:4010,origin:4011,late:4012,door:4013,account:4014,off:4015,uninvited:4016,closed:4017};
 import {readPass,readInvite,makeInvite,secretReady,LOBBY,ACCOUNT,INVITE_ID,INVITE_LIFE} from './passe.js';
 import {chatText,chatLink} from '../../pista_interlagos/teste/chat-text.js';
 const hex=bytes=>[...crypto.getRandomValues(new Uint8Array(bytes))].map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -340,6 +341,7 @@ export class Sala {
    case 'online':return this.online(peer);
    case 'convidar':return this.invite(peer,m);
    case 'desconvidar':return this.uninvite(peer,m);
+   case 'fechar':return this.shutRoom(peer);
    // (the host's lobby says whether its race is under way: how long its place waits, gone)
    case 'lobby':this.racing=m.race?.state==='racing';this.toGuests(this.named(m));return;
    case 'go':this.toGuests(this.named(m));return;
@@ -408,6 +410,18 @@ export class Sala {
   const ok=!!offer&&!offer.used;
   if(ok){this.issued.delete(account);await this.lobby('/interno/cancelado',{conta:account,id:offer.id});}
   if(this.peers.get(this.hostId)===peer)this.send(peer,{t:'desconvidado',conta:account,ok});
+ }
+ // The host closes the room (the team's wish, 10-26: "fechar sala", everybody out): every tab in it and at its door
+ // goes with CLOSE.closed (no page tries again), the host's own last; the invitations not taken yet are cancelled (their
+ // notices go) and the room forgets who was in, who hosted and what it gave, so a host opening it again starts afresh
+ // (a door, nobody in, no invitation good). The kicked stay out.
+ async shutRoom(peer){
+  const offers=[...this.issued].filter(([,o])=>!o.used);this.issued.clear();this.invited=[];
+  clearTimeout(this.hostAwayTimer);this.hostAwayTimer=null;this.hostId=null;this.hostToken=null;this.racing=false;
+  for(const p of [...this.peers.values(),...this.pending])if(p!==peer)this.shut(p,CLOSE.closed,'Sala fechada pelo anfitrião');
+  this.shut(peer,CLOSE.closed,'Sala fechada');
+  this.tokens.clear();this.porteiro=true;
+  await Promise.all(offers.map(([account,o])=>this.lobby('/interno/cancelado',{conta:account,id:o.id})));
  }
  toHost(m){const host=this.peers.get(this.hostId);if(host)this.send(host,m);}
  toGuests(m){const data=JSON.stringify(m);for(const p of this.peers.values())if(p.id!==this.hostId&&this.tokens.get(p.token)?.admitted){try{p.socket.send(data);}catch{}}}

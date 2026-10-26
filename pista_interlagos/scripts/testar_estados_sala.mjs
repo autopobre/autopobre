@@ -175,4 +175,54 @@ function setup(laps=2){
  room.lobby.stops=q.mp.stopList();guest.checkCut();assert.equal(guest.reclaiming,null,'host acknowledgement ends the handover');
 }
 
+// Past the flag a guest's car goes to its parking spot in the pit lane at once (multiplayer.js finishAndWatch): the
+// host's check takes that jump for a finished car at rest on its own spot, and nothing else (not before the flag,
+// not moving, not elsewhere). A finished car whose window goes quiet, or leaves, stays parked there, on its brakes,
+// never a bot's to bring round the lap again (the team's test, 10-26: one came by on the host's last lap).
+{
+ const parked=car=>{const c=new TestCar(data),s=car;c.relocate(s.x,s.y,NaN,s.heading);Object.assign(c,{vx:0,vy:0});c.settle();return c;};
+ const q=setup(1);q.start();q.mp.raced=new Set();q.send(q.rival.car,{},.1);q.drive();
+ // (where the host has it as it takes the flag: half a lap from the pits, as a car reaches the line on a long track)
+ q.rival.car.recover(Math.floor(q.rival.car.n/2));q.remote.verify.rebase(q.rival,.1);
+ const number=q.rival.entry.number,spot=q.mp.parkingSpotOf(number);assert(spot,'Interlagos has a parking row');
+ const away=Math.hypot(spot.x-q.rival.car.x,spot.y-q.rival.car.y);assert(away>100,`the spot is far from where the host has the car (${away.toFixed(0)} m)`);
+ const atSpot=parked(spot),seq=q.remote.seq;
+ q.send(atSpot,{finished:true,finishTime:60},.15);assert.equal(q.remote.seq,seq,'no jump to the pit lane before the flag');
+ q.remote.verify.finished=true;q.remote.verify.finishTime=60;q.rival.finished=true;q.rival.finishTime=60;
+ q.send({...atSpot,vx:8},{finished:true,finishTime:60},.2);assert.equal(q.remote.seq,seq,'not on the move');
+ q.send(parked({...spot,x:spot.x+30}),{finished:true,finishTime:60},.25);assert.equal(q.remote.seq,seq,'not off its spot');
+ q.send(atSpot,{finished:true,finishTime:60},.3);assert(q.remote.seq>seq,'parked on its own spot past the flag');
+ assert.equal(q.remote.state.finished,true);
+ q.drive();assert(Math.hypot(q.rival.car.x-spot.x,q.rival.car.y-spot.y)<.5,'shown on its spot');
+ // Its window goes quiet: parked, on its brakes, never stranded (no bot, no AB).
+ q.field.time=10;q.remote.age=8;q.mp.checkSilence();
+ assert(q.rival.puppet,'held, not a bot\'s');assert.equal(q.rival.retired,false);assert(!q.rival.stop);
+ const held=q.rival.puppet(q.rival,1/120);assert.equal(held.brake,1);assert.equal(held.throttle,0);
+ assert(Math.hypot(q.rival.car.x-spot.x,q.rival.car.y-spot.y)<.5);
+ q.mp.checkSilence();assert(q.rival.puppet,'once parked it stays so');
+ // Its window back: the pilot's states drive it again.
+ q.send(atSpot,{finished:true,finishTime:60},11);assert.equal(q.remote.waiting,null);assert.notEqual(q.rival.puppet(q.rival,1/120),null);
+ assert.equal(q.rival.finished,true);
+ // Gone from the room past its flag: parked too.
+ q.mp.syncStops=()=>{};q.room.role='host';q.mp.left({number});
+ assert(q.rival.puppet,'left past the flag: parked');assert.equal(q.rival.retired,false);
+ assert(Math.hypot(q.rival.car.x-spot.x,q.rival.car.y-spot.y)<.5);
+ // Not finished, it is stranded as before (rolls on without a driver).
+ const r=setup();r.start();r.send(r.rival.car,{},.1);r.drive();r.field.time=8;r.remote.age=8;r.mp.checkSilence();
+ assert.equal(r.rival.puppet,null);assert.equal(r.rival.retired,true);
+}
+{
+ // The check alone: only a finished car, at rest, on the spot given.
+ const q=setup(),car=q.rival.car;car.recover(Math.floor(car.n/2));const guard=new GuestRaceState(q.rival,{laps:2,lead:q.field.gridLeadIn});
+ const spot=q.mp.parkingSpotOf?.(q.rival.entry.number)??(q.mp.raced=new Set(),q.mp.parkingSpotOf(q.rival.entry.number));
+ const at=new TestCar(data);at.relocate(spot.x,spot.y,NaN,spot.heading);Object.assign(at,{vx:0,vy:0});at.settle();
+ assert.equal(guard.receive(readCar(packCar(at)),.1,{parking:spot}),null,'not before the flag');
+ guard.finished=true;guard.finishTime=50;
+ assert.equal(guard.receive(readCar(packCar(at)),.2),null,'not without a spot');
+ const taken=guard.receive(readCar(packCar(at)),.3,{parking:spot});assert(taken);assert.equal(taken.state.finished,true);assert.equal(taken.state.finishTime,50);
+ assert(Math.hypot(taken.state.x-spot.x,taken.state.y-spot.y)<.01);
+ assert(guard.receive(readCar(packCar(at)),.4),'and on from there as any state');
+ assert(Math.hypot(car.x-spot.x,car.y-spot.y)>45);
+}
+
 console.log('testar_estados_sala: ok');
