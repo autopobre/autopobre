@@ -135,13 +135,16 @@ check('a lap from the grid (the race\'s first, from rest behind the line) passes
  assert.ok(count>=Object.keys(CIRCUITS).length*2*3,`${count} laps from the grid`);
  console.log(`   ${count} voltas saindo do grid, paradas atrás da linha`);
 });
+// Two grids a circuit (seeds 7 and 8) since the rivals' racecraft of Central #21 (28543a0): on seed 7's alone the light
+// Fuscas ahead touched the car coming from the back of the field once in all its laps (among themselves as often as before).
+const CONTACT_TRACKS=['curvelo','piracicaba'],CONTACT_SEEDS=[7,8];
 for(const car of Object.keys(BODIES))check(`${NAMES[car]}: laps with contact among rivals pass, from the back of a full field (the first from the grid)`,()=>{
  let hits=0,walls=0,grid=0;
- for(const id of ['curvelo','piracicaba'])for(const style of [HERO_STYLE,ACE])for(const lap of drive(id,{car,style,power:style===ACE&&car==='opala'?ENGINE_PARTS:1,field:true})){
+ for(const id of CONTACT_TRACKS)for(const seed of CONTACT_SEEDS)for(const style of [HERO_STYLE,ACE])for(const lap of drive(id,{car,style,power:style===ACE&&car==='opala'?ENGINE_PARTS:1,field:true,seed})){
   hits+=lap.hits;walls+=lap.walls;if(fromGrid(lap))grid++;const s=passes(served(lap),id,`${id} no pelotão ${lap.time.toFixed(2)} s (${lap.hits} toques)`,car);
   if(lap.hits)console.log(`   ${id.padEnd(10)} ${lap.time.toFixed(2)} s com ${lap.hits} toque(s) em rivais: ${fmt(s)}`);
  }
- assert.ok(hits>=2&&grid===4,`the laps had contact with rivals (${hits} hits, ${walls} wall hits; ${grid} from the grid)`);
+ assert.ok(hits>=2&&grid===CONTACT_TRACKS.length*CONTACT_SEEDS.length*2,`the laps had contact with rivals (${hits} hits, ${walls} wall hits; ${grid} from the grid)`);
 });
 
 const real=REAL&&fs.existsSync(REAL)?JSON.parse(fs.readFileSync(REAL,'utf8').replace(/^﻿/,'')).map(r=>({...r,carro:r.carro??'opala'})):null;
