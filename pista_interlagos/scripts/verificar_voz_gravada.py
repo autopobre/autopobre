@@ -48,7 +48,14 @@ with sync_playwright() as p:
     page.click('#historyStart')
     wait_js(page, 'window.interlagosAutodromo?.info().active', timeout=300000)
     wait_js(page, 'interlagosAutodromo.info().playing', timeout=20000)
-    page.wait_for_timeout(2500)
+    # A abertura: 1,5 s de título e câmera antes da narração; voz e legenda entram juntas.
+    abertura = page.evaluate("""(async()=>{const out=[];for(let k=0;k<35;k++){const i=interlagosAutodromo.info();
+      out.push([i.time,i.talking,document.querySelector('.hp-caption span').textContent.length]);await new Promise(r=>setTimeout(r,100));}return out;})()""")
+    antes = [s for s in abertura if s[0] < 1.35]
+    depois = [s for s in abertura if s[0] > 2.0]
+    check('a abertura espera 1,5 s sem voz nem legenda', antes and not any(s[1] or s[2] for s in antes), antes[-1:] if antes else abertura[:1])
+    check('depois da abertura, voz e legenda juntas', depois and all(s[1] and s[2] for s in depois), depois[:1])
+    page.wait_for_timeout(500)
     i = info(page)
     check(f'a voz gravada padrão ({VOZES[0]["label"]}) é a escolhida', i['recorded'] and i['voice'] == NOMES[0], i['voice'])
     check('a linha do tempo segue a voz gravada', i['timedBy'] == i['voice'] and i['follow'] == 1, (i['timedBy'], i['follow']))

@@ -180,9 +180,10 @@ SPOKEN = {'km': 'quilometros'}
 
 
 # Words the voice reads wrong as written, respelled for it only (the captions keep the script's words). The letter S
-# and the curve called Esse are "ésse": as written, the voice said the pronoun "êsse"; Emerson is "Émerson" (user, 10-26).
+# and the curve called Esse are "ésse": as written, the voice said the pronoun "êsse"; Emerson is "Émerson"; miolo is
+# "miôlo", not "miólo"; the driver Hellé Nice is "Éle Níce", not "Naice" (user, 10-26).
 PRONUNCIATION = {'pt': [(r'\bS\b', 'ésse'), (r'\bum esse\b', 'um ésse'), (r'(?<=[^.!?] )Esse\b', 'Ésse'),
-                        (r'\bEmerson\b', 'Émerson')]}
+                        (r'\bEmerson\b', 'Émerson'), (r'\b([Mm])iolo\b', r'\1iôlo'), (r'\bHellé Nice\b', 'Éle Níce')]}
 
 
 def pronounced(text, lang):

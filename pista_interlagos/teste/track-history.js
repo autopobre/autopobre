@@ -18,6 +18,9 @@ export const CHARS_PER_SECOND=14,PACE=1.75;
 export const estimateDuration=text=>Math.max(3,String(text||'').length/CHARS_PER_SECOND+.8);
 // The pause after a recorded line, in seconds at Normal speed.
 export const BREATH=.5;
+// The story opens on its title and the first shot before the narrator speaks (user, 10-26: "dá 1 ou 2 segundos antes
+// de começar a narração"): the first line's lead, in seconds at Normal speed, before its voice and caption.
+export const OPENING=1.5;
 // lang: 'pt' (the script's own words) or a language of script.translations (its chapters' titles and lines, in the
 // same order: text, say, title); a line's length follows the words of that language.
 // voice: a recorded voice of that language (recordedVoice): a line it recorded lasts as long as the recording and a
@@ -29,9 +32,10 @@ export function buildTimeline(script,lang='pt',voice=null){
   const chapter={id:c.id,title:tc?.title??c.title,years:tc?.years??c.years??'',era:c.era??'novo',start:t,lines:[],links:[...(c.links??[])],index:ci};
   c.lines.forEach((l,li)=>{
    const tl=tc?.lines?.[li],text=tl?.text??l.text,say=tl?(tl.say??tl.text):l.say??l.text,clip=voice?.clip(`${c.id}/${li}`,say)??null;
-   const dur=clip?Math.max(2.2,clip.end-clip.start+BREATH,(l.dur??0)/PACE):Math.max(2.2,(l.dur??estimateDuration(say))/PACE);
+   const lead=lines.length?0:OPENING;
+   const dur=lead+(clip?Math.max(2.2,clip.end-clip.start+BREATH,(l.dur??0)/PACE):Math.max(2.2,(l.dur??estimateDuration(say))/PACE));
    const legend=l.legend?.map((item,i)=>({...item,text:tl?.legend?.[i]??item.text}));
-   const line={...l,text,say,clip,title:tl?.title??l.title,legend,chapter:ci,index:lines.length,inChapter:li,start:t,dur,end:t+dur};
+   const line={...l,text,say,clip,lead,title:tl?.title??l.title,legend,chapter:ci,index:lines.length,inChapter:li,start:t,dur,end:t+dur};
    if(l.card&&!chapter.links.includes(l.card))chapter.links.push(l.card);
    chapter.lines.push(line);lines.push(line);t+=dur;
   });
@@ -764,6 +768,8 @@ export class TrackHistory{
   }
   const line=lineAt(this.timeline,this.time);
   if(line!==this.lastLine){const fresh=this.lastLine===null||line.index===this.lastLine.index+1;this.lastLine=line;this.enterLine(line,fresh);}
+  // The lead over: the held words come in.
+  if(this.waiting===line&&!this.inLead(line)){this.waiting=null;this.showCaption(line);if(this.playing&&this.prefs.voice)this.narrator.speak(line);}
   this.cameraAt(this.time,this.pose);camera.position.copy(this.pose.pos);camera.up.copy(this.pose.up);camera.lookAt(this.pose.look);camera.fov=this.pose.fov;camera.updateProjectionMatrix();camera.updateMatrixWorld();
   this.focus.copy(this.pose.look);this.dof.focus=this.pose.pos.distanceTo(this.pose.look);this.dof.amount=0;
   this.updateLayers(this.time,dt,camera);this.updateCar(this.time,dt);
@@ -776,10 +782,14 @@ export class TrackHistory{
   return true;
  }
  voiceFollow(){return this.timeline?.voice&&this.timeline.voice===this.narrator.voice?1:clamp(this.narrator.pace/(CHARS_PER_SECOND*PACE*this.prefs.speed),.5,1.4);}
+ // A line in its lead (the opening's pause) holds its words: no caption, no voice until the lead is over.
+ inLead(line){return !!line?.lead&&this.time<line.start+line.lead;}
+ say(line){if(this.inLead(line)){this.narrator.cancel();this.waiting=line;return;}this.narrator.speak(line);}
  enterLine(line,fresh){
-  if(this.playing&&this.prefs.voice&&fresh)this.narrator.speak(line);
+  this.waiting=this.inLead(line)?line:null;
+  if(this.playing&&this.prefs.voice&&fresh)this.say(line);
   const chapter=this.timeline.chapters[line.chapter];document.body.classList.toggle('history-era-antigo',chapter.era==='antigo');
-  this.showCaption(line);this.showImage(line);this.showCard(line);this.showTitle(line);this.showLegend(line);
+  this.showCaption(this.waiting===line?{text:''}:line);this.showImage(line);this.showCard(line);this.showTitle(line);this.showLegend(line);
  }
  // ---- playing, pausing, jumping ----
  setPlaying(on){
@@ -788,7 +798,7 @@ export class TrackHistory{
   if(!on)this.narrator.cancel();
   else if(this.prefs.voice&&this.lastLine){
    // The voice cannot start mid-sentence: the line playing starts again from its beginning.
-   const line=lineAt(this.timeline,this.time);if(this.time-line.start>.05){this.time=line.start;}this.narrator.speak(line);this.lastLine=line;
+   const line=lineAt(this.timeline,this.time);if(this.time-line.start>.05){this.time=line.start;}if(this.inLead(line))this.enterLine(line,false);else this.say(line);this.lastLine=line;
   }
   this.flash(on?'play':'pause');this.renderUi(lineAt(this.timeline,this.time),true);
  }
@@ -798,7 +808,7 @@ export class TrackHistory{
   // Landing early in a line starts it from its beginning, so the voice says all of it.
   if(t-line.start<line.dur*.35)t=line.start;
   this.time=t;this.hold=0;this.ended=false;this.narrator.cancel();this.lastLine=line;this.enterLine(line,false);
-  if(this.playing&&this.prefs.voice&&t===line.start)this.narrator.speak(line);
+  if(this.playing&&this.prefs.voice&&t===line.start)this.say(line);
   this.renderUi(line,true);
  }
  chapterJump(step){const c=chapterAt(this.timeline,this.time),i=clamp(c.index+step,0,this.timeline.chapters.length-1);
@@ -823,13 +833,13 @@ export class TrackHistory{
   this.showControls();return false;
  }
  toggleCaptions(){this.prefs.captions=!this.prefs.captions;this.savePrefs();this.renderUi(lineAt(this.timeline,this.time),true);}
- toggleVoice(){this.prefs.voice=!this.prefs.voice;this.savePrefs();if(!this.prefs.voice)this.narrator.cancel();else if(this.playing){const l=lineAt(this.timeline,this.time);this.time=l.start;this.narrator.speak(l);}this.renderUi(lineAt(this.timeline,this.time),true);}
+ toggleVoice(){this.prefs.voice=!this.prefs.voice;this.savePrefs();if(!this.prefs.voice)this.narrator.cancel();else if(this.playing){const l=lineAt(this.timeline,this.time);this.time=l.start;this.say(l);}this.renderUi(lineAt(this.timeline,this.time),true);}
  fullscreen(){if(document.fullscreenElement)document.exitFullscreen?.();else document.documentElement.requestFullscreen?.().catch(()=>{});}
  // ---- settings (the ⚙ panel): speed, voice, music ----
  setSpeed(speed){
   this.prefs.speed=speed;this.narrator.rate=speed;this.savePrefs();
   // The sentence playing is said again at the new pace, from its beginning.
-  if(this.playing&&this.prefs.voice){const l=lineAt(this.timeline,this.time);this.time=l.start;this.narrator.speak(l);}
+  if(this.playing&&this.prefs.voice){const l=lineAt(this.timeline,this.time);this.time=l.start;this.say(l);}
   this.flashNote(this.t('speedNote')(speed));this.renderSettings();this.renderUi(lineAt(this.timeline,this.time),true);
  }
  setVoice(name){this.prefs.voices={...this.prefs.voices,[this.prefs.lang]:name};this.narrator.use(name);this.savePrefs();this.retime();this.preview();this.renderSettings();}
