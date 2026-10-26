@@ -200,6 +200,8 @@ export class LapRecords {
   rows.forEach((row,i)=>{
    const tr=document.createElement('tr');tr.dataset.source=row.source;if(row.mine)tr.dataset.mine='';
    for(const value of [`${i+1}º`,row.name,formatTime(row.bestLap)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}
+   // The pilot's online record that is this browser's record too (the same lap): 🧑 beside 🌐, theirs and the world's.
+   if(row.here){const own=document.createElement('span'),label='Seu recorde, neste navegador também';own.className='record-source-badge record-here-badge';own.title=label;own.setAttribute('role','img');own.setAttribute('aria-label',label);own.textContent='🧑';tr.children[1].append(own);}
    const badge=document.createElement('span'),checked=row.badge==='conferido';badge.className='record-source-badge';
    const label=row.source==='ai'?`Inteligência artificial · carro #${row.number}`:row.source==='online'?checked?'Online: volta conferida pelo servidor enquanto foi pilotada':'Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros':'Pessoa, neste navegador';
    if(row.source==='online')badge.classList.add('record-online-badge',...(checked?[]:['record-unchecked']));
@@ -221,9 +223,13 @@ export class LapRecords {
   let joined=[...rows,...board.map(r=>({...r,source:'online'}))];
   const mine=joined.find(r=>r.source==='online'&&r.mine);
   if(mine){
+   // The same lap here and online reads the same to the thousandth (online keeps milliseconds).
+   const tie=(a,b)=>Math.abs(a.bestLap-b.bestLap)<.0015;
    const pilot=joined.filter(r=>r===mine||r.source==='human'&&same(r.name,mine.name));
-   const fastest=pilot.reduce((a,b)=>b.bestLap<a.bestLap||b.bestLap===a.bestLap&&b.source==='online'?b:a);   // a tie: the account's row (an old record that went up is the same time)
-   joined=joined.filter(r=>!pilot.includes(r)||r===fastest);
+   const fastest=pilot.reduce((a,b)=>tie(a,b)?(b.source==='online'?b:a):b.bestLap<a.bestLap?b:a);   // a tie: the account's row (an old record that went up is the same time)
+   // When the account's record is this browser's record too (read here even on the Online tab alone), the row says both.
+   const here=fastest.source==='online'&&readRecords(this.storage,car).some(r=>r.circuit===circuit&&same(r.name,mine.name)&&tie(r,fastest));
+   joined=joined.filter(r=>!pilot.includes(r)||r===fastest).map(r=>r===fastest&&here?{...r,here:true}:r);
   }
   this.drawPicker(id=>{const ms=bests[id],there=ms?ms/1000:null,here=localBest(id);return here===null?there:there===null?here:Math.min(here,there);});
   this.drawRows(joined);

@@ -125,6 +125,9 @@ try:
   wait_js(page,"!!document.querySelector('#lapRecords tbody tr[data-source=online]')")
   todos=page.evaluate("[...document.querySelectorAll('#lapRecords tbody tr')].map(tr=>({name:tr.children[1].firstChild.textContent,source:tr.dataset.source,mine:tr.hasAttribute('data-mine')}))")
   assert [r['source'] for r in todos if r['name']=='Piloto Teste']==['online'] and todos[[r['name'] for r in todos].index('Piloto Teste')]['mine'],todos
+  # The same lap here and online: the row wears both, 🧑 and 🌐 (the pilot's own record and the world's).
+  both=page.evaluate("[...document.querySelectorAll('#lapRecords tbody tr[data-mine]')].map(tr=>[...tr.querySelectorAll('.record-source-badge')].map(b=>b.textContent))")
+  assert both==[['🧑','🌐 ⚠️']],both
   assert any(r['source']=='ai' for r in todos) and any(r['name']=='Outra Pessoa' and r['source']=='human' for r in todos),todos
   page.screenshot(path=str(RENDERS/'conta_recordes_todos.png'))
   page.keyboard.press('Escape');wait_js(page,"!document.getElementById('lapRecords').open")
