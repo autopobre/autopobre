@@ -20,7 +20,10 @@ def build(multiplayer=False, conta=False):
                      'assets/texturas/asfalto_diff_v2.jpg', 'assets/texturas/asfalto_nor_gl_v2.jpg', 'assets/texturas/asfalto_rough_v2.jpg', 'assets/texturas/asfalto_grao_v1.jpg',
                      'assets/abertura/abertura_stevan_opala99.png', 'assets/abertura/desclassificado_v1.png',
                      'assets/abertura/logo_auto_pobre_racing.png', 'assets/abertura/logo_auto_pobre_racing.webp', 'assets/branding/old_stock_preparada_v1.png',
-                     'assets/piloto/referencia_frente.png', 'assets/fusca_v3.glb'}
+                     'assets/piloto/referencia_frente.png', 'assets/fusca_v3.glb',
+                     # The story's Antonio voices (edge-tts), retired when Bob's own voice became the only one (10-26).
+                     'assets/historia/voz_interlagos_pt_antonio.mp3', 'assets/historia/voz_interlagos_pt_antonio.json',
+                     'assets/historia/voz_interlagos_pt_antonio_rapido.mp3', 'assets/historia/voz_interlagos_pt_antonio_rapido.json'}
     expected = set(PUBLIC_FILES) | set(OPTIONAL_AUDIO) | retired_files | {'assets/audio/tracks.json', '_headers', '.nojekyll'}
     if dist.exists():
         for p in dist.rglob('*'):

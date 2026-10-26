@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bancada de voz</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%23c2410c'/><rect x='23' y='9' width='18' height='30' rx='9' fill='%23fff'/><path d='M14 29a18 18 0 0 0 36 0' fill='none' stroke='%23fff' stroke-width='5' stroke-linecap='round'/><path d='M32 47v7M22 56h20' stroke='%23fff' stroke-width='5' stroke-linecap='round'/></svg>">
+<style>
+:root{--bg:#f4f1ea;--panel:#fffdf8;--ink:#1f1d1a;--muted:#6d675e;--line:#ddd6c8;--accent:#c2410c;--accent-ink:#fff;--ok:#15803d;--warn:#b45309;--chip:#efe9dd}
+@media (prefers-color-scheme:dark){:root{--bg:#16140f;--panel:#201d17;--ink:#f1ece2;--muted:#a59d90;--line:#3a352c;--accent:#f97316;--accent-ink:#1a1209;--ok:#4ade80;--warn:#fbbf24;--chip:#2b271f}}
+*{box-sizing:border-box}
+/* hidden always hides, even where a rule gives the element its own display (the Desfazer bar is flex). */
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:14px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2}
+header h1{font-size:19px;margin:0}
+#status{margin-left:auto;font-size:13px;color:var(--muted)}
+#status.busy{color:var(--warn)}
+main{display:grid;grid-template-columns:minmax(320px,420px) 1fr;gap:18px;padding:18px 20px;max-width:1400px;margin:0 auto}
+@media (max-width:900px){main{grid-template-columns:1fr;padding:14px 16px}}
+section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:18px}
+h2{font-size:15px;margin:0 0 10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.voices{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow:auto}
+.voice{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;border:1px solid transparent;cursor:pointer}
+.voice:hover{background:var(--chip)}
+.voice.on{border-color:var(--accent);background:var(--chip)}
+.voice span{flex:1}
+button,select,input,textarea{font:inherit;color:inherit}
+button{background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.main{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600;padding:9px 18px}
+button:disabled{opacity:.5;cursor:default}
+button.icon{padding:3px 9px}
+select,input[type=text],input[type=number],textarea{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;width:100%}
+textarea{min-height:110px;resize:vertical}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.set{margin:12px 0}
+.set label{display:flex;justify-content:space-between;font-weight:600}
+.set label output{font-variant-numeric:tabular-nums;color:var(--accent)}
+.set input[type=range]{width:100%;accent-color:var(--accent)}
+.set small{color:var(--muted);display:block}
+details summary{cursor:pointer;color:var(--muted);margin-top:6px}
+.tabs{display:flex;gap:6px;margin:6px 0}
+.tabs button[aria-pressed=true]{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+.rec{font-variant-numeric:tabular-nums}
+.meter{height:10px;background:var(--chip);border:1px solid var(--line);border-radius:5px;overflow:hidden;margin:6px 0}
+.meter i{display:block;height:100%;width:0;background:var(--ok);transition:width .06s linear}
+.meter i.hot{background:#dc2626}
+#mic{flex:1;min-width:0}
+.takes{display:flex;flex-direction:column;gap:10px}
+.take{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.take.fav{border-color:var(--ok)}
+.take.new{animation:novo 2.4s ease-out}
+@keyframes novo{from{box-shadow:0 0 0 3px var(--accent)}to{box-shadow:0 0 0 0 transparent}}
+.heart{background:none;border:none;font-size:22px;line-height:1;padding:0 4px;color:var(--muted)}
+.heart.on{color:#e11d48}
+button.del:hover{border-color:#dc2626;color:#dc2626}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:10px;display:flex;gap:12px;align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:5}
+#toast button{background:var(--bg);color:var(--ink)}
+#toast #toastClose{background:none;border:none;color:var(--bg);font-size:18px;padding:0 4px}
+.take audio{width:100%;margin:6px 0}
+.take .meta{font-size:13px;color:var(--muted)}
+.take .text{font-size:14px}
+.presets li{margin:6px 0}
+code{background:var(--chip);padding:2px 6px;border-radius:6px;font-size:12.5px;word-break:break-all}
+.err{color:#dc2626}
+.muted{color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<header><h1>Bancada de voz</h1><span class="muted">Chatterbox · ouvir antes de gerar a narração inteira</span><span id="status">carregando…</span></header>
+<main>
+<div>
+ <section>
+  <h2>Voz (molde)</h2>
+  <div class="voices" id="voices"></div>
+  <div class="row"><button id="treatBtn" title="Corta os graves, equaliza como voz de estúdio e normaliza: cria uma cópia tratada do molde escolhido">Tratar o molde escolhido</button></div>
+  <details id="newVoice">
+   <summary>Nova voz: gravar ou enviar</summary>
+   <div class="row"><input type="text" id="vName" placeholder="Nome da voz (ex.: stevan_celular)"></div>
+   <label class="row"><input type="checkbox" id="vTreat" checked> Tratar o molde (corta graves, equaliza e normaliza)</label>
+   <div class="tabs"><button id="tabRec" aria-pressed="true">Gravar no microfone</button><button id="tabFile" aria-pressed="false">Enviar arquivo</button></div>
+   <div id="paneRec">
+    <div class="row"><select id="mic" title="Microfone"></select><button class="icon" id="micRefresh" title="Atualizar a lista de microfones">↻</button></div>
+    <div class="meter" title="Nível do microfone"><i id="micLevel"></i></div>
+    <div class="row"><button id="micTest">Testar microfone</button><button id="recBtn">● Gravar</button><span class="rec" id="recTime">0,0 s</span></div>
+    <audio id="recPreview" controls hidden></audio>
+    <div class="row"><button id="recUse" disabled>Usar como molde</button></div>
+    <p class="muted">Fale de 15 a 30 s, com naturalidade, num lugar silencioso e com o microfone perto. O Chatterbox usa os primeiros 10 s.</p>
+   </div>
+   <div id="paneFile" hidden>
+    <div class="row"><input type="file" id="file" accept="audio/*,video/*"></div>
+    <div class="row"><label>Começar no segundo <input type="number" id="fileStart" value="0" min="0" step="0.1" style="width:110px"></label></div>
+    <div class="row"><button id="fileUse">Enviar como molde</button></div>
+    <p class="muted">São recortados 12 s a partir do segundo escolhido.</p>
+   </div>
+   <p class="err" id="vErr"></p>
+  </details>
+ </section>
+ <section>
+  <h2>Ajustes</h2>
+  <div class="set"><label for="modelo">Modelo</label><select id="modelo"></select></div>
+  <div class="set" id="decSet"><label for="decodificador">Decodificador</label><select id="decodificador"></select><small>Quem dá o timbre a partir do molde: compare os dois para ver qual fica mais parecido.</small></div>
+  <div class="set"><label>Pausa nos dois-pontos <output id="o_pausa"></output></label><input type="range" id="pausa" min="0" max="1.5" step="0.05"><small>Silêncio depois de ":" na fala. Em 0, fica a pausa curta do próprio modelo.</small></div>
+  <div class="set"><label>Velocidade <output id="o_velocidade"></output></label><input type="range" id="velocidade" min="0.7" max="1.5" step="0.05"><small>Acelera ou desacelera depois de gerar, sem mudar o tom da voz.</small></div>
+  <div class="set"><label>Exagero <output id="o_exagero"></output></label><input type="range" id="exagero" min="0.25" max="2" step="0.05"><small>Expressividade: baixo é neutro e calmo; alto é dramático (e acelera).</small></div>
+  <div class="set"><label>CFG / ritmo <output id="o_cfg"></output></label><input type="range" id="cfg" min="0" max="1" step="0.05"><small>O quanto segue o estilo do molde; mais baixo deixa a fala mais solta e rápida.</small></div>
+  <div class="set"><label>Temperatura <output id="o_temperatura"></output></label><input type="range" id="temperatura" min="0.1" max="1.5" step="0.05"><small>Baixa: estável e monótona. Alta: mais viva, mais risco de erro.</small></div>
+  <div class="set"><label for="semente">Semente</label><div class="row"><input type="number" id="semente" min="0" step="1" style="width:130px"><button id="dice" title="Sortear">🎲</button></div><small>Cada semente é outra interpretação da mesma fala.</small></div>
+  <details><summary>Avançado</summary>
+   <div class="set"><label>Penalidade de repetição <output id="o_repeticao"></output></label><input type="range" id="repeticao" min="1" max="2" step="0.05"><small>Evita gaguejar ou repetir sílabas.</small></div>
+   <div class="set"><label>min_p <output id="o_min_p"></output></label><input type="range" id="min_p" min="0" max="0.3" step="0.01"><small>Corta as escolhas improváveis.</small></div>
+   <div class="set"><label>top_p <output id="o_top_p"></output></label><input type="range" id="top_p" min="0.5" max="1" step="0.01"><small>Fica só com as escolhas mais prováveis.</small></div>
+  </details>
+  <div class="row"><button id="reset">Voltar ao padrão</button></div>
+ </section>
+ <section>
+  <h2>Salvar como preset</h2>
+  <div class="row"><input type="text" id="pName" placeholder="Nome (ex.: stevan_narrador)" style="flex:1"><button id="pSave">Salvar voz + ajustes</button></div>
+  <ul class="presets" id="presets"></ul>
+  <p class="err" id="pErr"></p>
+ </section>
+</div>
+<div>
+ <section>
+  <h2>Texto</h2>
+  <div class="row"><select id="lines"><option value="">Falas da história de Interlagos…</option></select></div>
+  <textarea id="text">Esta é Interlagos. Mas a pista que você conhece corre por cima de outra, mais antiga e quase duas vezes maior.</textarea>
+  <div class="row"><button class="main" id="gen">Gerar</button><button id="gen3">Gerar 3 variações</button><span class="err" id="gErr"></span></div>
+ </section>
+ <section>
+  <h2>Gravações</h2>
+  <div class="row"><label><input type="checkbox" id="onlyFav"> só as com ♥</label><button id="clean">Limpar as sem ♥</button><span class="muted" id="folder"></span></div>
+  <div class="takes" id="takes"></div>
+ </section>
+</div>
+</main>
+<div id="toast" hidden><span id="toastText"></span><button id="undo">Desfazer</button><button id="toastClose" title="Fechar">✕</button></div>
+<script>
+const $=id=>document.getElementById(id);
+const KEYS=['exagero','cfg','temperatura','semente','repeticao','min_p','top_p','velocidade','pausa'];
+const SAVE='bancada-voz-v1';
+let state={vozes:[],takes:[],presets:{},padrao:{},modelos:{}},voice='embutida',busy=false;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=v=>String(+(+v).toFixed(2)).replace('.',',');
+function remember(){try{localStorage.setItem(SAVE,JSON.stringify({voice,modelo:$('modelo').value,decodificador:$('decodificador').value,text:$('text').value,...settings()}));}catch{}}
+function showDecoder(){$('decSet').hidden=$('modelo').value!=='ptbr';}
+function recall(){try{return JSON.parse(localStorage.getItem(SAVE))||{};}catch{return {};}}
+function settings(){const s={};for(const k of KEYS)s[k]=+$(k).value;return s;}
+function setSettings(s){for(const k of KEYS)if(s[k]!==undefined)$(k).value=s[k];showValues();}
+function showValues(){for(const k of KEYS){const o=$('o_'+k);if(o)o.textContent=num($(k).value)+(k==='velocidade'?'×':k==='pausa'?' s':'');}}
+function status(text,isBusy){$('status').textContent=text;$('status').classList.toggle('busy',!!isBusy);}
+async function api(path,body,raw){
+ const r=await fetch(path,body===undefined?{}:{method:'POST',headers:raw?{}:{'Content-Type':'application/json'},body:raw?body:JSON.stringify(body)});
+ const j=await r.json();if(!r.ok)throw new Error(j.erro||r.statusText);return j;
+}
+function voiceName(id){return state.vozes.find(v=>v.id===id)?.nome??id;}
+function showTreat(){$('treatBtn').disabled=voice==='embutida';}
+// One sound at a time: a mould heard (▶ turns ■ to stop it), a take or the microphone preview pauses whatever plays.
+let player=null,playingSrc=null;
+function renderVoices(){
+ $('voices').innerHTML=state.vozes.map(v=>`<div class="voice${v.id===voice?' on':''}" data-id="${esc(v.id)}"><span>${esc(v.nome)}</span>${v.audio?`<button class="icon" data-play="${esc(v.audio)}" title="${v.audio===playingSrc?'Parar':'Ouvir o molde'}">${v.audio===playingSrc?'■':'▶'}</button>`:''}</div>`).join('');
+}
+function stopMould(){if(player){player.pause();player=null;}if(playingSrc){playingSrc=null;renderVoices();}}
+function pauseOthers(except){for(const a of document.querySelectorAll('audio'))if(a!==except&&!a.paused)a.pause();}
+document.addEventListener('play',e=>{if(e.target instanceof HTMLAudioElement){pauseOthers(e.target);stopMould();}},true);
+$('treatBtn').onclick=async()=>{
+ $('vErr').textContent='';
+ try{status('tratando o molde…',true);const r=await api('/api/tratar',{voz:voice});state=await api('/api/estado');voice=r.id;renderVoices();showTreat();remember();status(`molde ${r.id} pronto`);}
+ catch(err){$('vErr').textContent=err.message;status('erro');}
+};
+$('voices').onclick=e=>{
+ const play=e.target.closest('[data-play]');
+ if(play){
+  e.stopPropagation();const src=play.dataset.play,again=src===playingSrc;
+  stopMould();if(again)return;
+  pauseOthers(null);player=new Audio(src);playingSrc=src;player.onended=stopMould;
+  player.play().catch(()=>stopMould());renderVoices();return;
+ }
+ const row=e.target.closest('.voice');if(row){voice=row.dataset.id;renderVoices();showTreat();remember();}
+};
+let fresh=null;
+// Newest first (by the time each was made), the one just made flashing once.
+function renderTakes(){
+ const only=$('onlyFav').checked,list=state.takes.map((t,i)=>[t,i]).sort((a,b)=>b[0].quando.localeCompare(a[0].quando)||b[1]-a[1]).map(x=>x[0]).filter(t=>!only||t.favorita);
+ $('takes').innerHTML=list.map(t=>{const a=t.ajustes;return `<div class="take${t.favorita?' fav':''}${t.id===fresh?' new':''}" data-id="${t.id}">
+  <div class="row" style="margin:0;justify-content:space-between"><button class="heart${t.favorita?' on':''}" data-fav="${t.id}" title="${t.favorita?'Tirar o coração':'Ficou boa'}">${t.favorita?'♥':'♡'}</button><span class="meta">${esc(t.quando)} · ${num(t.segundos)} s (gerado em ${num(t.tempo)} s)</span></div>
+  <audio controls preload="none" src="/takes/${t.id}.wav"></audio>
+  <div class="text">${esc(t.texto)}</div>
+  <div class="meta">${esc(voiceName(t.voz))} · ${esc(state.modelos[t.modelo]??t.modelo)}${t.modelo==='ptbr'&&t.decodificador?` · decodificador ${esc(state.decodificadores[t.decodificador]??t.decodificador)}`:''} · exagero ${num(a.exagero)} · CFG ${num(a.cfg)} · temp. ${num(a.temperatura)} · semente ${a.semente}${a.velocidade&&+a.velocidade!==1?` · velocidade ${num(a.velocidade)}×`:''}${t.texto.includes(':')&&a.pausa!==undefined?` · pausa ${num(a.pausa)} s`:''}</div>
+  <div class="row"><button data-use="${t.id}">Usar estes ajustes</button><a href="/takes/${t.id}.wav" download="voz_${t.id}.wav"><button>Baixar</button></a><button class="del" data-del="${t.id}">Apagar</button></div></div>`;}).join('')||'<p class="muted">Nenhuma gravação ainda.</p>';
+}
+let undoIds=[],toastTimer=0;
+function toast(text,ids){undoIds=ids;$('toastText').textContent=text;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{$('toast').hidden=true;},8000);}
+async function remove(ids,text){
+ if(!ids.length)return;
+ try{const r=await api(ids.length===1?'/api/apagar':'/api/limpar',{ids});state.takes=state.takes.filter(t=>!r.apagadas.includes(t.id));renderTakes();toast(text(r.apagadas.length),r.apagadas);}
+ catch(err){$('gErr').textContent=err.message;}
+}
+$('toastClose').onclick=()=>{clearTimeout(toastTimer);$('toast').hidden=true;undoIds=[];};
+$('undo').onclick=async()=>{
+ $('toast').hidden=true;if(!undoIds.length)return;
+ try{const r=await api('/api/desfazer',{ids:undoIds});state.takes=r.takes;undoIds=[];renderTakes();}catch(err){$('gErr').textContent=err.message;}
+};
+$('clean').onclick=()=>{
+ const ids=state.takes.filter(t=>!t.favorita).map(t=>t.id);
+ if(!ids.length)return;
+ if(confirm(`Apagar ${ids.length} gravaç${ids.length>1?'ões':'ão'} sem coração?`))remove(ids,n=>`${n} gravaç${n>1?'ões apagadas':'ão apagada'}`);
+};
+$('takes').onclick=async e=>{
+ const fav=e.target.closest('[data-fav]');
+ if(fav){const t=state.takes.find(t=>t.id===fav.dataset.fav);t.favorita=!t.favorita;renderTakes();try{await api('/api/favorita',{id:t.id,favorita:t.favorita});}catch(err){$('gErr').textContent=err.message;}return;}
+ const del=e.target.closest('[data-del]');
+ if(del){remove([del.dataset.del],()=>'Gravação apagada');return;}
+ const use=e.target.closest('[data-use]');
+ if(use){const t=state.takes.find(t=>t.id===use.dataset.use);voice=t.voz;$('modelo').value=t.modelo;if(t.decodificador)$('decodificador').value=t.decodificador;showDecoder();setSettings({...state.padrao,...t.ajustes});$('text').value=t.texto;renderVoices();remember();}
+};
+$('onlyFav').onchange=renderTakes;
+function renderPresets(){
+ $('presets').innerHTML=Object.entries(state.presets).map(([name,p])=>`<li><b>${esc(name)}</b>: ${esc(voiceName(p.voz))}, ${esc(state.modelos[p.modelo]??p.modelo)}${p.modelo==='ptbr'?`, decodificador ${esc(state.decodificadores?.[p.decodificador??'ptbr']??'')}`:''}, velocidade ${num(p.velocidade??1)}×, exagero ${num(p.exagero)}, CFG ${num(p.cfg)}, temp. ${num(p.temperatura)}, semente ${p.semente}<br><code>gerar_narracao.py interlagos --motor chatterbox --preset ${esc(name)} --nome ${esc(name)} --rotulo "${esc(name)}"</code></li>`).join('')||'<li class="muted">Nenhum preset salvo.</li>';
+}
+async function generate(count){
+ if(busy)return;const text=$('text').value.trim();if(!text){$('gErr').textContent='Escreva um texto.';return;}
+ busy=true;$('gen').disabled=$('gen3').disabled=true;$('gErr').textContent='';remember();
+ const base=settings(),first=state.carregado!==$('modelo').value;
+ try{
+  for(let i=0;i<count;i++){
+   status(first&&i===0?'carregando o modelo na placa (só na primeira vez, até 1 min)…':`gerando${count>1?` ${i+1} de ${count}`:''}…`,true);
+   const take=await api('/api/gerar',{texto:text,voz:voice,modelo:$('modelo').value,decodificador:$('decodificador').value,...base,semente:base.semente+i});
+   state.takes.push(take);state.carregado=$('modelo').value;fresh=take.id;renderTakes();
+   if(i===0)document.querySelector('.take audio')?.play().catch(()=>{});
+  }
+  status('pronto');
+ }catch(err){$('gErr').textContent=err.message;status('erro',false);}
+ busy=false;$('gen').disabled=$('gen3').disabled=false;
+}
+$('gen').onclick=()=>generate(1);$('gen3').onclick=()=>generate(3);
+for(const k of KEYS)$(k).oninput=()=>{showValues();remember();};
+$('modelo').onchange=()=>{showDecoder();remember();};$('decodificador').onchange=remember;$('text').oninput=remember;
+$('dice').onclick=()=>{$('semente').value=Math.floor(Math.random()*100000);remember();};
+$('reset').onclick=()=>{setSettings(state.padrao);remember();};
+$('lines').onchange=()=>{if($('lines').value!==''){$('text').value=state.falas[+$('lines').value];remember();}};
+$('pSave').onclick=async()=>{
+ $('pErr').textContent='';const nome=$('pName').value.trim();if(!nome){$('pErr').textContent='Dê um nome ao preset.';return;}
+ try{const r=await api('/api/preset',{nome,voz:voice,modelo:$('modelo').value,decodificador:$('decodificador').value,...settings()});state.presets=r.presets;renderPresets();}catch(err){$('pErr').textContent=err.message;}
+};
+// New voice: microphone (no echo cancelling or noise gate: the mould should be the voice as it is) or a file.
+$('tabRec').onclick=()=>{$('tabRec').setAttribute('aria-pressed','true');$('tabFile').setAttribute('aria-pressed','false');$('paneRec').hidden=false;$('paneFile').hidden=true;};
+$('tabFile').onclick=()=>{$('tabFile').setAttribute('aria-pressed','true');$('tabRec').setAttribute('aria-pressed','false');$('paneFile').hidden=false;$('paneRec').hidden=true;};
+// The microphone chosen (remembered here), its level shown while testing or recording (red when it clips).
+const MIC='bancada-voz-mic';
+async function listMics(ask){
+ try{
+  const inputs=async()=>(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');
+  let devs=await inputs();
+  // The names only show once the page may use a microphone: ask once, then list again.
+  if(ask&&devs.every(d=>!d.label)){const s=await navigator.mediaDevices.getUserMedia({audio:true});s.getTracks().forEach(t=>t.stop());devs=await inputs();}
+  let saved='';try{saved=localStorage.getItem(MIC)||'';}catch{}
+  const sel=$('mic'),cur=sel.value||saved;
+  sel.innerHTML=devs.map((d,i)=>`<option value="${esc(d.deviceId)}">${esc(d.label||`Microfone ${i+1}`)}</option>`).join('')||'<option value="">Nenhum microfone encontrado</option>';
+  if(devs.some(d=>d.deviceId===cur))sel.value=cur;
+ }catch(err){$('vErr').textContent='Microfone indisponível: '+err.message;}
+}
+function micStream(){
+ const id=$('mic').value;
+ return navigator.mediaDevices.getUserMedia({audio:{...(id?{deviceId:{exact:id}}:{}),echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+}
+let meterCtx=null,meterRaf=0,testStream=null;
+function meter(stream){
+ stopMeter();meterCtx=new AudioContext();meterCtx.resume().catch(()=>{});const an=meterCtx.createAnalyser();an.fftSize=1024;meterCtx.createMediaStreamSource(stream).connect(an);
+ const buf=new Float32Array(an.fftSize),bar=$('micLevel');let level=0;
+ // The bar falls back slowly after each sound, so a voice reads as a steady level instead of a flicker.
+ const tick=()=>{an.getFloatTimeDomainData(buf);let peak=0;for(const v of buf)peak=Math.max(peak,Math.abs(v));level=Math.max(peak,level*.92);bar.style.width=Math.min(100,level*110)+'%';bar.classList.toggle('hot',peak>.95);meterRaf=requestAnimationFrame(tick);};
+ tick();
+}
+function stopMeter(){cancelAnimationFrame(meterRaf);meterCtx?.close().catch(()=>{});meterCtx=null;$('micLevel').style.width='0';$('micLevel').classList.remove('hot');}
+function stopTest(){testStream?.getTracks().forEach(t=>t.stop());testStream=null;stopMeter();$('micTest').textContent='Testar microfone';}
+async function startTest(){
+ $('vErr').textContent='';
+ try{testStream=await micStream();meter(testStream);$('micTest').textContent='Parar o teste';}
+ catch(err){$('vErr').textContent='Não deu para abrir esse microfone: '+err.message;}
+}
+$('micTest').onclick=()=>testStream?stopTest():startTest();
+$('mic').onchange=()=>{try{localStorage.setItem(MIC,$('mic').value);}catch{}if(testStream){stopTest();startTest();}};
+$('micRefresh').onclick=()=>listMics(true);
+$('newVoice').addEventListener('toggle',()=>{if($('newVoice').open)listMics(true);else stopTest();});
+navigator.mediaDevices?.addEventListener('devicechange',()=>listMics(false));
+let recorder=null,chunks=[],recBlob=null,recTimer=0,recStart=0;
+$('recBtn').onclick=async()=>{
+ $('vErr').textContent='';
+ if(recorder&&recorder.state==='recording'){recorder.stop();return;}
+ try{
+  stopTest();
+  const stream=await micStream();meter(stream);
+  chunks=[];recorder=new MediaRecorder(stream);recorder.ondataavailable=e=>chunks.push(e.data);
+  recorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());stopMeter();clearInterval(recTimer);recBlob=new Blob(chunks,{type:recorder.mimeType});$('recPreview').src=URL.createObjectURL(recBlob);$('recPreview').hidden=false;$('recUse').disabled=false;$('recBtn').textContent='● Gravar de novo';};
+  recorder.start();recStart=performance.now();$('recBtn').textContent='■ Parar';$('recUse').disabled=true;
+  recTimer=setInterval(()=>{$('recTime').textContent=num((performance.now()-recStart)/1000)+' s';},100);
+ }catch(err){$('vErr').textContent='Microfone indisponível: '+err.message;}
+};
+async function sendMould(blob,start){
+ $('vErr').textContent='';const nome=$('vName').value.trim()||'voz';
+ try{status('preparando o molde…',true);const r=await api(`/api/voz?nome=${encodeURIComponent(nome)}&inicio=${start}&tratar=${$('vTreat').checked?1:0}`,blob,true);
+  state=await api('/api/estado');voice=r.id;renderVoices();showTreat();remember();status(`molde ${r.id} pronto (${num(r.segundos)} s${r.tratado?', tratado':''})`);}
+ catch(err){$('vErr').textContent=err.message;status('erro');}
+}
+$('recUse').onclick=()=>recBlob&&sendMould(recBlob,0);
+$('fileUse').onclick=()=>{const f=$('file').files[0];if(!f){$('vErr').textContent='Escolha um arquivo.';return;}sendMould(f,+$('fileStart').value||0);};
+(async()=>{
+ try{state=await api('/api/estado');}catch(err){status('servidor fora do ar: '+err.message);return;}
+ // The multilingual v3 first and chosen by default (the pt-br finetune stays a choice).
+ $('modelo').innerHTML=Object.entries(state.modelos).sort(([a],[b])=>(b==='v3')-(a==='v3')).map(([k,v])=>`<option value="${k}">${esc(v)}${k==='v3'?' (padrão)':''}</option>`).join('');
+ $('modelo').value='v3';
+ $('decodificador').innerHTML=Object.entries(state.decodificadores).map(([k,v])=>`<option value="${k}">${esc(v)}</option>`).join('');
+ $('lines').innerHTML='<option value="">Falas da história de Interlagos…</option>'+state.falas.map((t,i)=>`<option value="${i}">${i+1}. ${esc(t.slice(0,90))}${t.length>90?'…':''}</option>`).join('');
+ const saved=recall();setSettings({...state.padrao,...saved});
+ if(saved.modelo&&state.modelos[saved.modelo])$('modelo').value=saved.modelo;
+ if(saved.decodificador&&state.decodificadores[saved.decodificador])$('decodificador').value=saved.decodificador;
+ showDecoder();
+ if(saved.text)$('text').value=saved.text;
+ if(saved.voice&&state.vozes.some(v=>v.id===saved.voice))voice=saved.voice;
+ $('folder').textContent='Arquivos em '+state.pasta;
+ renderVoices();showTreat();renderTakes();renderPresets();status(state.carregado?`modelo ${state.modelos[state.carregado]} na placa`:'pronto (o modelo carrega na primeira geração)');
+})();
+</script>
+</body>
+</html>

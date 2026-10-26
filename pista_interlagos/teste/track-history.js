@@ -410,7 +410,9 @@ class Narrator{
  static label(v,ui='pt'){if(v.recorded)return `${v.label} · ${ui==='en'?'recorded':'gravada'} · ${REGIONS[v.lang]?.[ui==='en'?1:0]??v.lang}`;
   const name=v.name.replace(/^Microsoft\s+/i,'').replace(/\s*-\s*[A-Z][a-zçã]+\s*\(.*\)$/i,'').replace(/\s*-\s*(Portug|English).*$/i,'').replace(/\s*Online\s*\(Natural\)/i,' · natural').replace(/^Google\s+(portugu[eê]s|UK English|US English)\s*(d[oe]\s+\w+)?/i,'Google');
   const region=REGIONS[(v.lang||'').replace('_','-')];return `${name} · ${region?region[ui==='en'?1:0]:v.lang}`;}
- refresh(){this.voices=[...this.recorded.filter(v=>v.lang.startsWith(this.lang)),...Narrator.forLanguage(this.all,this.lang)];this.pick();}
+ // A language with a recorded voice lists only its recorded ones (user, 10-26: "só mostra a voz do Bob"); the browser's
+ // stay behind them as the spare for a line not recorded, and are the list where nothing was recorded (English).
+ refresh(){const rec=this.recorded.filter(v=>v.lang.startsWith(this.lang));this.voices=rec.length?rec:Narrator.forLanguage(this.all,this.lang);this.pick();}
  setLanguage(lang,wanted){this.lang=lang;this.wanted=wanted||'';this.refresh();}
  // The one chosen if this browser has it; else the best one of the language (a recorded one starts downloading).
  pick(){this.voice=this.voices.find(v=>v.name===this.wanted)??this.voices[0]??null;if(this.voice?.recorded)this.fetchRecording(this.voice);}
@@ -494,8 +496,9 @@ const TEXTS=Object.freeze({
   musics:{menu:'Energia',sponsor:'Patrocínio',race:'Race',none:'No music'},speedNote:s=>s===1?'Normal speed':`Speed ${s}×`,
   noVoice:'This browser has no English voice: the narration goes on in the captions.',noVoices:'No English voice in this browser',sample:'Hello! This is the voice that will tell the story of Interlagos.',video:'Video',more:'Learn more'},
 });
-// The language a story starts in when none was chosen: the browser's (Portuguese, or English for everyone else).
-export const defaultLanguage=()=>/^pt/i.test(globalThis.navigator?.language??'pt')?'pt':'en';
+// The language a story starts in when none was chosen: Portuguese, whatever the browser's (user, 10-26: "o padrão tem
+// que ser português"; the narrator's recorded voice is Portuguese). English is a choice on the PT/EN buttons.
+export const defaultLanguage=()=>'pt';
 const ICONS={
  play:'<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg>',pause:'<svg viewBox="0 0 24 24"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z"/></svg>',
  next:'<svg viewBox="0 0 24 24"><path d="M6 6.5v11l8.2-5.5zM15.6 6.5h2.4v11h-2.4z"/></svg>',prev:'<svg viewBox="0 0 24 24"><path d="M18 6.5v11l-8.2-5.5zM6 6.5h2.4v11H6z"/></svg>',
@@ -518,7 +521,9 @@ export class TrackHistory{
   this.focus=new THREE.Vector3();this.dof={focus:60,amount:0};this.narrator=new Narrator();this.prefs={voice:true,captions:true,speed:1,voices:{},lang:null,music:'menu',duck:true};
   try{Object.assign(this.prefs,JSON.parse(localStorage.getItem(PREFS))||{});}catch{}
   if(typeof this.prefs.voiceName==='string'){this.prefs.voices={pt:this.prefs.voiceName,...this.prefs.voices};delete this.prefs.voiceName;}
-  if(!LANGS.includes(this.prefs.lang))this.prefs.lang=defaultLanguage();
+  // A language saved without being chosen (the browser's English, before Portuguese became the default) goes back to
+  // the default; one picked on the PT/EN buttons stays.
+  if(!LANGS.includes(this.prefs.lang)||!this.prefs.langChosen)this.prefs.lang=defaultLanguage();
   // A speed saved before PACE (1.75× of the old normal) would now play at 3×: back to Normal once.
   if(this.prefs.pace!==PACE){this.prefs.speed=1;this.prefs.pace=PACE;}
   this.prefs.speed=SPEEDS.includes(this.prefs.speed)?this.prefs.speed:1;this.narrator.setLanguage(this.prefs.lang,this.prefs.voices?.[this.prefs.lang]);this.narrator.rate=this.prefs.speed;
@@ -531,7 +536,7 @@ export class TrackHistory{
  // The story's language, chosen in the player or on the História das Corridas screen: the words, the voice and the
  // player change at once; playing, it goes on from the same line in the other language.
  setLang(lang){
-  if(!LANGS.includes(lang))return;const changed=lang!==this.prefs.lang;this.prefs.lang=lang;this.savePrefs();
+  if(!LANGS.includes(lang))return;const changed=lang!==this.prefs.lang;this.prefs.lang=lang;this.prefs.langChosen=true;this.savePrefs();
   this.narrator.cancel();this.narrator.setLanguage(lang,this.prefs.voices?.[lang]);
   if(!this.active||!changed)return;
   this.rebuild();
@@ -563,6 +568,8 @@ export class TrackHistory{
   // A long stretch (the Retão, the Reta Oposta) is named in its middle, not where it begins.
   this.labelMid={old:{}};const L=this.paths.old?.length??1;
   for(const p of old?.points??[])if(Number.isFinite(p.s_from)&&Number.isFinite(p.s_to)){const span=((p.s_to-p.s_from)%L+L)%L;this.labelMid.old[p.name]=(p.s_from+span/2)%L;}
+  // A script may set where a corner's label sits (script.labelAt: {path: {name: s}}) apart from its place.
+  for(const [path,at] of Object.entries(script.labelAt??{}))Object.assign(this.labelMid[path]??={},at);
   // A script's own stretches (script.paths: {name: {points: [[x, y], …]}}), such as a link of the old track that no
   // lap of it ran: every 4 m along the points, on the ground, or through the air where a point gives its own height
   // ([x, y, z]: a car leaving the road).

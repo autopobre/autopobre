@@ -1,11 +1,13 @@
 """A voz gravada da história (gerar_narracao.py + track-history.js) no navegador: a história de Interlagos abre já com
-a voz gravada padrão (Antonio, no ritmo dele) e cronometrada por ela; cada fala toca o seu trecho do MP3 e para no fim
-dele; a câmera anda junto com a voz; em 1,5x a voz acelera junto; a lista de vozes traz as gravadas primeiro, e o
-Antonio rápido escolhido no ⚙ cronometra a história de novo, mais curta.
+a voz gravada padrão (a primeira de assets/historia/vozes_interlagos.json) e cronometrada por ela; cada fala toca o
+seu trecho do MP3 e para no fim dele; a câmera anda junto com a voz; em 1,5x a voz acelera junto; a lista de vozes traz
+as gravadas primeiro, na ordem do índice, e a segunda escolhida no ⚙ cronometra a história de novo.
 
     python verificar_voz_gravada.py [porta]
 """
+import json
 import sys
+from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
@@ -15,6 +17,9 @@ args = [a for a in sys.argv[1:] if not a.startswith('--')]
 PORTA = args[0] if args else '8857'
 URL = f'http://127.0.0.1:{PORTA}/pista_interlagos/teste/?circuito=interlagos'
 erros, falhas = [], []
+VOZES = json.loads((Path(__file__).resolve().parents[1] / 'teste/assets/historia/vozes_interlagos.json').read_text(encoding='utf-8'))
+NOMES = ['gravada:' + v['src'].split('/')[-1] for v in VOZES]
+ROTULOS = [v['label'] + ' · gravada · Brasil' for v in VOZES]
 
 
 def check(nome, ok, detalhe=''):
@@ -45,13 +50,13 @@ with sync_playwright() as p:
     wait_js(page, 'interlagosAutodromo.info().playing', timeout=20000)
     page.wait_for_timeout(2500)
     i = info(page)
-    check('a voz gravada padrão é a escolhida', i['recorded'] and i['voice'] == 'gravada:voz_interlagos_pt_antonio', i['voice'])
+    check(f'a voz gravada padrão ({VOZES[0]["label"]}) é a escolhida', i['recorded'] and i['voice'] == NOMES[0], i['voice'])
     check('a linha do tempo segue a voz gravada', i['timedBy'] == i['voice'] and i['follow'] == 1, (i['timedBy'], i['follow']))
     check('a primeira fala toca o seu trecho', i['audioAt'] is not None and i['clip'] and i['clip'][0] < i['audioAt'] < i['clip'][1],
           (i['audioAt'], i['clip']))
     check('o apresentador fala e a música abaixa', i['talking'] and page.evaluate('interlagosAutodromo.audio().ducked') > 0)
     # As long as the recording and a breath after each line, a little more where a ride runs on after the voice.
-    fala = page.evaluate("(async()=>{const m=await (await fetch('./assets/historia/voz_interlagos_pt_antonio.json')).json();return m.speech+m.lines.length*.5})()")
+    fala = page.evaluate("src=>(async()=>{const m=await (await fetch(`./${src}.json`)).json();return m.speech+m.lines.length*.5})()", VOZES[0]['src'])
     check('a história dura o tempo da voz', fala - 1 < i['duration'] < fala * 1.15, (round(i['duration'] / 60, 2), round(fala / 60, 2)))
 
     # Uma fala no meio (a primeira do capítulo 4): toca do começo do trecho e para no fim dele, antes da próxima.
@@ -80,7 +85,7 @@ with sync_playwright() as p:
     page.mouse.move(640, 360)
     page.click('#historyPlayer .hp-gear')
     vozes = page.evaluate("[...document.querySelectorAll('.hp-voices option')].map(o=>o.textContent)")
-    check('as vozes gravadas vêm primeiro, a padrão na frente', vozes[:2] == ['Antonio · gravada · Brasil', 'Antonio rápido · gravada · Brasil'], vozes[:3])
+    check('só as vozes gravadas, na ordem do índice', vozes == ROTULOS, vozes)
     page.click('.hp-settings [data-speed="1.5"]')
     page.keyboard.press('Escape')
     page.wait_for_timeout(1500)
@@ -89,18 +94,26 @@ with sync_playwright() as p:
     e = info(page)
     falou = e['audioAt'] - d['audioAt']
     check('em 1,5x a voz acelera', d['speed'] == 1.5 and 2.6 < falou < 3.4 or e['line'] != d['line'], round(falou, 2))
-    # A outra voz gravada, escolhida no ⚙: a história se cronometra por ela (mais curta) e ela toca as suas falas.
+    # A outra voz gravada, escolhida no ⚙ (quando há mais de uma): a história se cronometra por ela e ela toca as suas falas.
+    if len(VOZES) < 2:
+        page.evaluate('interlagosAutodromo.stop()')
+        page.wait_for_timeout(600)
+        check('ao sair, a voz cala', not page.evaluate('interlagosAutodromo.info().talking'))
+        browser.close()
+        check('sem erros na página', not erros, erros[:3])
+        print('FALHAS: ' + ', '.join(falhas) if falhas else 'voz gravada: ok', flush=True)
+        sys.exit(1 if falhas else 0)
     page.mouse.move(600, 400)  # the controls hide themselves after a while
     page.click('#historyPlayer .hp-gear')
-    page.select_option('.hp-voices', 'gravada:voz_interlagos_pt_antonio_rapido')
+    page.select_option('.hp-voices', NOMES[1])
     page.wait_for_timeout(600)
     page.keyboard.press('Escape')
     page.evaluate('interlagosAutodromo.play(true)')
     wait_js(page, 'interlagosAutodromo.info().talking', timeout=10000)
     page.wait_for_timeout(300)
     r = info(page)
-    check('o Antonio rápido cronometra a história, mais curta', r['voice'] == r['timedBy'] == 'gravada:voz_interlagos_pt_antonio_rapido'
-          and r['duration'] < i['duration'] - 30, (r['timedBy'], round(r['duration'] / 60, 2), round(i['duration'] / 60, 2)))
+    check(f'{VOZES[1]["label"]} cronometra a história', r['voice'] == r['timedBy'] == NOMES[1]
+          and abs(r['duration'] - i['duration']) > 10, (r['timedBy'], round(r['duration'] / 60, 2), round(i['duration'] / 60, 2)))
     check('e toca a sua fala', r['clip'] and r['clip'][0] <= r['audioAt'] <= r['clip'][1] and r['talking'], (r['audioAt'], r['clip']))
     page.evaluate('interlagosAutodromo.stop()')
     page.wait_for_timeout(600)

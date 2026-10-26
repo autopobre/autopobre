@@ -32,6 +32,11 @@ export const HISTORY={
   old:{'Curva do Laranja':5640,'Lago':LAKE},
   // The ring's link is the Junção that closed the short lap (user, 10-21).
   anel:{'Junção':128}},
+ // Where a corner's label sits when its place (where a ride starts or ends) is not its middle: the middle of the bend
+ // from the track's own curvature (user, 10-26). Old: the S is the sharp right whose apex is today's Esse (old s =
+ // today's + 3600 there), the Cotovelo the right hairpin 6328-6382 (today's Bico de Pato), the Mergulho the left bend
+ // 6480-6652 (the places sat on the straights before them); today's Mergulho, the bend 2880-3054.
+ labelAt:{old:{'Curva do S':5937,'Cotovelo':6355,'Mergulho':6566},new:{'Mergulho':2967}},
  // The outer ring's link: the north straight ran on, straight, into the old Junção (the short configuration's lap;
  // the full lap turned off it at Turn 4). Both ends point the same way: one long straight.
  paths:{anel:{points:[[184,746],[60,725],[-67,703]]},
