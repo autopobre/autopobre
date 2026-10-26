@@ -3,7 +3,8 @@
 
 #view{touch-action:none;cursor:grab}#view.dragging{cursor:grabbing}#cameraTools{position:absolute;left:34px;bottom:90px;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 400px)}#cameraTools button{white-space:nowrap;font-size:11px;background:var(--glass)}#cameraTools button.active{color:var(--lime);border-color:var(--lime)}#cameraHint{font-size:11px;line-height:1.5;background:var(--glass);padding:10px 12px;border-radius:5px;pointer-events:none}@media(max-width:850px){#cameraTools{left:16px;bottom:85px;max-width:calc(100vw - 285px);flex-wrap:wrap;gap:6px}#cameraHint{font-size:10px}}
 
-.cockpit-mode #telemetry{display:none}.cockpit-mode #mapcard{opacity:.85}.cockpit-mode #timing{opacity:.85}
+/* Inside the car the dash shows the speed: only the gear stays, where the other cameras show it (Central #23). */
+body.cockpit-mode #telemetry{width:auto;padding:8px;opacity:.85}body.cockpit-mode #telemetry :is(.speed strong,.speed span,.bar){display:none}body.cockpit-mode #telemetry .speed b{margin:0}.cockpit-mode #mapcard{opacity:.85}.cockpit-mode #timing{opacity:.85}
 
 .cockpit-mode #mapcard{width:140px;top:20px;left:20px}.cockpit-mode .maptitle{top:7px;left:10px;font-size:11px}.cockpit-mode .maplabel{padding:8px 10px;font-size:7px}.cockpit-mode .maplabel span{font-size:11px}.cockpit-mode #timing{top:20px;right:20px;min-width:165px;padding:12px}.cockpit-mode #timer{font-size:22px;margin:10px 0}
 

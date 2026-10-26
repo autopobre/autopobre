@@ -25,7 +25,7 @@ export const KEY_ACTIONS=Object.freeze([
  {id:'camera',group:'visual',name:'Trocar câmera',note:'a pé, agachar',codes:['KeyC']},
  ...['perseguição','próxima','distante','capô','interna','TV','aérea','órbita 360°'].map((view,i)=>({id:'cam'+(i+1),group:'visual',name:`Câmera ${view}`,
   note:i<3?`nas conversas, a resposta ${i+1} · na selfie, você ${['à esquerda','no centro','à direita'][i]} da foto`:'',codes:[`Digit${i+1}`,`Numpad${i+1}`]})),
- {id:'olharTras',group:'visual',name:'Olhar para trás',note:'segure, na câmera interna',codes:['KeyB']},
+ {id:'olharTras',group:'visual',name:'Olhar para trás',note:'segure (câmeras interna, capô e perseguição)',codes:['KeyB']},
  {id:'pintura',group:'visual',name:'Trocar a pintura',note:'',codes:['KeyV']},
  {id:'fantasma',group:'visual',name:'Fantasma',note:'o Opala da sua melhor volta na pista, para estudar e tentar bater; liga e desliga',codes:['KeyG']},
  {id:'linha',group:'visual',name:'Linha ideal',note:'o trajeto recomendado no asfalto: verde acelera, amarelo segura, vermelho freia; troca entre completa, só nas curvas e desligada',codes:['KeyO']},

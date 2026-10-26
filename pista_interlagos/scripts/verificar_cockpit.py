@@ -19,6 +19,8 @@ with sync_playwright() as p:
   info=page.evaluate('interlagos.cockpitInfo()');report['views'].append(info)
   # The controls sit in the V06 body (the car stays visible round them), lowered onto its floor.
   check('internal_selected',info['visible'] and info['externalVisible'] and not info['view']['classic'] and info['view']['drop']<0)
+  # The gear stays on screen inside the car, the speed is the dash's (Central #23).
+  check('gear_shown_inside',page.is_visible('#gear') and not page.is_visible('#speed'))
   EYE=info['view']['eye']
   check('eye_inside_cabin',math.dist(info['eyeLocal'],EYE)<1e-6 and abs(EYE[0]+.15)<1e-6 and abs(EYE[1]-1.02)<1e-6)  # V06: 24 cm forward, 12 cm over the dash
   # Scanned interior maps (carbon, leather, suede, aluminium, tread plate, rubber) and the cabin reflections.
@@ -44,8 +46,17 @@ with sync_playwright() as p:
   race_options(page,livery='seiva_danilo');page.evaluate('interlagos.reposition(800)');enter_track(page);page.keyboard.down('KeyS');frame()
   info=page.evaluate('interlagos.cockpitInfo()');check('second_livery_cockpit',info['visible'] and info['externalVisible'] and not info['view']['classic']);page.screenshot(path=str(ROOT/'renders/cockpit_seiva.png'));page.keyboard.up('KeyS')
   page.click('#cockpitButton');frame();info=page.evaluate('interlagos.cockpitInfo()');check('external_car_restored',info['visible'] and info['externalVisible'] and not info['view']['cabin'] and abs(info['fov']-page.evaluate('interlagos.cameraSnapshot().baseFov'))<.05)
-  page.keyboard.down('KeyB');page.wait_for_timeout(300);frame()
-  check('b_only_inside_cockpit',page.evaluate('interlagos.viewControls().lookBack.amount')==0);page.keyboard.up('KeyB')
+  # Looking back from the other cameras (Central #23): a follow camera goes to the front of the car, facing it, and the
+  # hood camera onto the boot lid; let go, both face the road again. The aerial one has no look back.
+  def camera(m):page.evaluate("m=>{const s=document.querySelector('#camera');s.value=m;s.dispatchEvent(new Event('change'))}",m);frame()
+  def looks_back(name):
+   page.keyboard.down('KeyB');page.wait_for_timeout(300);frame();back=page.evaluate(facing);eye=page.evaluate('interlagos.cockpitInfo().eyeLocal')
+   page.keyboard.up('KeyB');page.wait_for_timeout(300);frame();check(name,back<-.9 and page.evaluate(facing)>.9);return eye
+  looks_back('b_chase_faces_the_car')
+  camera('hood');check('b_hood_from_the_boot',looks_back('b_hood_looks_back')[0]<-1)
+  camera('aerial');page.keyboard.down('KeyB');page.wait_for_timeout(300);frame()
+  check('b_not_from_the_air',not page.evaluate('interlagos.viewControls().lookBack.allowed') and page.evaluate(facing)>.3);page.keyboard.up('KeyB')
+  camera('chase')
   modes=[]
   for _ in range(8):page.keyboard.press('KeyC');modes.append(page.evaluate('interlagos.state.mode'))
   check('eight_camera_cycle',modes==['close','far','hood','cockpit','tv','aerial','orbit','chase'])

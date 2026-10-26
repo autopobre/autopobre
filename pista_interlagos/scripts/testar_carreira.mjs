@@ -7,7 +7,7 @@ import {ImmersiveState,FANS,JOKES,COSTS} from '../teste/immersive-state.js';
 import {OLD_STOCK_2026} from '../teste/championship.js';
 import {recommendedFuel,tankFor,FUEL_LAPS} from '../teste/fuel.js';
 import {CarCondition} from '../teste/car-condition.js';
-import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,KLEBER_LINES,FIRST_LINES,MISSED,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,SNAG_COST,outfitOf,repairBill,repairCar,carHealth,CAR_FLOOR,repairPerPoint,enginePower,ENGINE_PARTS,stageOf,BLAZER_AFTER,OPALA_GOAL,divorceStep,patienceOf,DIVORCE_LINES,PENSION,PENSION_MONTHS,GAME_OVER} from '../teste/story-career.js';
+import {CHALLENGES,PRIZES,prizeFor,entryFor,ENTRY,MORALE_CARDS,INTRO_LINES,DONE_LINES,KLEBER_LINES,FIRST_LINES,LATE,MISSED_LINES,REFUSED,expenseFor,outcomeOf,loadCareer,newCareer,applyRace,SNAG_COST,outfitOf,repairBill,repairCar,carHealth,CAR_FLOOR,repairPerPoint,enginePower,ENGINE_PARTS,stageOf,deadlineText,BLAZER_AFTER,OPALA_GOAL,divorceStep,patienceOf,FORGIVE_AFTER,DIVORCE_LINES,PENSION,PENSION_MONTHS,GAME_OVER} from '../teste/story-career.js';
 const checks={},check=(name,value)=>{checks[name]=!!value;assert(value,name);};
 // The career's first podium and win already seen (Kléber's talks for them are checked on their own, below).
 const profileOf=(career={},fund=0)=>({fund,career:{...newCareer(),intro:true,firsts:['podio','vitoria'],...career}});
@@ -114,9 +114,35 @@ const refuse=story({},900);race(refuse,4);readAll(refuse);refuse.answerScene(fal
 // Paid, but no longer enough: the challenge goes on.
 const short=story({},500);race(short,2);readAll(short);short.answerScene(true);check('expense_leaves_it_short',short.profile.fund===1100-285&&short.profile.career.challenge===0&&short.scene.cards.at(-1).type==='challenge'&&short.scene.cards.at(-1).left===2);
 
-// The deadline passes without the money: the loan goes on, team and supporters notice.
-const slow=story();for(let i=0;i<2;i++){race(slow,12);readAll(slow);}race(slow,12);
-check('deadline_missed',slow.scene.cards.some(c=>c.type==='missed')&&slow.profile.career.since===3&&slow.profile.career.challenge===0&&slow.profile.career.morale.equipe===50+5*3+MISSED.equipe&&slow.profile.career.morale.torcida===50+2*3+MISSED.torcida);
+// The deadline passes without the money (Central #22): no new deadline, the challenge stays late. The kit's: the team
+// −10 now, with Stevan's first line, and Kléber says there is no deadline any more.
+const slow=story();for(let i=0;i<2;i++){race(slow,12);readAll(slow);}race(slow,12);const missed=slow.scene.cards.find(c=>c.type==='missed');
+check('deadline_missed',missed&&slow.profile.career.since===0&&slow.profile.career.late===3&&slow.profile.career.challenge===0&&slow.profile.career.morale.equipe===50+5*3-LATE.kit.deadline&&slow.profile.career.morale.torcida===50+2*3&&missed.changes.equipe===-10&&!('torcida' in missed.changes));
+check('deadline_line_and_kleber',missed.lines.join()==='A equipe está decepcionada com o descumprimento do prazo para devolver o macacão.'&&MISSED_LINES.macacao.at(-1)[1].includes('não tem mais prazo')&&!CHALLENGES.some(c=>/mais um prazo/.test(c.missed)));
+readAll(slow);check('late_in_the_paddock',deadlineText(CHALLENGES[0],slow.profile.career)==='prazo vencido: desafio atrasado');
+// A win while late: the team's +20 is gone, −5 instead, with another of the kit's lines; the others' gains stay.
+race(slow,1);const lateTeam=slow.scene.cards.find(c=>c.key==='equipe'),lateCard=slow.scene.cards.find(c=>c.type==='challenge');
+check('late_race_takes_the_gain',lateTeam.delta===-LATE.kit.step&&!lateTeam.text&&LATE.kit.bars.equipe.slice(1).includes(lateTeam.late)&&slow.profile.career.morale.equipe===55-5&&slow.profile.career.morale.torcida===56+20&&slow.profile.career.morale.esposa===50-5*3+10&&lateCard.late===1&&!('left' in lateCard));
+readAll(slow);check('late_count_in_the_paddock',deadlineText(CHALLENGES[0],slow.profile.career)==='atrasado há 1 corrida');
+// A bad race while late: its own loss and the delay's, both lines on the card.
+const sour=story({races:6,since:3,late:6,lines:{equipe:0}});race(sour,null);const sourTeam=sour.scene.cards.find(c=>c.key==='equipe');
+check('late_bad_race_adds_up',sourTeam.delta===MORALE_CARDS.late.guincho[1][1]-LATE.kit.step&&sourTeam.text===MORALE_CARDS.late.guincho[1][0]&&sourTeam.late&&sour.profile.career.morale.equipe===50-15&&sour.profile.career.morale.torcida===40);
+// Bought at last: the delay ends (that race still paid it), the next challenge starts with its own deadline.
+const paidUp=story({races:6,since:3,late:6,expense:true},1000);race(paidUp,12);
+check('late_bought_ends_it',paidUp.profile.career.late===null&&Object.keys(paidUp.profile.career.lines).length===0&&paidUp.profile.career.challenge===1&&paidUp.scene.cards.find(c=>c.key==='equipe').delta===-5-5&&paidUp.scene.cards.at(-1).challenge==='luvas'&&paidUp.scene.cards.at(-1).fresh);
+// Race after race the line changes, never the same twice in a row; the delay and its lines survive a reload.
+{const c={...newCareer(),races:6,since:3,late:6,lines:{equipe:0}},seen=[];let seed=7;const dice=()=>(seed=(seed*16807)%2147483647)/2147483647;
+ for(let i=0;i<40;i++){applyRace(c,{status:'Terminou',position:12},null,dice);seen.push(c.report.late.lines.equipe);}
+ check('late_lines_never_repeat',seen.every((v,i)=>v!==(i?seen[i-1]:0))&&new Set(seen).size===LATE.kit.bars.equipe.length);
+ const back=loadCareer(JSON.parse(JSON.stringify(c)));check('late_survives_reload',back.late===6&&back.lines.equipe===seen.at(-1)&&back.report.late.lines.equipe===seen.at(-1)&&loadCareer({...newCareer(),races:2,since:1,late:2}).late===null);}
+// The team's things (the trailer, the tools, the engine) weigh on the team and the supporters; the family's on the wife
+// only (the kart no longer on the supporters), and on nobody after a divorce.
+const trailer=story({challenge:5,races:6,since:3},0);race(trailer,12);const trailerMissed=trailer.scene.cards.find(c=>c.type==='missed');
+check('team_things_weigh_on_both',trailerMissed.changes.equipe===-10&&trailerMissed.changes.torcida===-10&&trailerMissed.lines.length===2&&['carretinha','ferramentas','motor'].every(id=>CHALLENGES.find(c=>c.id===id).group==='team')&&['macacao','luvas','sapatilhas','capacete','hans'].every(id=>CHALLENGES.find(c=>c.id===id).group==='kit'));
+const kartLate=story({challenge:8,races:6,since:2},0);race(kartLate,12);const kartMissed=kartLate.scene.cards.find(c=>c.type==='missed');
+check('kart_weighs_on_her_only',kartMissed.changes.esposa===-10&&Object.keys(kartMissed.changes).length===1&&kartMissed.lines[0]==='Sua esposa está decepcionada por você criar expectativa e não cumprir.');
+const kartAlone=story({challenge:8,races:6,since:2,divorced:{race:1,taken:0}},0);race(kartAlone,12);readAll(kartAlone);race(kartAlone,12);
+check('kart_late_after_divorce_weighs_nothing',kartAlone.profile.career.late===7&&!kartAlone.scene.cards.some(c=>c.type==='morale'&&c.late)&&kartAlone.scene.cards.find(c=>c.type==='challenge').late===1);
 // A knock hits harder with a team that lost faith (no detailed damage: the story's own health).
 const knock=k=>{const s=story({morale:{esposa:50,equipe:k,torcida:50}});s.scene=null;s.phase='race';s.hitCar(1);return 1-s.health;};
 check('team_morale_scales_damage',Math.abs(knock(0)-knock(50)*1.5)<1e-9&&Math.abs(knock(100)-knock(50)*.5)<1e-9);
@@ -132,14 +158,26 @@ const broke=new ImmersiveState(profileOf({morale:{esposa:50,equipe:50,torcida:10
 const home=new ImmersiveState(profileOf({morale:{esposa:50,equipe:50,torcida:10}},0));home.start();check('home_entry_still_reachable',!home.profile.career.over&&!home.scene);
 
 // The divorce (Central #15). The clock by bands of the wife's morale after each race (Stevan's table), her patience
-// the fewer or the more races of each band; under 10% at once; above 50% it waits, more than 4 races there forgive.
-const until=(m,patience)=>{const c={...newCareer(),morale:{esposa:m,equipe:50,torcida:50}};for(let n=1;n<=20;n++)if(divorceStep(c,()=>patience))return n;return null;};
-check('divorce_deadlines_by_band',[[50,4,5],[40,4,5],[39,3,4],[30,3,4],[29,2,3],[20,2,3],[19,1,2],[10,1,2]].every(([m,few,more])=>until(m,.2)===few&&until(m,.8)===more)&&[9,5,0].every(m=>until(m,.5)===1)&&until(51,.2)===null&&until(100,.2)===null);
-{const c=newCareer();const steps=[45,45,25].map(m=>{c.morale.esposa=m;return divorceStep(c,()=>.2);});check('moving_bands_average',steps.join()==='false,false,true');}
-{const c=newCareer();c.morale.esposa=45;divorceStep(c,()=>.2);divorceStep(c,()=>.2);c.morale.esposa=60;for(let i=0;i<4;i++)divorceStep(c);
- const waited=c.clock.progress===.5&&c.clock.calm===4&&patienceOf(c.clock).chance===1;c.morale.esposa=45;const back=divorceStep(c,()=>.9)===false&&c.clock.progress===.75&&c.clock.calm===0;
- c.morale.esposa=60;for(let i=0;i<5;i++)divorceStep(c);check('above_half_waits_then_forgives',waited&&back&&c.clock.progress===0&&c.clock.patience===null&&patienceOf(c.clock)===null);}
+// the fewer or the more races of each band; under 10% at once; above 50% it waits, 3 races there forgive (#18).
+const until=(m,patience)=>{const c={...newCareer(),morale:{esposa:m,equipe:50,torcida:50}};for(let n=1;n<=20;n++){divorceStep(c,()=>patience);if(c.clock.progress===1)return n;}return null;};
+const steps=(list,patience=.2,c=newCareer())=>list.map(m=>{c.morale.esposa=m;return divorceStep(c,()=>patience)?'D':c.clock.mood??'-';}).join(' ');
+check('divorce_deadlines_by_band',[[50,4,5],[40,4,5],[39,3,4],[30,3,4],[29,2,3],[20,2,3],[19,1,2],[10,1,2]].every(([m,few,more])=>until(m,.2)===few&&until(m,.8)===more)&&[9,5,0].every(m=>divorceStep({...newCareer(),morale:{esposa:m,equipe:50,torcida:50}},()=>.5))&&until(51,.2)===null&&until(100,.2)===null);
+check('moving_bands_average',steps([45,45,25])==='- - D');
+{const c=newCareer();c.morale.esposa=45;divorceStep(c,()=>.2);divorceStep(c,()=>.2);c.morale.esposa=60;for(let i=0;i<2;i++)divorceStep(c);
+ const waited=c.clock.progress===.5&&c.clock.calm===2&&patienceOf(c.clock).chance===1;c.morale.esposa=45;const back=divorceStep(c,()=>.9)===false&&c.clock.progress===.75&&c.clock.calm===0&&c.clock.mood===null;
+ c.morale.esposa=60;for(let i=0;i<FORGIVE_AFTER;i++)divorceStep(c);check('above_half_waits_then_forgives',FORGIVE_AFTER===3&&waited&&back&&c.clock.progress===0&&c.clock.patience===null&&patienceOf(c.clock)===null);}
 check('patience_by_thirds',patienceOf({progress:.25,calm:0}).stage===0&&patienceOf({progress:.5,calm:0}).stage===1&&patienceOf({progress:.75,calm:0}).stage===2&&patienceOf({progress:0,calm:0})===null);
+// Her patience spent (Central #18, Stevan's examples): she lets go a race whose morale rose or stayed, and the first fall
+// ends it; 42% in the race before the last of the deadline, 47% (she lets it go), then down: the divorce.
+check('relents_while_rising',steps([45,45,42,47,44])==='- - - relent D'&&steps([45,45,42,47,47,49,40])==='- - - relent relent relent D');
+// Back above 50% the clock waits; the first race back under it is never the end: an ultimatum, then a fall ends it and
+// a rise is let go. 52% (frozen), 47% (ultimatum), up (let go) or down (divorce).
+check('ultimatum_after_the_line',steps([45,45,42,47,52,47,45])==='- - - relent - ultimatum D'&&steps([45,45,42,47,52,47,48,46])==='- - - relent - ultimatum relent D');
+// Even a deadline that ends on that first race back gives an ultimatum; three races above 50% clear it all.
+check('first_race_back_never_divorces',steps([45,45,45,52,40])==='- - - - ultimatum');
+{const c=newCareer();steps([45,45,42,47,60,60,60,45],.2,c);check('three_above_half_start_over',c.clock.progress===.25&&c.clock.mood===null&&c.clock.calm===0);}
+check('patience_says_relent_or_ultimatum',patienceOf({progress:1,calm:0,mood:'relent'}).relent&&patienceOf({progress:1,calm:0,mood:'ultimatum'}).ultimatum&&patienceOf({progress:1,calm:1,mood:null}).chance===2);
+{const c=newCareer();steps([45,45,42,47],.2,c);const back=loadCareer(JSON.parse(JSON.stringify(c)));check('clock_survives_reload',back.clock.mood==='relent'&&back.clock.last===47&&back.clock.progress===1&&loadCareer({...newCareer(),clock:{progress:.5,calm:0,mood:'x',last:'y'}}).clock.mood===null);}
 // A late tow with the wife at 15%: she drops to 0 and divorces him at once. The report: her card (the divorce on it),
 // the team's and the supporters', the repair bill, the lawyer at the Box 99, DIVÓRCIO; she took half of the wallet.
 const wed=story({races:6,since:6,morale:{esposa:15,equipe:60,torcida:60}},1000);race(wed,null);

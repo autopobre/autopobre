@@ -26,7 +26,7 @@ import {LookStore} from './pilot-look.js';
 import {CarLivery,trunkInside,showTrunkInside,trimDecalTails} from './car-livery.js';
 import {finishMesh,finishMaterial} from './car-finish.js';
 import {CarReflections} from './car-reflections.js';
-import {FuscaBody,prepareFusca,FUSCA_URL,FUSCA_SEAT,FUSCA_EYE,FUSCA_HOOD_EYE,FUSCA_WHEEL_TRAVEL,FUSCA_WHEEL_BUMP} from './fusca.js';
+import {FuscaBody,prepareFusca,FUSCA_URL,FUSCA_SEAT,FUSCA_EYE,FUSCA_HOOD_EYE,FUSCA_BOOT_EYE,FUSCA_WHEEL_TRAVEL,FUSCA_WHEEL_BUMP} from './fusca.js';
 import {createTrackSurface,createGuardrails,createCurbs,createTrackBranding} from './track-surface.js';
 import {createCockpit} from './cockpit.js?v=20260927-omp-retrovisores';
 import {CarOpenings,OPENINGS,showOnly} from './car-openings.js';
@@ -45,7 +45,7 @@ import {SkidMarks} from './skid-marks.js?v=20260923-capotagem';
 import {TyreSmoke} from './tyre-smoke.js?v=20261005-poeira-folhas';
 import {ImmersiveMode} from './immersive-mode.js';
 import {ImmersiveState} from './immersive-state.js';
-import {stageOf,MORALE,MORALE_NAMES,GAME_OVER,BLAZER_GOAL,OPALA_GOAL,STORY_PROFILE_KEY,PENSION,standsFill} from './story-career.js';
+import {stageOf,deadlineText,MORALE,MORALE_NAMES,GAME_OVER,BLAZER_GOAL,OPALA_GOAL,STORY_PROFILE_KEY,PENSION,standsFill} from './story-career.js';
 import {MobileControls} from './mobile-controls.js';
 import {GamepadControls} from './gamepad-controls.js';
 import {WheelControls} from './wheel-controls.js';
@@ -329,6 +329,8 @@ orbit.minPolarAngle=.015;orbit.maxPolarAngle=Math.PI/2;
 orbit.rotateSpeed=.8;orbit.zoomSpeed=.8;
 const orbitTarget=new THREE.Vector3(),orbitDelta=new THREE.Vector3();
 const hoodEye=new THREE.Vector3(1.1,1.25,0),fuscaHoodEye=new THREE.Vector3(...FUSCA_HOOD_EYE),followOffset=new THREE.Vector3();let followInitialized=false;
+// The hood camera looking back (Central #23): on the boot lid, facing the road behind.
+const bootEye=new THREE.Vector3(-1.38,1.16,0),fuscaBootEye=new THREE.Vector3(...FUSCA_BOOT_EYE),BEHIND=Object.freeze({yaw:Math.PI,pitch:0});
 const cameraObstacles=[],cameraRay=new THREE.Raycaster(),cameraRayDirection=new THREE.Vector3();
 // Chase, close and far ride on camera-rig.js springs; followReach: how far the eye may sit from the car past walls.
 const rig=new CameraRig(),camDir=new THREE.Vector3(),camRight=new THREE.Vector3(),camShake={pitch:0,yaw:0,roll:0},rayFrom=new THREE.Vector3(),rayProbe=new THREE.Vector3(),screenPoint=new THREE.Vector3();let followReach=null,followBlock=Infinity,followObstacles=null;
@@ -381,9 +383,11 @@ scene.onBeforeRender=(r,s,camera)=>{if(enclosing++||!enclosure?.on)return;let vi
  if(view===true){for(const o of enclosure.world)if(o.visible){o.visible=false;shutOut.push(o);}enclosure.renders++;}
  else{for(const o of enclosure.parts)if(o.visible&&o.frustumCulled&&!view.intersectsObject(o)){o.visible=false;shutOut.push(o);}enclosure.portals++;}};
 scene.onAfterRender=()=>{if(--enclosing>0)return;enclosing=0;for(const o of shutOut)o.visible=true;shutOut.length=0;};
-// Look-back (B or the touch button): driving from the cockpit only, not on foot, in the pit stop or menus.
-// (On the arena B is a handbrake key, ARENA_HANDBRAKE: no looking back there.)
-const lookBackAllowed=()=>!arenaMode&&mode==='cockpit'&&ready&&!paused&&!cockpitView&&!pitstop?.opened&&!immersive?.onFoot()&&!walker?.active&&!gridPreview()&&!$('settings').open;
+// Look-back (B or the touch button): while driving, not on foot, in the pit stop or menus. (On the arena B is a handbrake
+// key, ARENA_HANDBRAKE: no looking back there.) The head turns round in the cockpit; the hood camera moves onto the boot
+// lid and the follow cameras to the front of the car, as far and as high, facing it (Central #23). Not the aerial, TV or orbit.
+const LOOK_BACK_VIEWS=Object.freeze(['cockpit','hood','chase','close','far']);
+const lookBackAllowed=()=>!arenaMode&&LOOK_BACK_VIEWS.includes(mode)&&ready&&!paused&&!cockpitView&&!pitstop?.opened&&!immersive?.onFoot()&&!walker?.active&&!gridPreview()&&!$('settings').open;
 // Sky light comes mostly from the environment map (sky.js); the hemisphere lifts the shade a little more.
 // Clear early-afternoon key light: a strong, barely warm sun against the open sky's fill, about 5:1 on
 // the ground like a sunny day (the fill was half that and a car's shadow went black), so shade under cars
@@ -1249,17 +1253,20 @@ function clearFollow(p,subject,dt){
  desired.y=Math.max(desired.y,subject.sample(desired.x,-desired.z).z+.35);
 }
 // Chase, close and far (camera-rig.js): springs behind the car, a lens that opens with speed while the eye comes
-// in (dolly), a look into the corners, clear of walls and ground, and vibration as small turns of the view.
-function rideCamera(dt,p,subject,ahead,motion,top){
+// in (dolly), a look into the corners, clear of walls and ground, and vibration as small turns of the view. behind: looking
+// back (Central #23), the same place mirrored to the front of the car, facing it.
+let rodeBehind=false;
+function rideCamera(dt,p,subject,ahead,motion,top,behind=false){
  if(!followInitialized){rig.reset();followReach=null;followInitialized=true;}
+ if(behind!==rodeBehind){followReach=null;rodeBehind=behind;}
  // (held as the race is: paused, or a multiplayer race standing still while its host is out of reach)
  const vel=Math.hypot(subject.vx,subject.vy),still=(paused||!!multiplayer?.frozen())&&dt<1;
  const r=rig.update({dt:still?0:dt,mode,aspect:camera.aspect,body:subject.body,heading:Math.atan2(-ahead.z,ahead.x),pitch:Math.asin(clamp(ahead.y,-1,1)),travel:Math.atan2(subject.vy,subject.vx),
   speed:vel,yawRate:subject.yaw??0,longAccel:subject.longAccel??0,heave:p.y-subject.sample(p.x,-p.z).z,tumbling:subject.upright<.6,motion,gear:subject.gear,keep:dolly(baseFov(mode,camera.aspect),camera.fov),kerb:subject.kerbRide||0});
  camDir.set(Math.cos(r.pitch)*Math.cos(r.yaw),Math.sin(r.pitch),-Math.cos(r.pitch)*Math.sin(r.yaw));camRight.set(Math.sin(r.yaw),0,Math.cos(r.yaw));
  // (the kerb's jolt moves the eye alone: the car under it shakes, the far scenery hardly)
- desired.copy(p).addScaledVector(camDir,-r.back);desired.y+=r.up+r.lift+r.jolt;
- look.copy(p).addScaledVector(camDir,r.ahead).addScaledVector(camRight,-r.side);look.y+=r.lookUp+r.lift;
+ const face=behind?-1:1;desired.copy(p).addScaledVector(camDir,-r.back*face);desired.y+=r.up+r.lift+r.jolt;
+ look.copy(p).addScaledVector(camDir,r.ahead*face).addScaledVector(camRight,behind?0:-r.side);look.y+=r.lookUp+r.lift;
  clearFollow(p,subject,still?0:dt);
  camera.position.copy(desired);camera.up.set(0,1,0);camera.lookAt(look);
  if(still||motion<=0)return;
@@ -1356,14 +1363,16 @@ function updateCamera(dt){
  if(mode!=='tv'&&Math.abs(camera.fov-speedFov)>.01){camera.fov=dt>=1||photo?speedFov:easeLens(camera.fov,speedFov,dt);camera.updateProjectionMatrix();}
  const shakeTime=performance.now()/1000,shake=photo||paused||!isInside()?0:motion*(roughRide*.05+clamp((vel/top-.7)/.25,0,1)*.01+action.impact*.075+(subject.kerbRide||0)*.03);
  if(centering&&isInside()){headLook.yaw*=1-blend;headLook.pitch*=1-blend;}
- lookBack.update(dt,lookingBack,headLook,headView);
+ // The cockpit swings the head round; the hood and follow cameras cut to their view behind the car.
+ const behind=lookingBack&&mode!=='cockpit';
+ lookBack.update(dt,lookingBack&&!behind,headLook,headView);
  if(mode==='cockpit'||mode==='hood'){
   // Fixed local mount keeps the hood/dashboard still relative to the camera; turned far
   // round in the cockpit, the head leans in toward the middle of the car.
   neckTwist(mode==='cockpit'&&!photo?headView.yaw:0,twist);
   // A watched rival carries both cameras at the same places in its own body, beside its driver.
   const mount=rival?rival.obj.matrixWorld:carBody.matrixWorld;
-  const view=photo??headView,eye=photo?photoEye:mode==='hood'?(fuscaBody.active&&!rival?fuscaHoodEye:hoodEye):headEye.fromArray(twist).add(cockpit.eye).add(rival?noShift:eyeShift),drop=photo?0:.20;
+  const fusca=fuscaBody.active&&!rival,view=photo??(behind?BEHIND:headView),eye=photo?photoEye:mode==='hood'?(behind?(fusca?fuscaBootEye:bootEye):fusca?fuscaHoodEye:hoodEye):headEye.fromArray(twist).add(cockpit.eye).add(rival?noShift:eyeShift),drop=photo?0:.20;
   // The mount's own matrix is all the eye needs (not the car's 600 parts below it, every frame).
   carBody.updateWorldMatrix(true,false);camera.position.copy(eye).applyMatrix4(mount);
   look.set(Math.cos(view.pitch)*Math.cos(view.yaw)*20,Math.sin(view.pitch)*20-drop,Math.cos(view.pitch)*Math.sin(view.yaw)*20).add(eye).applyMatrix4(mount);
@@ -1410,7 +1419,7 @@ function updateCamera(dt){
  // make the car surge back and forth relative to its following camera.
  desired.sub(p);if(!followInitialized){followOffset.copy(desired);followInitialized=true;}else followOffset.lerp(desired,1-Math.exp(-dt*5));
  camera.position.copy(p).add(followOffset);camera.up.set(0,1,0);camera.lookAt(look);
- } else rideCamera(dt,p,subject,ahead,motion,top);
+ } else rideCamera(dt,p,subject,ahead,motion,top,behind);
  // The shadow box leans toward the riding cameras' view ('far' included); orbit, TV, aerial, looking back and reversing keep it centred.
  const riding=!['orbit','tv','aerial'].includes(mode)&&!lookingBack&&!photo&&subject.vx*heading.x-subject.vy*heading.z>-1;
  if(!intro.active)placeSun(p,riding?camera.getWorldDirection(sunView):null,dt);
@@ -1957,9 +1966,8 @@ function resetStoryCareer(){
 function renderStoryCareer(){
  const box=$('storyCareer');box.hidden=menuMode!=='historia';if(box.hidden)return;
  const p=storyProfile(),c=p.career,stage=stageOf(c,p.released),challenge=stage.challenge,money=n=>`R$ ${n.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+,)/g,'.')}`;
- const left=challenge?Math.max(0,challenge.races-(c.races-c.since)):0;
  const goal=c.over?`<p class="story-career-over"><b>Fim de jogo.</b> ${GAME_OVER[c.over]} Entre na próxima etapa para recomeçar a história do zero.</p>`
-  :challenge?`<p>Desafio ${challenge.number}: ${challenge.title.toLowerCase()} · ${money(Math.min(p.fund,challenge.goal))} de ${money(challenge.goal)} · prazo: ${left} corrida${left===1?'':'s'}</p>`
+  :challenge?`<p${c.late===null?'':' class="story-career-late"'}>Desafio ${challenge.number}: ${challenge.title.toLowerCase()} · ${money(Math.min(p.fund,challenge.goal))} de ${money(challenge.goal)} · ${deadlineText(challenge,c)}</p>`
   :stage.kind==='blazer'?`<p>Sonho: tirar a Blazer da oficina · ${money(Math.min(p.fund,BLAZER_GOAL))} de ${money(BLAZER_GOAL)}</p>`
   :`<p>${stage.done?'O Opala 99 é seu!':`Grande sonho: comprar o Opala 99 da equipe · ${money(Math.min(p.fund,OPALA_GOAL))} de ${money(OPALA_GOAL)}`}</p>`;
  const energy=c.energy??100;

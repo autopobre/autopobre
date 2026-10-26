@@ -356,6 +356,9 @@ html:not(.menus-paddock) .settings-sources{display:none}
 .menus-paddock #tracks[data-mode=historia] .track-cards,.menus-paddock #tracks[data-mode=historia] .track-detail>:is(p,small,button){display:none}
 .menus-paddock #tracks[data-mode=historia] .tracks-side-head{grid-area:set}
 .menus-paddock #tracks[data-mode=historia] #championshipPanel{grid-area:champ;margin-top:clamp(8px,2vh,22px);padding-top:0}
+/* Classificação geral and Recomeçar história always in sight (Central #19): held at the foot of the season's column while
+   the calendar scrolls under them. */
+.menus-paddock #tracks[data-mode=historia] .championship-tools{position:sticky;bottom:-12px;z-index:1;margin-top:0;padding:24px 0 12px;background:linear-gradient(#07131300,#071313fa 20px)}
 .menus-paddock #tracks[data-mode=historia] #championshipPanel h3{font-size:clamp(20px,1.7vw,26px)}
 .menus-paddock #tracks[data-mode=historia] #championshipCalendar{grid-template-columns:1fr;gap:0}
 .menus-paddock #tracks[data-mode=historia] #championshipCalendar li{padding:10px 0;font-size:16px}
@@ -555,4 +558,5 @@ html:not(.menus-paddock) .settings-sources{display:none}
 }
 /* The narrowest phones (667 px): Modo História's start, at the screen's right, leaves Início beside it uncovered. */
 @media(max-height:520px) and (max-width:720px){.menus-paddock #tracks[data-mode=historia] #championshipStart{font-size:17px;max-width:calc(100% - 470px)}}
+@media(max-height:520px){.menus-paddock #tracks[data-mode=historia] .championship-tools{position:static;padding:0;background:none}}
 @media(prefers-reduced-motion:reduce){.menus-paddock :is(#menu .menu-modes button,.car-thumbs button,#carsNext,#singleRace,#soloRace,#duelRace,#championshipStart){transition:none}}

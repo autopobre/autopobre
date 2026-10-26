@@ -58,7 +58,7 @@
 @media(max-width:700px) and (orientation:portrait){#tracks[data-mode=historia] .tracks-side{grid-template-columns:1fr}}
 .championship-tabs[hidden]{display:none}
 .story-career{padding:12px 16px;border-radius:9px;border:1px solid #d9b93c80;background:#152d29eb}.story-career[hidden]{display:none}
-.story-career p{margin:8px 0 0;font-size:12px;line-height:1.45;color:#dfe8de}.story-career-over{color:#ffb3a8!important}
+.story-career p{margin:8px 0 0;font-size:12px;line-height:1.45;color:#dfe8de}.story-career-over,.story-career-late{color:#ffb3a8!important}
 #tracks .race-extras button{height:100%;padding:12px 13px;font-size:14px;background:#152d29eb;color:#f4ce39;border:1px solid #d9b93c99}
 #tracks .race-extras button:hover:not(:disabled){background:#21443ceb;color:#ffe574}
 .duel-card{display:flex;flex-direction:column;min-width:0;border:1px solid #d9b93c99;border-radius:8px;overflow:hidden;background:#152d29eb}

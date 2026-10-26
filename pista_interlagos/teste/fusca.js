@@ -32,6 +32,9 @@ const CABIN_EYE=new THREE.Vector3(-.15,1.02,.015);
 // The hood camera: the Opala's (main.js hoodEye, 1.1 m forward, 1.25 m up) would see past the Fusca's lower,
 // rounder front lid; this one sits 13 cm over the lid, just ahead of the windscreen.
 export const FUSCA_HOOD_EYE=Object.freeze([.92,1.03,0]);
+// Looking back from the hood camera (main.js bootEye, Central #23): over the engine lid behind the rear window (the lid
+// falls away too steeply to show in the frame, as the Opala's boot lid does; any lower and the eye is in the body).
+export const FUSCA_BOOT_EYE=Object.freeze([-1.2,1.05,0]);
 // The side view (car-select.js card icons; the distant rivals' model, immersive-visuals.js farProxy, as
 // FAR_PROFILE for the Opala): metres in the car frame, nose to +x, read off the GLB's silhouette. fenders: the
 // front and rear fenders' sides, in the second colour. width, track, tail, head and bumpers (none) shape the
