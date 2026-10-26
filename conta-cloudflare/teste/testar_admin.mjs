@@ -10,6 +10,7 @@ import {CIRCUITS} from '../../pista_interlagos/teste/circuits.js';
 import {CHUNK_EVERY} from '../src/recordes.js';
 import {EVENT_DAYS} from '../src/eventos.js';
 import {startLocal} from './local.mjs';
+import {isTrusted} from '../src/base.js';
 import {aiLaps,lapAt} from './voltas_ia.mjs';
 
 const realNow=Date.now;let now=Date.parse('2026-10-26T12:00:00Z');Date.now=()=>now;
@@ -37,15 +38,16 @@ async function signIn(b,sub){
 async function pilot(sub,nickname){const b=browser();await signIn(b,sub);if(nickname)assert.equal((await b.post('/api/conta/apelido',{apelido:nickname})).status,200);return b;}
 // The AI's flying lap of the circuit on a clock of `time` seconds (voltas_ia.mjs), as the game encodes it.
 const ghost=(circuit,time)=>encodeGhost(lapAt(aiLaps(circuit)[1].lap,time));
-// A clean lap of `time` seconds at Interlagos, a ticket of its own.
-async function cleanLap(b,time){
+// A clean lap of `time` seconds at Interlagos, a ticket of its own (without its controls, or with the throttle never on
+// ('idle'): refused, and reviewable when it would have been the pilot's best).
+async function cleanLap(b,time,{controls=true}={}){
  let ticket=(await b.post('/api/recordes/bilhete',{circuito:'interlagos',modo:'normal',carro:'opala',versao:'painel'})).bilhete;
  const send=async body=>{const r=await b.post('/api/recordes/pedaco',{bilhete:ticket,...body});ticket=r.bilhete??ticket;return r;};
  await send({relogio:0,cruzou:true});
  for(let t=CHUNK_EVERY;t<time;t+=CHUNK_EVERY){now+=CHUNK_EVERY*1000;await send({relogio:t});}
  now+=Math.round((time-Math.floor((time-1e-9)/CHUNK_EVERY)*CHUNK_EVERY)*1000);
- const steps=Math.round(time*120),comandos={v:1,n:steps,s:1,data:packSteps([[0,[100,0,0,0,-2,0]]],steps),keys:packKeys([]),r:0,dev:[steps,0,0,0,0]};
- return (await send({relogio:time,cruzou:true,volta:{fantasma:ghost('interlagos',time),comandos}})).volta;
+ const steps=Math.round(time*120),comandos={v:1,n:steps,s:1,data:packSteps([[0,[controls==='idle'?0:100,0,0,0,-2,0]]],steps),keys:packKeys([]),r:0,dev:[steps,0,0,0,0]};
+ return (await send({relogio:time,cruzou:true,volta:{fantasma:ghost('interlagos',time),...(controls&&{comandos})}})).volta;
 }
 const ROUTES=['/api/admin/resumo','/api/admin/usuarios','/api/admin/eventos','/api/admin/recordes','/api/admin/voltas'];
 
@@ -114,10 +116,50 @@ await check('the laps with their signals, and a record taken off the boards',asy
  assert.equal(told.apelido,'Ana Volta');assert.deepEqual(told.detalhe,{circuito:'cascavel',modo:'normal',selo:'nao_verificado',volta_ms:80000});
 });
 
+await check('a review: the pilot asks, the admin approves it into a record or refuses it',async()=>{
+ const asked=[];
+ for(const time of [119,118]){const lap=await cleanLap(ana,time,{controls:false});assert.ok(lap.revisao,JSON.stringify(lap));assert.equal((await ana.post('/api/recordes/revisao',{volta:lap.revisao})).revisao,'pedida');asked.push(lap.revisao);}
+ assert.equal((await boss.get('/api/admin/resumo')).revisoes,2);
+ const waiting=(await boss.get('/api/admin/revisoes')).revisoes;
+ assert.deepEqual(waiting.map(v=>[v.apelido,v.tempo_ms,v.carro,v.revisao]),[['Ana Volta',119000,'opala','pedida'],['Ana Volta',118000,'opala','pedida']]);
+ assert.match(waiting[0].resultado,/sem os comandos/);assert.ok(!('fantasma' in waiting[0]),'the ghost stays on the server');
+ assert.equal((await ana.post('/api/admin/revisar',{volta:asked[0],aprovar:true})).status,403,'a pilot cannot');
+ assert.equal((await boss.post('/api/admin/revisar',{volta:asked[0],aprovar:'sim'})).status,400);
+ assert.equal((await boss.post('/api/admin/revisar',{volta:asked[1],aprovar:false})).revisao,'recusada');
+ assert.equal((await boss.post('/api/admin/revisar',{volta:asked[0],aprovar:true})).revisao,'aprovada');
+ assert.equal((await boss.post('/api/admin/revisar',{volta:asked[0],aprovar:true})).status,404,'decided already');
+ const rec=(await boss.get('/api/admin/recordes')).recordes.find(r=>r.apelido==='Ana Volta'&&r.selo==='conferido');
+ assert.deepEqual([rec.volta_ms,rec.sinais.revisada,rec.sinais.aparelho],[119000,true,null],'the approved lap is her checked record, marked reviewed');
+ assert.ok(sql('SELECT fantasma FROM recordes WHERE volta_ms=119000')[0]?.fantasma?.includes('"v":1'),'with its ghost');
+ assert.deepEqual((await boss.get('/api/admin/revisoes')).revisoes.map(v=>v.revisao),['aprovada','recusada'],'nothing waits; the decided ones listed, by their laps');
+ const told=(await boss.get('/api/admin/eventos?tipo=revisao')).eventos.map(e=>e.detalhe.aprovada);assert.deepEqual(told.sort(),[false,true]);
+});
+
+await check('a trusted pilot\'s lap the checks would refuse goes in all the same, as a case to study',async()=>{
+ // The boss is an admin, so trusted: a lap with the throttle never on (the checks refuse it) is checked all the same.
+ const lap=await cleanLap(boss,124,{controls:'idle'});
+ assert.deepEqual([lap.conferida,lap.recorde],[true,true],JSON.stringify(lap));assert.match(lap.caso,/sem acelerar/);
+ const list=(await boss.get('/api/admin/casos')).casos;
+ assert.deepEqual(list.map(c=>[c.apelido,c.tempo_ms,c.carro]),[['Chefe Pista',124000,'opala']]);assert.match(list[0].caso,/sem acelerar/);
+ assert.equal((await boss.get('/api/admin/resumo')).casos,1);
+ const r=await boss.go('/api/admin/caso?volta='+list[0].id),file=await r.json();
+ assert.match(r.headers.get('content-disposition'),/attachment; filename="caso-\d+-interlagos.json"/);
+ assert.deepEqual([file.fantasma.v,file.comandos.v,file.comandos.n],[1,1,124*120],'the whole lap: its ghost and its controls');
+ assert.equal((await ana.get('/api/admin/caso?volta='+list[0].id)).status,403,'admins only');
+ assert.equal((await boss.get('/api/admin/caso?volta=999999')).status,404);
+ const rec=(await boss.get('/api/admin/recordes')).recordes.find(x=>x.apelido==='Chefe Pista');
+ assert.deepEqual([rec.selo,rec.sinais.confiavel],['conferido',true]);assert.match(rec.sinais.caso,/sem acelerar/);
+ // Not trusted: the same lap is refused (Ana's, the throttle never on).
+ assert.ok((await cleanLap(ana,125,{controls:'idle'})).recusada);
+ // Trusted by the Worker's CONFIAVEIS secret too, without being an admin.
+ assert.equal(isTrusted({CONFIAVEIS:' 1 ,22'},{google_sub:'22',admin:0}),true);assert.equal(isTrusted({CONFIAVEIS:'1'},{google_sub:'22',admin:0}),false);
+ assert.equal(isTrusted({},{google_sub:'22',admin:1}),true,'an admin');assert.equal(isTrusted({CONFIAVEIS:'22'},{gone:true}),false);
+});
+
 await check('the player\'s own events in their data, and gone with the account',async()=>{
  const mine=await (await ana.go('/api/conta/meus-dados')).json();
- assert.deepEqual(mine.eventos.map(e=>e.tipo),['conta_criada','apelido','entrou','importou','conferida','recusada','recusada','recusada','recusada','recusada','removido']);
- assert.equal(mine.voltas.length,8,'her laps: the clean one and the seven broken');
+ assert.deepEqual(mine.eventos.map(e=>e.tipo),['conta_criada','apelido','entrou','importou','conferida','recusada','recusada','recusada','recusada','recusada','removido','revisao_pedida','revisao_pedida','revisao','revisao']);
+ assert.equal(mine.voltas.length,11,'her laps: the clean one, the seven broken, the two reviewed and the idle one');assert.equal(mine.voltas.filter(v=>v.fantasma).length,9,'the laps that would have been her best keep their ghosts (the seven broken ones too)');
  assert.equal((await ana.post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
  const left=sql("SELECT tipo,usuario_id FROM eventos WHERE tipo='conta_apagada'");assert.deepEqual(left.map(e=>({...e})),[{tipo:'conta_apagada',usuario_id:null}]);
  assert.equal(sql("SELECT COUNT(*) AS n FROM eventos e LEFT JOIN usuarios u ON u.id=e.usuario_id WHERE e.usuario_id IS NOT NULL AND u.id IS NULL")[0].n,0,'none of hers left');

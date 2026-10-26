@@ -1,10 +1,12 @@
 // The admin panel's data (the page: pista_interlagos/teste/admin.html, in the dev build only), for an administrator
 // (base.js isAdmin: the Worker's ADMINS secret, or the database's mark): the server checks it on every request,
 // whatever the page says. It shows the nicknames, the dates, the counts, the events and the laps with their signals;
-// never the Google account's id. One thing it changes: a record taken off the boards (a player's report of a time
-// that cannot be), told to its pilot in their events.
+// never the Google account's id. Two things it changes, each told to the pilot in their events: a record taken off the
+// boards (a player's report of a time that cannot be), and a review decided (a refused lap the pilot asked about:
+// approved, it becomes their checked record).
 import {json,signedIn,notSignedIn,isAdmin} from './base.js';
 import {EVENT_DAYS,event} from './eventos.js';
+import {UPSERT} from './recordes.js';
 
 const DAY=86400000;
 async function admin(request,env){
@@ -30,7 +32,9 @@ async function summary(request,env){
   (SELECT COUNT(*) FROM recordes WHERE selo='nao_verificado') AS antigos,
   (SELECT COUNT(*) FROM eventos WHERE tipo='recusada' AND quando>?1) AS recusadas_7d,
   (SELECT COUNT(*) FROM voltas WHERE quando>?1) AS voltas_7d,
-  (SELECT COUNT(*) FROM voltas WHERE quando>?1 AND sinais LIKE '%"sinais":["%') AS sinalizadas_7d`).bind(week,day,now).first();
+  (SELECT COUNT(*) FROM voltas WHERE quando>?1 AND sinais LIKE '%"sinais":["%') AS sinalizadas_7d,
+  (SELECT COUNT(*) FROM voltas WHERE revisao='pedida') AS revisoes,
+  (SELECT COUNT(*) FROM voltas WHERE caso IS NOT NULL) AS casos`).bind(week,day,now).first();
  const reasons=await rows(env.DB.prepare("SELECT json_extract(detalhe,'$.motivo') AS motivo,COUNT(*) AS n FROM eventos WHERE tipo='recusada' AND quando>? GROUP BY motivo ORDER BY n DESC").bind(week));
  return json({...totals,recusas_por_motivo:reasons,eventos_por:EVENT_DAYS});
 }
@@ -52,7 +56,7 @@ async function users(request,env){
 }
 
 // What happened, newest first, 100 at a time (antes: the oldest id already shown), of one kind or all.
-const KINDS=new Set(['conta_criada','entrou','saiu','apelido','importou','conferida','recusada','removido','conta_apagada']);
+const KINDS=new Set(['conta_criada','entrou','saiu','apelido','importou','conferida','recusada','removido','revisao_pedida','revisao','conta_apagada']);
 async function events(request,env,url){
  const {refused}=await admin(request,env);if(refused)return refused;
  const kind=url.searchParams.get('tipo'),before=Number(url.searchParams.get('antes'));
@@ -91,5 +95,45 @@ async function removeRecord(request,env,body){
  return json({removido:true});
 }
 
-export const ADMIN_GETS={'/api/admin/resumo':summary,'/api/admin/usuarios':users,'/api/admin/eventos':events,'/api/admin/recordes':lastRecords,'/api/admin/voltas':laps};
-export const ADMIN_POSTS={'/api/admin/remover':removeRecord};
+// The reviews pilots asked for: those waiting first, oldest first, then the last decided.
+async function reviews(request,env){
+ const {refused}=await admin(request,env);if(refused)return refused;
+ const list=await rows(env.DB.prepare(`SELECT v.id,v.quando,v.circuito,v.modo,v.carro,v.tempo_ms,v.resultado,v.aparelho,v.sinais,v.revisao,v.revisado_em,u.apelido
+  FROM voltas v LEFT JOIN usuarios u ON u.id=v.usuario_id WHERE v.revisao IS NOT NULL ORDER BY v.revisao<>'pedida',v.quando LIMIT 100`));
+ return json({revisoes:list.map(v=>({...v,sinais:parsed(v.sinais)}))});
+}
+// A review decided (POST {volta, aprovar: true or false}). Approved, the lap is written as the pilot's checked record
+// when it beats their best, its signals saying it was reviewed and why it had been refused.
+async function decideReview(request,env,body){
+ const {refused}=await admin(request,env);if(refused)return refused;
+ const id=body.volta,ok=body.aprovar;if(!Number.isSafeInteger(id)||id<1||typeof ok!=='boolean')return json({erro:'Revisão inválida.'},400);
+ const v=await env.DB.prepare("SELECT usuario_id,quando,circuito,modo,carro,versao,tempo_ms,resultado,aparelho,sinais,fantasma FROM voltas WHERE id=? AND revisao='pedida'").bind(id).first();
+ if(!v)return json({erro:'Essa revisão não está esperando.'},404);
+ const now=Date.now(),car=v.carro??'opala';
+ const steps=[env.DB.prepare('UPDATE voltas SET revisao=?,revisado_em=? WHERE id=?').bind(ok?'aprovada':'recusada',now,id),
+  event(env,'revisao',v.usuario_id,{circuito:v.circuito,carro:car,volta_ms:v.tempo_ms,aprovada:ok})];
+ if(ok)steps.unshift(env.DB.prepare(UPSERT).bind(v.usuario_id,v.circuito,v.modo,car,'conferido',v.tempo_ms,v.versao??'revisada',v.quando,now,v.fantasma,
+  JSON.stringify({aparelho:v.aparelho,...parsed(v.sinais),revisada:true,motivo:v.resultado})));
+ await env.DB.batch(steps);
+ return json({revisao:ok?'aprovada':'recusada'});
+}
+
+// The cases: laps of trusted pilots (base.js isTrusted) the checks would have refused, newest first, with why.
+async function cases(request,env){
+ const {refused}=await admin(request,env);if(refused)return refused;
+ const list=await rows(env.DB.prepare(`SELECT v.id,v.quando,v.circuito,v.modo,v.carro,v.versao,v.tempo_ms,v.caso,v.aparelho,v.sinais,u.apelido FROM voltas v LEFT JOIN usuarios u ON u.id=v.usuario_id
+  WHERE v.caso IS NOT NULL ORDER BY v.id DESC LIMIT 100`));
+ return json({casos:list.map(v=>({...v,sinais:parsed(v.sinais)}))});
+}
+// One case whole, as a file (?volta=id): the lap, why the checks would have refused it, its ghost and its controls.
+async function caseFile(request,env,url){
+ const {refused}=await admin(request,env);if(refused)return refused;
+ const id=Number(url.searchParams.get('volta'));if(!Number.isSafeInteger(id)||id<1)return json({erro:'Caso inválido.'},400);
+ const v=await env.DB.prepare('SELECT id,quando,circuito,modo,carro,versao,tempo_ms,caso,aparelho,sinais,freios,fantasma,comandos FROM voltas WHERE id=? AND caso IS NOT NULL').bind(id).first();
+ if(!v)return json({erro:'Esse caso não existe.'},404);
+ return json({...v,quando:new Date(v.quando).toISOString(),sinais:parsed(v.sinais),freios:parsed(v.freios),fantasma:parsed(v.fantasma),comandos:parsed(v.comandos)},200,
+  {headers:{'Content-Disposition':`attachment; filename="caso-${v.id}-${v.circuito}.json"`}});
+}
+
+export const ADMIN_GETS={'/api/admin/resumo':summary,'/api/admin/usuarios':users,'/api/admin/eventos':events,'/api/admin/recordes':lastRecords,'/api/admin/voltas':laps,'/api/admin/revisoes':reviews,'/api/admin/casos':cases,'/api/admin/caso':caseFile};
+export const ADMIN_POSTS={'/api/admin/remover':removeRecord,'/api/admin/revisar':decideReview};

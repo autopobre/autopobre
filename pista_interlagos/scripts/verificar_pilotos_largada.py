@@ -29,15 +29,15 @@ with sync_playwright() as p:
   # Leaving lands on the track screen; the pilot is changed back on the opening.
   page.evaluate('fixture.onMainMenu()');page.click('#tracksBack');page.click('#carsBack');page.fill('#pilotName','Bruno');choose_race(page);wait_js(page,'!interlagos.state.paused')
   page.evaluate('fixture.freeCountdown=0;interlagos.car.best=40;interlagos.car.laps=3;interlagos.car.clock=129;fixture.stepFree(1/120,{})')
-  wait_js(page,"JSON.parse(localStorage.getItem('autopobre-records-v1')).some(r=>r.name==='Bruno'&&r.bestRace===129)")
+  wait_js(page,"JSON.parse(localStorage.getItem('autopobre-records-v1')).some(r=>r.name==='Bruno'&&r.bestLap===40&&r.bestRace===null)")
   page.evaluate('fixture.onMainMenu()');page.click('#tracksBack');page.click('#carsBack');assert page.is_visible('#pilotSelect');assert page.locator('#pilotSelect option').count()==3;assert page.input_value('#pilotSelect')=='Bruno'
   page.click('#recordsButton');assert page.locator('#lapRecords select').count()==0;assert page.locator('#lapRecords tbody tr').count()==16;assert page.get_attribute('.records-source-options button:first-child','data-records-source')=='all';page.click('[data-records-source="human"]');assert page.locator('#lapRecords tbody tr').count()==2
   page.click('[data-records-source="ai"]');assert page.locator('#lapRecords tbody tr').count()==14;assert 'Kleber Eletric' in page.inner_text('#lapRecords tbody')
   page.click('[data-records-source="all"]');assert page.locator('#lapRecords tbody tr').count()==16
   page.click('[data-records-source="human"]');assert page.locator('#lapRecords tbody tr').count()==2
   page.click('#recordsCircuitPick');page.click('[data-records-circuit="interlagos"]');assert page.locator('#lapRecords tbody tr').count()==0
-  page.click('#recordsCircuitPick');page.click('[data-records-circuit="curvelo"]');page.click('[data-records-mode="immersive"]');assert page.locator('#lapRecords tbody tr').count()==0
-  page.click('[data-records-mode="normal"]');assert 'Ana <99>' in page.inner_text('#lapRecords tbody');page.screenshot(path=str(ROOT/f'renders/recordes_automaticos_{mobile}.png'));page.click('#recordsClose')
+  page.click('#recordsCircuitPick');page.click('[data-records-circuit="curvelo"]');page.click('[data-records-car="fusca"]');assert page.locator('#lapRecords tbody tr').count()==0
+  page.click('[data-records-car="opala"]');assert 'Ana <99>' in page.inner_text('#lapRecords tbody');page.screenshot(path=str(ROOT/f'renders/recordes_automaticos_{mobile}.png'));page.click('#recordsClose')
   page.reload(wait_until='domcontentloaded');wait_js(page,'window.interlagos');assert not page.evaluate('interlagos.ready');assert page.input_value('#pilotSelect')=='Bruno';assert page.is_hidden('#pilotName')
   page.select_option('#pilotSelect','Ana <99>');choose_race(page,story=True);wait_js(page,'interlagos.ready')
   page.evaluate("""async()=>{const {ImmersiveMode}=await import('./immersive-mode.js'),old=ImmersiveMode.prototype.info;ImmersiveMode.prototype.info=function(){window.fixture=this;return old.call(this)};interlagos.immersiveInfo();fixture.state.phase='grid';fixture.state.countdown=3;fixture.sync();}""")
@@ -46,7 +46,7 @@ with sync_playwright() as p:
   page.evaluate('for(let i=0;i<365;i++)fixture.step({throttle:0,brake:0,left:0,right:0},1/120)')
   wait_js(page,"document.querySelector('#countdownNumber').textContent==='VAI!'")
   page.evaluate('interlagos.car.best=39;interlagos.car.laps=fixture.storyLaps;interlagos.car.clock=40;fixture.beginFinish(2)')
-  wait_js(page,"JSON.parse(localStorage.getItem('autopobre-records-v1')).some(r=>r.name==='Ana <99>'&&r.mode==='immersive'&&r.bestRace===40)")
+  wait_js(page,"JSON.parse(localStorage.getItem('autopobre-records-v1')).some(r=>r.name==='Ana <99>'&&r.mode==='immersive'&&r.bestLap===39&&r.bestRace===null)")
   print(json.dumps({'mobile':mobile,'pilotRequired':True,'savedNamesDropdown':True,'autoLapAndRace':True,'countdownBothModes':True,'pauseFreezesCountdown':True}),flush=True)
   context.close()
  browser.close()

@@ -38,7 +38,7 @@ with sync_playwright() as p:
   choose_race(page,story=not immersive)
   wait_js(page,'fixture.active' if not immersive else '!fixture.active')
   assert not page.evaluate('interlagos.state.paused')
-  page.reload(wait_until='domcontentloaded');page.wait_for_selector('#lapRecords',state='attached');page.click('#recordsButton');page.locator('[data-records-mode="immersive"]' if immersive else '[data-records-mode="normal"]').click()
+  page.reload(wait_until='domcontentloaded');page.wait_for_selector('#lapRecords',state='attached');page.click('#recordsButton');page.locator('[data-records-car="opala"]').click()
   assert page.locator('#lapRecords tbody tr').count()==1 and '02:30.250' in page.inner_text('#lapRecords tbody')
   print(json.dumps({'mobile':mobile,'immersive':immersive,'tableAndRecords':True}),flush=True);context.close()
  browser.close()

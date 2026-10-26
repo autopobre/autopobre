@@ -21,7 +21,7 @@ import {LapInputs} from './comandos-volta.js';
 import {readRecords} from './lap-records.js';
 import {formatTime} from './race-results.js';
 
-const API='/api/recordes';
+const API='/api/recordes',CARS=Object.freeze(['opala','fusca']);
 // Per account (its creation date): this browser sent its old records. Never again after that. (v3: with the main
 // link's, through the bridge. v2 went out before the bridge was on, so the accounts that sent this address's alone
 // then send once more; the server's own mark was cleared with it, and it keeps the best.)
@@ -71,8 +71,8 @@ export class OnlineRecords {
  // Each frame. s: {circuit, mode, car, clock, lapStart, driving}. driving: the pilot at the wheel of
  // a race the records count (no autopilot, no room race).
  frame(s){
-  // The Opala's laps only, as the game's boards (a Fusca's would need a table of its own: conta-cloudflare/src/recordes.js CARS).
-  if(!this.account||!s?.driving||s.car!=='opala'||!Object.hasOwn(CIRCUITS,s.circuit))return;
+  // The Opala's and the Fusca's, each car its own board (conta-cloudflare/src/recordes.js CARS).
+  if(!this.account||!s?.driving||!CARS.includes(s.car)||!Object.hasOwn(CIRCUITS,s.circuit))return;
   const key=`${s.circuit}|${s.mode}|${s.car}`,r=this.run;
   if(!r||r.key!==key||s.clock<r.clock-1e-6||(r.failed&&this.now()-r.failed>RETRY)){this.begin(key,s);return;}
   if(!r.ticket)return;
@@ -130,23 +130,37 @@ export class OnlineRecords {
   }finally{this.busy=false;}
  }
  // The lap's own time on screen (a lap refused for its timing comes back without one); a refusal only for a lap
- // that would have been the pilot's best (the others go to the log quietly).
+ // that would have been the pilot's best (the others go to the log quietly). Such a lap is still this browser's
+ // record (lap-records.js keeps every best lap, whatever the server says), and the server kept its ghost: it stays
+ // here as the review the records dialog offers (review: the log's id, where, the time, why; status once asked).
  verdict(v,r,lap){
   const time=formatTime(lap.time);
-  if(v.conferida&&v.recorde){r.best=v.tempo_ms;this.say(`✓ Recorde online conferido: ${time}`);}
-  else if(!v.conferida&&lap.record)this.say(`Volta de ${time} não conferida: ${v.recusada}.`,true);
+  // (A trusted pilot's lap the checks would have refused goes in all the same: caso says why, for them to see.)
+  if(v.conferida&&v.recorde){r.best=v.tempo_ms;this.say(v.caso?`✓ Recorde online: ${time} · caso para estudar: ${v.caso}`:`✓ Recorde online conferido: ${time}`);}
+  else if(!v.conferida&&lap.record){
+   const [circuit,,car]=lap.key.split('|');
+   if(Number.isSafeInteger(v.revisao))this.review={id:v.revisao,circuit,car,time:lap.time,reason:v.recusada,status:null};
+   this.say(`Volta de ${time} salva no seu recorde deste navegador, mas não conferida online: ${v.recusada}.${this.review?.id===v.revisao?' Em Recordes você pode pedir uma revisão.':''}`,true);
+  }
+ }
+ // Asks the admin to look at the lap under review (POST /api/recordes/revisao); its status comes back.
+ async askReview(){
+  const review=this.review;if(!review||review.status)return;
+  const r=await call(this.base,'/revisao',{volta:review.id});
+  if(!r.ok)throw new Error(r.data.erro||'Não foi possível pedir a revisão agora. Tente de novo daqui a pouco.');
+  review.status=r.data.revisao;
  }
  say(text,warning=false){
   this.toast.textContent=text;this.toast.classList.toggle('aviso',warning);this.toast.hidden=false;
   clearTimeout(this.toastTimer);this.toastTimer=setTimeout(()=>{this.toast.hidden=true;},warning?7000:5000);
  }
- // The records dialog's Online tab.
- async board(circuit,mode){
-  const r=await call(this.base,`?circuito=${encodeURIComponent(circuit)}&modo=${encodeURIComponent(mode)}`);
+ // The records dialog's Online tab: a circuit's board in a car (one for both modes), and each circuit's best.
+ async board(circuit,car='opala'){
+  const r=await call(this.base,`?circuito=${encodeURIComponent(circuit)}&carro=${encodeURIComponent(car)}`);
   if(!r.ok)throw new Error('Não foi possível carregar os recordes online.');
   return r.data.recordes.map(x=>({name:x.apelido,bestLap:x.volta_ms/1000,badge:x.selo,mine:!!x.meu}));
  }
- async bests(mode){const r=await call(this.base,`/melhores?modo=${encodeURIComponent(mode)}`);return r.ok?r.data.melhores:{};}
+ async bests(car='opala'){const r=await call(this.base,`/melhores?carro=${encodeURIComponent(car)}`);return r.ok?r.data.melhores:{};}
  // The old records of the person signing in, once per account: this browser's, and the main link's through the bridge
  // when the server names one (bridge). Address by address, a browser may hold several pilots (a family's computer):
  // the one named as the account's nickname is the person when there is one (the owner's rule), else the pilot that

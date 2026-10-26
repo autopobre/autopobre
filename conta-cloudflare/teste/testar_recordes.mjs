@@ -81,7 +81,7 @@ await check('a ticket needs an account with a nickname, a known circuit, mode, c
  const nameless=await pilot('200000000000000000001');
  assert.equal((await nameless.post('/api/recordes/bilhete',{circuito:'interlagos',modo:'normal',carro:'opala',versao:'x'})).status,409);
  const b=await pilot('200000000000000000002','Ana Curva');
- for(const bad of [{circuito:'nada'},{modo:'drift'},{carro:'fusca'},{versao:'../x'},{circuito:'arena'}])
+ for(const bad of [{circuito:'nada'},{modo:'drift'},{carro:'kombi'},{versao:'../x'},{circuito:'arena'}])
   assert.equal((await b.post('/api/recordes/bilhete',{circuito:'interlagos',modo:'normal',carro:'opala',versao:'v1',...bad})).status,400,JSON.stringify(bad));
  const ok=await b.post('/api/recordes/bilhete',{circuito:'interlagos',modo:'normal',carro:'opala',versao:'v1'});
  assert.equal(ok.status,200);assert.equal(ok.intervalo,CHUNK_EVERY);assert.equal(ok.melhor,null);
@@ -110,7 +110,7 @@ await check('laps the server refuses',async()=>{
  await refused({gap:30},/pausa|sem sinal/);                          // a pause in the middle
  await refused({pace:1.25},/pausa|devagar/);                        // slow motion: more real time than game time
  await refused({pace:.7},/pausa|devagar/);                          // a clock running ahead
- await refused({},/rápida demais/,Math.floor(LINE_TIMES.interlagos*.84)); // far quicker than the driving line
+ await refused({},/rápida demais/,Math.floor(LINE_TIMES.opala.interlagos*.84)); // far quicker than the driving line
  await refused({fantasma:ghost('interlagos',118)},/fantasma não tem o tempo/);                // another lap's ghost
  await refused({fantasma:ghost('interlagos',120,{time:118})},/não pôde ser lido/);   // a ghost longer than its own time
  await refused({fantasma:ghost('interlagos',120,{length:.6})},/pista inteira/);
@@ -180,7 +180,8 @@ await check('circuit bests and pilots without a nickname',async()=>{
  assert.equal(best.melhores.interlagos,119500,'checked laps only: the 117 s old record does not count');assert.equal(best.melhores.goiania,undefined);
  assert.equal((await (await browser().go('/api/recordes/melhores?modo=immersive')).json()).melhores.cascavel,undefined);
  assert.equal((await browser().go('/api/recordes?circuito=nada&modo=normal')).status,400);
- assert.equal((await browser().go('/api/recordes/melhores?modo=x')).status,400);
+ assert.equal((await browser().go('/api/recordes/melhores?carro=x')).status,400);
+ assert.equal((await browser().go('/api/recordes?circuito=interlagos&carro=kombi')).status,400);
 });
 
 await check('the records are in the player\'s data and go with the account',async()=>{
@@ -240,6 +241,40 @@ await check('a ticket sent again spends no writes: a record once, refusals and r
  const laps=()=>rows(`SELECT COUNT(*) AS n FROM voltas WHERE usuario_id=${id}`)[0].n;
  const lapRow=local.DB.sqlite.prepare("INSERT INTO voltas (usuario_id,quando,circuito,modo,resultado) VALUES (?,?,'interlagos','normal','conferida')");for(let i=0;i<150;i++)lapRow.run(id,now);
  const full=laps();await (await run(b)).lap(125);assert.equal(laps(),full);
+});
+
+await check('one record a circuit whichever mode drove it; the race\'s first lap, from the grid, counts; the Fusca\'s board is another',async()=>{
+ const b=await pilot('200000000000000000030','Gina Grid');
+ // The first lap from the grid: it starts behind the line, and is checked.
+ const grid=aiLaps('interlagos')[0].lap,r=await run(b);
+ assert.ok(grid.values[6]<-30,'the grid is behind the line');
+ const first=await r.lap(grid.time,{fantasma:encodeGhost(grid),comandos:keyboard(grid.time)});
+ assert.equal(first.conferida,true,JSON.stringify(first));
+ // A quicker story lap is the same record: a race's ticket knows it, the board shows the pilot once.
+ const story=await run(b,{mode:'immersive'});assert.equal(story.best,first.tempo_ms);
+ assert.equal((await story.lap(118)).recorde,true);
+ assert.equal((await run(b)).best,118000,'a race\'s ticket knows the story\'s best');
+ const board=(await (await b.go('/api/recordes?circuito=interlagos')).json()).recordes.filter(x=>x.apelido==='Gina Grid');
+ assert.deepEqual(board.map(x=>x.volta_ms),[118000]);
+ assert.ok(!(await (await b.go('/api/recordes?circuito=interlagos&carro=fusca')).json()).recordes.some(x=>x.apelido==='Gina Grid'),'the Fusca\'s board is another');
+ assert.equal((await b.post('/api/recordes/bilhete',{circuito:'interlagos',modo:'normal',carro:'fusca',versao:'v1'})).status,200,'a Fusca\'s ticket');
+});
+
+await check('a refused lap that would have been the pilot\'s best keeps its ghost, and its pilot may ask for a review',async()=>{
+ const b=await pilot('200000000000000000031','Rui Revisao'),other=await pilot('200000000000000000032','Outro Rui');
+ const r=await run(b),refused=await r.lap(120,{comandos:null});
+ assert.match(refused.recusada,/sem os comandos/);assert.ok(Number.isSafeInteger(refused.revisao),'reviewable');
+ assert.deepEqual({...rows(`SELECT fantasma IS NOT NULL AS g,revisao,carro FROM voltas WHERE id=${refused.revisao}`)[0]},{g:1,revisao:null,carro:'opala'});
+ assert.equal((await other.post('/api/recordes/revisao',{volta:refused.revisao})).status,404,'only the pilot\'s own lap');
+ assert.equal((await browser().post('/api/recordes/revisao',{volta:refused.revisao})).status,401);
+ assert.equal((await b.post('/api/recordes/revisao',{volta:'x'})).status,400);
+ assert.deepEqual(await b.post('/api/recordes/revisao',{volta:refused.revisao}),{status:200,revisao:'pedida'});
+ assert.deepEqual(await b.post('/api/recordes/revisao',{volta:refused.revisao}),{status:200,revisao:'pedida'},'asked once');
+ // Once the pilot has a quicker checked lap, a slower refused one keeps no ghost: nothing to review.
+ assert.equal((await r.lap(119)).conferida,true);
+ const slow=await r.lap(125,{comandos:null});assert.ok(slow.recusada);assert.equal(slow.revisao,undefined);
+ assert.equal(rows("SELECT COUNT(*) AS n FROM voltas v JOIN usuarios u ON u.id=v.usuario_id WHERE u.apelido='Rui Revisao' AND fantasma IS NOT NULL")[0].n,1);
+ assert.deepEqual(rows("SELECT tipo FROM eventos e JOIN usuarios u ON u.id=e.usuario_id WHERE u.apelido='Rui Revisao' AND tipo LIKE 'revis%'").map(e=>e.tipo),['revisao_pedida']);
 });
 
 await check('the ghost reader matches the game\'s encoder',async()=>{

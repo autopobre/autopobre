@@ -17,12 +17,14 @@ mode.car.best=42;mode.car.laps=1;recorder.update(mode);assert.equal(readRecords(
 const count=writes;recorder.update(mode);assert.equal(writes,count,'no write on every frame');
 mode.car.best=44;mode.car.laps=2;recorder.update(mode);assert.equal(writes,count,'slower times never replace a personal best');
 mode.car.best=40;recorder.update(mode);assert.equal(readRecords(storage)[0].bestLap,40);
-mode.car.laps=3;mode.finishTime=129;recorder.update(mode);assert.equal(readRecords(storage)[0].bestRace,129);
+mode.car.laps=3;mode.finishTime=129;recorder.update(mode);assert.equal(readRecords(storage)[0].bestRace,null,'race times are no records: the result screens show them');
 mode.car.best=null;mode.car.laps=0;mode.finishTime=null;recorder.update(mode);assert.equal(readRecords(storage)[0].bestLap,40,'abandoning or restarting keeps recorded laps');
 mode.car.best=30;mode.car.laps=1;mode.recordAssisted=true;recorder.update(mode);assert.equal(readRecords(storage)[0].bestLap,40,'recognition tours are excluded');
 mode.recordAssisted=false;recorder.start('Bruno');recorder.update(mode);assert.equal(readRecords(storage).length,2,'pilot records are independent');
-mode.active=true;mode.finishTime=32;recorder.update(mode);assert.equal(readRecords(storage).length,3,'modes remain independent');
-mode.data.meta.id='interlagos';mode.car.best=150;mode.finishTime=152;recorder.update(mode);assert.equal(readRecords(storage).length,4,'circuits remain independent');
+mode.active=true;mode.finishTime=32;recorder.update(mode);assert.equal(readRecords(storage).length,2,'one record a circuit, whichever mode drove it');
+mode.car.best=29;recorder.update(mode);assert.deepEqual(readRecords(storage).filter(r=>r.name==='Bruno').map(r=>[r.bestLap,r.mode]),[[29,'immersive']],'a quicker story lap is the record');
+mode.car.mechanics={name:'fusca'};mode.car.best=45;recorder.update(mode);assert.deepEqual(readRecords(storage,'fusca').map(r=>[r.name,r.bestLap]),[['Bruno',45]],'a Fusca lap goes to the Fusca board');delete mode.car.mechanics;
+mode.data.meta.id='interlagos';mode.car.best=150;mode.finishTime=152;recorder.update(mode);assert.equal(readRecords(storage).length,3,'circuits remain independent');
 assert(new PilotProfiles(storage).names.includes('Ana'));
 const legacy=new PilotProfiles({getItem:k=>k==='autopobre-record-name'?'Old Pilot':null});assert.equal(legacy.selected,'Old Pilot');
 let available=false;const recovery=new AutomaticRecords({getItem:storage.getItem,setItem(k,v){if(!available)throw Error('quota');storage.setItem(k,v);}});recovery.start('Retry');recovery.update(mode,100);assert(mode.recordSaveError);available=true;recovery.update(mode,5100);assert.equal(mode.recordSaveError,'');assert(readRecords(storage).some(r=>r.name==='Retry'));
@@ -36,7 +38,7 @@ const koy=()=>readAIRecords(storage).find(r=>r.circuit==='curvelo'&&r.mode==='no
 ai.update({data:{meta:{id:'curvelo'}},active:false,rivals:[{entry:{number:'2'},style:{ace:true},car:{best:20},finished:true,finishTime:70}]});
 assert.equal(koy(),koyBefore,'the indestructible Koyzinho leaves the AI board alone');
 
-storage.setItem(RECORD_VIEW_KEY,JSON.stringify({circuit:'interlagos',mode:'immersive',source:'ai'}));assert.deepEqual(readRecordView(storage),{circuit:'interlagos',mode:'immersive',source:'ai'});storage.setItem(RECORD_VIEW_KEY,JSON.stringify({circuit:'curvelo',mode:'normal',source:'invalid'}));assert.equal(readRecordView(storage),null);
+storage.setItem(RECORD_VIEW_KEY,JSON.stringify({circuit:'interlagos',car:'fusca',source:'ai'}));assert.deepEqual(readRecordView(storage),{circuit:'interlagos',car:'fusca',source:'ai'});storage.setItem(RECORD_VIEW_KEY,JSON.stringify({circuit:'curvelo',mode:'normal',source:'invalid'}));assert.equal(readRecordView(storage),null);
 
 const data=createCurveloData(),car=new TestCar(data),state=new ImmersiveState(),field=new RaceField(data),race=Object.create(ImmersiveMode.prototype);
 Object.assign(race,{car,state,data,field,rivals:field.rivals,sync(){},freeTotalLaps:3});car.resetGrid();field.reset(car.surface.s,{grid:true});race.beginCountdown();

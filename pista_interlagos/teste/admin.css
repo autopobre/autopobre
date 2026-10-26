@@ -41,5 +41,7 @@ tbody tr:nth-child(even){background:#eef2e7}
 td.sinais{color:#a32020;font-weight:700}
 td button{padding:3px 8px;font-size:12px}
 td button.armado{background:#a32020;border-color:#a32020;color:#fff}
+td .botoes{display:inline-flex;gap:6px;white-space:nowrap}
+td.acao a{font-weight:800;color:var(--azul)}
 .nota{font-size:12px;color:var(--apagado)}
 @media(max-width:560px){h1{font-size:22px}.cartao b{font-size:22px}}

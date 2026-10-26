@@ -6,7 +6,9 @@ import {CIRCUITS} from './circuits.js';
 
 const $=id=>document.getElementById(id);
 const KINDS={conta_criada:'Conta criada',entrou:'Entrou',saiu:'Saiu',apelido:'Trocou o apelido',importou:'Subiu recordes antigos',
- conferida:'Recorde conferido',recusada:'Volta recusada',removido:'Recorde removido',conta_apagada:'Conta apagada'};
+ conferida:'Recorde conferido',recusada:'Volta recusada',removido:'Recorde removido',revisao_pedida:'Pediu revisão',revisao:'Revisão respondida',conta_apagada:'Conta apagada'};
+const CARS={opala:'Opala',fusca:'Fusca'};
+const where=x=>`${track(x.circuito)} · ${CARS[x.carro??'opala']??x.carro}`;
 // The signals the server raises on a lap's controls (conta-cloudflare/src/comandos.js inputSignals): never a refusal,
 // a reason to look.
 const SIGNALS={sem_aparelho:'sem aparelho',sinteticas:'teclas sintéticas',sem_teclas:'teclado sem teclas',pedal_meio:'pedal pela metade no teclado',
@@ -42,6 +44,8 @@ function detail(e){
   case 'conferida':return `${track(d.circuito)} · ${MODES[d.modo]??d.modo} · ${lap(d.volta_ms)}`;
   case 'recusada':return `${track(d.circuito)} · ${lap(d.volta_ms)} · ${d.motivo??''}`;
   case 'removido':return `${track(d.circuito)} · ${MODES[d.modo]??d.modo} · ${lap(d.volta_ms)} · ${d.selo==='conferido'?'✓':'⚠️'}`;
+  case 'revisao_pedida':return `${where(d)} · ${lap(d.volta_ms)} · ${d.motivo??''}`;
+  case 'revisao':return `${where(d)} · ${lap(d.volta_ms)} · ${d.aprovada?'aprovada: virou recorde ✓':'recusada'}`;
   default:return '';
  }
 }
@@ -49,7 +53,7 @@ function detail(e){
 function summary(s){
  const cards=[['Contas',s.contas,`${s.com_apelido} com apelido`],['Novas na semana',s.novas_7d,''],['Entradas em 24 h',s.entradas_24h,`${s.entradas_7d} em 7 dias`],
   ['Com sessão aberta',s.com_sessao,'contas'],['Recordes ✓',s.conferidos,'conferidos'],['Recordes ⚠️',s.antigos,'antigos'],['Voltas recusadas',s.recusadas_7d,'em 7 dias'],
-  ['Voltas na semana',s.voltas_7d,`${s.sinalizadas_7d??0} com sinais`]];
+  ['Voltas na semana',s.voltas_7d,`${s.sinalizadas_7d??0} com sinais`],['Revisões',s.revisoes??0,'esperando resposta'],['Casos',s.casos??0,'para estudar']];
  $('resumo').replaceChildren(...cards.map(([label,value,note])=>{
   const card=document.createElement('div'),b=document.createElement('b'),span=document.createElement('span'),small=document.createElement('small');
   card.className='cartao';span.textContent=label;b.textContent=String(value??0);small.textContent=note;card.append(span,b,small);return card;}));
@@ -72,32 +76,45 @@ let oldestLap=null;
 async function laps(more=false){
  const q=new URLSearchParams();if($('soSinais').checked)q.set('sinalizadas','1');if(more&&oldestLap)q.set('antes',oldestLap);
  const list=(await get('voltas?'+q)).voltas;
- rows('voltas',list,[[v=>when(v.quando)],[v=>v.apelido??'(apagada)'],[v=>`${track(v.circuito)} · ${MODES[v.modo]??v.modo}`],[v=>lap(v.tempo_ms),'num'],
+ rows('voltas',list,[[v=>when(v.quando)],[v=>v.apelido??'(apagada)'],[v=>where(v)],[v=>lap(v.tempo_ms),'num'],
   [v=>RESULTS[v.resultado]??`✗ ${v.resultado}`],[v=>v.aparelho??'—'],[v=>signals(v.sinais),'sinais']],more);
  if(list.length)oldestLap=list[list.length-1].id;
  $('maisVoltas').hidden=list.length<100;
 }
-// Remover: the first click arms the button, the second (within 5 s) takes the record off the boards.
-function removeButton(record){
- const b=document.createElement('button');b.type='button';b.textContent='Remover';
+// A button whose first click arms it and the second (within 5 s) posts what it does, then the panel reloads.
+function armed(label,act){
+ const b=document.createElement('button');b.type='button';b.textContent=label;
  b.onclick=async()=>{
-  if(!b.classList.contains('armado')){b.classList.add('armado');b.textContent='Confirmar';setTimeout(()=>{b.classList.remove('armado');b.textContent='Remover';},5000);return;}
+  if(!b.classList.contains('armado')){b.classList.add('armado');b.textContent='Confirmar';setTimeout(()=>{b.classList.remove('armado');b.textContent=label;},5000);return;}
   b.disabled=true;
-  try{await get('remover',{recorde:record.id});await load();}
+  try{await act();await load();}
   catch(error){$('aviso').textContent=error.message;$('aviso').hidden=false;b.disabled=false;}
  };
  return b;
+}
+// Remover takes the record off the boards.
+const removeButton=record=>armed('Remover',()=>get('remover',{recorde:record.id}));
+// A case as a file: the lap whole (its ghost and controls), to study where the checks went wrong.
+function caseLink(v){const a=document.createElement('a');a.href=`/api/admin/caso?volta=${v.id}`;a.download=`caso-${v.id}-${v.circuito}.json`;a.textContent='Baixar';return a;}
+// A review waiting: Aprovar (the lap becomes the pilot's checked record) or Recusar; a decided one says which.
+function reviewButtons(v){
+ if(v.revisao!=='pedida'){const span=document.createElement('span');span.textContent=`${v.revisao==='aprovada'?'✓ aprovada':'✗ recusada'} · ${when(v.revisado_em)}`;return span;}
+ const box=document.createElement('span');box.className='botoes';
+ box.append(armed('Aprovar',()=>get('revisar',{volta:v.id,aprovar:true})),armed('Recusar',()=>get('revisar',{volta:v.id,aprovar:false})));
+ return box;
 }
 
 async function load(){
  $('aviso').textContent='Carregando…';$('aviso').hidden=false;
  try{
-  const [s,u,r]=await Promise.all([get('resumo'),get('usuarios'),get('recordes')]);
+  const [s,u,r,v,c]=await Promise.all([get('resumo'),get('usuarios'),get('recordes'),get('revisoes'),get('casos')]);
   summary(s);
+  rows('casos',c.casos,[[x=>when(x.quando)],[x=>x.apelido??'(apagada)'],[x=>where(x)],[x=>lap(x.tempo_ms),'num'],[x=>x.caso,'sinais'],[x=>x.aparelho??'—'],[x=>x.versao??'—'],[caseLink,'acao']]);
+  rows('revisoes',v.revisoes,[[x=>when(x.quando)],[x=>x.apelido??'(apagada)'],[x=>where(x)],[x=>lap(x.tempo_ms),'num'],[x=>x.resultado],[x=>x.aparelho??'—'],[x=>signals(x.sinais),'sinais'],[reviewButtons,'acao']]);
   rows('usuarios',u.usuarios,[[x=>(x.apelido??'(sem apelido)')+(x.admin?' · admin':'')],[x=>when(x.criado_em)],[x=>when(x.ultimo_login)],[x=>String(x.sessoes),'num'],
    [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>x.importou_em?when(x.importou_em):'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num']]);
-  rows('recordes',r.recordes,[[x=>when(x.enviado_em)],[x=>x.apelido],[x=>track(x.circuito)],[x=>MODES[x.modo]??x.modo],[x=>lap(x.volta_ms),'num'],
-   [x=>x.selo==='conferido'?'✓ conferido':'⚠️ antigo'],[x=>x.versao],[x=>x.selo==='conferido'?signals(x.sinais):'—','sinais'],[removeButton,'acao']]);
+  rows('recordes',r.recordes,[[x=>when(x.enviado_em)],[x=>x.apelido],[x=>where(x)],[x=>MODES[x.modo]??x.modo],[x=>lap(x.volta_ms),'num'],
+   [x=>x.selo!=='conferido'?'⚠️ antigo':x.sinais?.revisada?'✓ revisado':x.sinais?.confiavel?'✓ confiável (caso)':'✓ conferido'],[x=>x.versao],[x=>x.selo==='conferido'?signals(x.sinais):'—','sinais'],[removeButton,'acao']]);
   oldest=null;oldestLap=null;await Promise.all([events(),laps()]);
   $('painel').hidden=false;$('aviso').hidden=true;$('atualizado').textContent=`Atualizado às ${new Date().toLocaleTimeString('pt-BR',{timeStyle:'short'})}`;
  }catch(error){

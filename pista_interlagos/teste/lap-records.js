@@ -2,73 +2,83 @@ import {CIRCUITS,circuitId} from './circuits.js';
 import {readAIRecords,standardLaps} from './ai-records.js';
 import {formatTime} from './race-results.js';
 import {RIVAL_ROSTER,PLAYER_ENTRY} from './race-roster.js';
-const KEY='autopobre-records-v1';
+// The best laps, per circuit and car: one record a circuit, whichever mode drove it (a race, the story: the same track),
+// and a board for each car (an Opala and a Fusca never compare). The Opala's keep the key and format they always had
+// (older versions of the game, and the main link's bridge, read it: each row still says its mode); the Fusca's have a
+// key of their own, so that no older version shows them as an Opala's. Race times are not records any more (3, 10 or
+// 20 laps never compare): the result screens and the championships show them; rows saved before keep theirs, unread.
+const KEYS=Object.freeze({opala:'autopobre-records-v1',fusca:'autopobre-records-fusca-v1'});
+export const RECORD_CARS=Object.freeze(Object.keys(KEYS));
+const carOf=car=>Object.hasOwn(KEYS,car)?car:'opala';
 const validTime=t=>Number.isFinite(t)&&t>0&&t<86400;
-// Race times compare only over the standard distance (3 laps, both modes; a circuit that fixes its race length,
-// circuits.js fixedLaps, its own); the best lap counts in races of any length. Story race times saved before the lap
-// setting were one-lap races: dropped.
+const samePilot=(a,b)=>a.toLocaleLowerCase('pt-BR')===b.toLocaleLowerCase('pt-BR');
 export const cleanName=name=>String(name??'').normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,32);
-export function readRecords(storage){
- try{const data=JSON.parse(storage.getItem(KEY)||'[]');return Array.isArray(data)?data.filter(r=>r&&typeof r.name==='string'&&['normal','immersive'].includes(r.mode)&&cleanName(r.name)&&validTime(r.bestLap)&&(r.bestRace===null||validTime(r.bestRace)&&r.bestLap<=r.bestRace)).slice(0,200).map(r=>({circuit:circuitId(r.circuit),name:cleanName(r.name),mode:r.mode,bestLap:r.bestLap,bestRace:r.mode==='immersive'&&r.raceLaps!==standardLaps(r.circuit)?null:r.bestRace,raceLaps:standardLaps(r.circuit),date:typeof r.date==='string'?r.date:''})):[];}catch{return [];}
+export function readRecords(storage,car='opala'){
+ try{const data=JSON.parse(storage.getItem(KEYS[carOf(car)])||'[]');return Array.isArray(data)?data.filter(r=>r&&typeof r.name==='string'&&['normal','immersive'].includes(r.mode)&&cleanName(r.name)&&validTime(r.bestLap)&&(r.bestRace==null||validTime(r.bestRace)&&r.bestLap<=r.bestRace)).slice(0,400).map(r=>({circuit:circuitId(r.circuit),name:cleanName(r.name),mode:r.mode,car:carOf(car),bestLap:r.bestLap,bestRace:r.bestRace??null,raceLaps:standardLaps(r.circuit),date:typeof r.date==='string'?r.date:''})):[];}catch{return [];}
 }
-export function saveRecord(storage,{name,mode,bestLap,bestRace=null,circuit='interlagos'}){
+// Each pilot once per circuit, at their best lap (rows of both modes saved before they were one).
+export function bestPerPilot(rows){
+ const best=new Map();
+ for(const r of rows){const key=`${r.circuit}|${r.source??'human'}|${r.source==='ai'?r.number:r.name.toLocaleLowerCase('pt-BR')}`,had=best.get(key);if(!had||r.bestLap<had.bestLap)best.set(key,r);}
+ return [...best.values()];
+}
+export function saveRecord(storage,{name,mode,bestLap,circuit='interlagos',car='opala'}){
  if(typeof circuit!=='string'||!Object.hasOwn(CIRCUITS,circuit))throw new Error('Circuito inválido.');
- name=cleanName(name);if(!name||!['normal','immersive'].includes(mode)||!validTime(bestLap)||(bestRace!==null&&(!validTime(bestRace)||bestLap>bestRace)))throw new Error('Informe o piloto e complete uma volta válida.');
- const rows=readRecords(storage),existing=rows.find(r=>r.circuit===circuit&&r.mode===mode&&r.name.toLocaleLowerCase('pt-BR')===name.toLocaleLowerCase('pt-BR'));
- if(existing){const lap=Math.min(existing.bestLap,bestLap),race=bestRace===null?existing.bestRace:existing.bestRace===null?bestRace:Math.min(existing.bestRace,bestRace);if(lap===existing.bestLap&&race===existing.bestRace)return rows;existing.bestLap=lap;existing.bestRace=race;existing.date=new Date().toISOString();}
- else rows.push({circuit,name,mode,bestLap,bestRace,raceLaps:standardLaps(circuit),date:new Date().toISOString()});
- const sorted=Object.keys(CIRCUITS).flatMap(id=>['normal','immersive'].flatMap(category=>rows.filter(r=>r.circuit===id&&r.mode===category).sort((a,b)=>a.bestLap-b.bestLap).slice(0,50)));
- if(!sorted.some(r=>r.circuit===circuit&&r.mode===mode&&r.name.toLocaleLowerCase('pt-BR')===name.toLocaleLowerCase('pt-BR')))throw new Error('A lista guarda os 50 melhores recordes. Esse tempo ficou fora da lista.');
- try{storage.setItem(KEY,JSON.stringify(sorted));}catch{throw new Error('Não foi possível salvar neste navegador. Verifique se o armazenamento está disponível.');}
+ name=cleanName(name);if(!name||!['normal','immersive'].includes(mode)||!validTime(bestLap))throw new Error('Informe o piloto e complete uma volta válida.');
+ car=carOf(car);const rows=readRecords(storage,car),mine=rows.filter(r=>r.circuit===circuit&&samePilot(r.name,name));
+ if(mine.some(r=>r.bestLap<=bestLap))return rows;
+ const kept=[...rows.filter(r=>!mine.includes(r)),{circuit,name,mode,bestLap,bestRace:null,raceLaps:standardLaps(circuit),date:new Date().toISOString()}];
+ const sorted=Object.keys(CIRCUITS).flatMap(id=>kept.filter(r=>r.circuit===id).sort((a,b)=>a.bestLap-b.bestLap).slice(0,50)).map(({car:_,...r})=>r);
+ if(!sorted.some(r=>r.circuit===circuit&&samePilot(r.name,name)))throw new Error('A lista guarda os 50 melhores recordes. Esse tempo ficou fora da lista.');
+ try{storage.setItem(KEYS[car],JSON.stringify(sorted));}catch{throw new Error('Não foi possível salvar neste navegador. Verifique se o armazenamento está disponível.');}
  return sorted;
 }
-// Save synchronously at each new best lap, including unfinished races.
+// Save synchronously at each new best lap, including unfinished races, on the board of the car driven.
 export class AutomaticRecords {
  constructor(storage){this.storage=storage;this.name='';this.signature='';this.retryAt=0;}
  start(name){this.name=cleanName(name);this.signature='';this.retryAt=0;}
  update(mode,now=Date.now()){
   if(!this.name||!mode||mode.recordAssisted)return;
-  // The boards are the Opala's: a race in Fuscas (their own mechanics, physics.js FUSCA_MECHANICS) keeps none.
-  const model=mode.car?.mechanics?.name;if(model&&model!=='opala')return;
-  const bestLap=mode.car.best;if(!validTime(bestLap)||mode.car.laps<1)return;
-  // Race times only from the whole grid (fullGrid): a solo practice or a 1x1 starts at the front.
-  const laps=mode.active?mode.storyLaps:mode.freeTotalLaps,completed=mode.fullGrid!==false&&laps===standardLaps(mode.data?.meta.id)&&mode.car.laps>=laps&&validTime(mode.finishTime);
-  const bestRace=completed?mode.finishTime:null,circuit=circuitId(mode.data?.meta.id),category=mode.active?'immersive':'normal';
-  const signature=JSON.stringify([this.name,circuit,category,bestLap,bestRace]);
+  const car=carOf(mode.car?.mechanics?.name??'opala'),bestLap=mode.car.best;if(!validTime(bestLap)||mode.car.laps<1)return;
+  const circuit=circuitId(mode.data?.meta.id),category=mode.active?'immersive':'normal';
+  const signature=JSON.stringify([this.name,circuit,car,bestLap]);
   if(signature===this.signature||now<this.retryAt)return;
-  try{saveRecord(this.storage,{name:this.name,circuit,mode:category,bestLap,bestRace});this.signature=signature;this.retryAt=0;mode.recordSaveError='';}
+  try{saveRecord(this.storage,{name:this.name,circuit,mode:category,car,bestLap});this.signature=signature;this.retryAt=0;mode.recordSaveError='';}
   catch(error){mode.recordSaveError=error.message;this.retryAt=now+5000;}
  }
 }
-// The track's records for the Box 99 garage TVs: people and the AI together, in the mode being
-// played, fastest first; best laps and best races (over the standard distance). People drive
-// the Opala 99; the pilot playing now is marked (me) and, below the top rows, takes the last
-// line with his own place.
-export function trackRecords(storage,circuit,mode,pilot='',limit=8){
- const me=cleanName(pilot).toLocaleLowerCase('pt-BR'),mine=r=>r.source==='human'&&!!me&&r.name.toLocaleLowerCase('pt-BR')===me;
- const rows=[...readRecords(storage).map(r=>({...r,source:'human'})),...readAIRecords(storage)].filter(r=>r.circuit===circuitId(circuit)&&r.mode===mode);
- const shown=(list,time)=>{const top=list.slice(0,limit),own=list.findIndex(mine);if(own>=limit)top[limit-1]=list[own];
-  return top.map(r=>{const ai=r.source==='ai',entry=ai?RIVAL_ROSTER.find(e=>e.number===r.number):PLAYER_ENTRY;return {place:list.indexOf(r)+1,number:entry?.number??r.number,name:ai?entry?.shortName??r.name:r.name,color:entry?.color??PLAYER_ENTRY.color,time:formatTime(r[time]),ai,me:mine(r)};});};
- return {lap:shown([...rows].sort((a,b)=>a.bestLap-b.bestLap),'bestLap'),race:shown(rows.filter(r=>r.bestRace!==null).sort((a,b)=>a.bestRace-b.bestRace),'bestRace')};
+// The game's AI on a circuit's board: the Opala's only (the Fusca's field keeps no times yet), each car once.
+const aiRows=(storage,car)=>car==='opala'?bestPerPilot(readAIRecords(storage)):[];
+// A circuit's best laps for the Box 99 garage TVs, the team stand's monitors and the track cards: people and the AI
+// (people only: ai false) in one car, fastest first. The pilot playing now is marked (me) and, below the top rows,
+// takes the last line with his own place.
+export function trackRecords(storage,circuit,car='opala',pilot='',limit=8,{ai=true}={}){
+ const me=cleanName(pilot).toLocaleLowerCase('pt-BR'),mine=r=>r.source==='human'&&!!me&&r.name.toLocaleLowerCase('pt-BR')===me,id=circuitId(circuit);
+ const rows=bestPerPilot([...readRecords(storage,car).map(r=>({...r,source:'human'})),...(ai?aiRows(storage,car):[])].filter(r=>r.circuit===id)).sort((a,b)=>a.bestLap-b.bestLap);
+ const top=rows.slice(0,limit),own=rows.findIndex(mine);if(own>=limit)top[limit-1]=rows[own];
+ return {lap:top.map(r=>{const isAI=r.source==='ai',entry=isAI?RIVAL_ROSTER.find(e=>e.number===r.number):PLAYER_ENTRY;return {place:rows.indexOf(r)+1,number:entry?.number??r.number,name:isAI?entry?.shortName??r.name:r.name,color:entry?.color??PLAYER_ENTRY.color,time:formatTime(r.bestLap),ai:isAI,me:mine(r)};})};
 }
 export const RECORD_VIEW_KEY='autopobre-record-view-v1';
 function recordStorage(){try{return globalThis.localStorage;}catch{return null;}}
-export function readRecordView(storage){try{const v=JSON.parse(storage?.getItem(RECORD_VIEW_KEY)||'null');return v&&typeof v.circuit==='string'&&Object.hasOwn(CIRCUITS,v.circuit)&&['normal','immersive'].includes(v.mode)&&['human','ai','all','online'].includes(v.source)?{circuit:v.circuit,mode:v.mode,source:v.source}:null;}catch{return null;}}
+// The dialog's last view: circuit, car and who drove (a view saved when the dialog still had modes reads as the Opala's).
+export function readRecordView(storage){try{const v=JSON.parse(storage?.getItem(RECORD_VIEW_KEY)||'null');return v&&typeof v.circuit==='string'&&Object.hasOwn(CIRCUITS,v.circuit)&&['human','ai','all','online'].includes(v.source)?{circuit:v.circuit,car:carOf(v.car),source:v.source}:null;}catch{return null;}}
 // The circuit dropdown borrows each track's outline and place from its card on the track screen
 // (index.html); a circuit without a card still gets its name and length.
 const circuitCard=id=>document.querySelector(`.track-cards [data-circuit="${id}"]`);
 const circuitOutline=id=>circuitCard(id)?.querySelector('path')?.getAttribute('d')??'';
 const circuitLength=c=>`${c.length.toLocaleString('pt-BR')} m`;
+const CAR_NAMES=Object.freeze({opala:'Opala',fusca:'Fusca'});
 const initial=text=>text.normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
 export class LapRecords {
  constructor(circuit='interlagos',storage=recordStorage()){
   this.storage=storage;const view=readRecordView(storage);this.viewSaved=!!view;
-  this.circuit=circuitId(circuit);this.selectedCircuit=view?.circuit??this.circuit;this.selectedMode=view?.mode??'normal';this.selectedSource=view?.source??'all';
-  this.dialog=document.createElement('dialog');this.dialog.id='lapRecords';this.dialog.setAttribute('aria-labelledby','recordsTitle');this.dialog.innerHTML=`<div class="records-head"><div><span>AUTO-POBRE RACING</span><h2 id="recordsTitle">RECORDES DE TEMPO</h2></div><button id="recordsClose" aria-label="Fechar recordes">✕</button></div><p id="recordCandidate" hidden></p><div class="records-filters"><fieldset id="recordsCircuit"><legend id="recordsCircuitLegend">AUTÓDROMO</legend><div class="records-pick"><button type="button" id="recordsCircuitPick" aria-haspopup="listbox" aria-expanded="false" aria-controls="recordsCircuitList" aria-labelledby="recordsCircuitLegend recordsCircuitName"><svg viewBox="0 0 120 60" aria-hidden="true"><path/></svg><b id="recordsCircuitName"></b><small id="recordsCircuitLength"></small><i aria-hidden="true"></i></button><ul id="recordsCircuitList" role="listbox" tabindex="-1" aria-labelledby="recordsCircuitLegend" hidden></ul></div></fieldset><fieldset id="recordsMode"><legend>MODALIDADE</legend><div class="records-mode-options"><button type="button" data-records-mode="normal" aria-pressed="true">Corrida normal <span>corrida em 3 voltas</span></button><button type="button" data-records-mode="immersive" aria-pressed="false">Imersiva <span>corrida em 3 voltas</span></button></div></fieldset><fieldset id="recordsSource"><legend>QUEM PILOTOU</legend><div class="records-source-options"><button type="button" data-records-source="all" aria-pressed="true">Todos</button><button type="button" data-records-source="human" aria-pressed="false" aria-label="Pessoas" title="Pessoas">🧑</button><button type="button" data-records-source="ai" aria-pressed="false" aria-label="Inteligência artificial" title="Inteligência artificial">🤖</button></div></fieldset></div><div class="records-list"><table><thead><tr><th>POS</th><th>PILOTO</th><th>MELHOR VOLTA</th><th>MELHOR CORRIDA</th></tr></thead><tbody></tbody></table><p id="recordsEmpty">O primeiro recorde pode ser seu. Complete uma volta válida para registrar seu tempo automaticamente.</p></div><p id="recordsSourceNote" class="records-note"></p><p id="recordsMessage" role="status"></p>`;
+  this.circuit=circuitId(circuit);this.selectedCircuit=view?.circuit??this.circuit;this.selectedCar=view?.car??'opala';this.selectedSource=view?.source??'all';this.review=null;
+  this.dialog=document.createElement('dialog');this.dialog.id='lapRecords';this.dialog.setAttribute('aria-labelledby','recordsTitle');this.dialog.innerHTML=`<div class="records-head"><div><span>AUTO-POBRE RACING</span><h2 id="recordsTitle">RECORDES DE TEMPO</h2></div><button id="recordsClose" aria-label="Fechar recordes">✕</button></div><p id="recordCandidate" hidden></p><div id="recordReview" hidden><p id="recordReviewText"></p><button type="button" id="recordReviewAsk">Pedir revisão</button></div><div class="records-filters"><fieldset id="recordsCircuit"><legend id="recordsCircuitLegend">AUTÓDROMO</legend><div class="records-pick"><button type="button" id="recordsCircuitPick" aria-haspopup="listbox" aria-expanded="false" aria-controls="recordsCircuitList" aria-labelledby="recordsCircuitLegend recordsCircuitName"><svg viewBox="0 0 120 60" aria-hidden="true"><path/></svg><b id="recordsCircuitName"></b><small id="recordsCircuitLength"></small><i aria-hidden="true"></i></button><ul id="recordsCircuitList" role="listbox" tabindex="-1" aria-labelledby="recordsCircuitLegend" hidden></ul></div></fieldset><fieldset id="recordsCar"><legend>CARRO</legend><div class="records-mode-options"><button type="button" data-records-car="opala" aria-pressed="true">Opala <span>até 217 km/h</span></button><button type="button" data-records-car="fusca" aria-pressed="false">Fusca <span>até 170 km/h</span></button></div></fieldset><fieldset id="recordsSource"><legend>QUEM PILOTOU</legend><div class="records-source-options"><button type="button" data-records-source="all" aria-pressed="true">Todos</button><button type="button" data-records-source="human" aria-pressed="false" aria-label="Pessoas" title="Pessoas">🧑</button><button type="button" data-records-source="ai" aria-pressed="false" aria-label="Inteligência artificial" title="Inteligência artificial">🤖</button></div></fieldset></div><div class="records-list"><table><thead><tr><th>POS</th><th>PILOTO</th><th>MELHOR VOLTA</th></tr></thead><tbody></tbody></table><p id="recordsEmpty">O primeiro recorde pode ser seu. Complete uma volta válida para registrar seu tempo automaticamente.</p></div><p id="recordsSourceNote" class="records-note"></p><p id="recordsMessage" role="status"></p>`;
   document.body.append(this.dialog);const $=id=>this.dialog.querySelector('#'+id);$('recordsClose').onclick=()=>this.dialog.close();this.emptyText=$('recordsEmpty').textContent;this.online=null;this.onlineDraw=0;
   for(const button of this.dialog.querySelectorAll('[data-records-source]'))button.onclick=()=>{this.selectedSource=button.dataset.recordsSource;this.saveView();this.render();};
   this.circuitPicker();
-  for(const button of this.dialog.querySelectorAll('[data-records-mode]'))button.onclick=()=>{this.selectedMode=button.dataset.recordsMode;this.saveView();this.render();};
+  for(const button of this.dialog.querySelectorAll('[data-records-car]'))button.onclick=()=>{this.selectedCar=button.dataset.recordsCar;this.saveView();this.render();};
+  $('recordReviewAsk').onclick=()=>this.askReview();
 
  }
  // Too many circuits for a row of buttons: a listbox in the game's colours, one option per
@@ -128,38 +138,53 @@ export class LapRecords {
   this.dialog.querySelector('.records-source-options').append(button);
   if(this.dialog.open)this.render();
  }
- saveView(){this.viewSaved=true;try{this.storage?.setItem(RECORD_VIEW_KEY,JSON.stringify({circuit:this.selectedCircuit,mode:this.selectedMode,source:this.selectedSource}));}catch{}}
- open(mode=null){
-  const $=id=>this.dialog.querySelector('#'+id);this.candidate=mode&&!mode.recordAssisted&&validTime(mode.finishBest)&&validTime(mode.finishTime)?{circuit:circuitId(mode.data?.meta.id),mode:mode.active?'immersive':'normal',bestLap:mode.finishBest,bestRace:mode.finishTime}:null;
-  if(!this.viewSaved){this.selectedCircuit=this.candidate?.circuit??this.circuit;this.selectedMode=this.candidate?.mode??this.selectedMode;}
-  $('recordCandidate').hidden=!this.candidate;$('recordsMessage').textContent=mode?.recordAssisted?'O reconhecimento automático não grava recordes. Faça uma corrida pilotando o Opala.':'';
-  if(this.candidate){$('recordCandidate').textContent=`Piloto: ${mode.pilotName||'—'} · ${CIRCUITS[this.candidate.circuit].name} · Volta: ${formatTime(this.candidate.bestLap)} · Corrida: ${formatTime(this.candidate.bestRace)}`;}
+ saveView(){this.viewSaved=true;try{this.storage?.setItem(RECORD_VIEW_KEY,JSON.stringify({circuit:this.selectedCircuit,car:this.selectedCar,source:this.selectedSource}));}catch{}}
+ // mode: the race just run (the results screen's Recordes): its circuit and car, and its best lap as the candidate.
+ // here: the circuit and car of the session under way (the menu's Recordes during it). Neither: the last view.
+ open(mode=null,here=null){
+  const $=id=>this.dialog.querySelector('#'+id);this.candidate=mode&&!mode.recordAssisted&&validTime(mode.finishBest)?{circuit:circuitId(mode.data?.meta.id),car:carOf(mode.car?.mechanics?.name??'opala'),bestLap:mode.finishBest}:null;
+  const at=this.candidate??(here?.circuit&&Object.hasOwn(CIRCUITS,circuitId(here.circuit))?{circuit:circuitId(here.circuit),car:carOf(here.car)}:null);
+  if(at){this.selectedCircuit=at.circuit;this.selectedCar=at.car;}else if(!this.viewSaved)this.selectedCircuit=this.circuit;
+  $('recordCandidate').hidden=!this.candidate;$('recordsMessage').textContent=mode?.recordAssisted?'O reconhecimento automático não grava recordes. Faça uma corrida pilotando.':'';
+  if(this.candidate){$('recordCandidate').textContent=`Piloto: ${mode.pilotName||'—'} · ${CIRCUITS[this.candidate.circuit].name} · ${CAR_NAMES[this.candidate.car]} · Melhor volta: ${formatTime(this.candidate.bestLap)}`;}
   if(mode?.recordSaveError)$('recordsMessage').textContent=mode.recordSaveError;
-
   this.saveView();this.render();this.dialog.showModal();
+ }
+ // A lap the server did not check that would have been the pilot's best (recordes-online.js review), with the button
+ // that asks the admin to look at it; once asked, what came of it.
+ drawReview(){
+  const box=this.dialog.querySelector('#recordReview'),r=this.online?.review;box.hidden=!r;if(!r)return;
+  const text=`Sua volta de ${formatTime(r.time)} em ${CIRCUITS[r.circuit]?.name??r.circuit} (${CAR_NAMES[r.car]??r.car}) ficou no seu recorde deste navegador, mas não foi conferida online: ${r.reason}.`;
+  const asked={pedida:' Revisão pedida: a administração vai olhar a sua volta.',aprovada:' A revisão aprovou a volta.',recusada:' A revisão não aprovou a volta.'}[r.status]??' Se ela foi limpa, peça uma revisão: a administração olha a volta e pode aprová-la.';
+  box.querySelector('#recordReviewText').textContent=text+asked;
+  const ask=box.querySelector('#recordReviewAsk');ask.hidden=!!r.status;ask.disabled=!!r.busy;
+ }
+ async askReview(){
+  const r=this.online?.review;if(!r||r.status||r.busy)return;
+  r.busy=true;this.drawReview();
+  try{await this.online.askReview();}catch(error){this.dialog.querySelector('#recordsMessage').textContent=error.message;}
+  r.busy=false;this.drawReview();
  }
  render(){
   const storage=this.storage;
   // Online without the accounts here (a view saved on dev.autopobre.com.br, opened elsewhere): everyone.
   if(this.selectedSource==='online'&&!this.online)this.selectedSource='all';
-  const source=this.selectedSource,online=source==='online';this.onlineDraw++;this.dialog.querySelector('#recordsEmpty').textContent=this.emptyText;
-  const local=source==='ai'||online?[]:readRecords(storage).map(r=>({...r,source:'human'}));
-  if(source!=='human'&&!online)local.push(...readAIRecords(storage));
+  const source=this.selectedSource,online=source==='online',car=this.selectedCar;this.onlineDraw++;this.dialog.querySelector('#recordsEmpty').textContent=this.emptyText;
+  const local=source==='ai'||online?[]:readRecords(storage,car).map(r=>({...r,source:'human'}));
+  if(source!=='human'&&!online)local.push(...aiRows(storage,car));
   for(const button of this.dialog.querySelectorAll('[data-records-source]'))button.setAttribute('aria-pressed',String(button.dataset.recordsSource===source));
+  for(const button of this.dialog.querySelectorAll('[data-records-car]'))button.setAttribute('aria-pressed',String(button.dataset.recordsCar===car));
+  const ai=car==='opala'?'IA: tempos do jogo, não dos pilotos reais.':'A IA ainda não tem tempos no Fusca.';
   this.dialog.querySelector('#recordsSourceNote').textContent=online?'Online: o melhor de cada piloto com conta. ✓ volta conferida pelo servidor · ⚠️ Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros.'
-   :source==='human'?'Pessoas: recordes salvos automaticamente neste navegador.'
-   :`Pessoas: recordes deste navegador. IA: tempos do jogo, não dos pilotos reais.${this.online?' Online: pilotos com conta (✓ volta conferida · ⚠️ Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros).':''}`;
-  const mode=this.selectedMode;
-  for(const button of this.dialog.querySelectorAll('[data-records-mode]'))button.setAttribute('aria-pressed',String(button.dataset.recordsMode===mode));
+   :source==='human'?'Pessoas: recordes salvos automaticamente neste navegador.':source==='ai'?ai
+   :`Pessoas: recordes deste navegador. ${ai}${this.online?' Online: pilotos com conta (✓ volta conferida · ⚠️ Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros).':''}`;
   const circuit=CIRCUITS[this.selectedCircuit],button=this.pickButton;button.dataset.circuit=circuit.id;
-  // The race times' distance: the circuit's own where it fixes one (Pampulha's single lap).
-  {const n=standardLaps(circuit.id);for(const span of this.dialog.querySelectorAll('[data-records-mode] span'))span.textContent=`corrida em ${n} volta${n>1?'s':''}`;}
   button.querySelector('path').setAttribute('d',circuitOutline(circuit.id));button.querySelector('b').textContent=circuit.name;button.querySelector('small').textContent=circuitLength(circuit);
-  const localBest=id=>{const laps=local.filter(r=>r.mode===mode&&r.circuit===id).map(r=>r.bestLap);return laps.length?Math.min(...laps):null;};
-  this.drawPicker(localBest);
-  const rows=local.filter(r=>r.mode===mode&&r.circuit===this.selectedCircuit);
+  const localBest=id=>{const laps=local.filter(r=>r.circuit===id).map(r=>r.bestLap);return laps.length?Math.min(...laps):null;};
+  this.drawPicker(localBest);this.drawReview();
+  const rows=bestPerPilot(local.filter(r=>r.circuit===this.selectedCircuit));
   this.drawRows(rows);
-  if(this.online&&(online||source==='all'))this.joinOnline(rows,localBest,circuit.id,mode,online);
+  if(this.online&&(online||source==='all'))this.joinOnline(rows,localBest,circuit.id,car,online);
  }
  // Each circuit's best lap in the list (best(id): seconds, or null).
  drawPicker(best){
@@ -174,7 +199,7 @@ export class LapRecords {
   const body=this.dialog.querySelector('tbody');body.replaceChildren();
   rows.forEach((row,i)=>{
    const tr=document.createElement('tr');tr.dataset.source=row.source;if(row.mine)tr.dataset.mine='';
-   for(const value of [`${i+1}º`,row.name,formatTime(row.bestLap),row.source==='online'?'—':formatTime(row.bestRace)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}
+   for(const value of [`${i+1}º`,row.name,formatTime(row.bestLap)]){const td=document.createElement('td');td.textContent=value;tr.append(td);}
    const badge=document.createElement('span'),checked=row.badge==='conferido';badge.className='record-source-badge';
    const label=row.source==='ai'?`Inteligência artificial · carro #${row.number}`:row.source==='online'?checked?'Online: volta conferida pelo servidor enquanto foi pilotada':'Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros':'Pessoa, neste navegador';
    if(row.source==='online')badge.classList.add('record-online-badge',...(checked?[]:['record-unchecked']));
@@ -185,11 +210,11 @@ export class LapRecords {
  }
  // The accounts' records joined to what is drawn (only=true: the Online source alone). The signed-in pilot
  // shows once: their row online and this browser's rows under the same name are one pilot, at the best of them.
- async joinOnline(rows,localBest,circuit,mode,only){
+ async joinOnline(rows,localBest,circuit,car,only){
   const draw=this.onlineDraw,empty=this.dialog.querySelector('#recordsEmpty');
   if(only){empty.textContent='Carregando os recordes online…';empty.hidden=false;}
   let board,bests;
-  try{[board,bests]=await Promise.all([this.online.board(circuit,mode),this.online.bests(mode)]);}
+  try{[board,bests]=await Promise.all([this.online.board(circuit,car),this.online.bests(car)]);}
   catch(error){if(draw===this.onlineDraw&&only)empty.textContent=error.message;return;}
   if(draw!==this.onlineDraw)return;
   const same=(a,b)=>a.toLocaleLowerCase('pt-BR')===b.toLocaleLowerCase('pt-BR');
@@ -202,6 +227,6 @@ export class LapRecords {
   }
   this.drawPicker(id=>{const ms=bests[id],there=ms?ms/1000:null,here=localBest(id);return here===null?there:there===null?here:Math.min(here,there);});
   this.drawRows(joined);
-  if(only){empty.textContent='Ainda não há recordes online nesta pista e modo. Entre com a sua conta e complete uma volta sem pausa para registrar a primeira.';empty.hidden=joined.length>0;}
+  if(only){empty.textContent='Ainda não há recordes online nesta pista com este carro. Entre com a sua conta e complete uma volta sem pausa para registrar a primeira.';empty.hidden=joined.length>0;}
  }
 }

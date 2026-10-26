@@ -13,7 +13,7 @@ O que o servidor garante, seja lá o que o navegador mande:
 
 ## Recordes online
 
-Cada piloto aparece com a melhor volta por pista, modo e carro (por enquanto só o Opala), com um selo:
+Cada piloto aparece com a melhor volta por pista e carro. Uma pista tem um recorde só, venha a volta de uma corrida ou do Modo História, e o Opala e o Fusca têm tabelas separadas (217 contra 170 km/h: os tempos nunca se comparam). Cada carro tem o seu piso e a sua física (`src/pisos.js` e `src/envelope.js`). A primeira volta da corrida, que larga do grid atrás da linha, também vale. Cada recorde tem um selo:
 
 - **✓ conferido:** o servidor acompanhou a volta enquanto ela era pilotada.
   - Ao entrar na pista, o jogo pede um **bilhete** (pista, modo, carro, versão do jogo). Depois manda um **pedaço** do relógio da física a cada 10 segundos e outro a cada passagem pela linha.
@@ -67,6 +67,10 @@ Quando a conta é apagada, os eventos dela vão junto, e fica só um "conta apag
 - **teclas no mesmo instante:** trocas de tecla no mesmo milissegundo, quase sempre;
 - **freadas idênticas a outra volta:** freou nos mesmos metros (menos de 0,5 m) que outra volta do piloto, como um programa que repete a volta.
 
+**Revisão.** Quando uma volta que seria o melhor tempo do piloto não é conferida, o servidor guarda o fantasma dela no registro, e o jogo oferece "Pedir revisão" na janela de recordes (o recorde do navegador fica de qualquer jeito). O pedido aparece no painel, em **Pedidos de revisão**: **Aprovar** grava a volta como recorde ✓ do piloto, marcada como revisada, e **Recusar** não muda nada. Cada piloto tem no máximo 10 pedidos esperando.
+
+**Pilotos de confiança (enquanto a conferência é ajustada).** Os administradores, e quem estiver no segredo **`CONFIAVEIS`** do Worker (identificadores Google separados por vírgula, como o `ADMINS`), têm toda volta aceita. Quando a conferência teria recusado uma volta deles, ela entra como ✓ do mesmo jeito e vai para **Casos para estudar**, com o motivo, o fantasma e os comandos completos (botão **Baixar**). É com esses casos que a conferência é corrigida.
+
 O painel mostra as voltas (com o filtro "só com sinais") e os sinais de cada recorde. O botão **Remover** de um recorde (o segundo clique confirma) tira o recorde das tabelas, conferido ou antigo, e o piloto vê "recorde removido" nos dados dele.
 
 ## Rotas
@@ -83,10 +87,13 @@ O painel mostra as voltas (com o filtro "só com sinais") e os sinais de cada re
 | `POST /api/recordes/bilhete` `{circuito, modo, carro, versao}` | o bilhete de uma corrida, com o melhor tempo conferido do piloto ali |
 | `POST /api/recordes/pedaco` `{bilhete, relogio, cruzou?, volta?}` | um pedaço do relógio; na linha, a volta com o fantasma; devolve o bilhete novo e o veredito |
 | `POST /api/recordes/importar` `{recordes}` | os recordes antigos do navegador, uma vez, até 30/11/2026 |
-| `GET /api/recordes?circuito=&modo=` | a tabela de uma pista (pública) |
-| `GET /api/recordes/melhores?modo=` | a melhor volta de cada pista (pública) |
+| `GET /api/recordes?circuito=&carro=` | a tabela de uma pista num carro (pública; o carro padrão é o Opala) |
+| `GET /api/recordes/melhores?carro=` | a melhor volta de cada pista num carro (pública) |
+| `POST /api/recordes/revisao` `{volta}` | pede a revisão de uma volta própria não conferida que seria o melhor tempo |
 | `GET /api/admin/resumo`, `/usuarios`, `/eventos?tipo=&antes=`, `/recordes`, `/voltas?sinalizadas=1&antes=` | o painel (só administradores) |
 | `POST /api/admin/remover` `{recorde}` | tira um recorde das tabelas (só administradores) |
+| `GET /api/admin/revisoes`, `POST /api/admin/revisar` `{volta, aprovar}` | os pedidos de revisão e a resposta (só administradores) |
+| `GET /api/admin/casos`, `/caso?volta=` | os casos para estudar e o arquivo de cada um (só administradores) |
 
 ## Publicar (uma vez)
 

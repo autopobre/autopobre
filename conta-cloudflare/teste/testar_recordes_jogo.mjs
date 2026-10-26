@@ -81,21 +81,22 @@ await check('a slower lap goes to the log quietly; a lap with a pause is refused
  const logged=local.DB.sqlite.prepare('SELECT tempo_ms,resultado,aparelho FROM voltas ORDER BY id DESC').get();
  assert.deepEqual({...logged},{tempo_ms:123000,resultado:'conferida',aparelho:'teclado'},'checked, logged, with the keyboard that drove it');
  await lap(117,{pauseAt:40});
- assert.equal(toast.hidden,false);assert.match(toast.textContent,/Volta de 01:57.000 não conferida: a volta teve pausa/);
+ assert.equal(toast.hidden,false);assert.match(toast.textContent,/Volta de 01:57.000 salva no seu recorde deste navegador, mas não conferida online: a volta teve pausa.*Em Recordes você pode pedir uma revisão/);assert.equal(online.review?.time,117,'the lap stays for the review the records dialog offers');
  assert.equal(local.DB.sqlite.prepare("SELECT volta_ms FROM recordes WHERE selo='conferido'").get().volta_ms,120000);
  assert.ok(sent.join('|').length>before);
  await lap(118);
  assert.match(toast.textContent,/Recorde online conferido: 01:58.000/,'the next clean lap counts again');
 });
 
-await check('a reset asks for a new ticket; the Fusca and a signed-out pilot send nothing',async()=>{
+await check('a reset asks for a new ticket; the Fusca gets its own; a signed-out pilot sends nothing',async()=>{
  const tickets=()=>sent.filter(u=>u.endsWith('/bilhete')).length,t0=tickets();
  race.clock=0;race.lapStart=0;steps=0;await frames(1);
  assert.equal(tickets(),t0+1,'the clock went back: a new run');
  const n=sent.length;
- race.car='fusca';await frames(12);race.car='opala';
- online.setAccount(null);await frames(12);
- assert.ok(sent.slice(n).every(u=>!u.includes('/pedaco')),'nothing for the Fusca nor signed out');
+ race.car='fusca';await frames(12);
+ assert.equal(tickets(),t0+2,'the Fusca: a ticket of its own (its own board)');race.car='opala';
+ const m=sent.length;online.setAccount(null);await frames(12);
+ assert.ok(sent.slice(m).every(u=>!u.includes('/pedaco')&&!u.endsWith('/bilhete')),'nothing signed out');
 });
 
 await check('the old records go up once: the pilot\'s only, then the browser is marked',async()=>{
@@ -113,10 +114,10 @@ await check('the old records go up once: the pilot\'s only, then the browser is 
 });
 
 await check('the board and the circuits\' bests, as the records dialog reads them',async()=>{
- const board=await online.board('interlagos','normal');
+ const board=await online.board('interlagos','opala');
  assert.deepEqual(board.map(r=>[r.name,r.bestLap,r.badge,r.mine]),[['Fefe Rapida',118,'conferido',true]],'the checked lap, though the old one is quicker');
- assert.equal((await online.bests('normal')).interlagos,118000);
- await assert.rejects(online.board('nada','normal'));
+ assert.equal((await online.bests('opala')).interlagos,118000);
+ await assert.rejects(online.board('nada','opala'));
 });
 
 await local.close();Date.now=realNow;globalThis.fetch=realFetch;

@@ -143,7 +143,7 @@ async function myData(request,env){
  const sessions=(await env.DB.prepare('SELECT criada_em,expira_em FROM sessoes WHERE usuario_id=? ORDER BY criada_em').bind(s.id).all()).results;
  const records=(await env.DB.prepare('SELECT circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma FROM recordes WHERE usuario_id=? ORDER BY circuito,modo,selo').bind(s.id).all()).results;
  const events=(await env.DB.prepare('SELECT quando,tipo,detalhe FROM eventos WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
- const laps=(await env.DB.prepare('SELECT quando,circuito,modo,tempo_ms,resultado,aparelho,sinais,freios FROM voltas WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
+ const laps=(await env.DB.prepare('SELECT quando,circuito,modo,carro,tempo_ms,resultado,aparelho,sinais,freios,fantasma,comandos,revisao,revisado_em,caso FROM voltas WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
  const ghost=text=>{try{return text?JSON.parse(text):null;}catch{return null;}};
  const when=ms=>new Date(ms).toISOString();
  return json({
@@ -154,7 +154,8 @@ async function myData(request,env){
   recordes:records.map(r=>({circuito:r.circuito,modo:r.modo,carro:r.carro,selo:r.selo,volta_ms:r.volta_ms,versao_do_jogo:r.versao,feito_em:when(r.feito_em),enviado_em:when(r.enviado_em),fantasma:ghost(r.fantasma)})),
   subida_dos_recordes_antigos:s.importou_em?when(s.importou_em):null,
   eventos:events.map(e=>({quando:when(e.quando),tipo:e.tipo,detalhe:ghost(e.detalhe)})),
-  voltas:laps.map(v=>({quando:when(v.quando),circuito:v.circuito,modo:v.modo,tempo_ms:v.tempo_ms,resultado:v.resultado,aparelho:v.aparelho,sinais:ghost(v.sinais),freios:ghost(v.freios)})),
+  voltas:laps.map(v=>({quando:when(v.quando),circuito:v.circuito,modo:v.modo,carro:v.carro,tempo_ms:v.tempo_ms,resultado:v.resultado,aparelho:v.aparelho,sinais:ghost(v.sinais),freios:ghost(v.freios),
+   ...(v.fantasma&&{fantasma:ghost(v.fantasma)}),...(v.comandos&&{comandos:ghost(v.comandos)}),...(v.caso&&{caso:v.caso}),...(v.revisao&&{revisao:v.revisao,revisada_em:v.revisado_em?when(v.revisado_em):null})})),
  },200,{headers:{'Content-Disposition':'attachment; filename="autopobre-meus-dados.json"'}});
 }
 

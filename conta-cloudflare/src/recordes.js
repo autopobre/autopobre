@@ -32,7 +32,7 @@
 // re-running the lap from the pilot's controls with the game's own physics).
 import {CIRCUITS} from '../../pista_interlagos/teste/circuits.js';
 import {LINE_TIMES} from './pisos.js';
-import {json,seal,unseal,signedIn,notSignedIn} from './base.js';
+import {json,seal,unseal,signedIn,notSignedIn,isTrusted} from './base.js';
 import {event,recent,HOUR} from './eventos.js';
 import {readInputs,inputsProblem,inputSignals,INPUT_CHARS} from './comandos.js';
 import {dynamicsProblem} from './dinamica.js';
@@ -46,21 +46,20 @@ const SLOWEST=.85;            // the slowest a chunk's game clock may run agains
 const STEADY=.97;             // the same over the whole stretch since it began
 const LAP_SLACK=1000;         // ms (plus 1% of the lap): a lap's real time against its game time
 const RUN_HOURS=8;            // a ticket's life
-// The Opala only, as the game's own boards (lap-records.js keeps no Fusca lap). Should the Fusca get records one day,
-// they are a table of their own: an Opala does 217 km/h and a Fusca 165, so their times never compare. It will need
-// its own floor (the driving line with FUSCA_MECHANICS in gerar_pisos.mjs), its own top speed in ghostProblem, and a
-// car picker on the records dialog.
-const MODES=['normal','immersive'],CARS=['opala'];
+// Each car a board of its own (an Opala does 217 km/h and a Fusca 170: their times never compare), each with its own
+// floor (pisos.js) and physics (envelope.js). A circuit's record is one, whichever mode drove it (a race, the story):
+// the mode is kept with each lap, and the boards and the pilot's best look past it.
+const MODES=['normal','immersive'],CARS=['opala','fusca'];
 const VERSION=/^[\w.-]{1,40}$/;
 // The old records come up until the end of 30/11/2026 in Brasília (the owner's deadline), and none is dated
 // before the game was online.
 export const IMPORT_UNTIL=Date.parse('2026-12-01T03:00:00Z');
 const GAME_START=Date.parse('2026-09-01T00:00:00Z');
-// The quickest a lap may be: this share of the driving line's own time, or, on a circuit the table does not know
+// The quickest a lap may be: this share of the car's driving line's own time, or, on a circuit the table does not know
 // yet, an average no Opala keeps. The line is a model, not a wall: the first checked laps (10-25) beat it by 3.5%
 // (Interlagos 1:49.2 against its 1:53.3), so the floor leaves a good pilot room and stops only the absurd.
 const FLOOR=.85;
-const fastest=circuit=>Math.ceil(1000*(LINE_TIMES[circuit]?LINE_TIMES[circuit]*FLOOR:CIRCUITS[circuit].length/70));
+const fastest=(circuit,car)=>{const line=LINE_TIMES[car]?.[circuit];return Math.ceil(1000*(line?line*FLOOR:CIRCUITS[circuit].length/70));};
 const GHOST_BYTES=120000;     // a lap's ghost as the game encodes it (3600 samples at most: ~70 kB)
 const LOGGED_REFUSALS=5;      // refused laps an account writes to the panel's events in an hour (the rest only answer)
 const SAVED_LAPS=120;         // records an account may write in an hour: more than a pilot sets, even at Curvelo's 32 s
@@ -101,17 +100,20 @@ const MAX_SPEED=70;          // m/s between two samples: no jump (the Opala's re
 // leave those, and stop a jump along the road (where a cut is, trajeto.js knows).
 const GAIN=3,GAIN_SLACK=60;
 const DRIVEN=.85;            // of the track's length the car must cover (the racing line cuts inside the bends)
-// Why a ghost cannot be this lap, or null when it can: read, recorded by the game, the lap's time, from the line round the
-// whole track, no jump, and the ground covered. What an Opala can do along it is dinamica.js's (contacts and spins pull
-// and turn far past an Opala for a moment, and buy no time), where the road is trajeto.js's.
+// A lap starts on the line, or, the race's first, on the grid behind it (the back of the field is 76 m back:
+// race-roster.js GRID_START_BACK); either way it ends on the line one lap on.
+const GRID_BACK=120;
+// Why a ghost cannot be this lap, or null when it can: read, recorded by the game, the lap's time, from the line (or
+// the grid) round the whole track, no jump, and the ground covered. What the car can do along it is dinamica.js's
+// (contacts and spins pull and turn far past a car for a moment, and buy no time), where the road is trajeto.js's.
 export function ghostProblem(ghost,time,circuit){
  if(!ghost)return 'o fantasma da volta não pôde ser lido';
  if(!RATES.has(ghost.rate))return 'o fantasma não foi gravado pelo jogo';
  if(Math.abs(ghost.time-time)>.005)return 'o fantasma não tem o tempo da volta';
  const v=ghost.values,n=ghost.n,L=CIRCUITS[circuit].length,at=k=>k>=n-1?ghost.time:k/ghost.rate;
  const first=v[6],last=v[(n-1)*FIELDS+6];
- if(Math.abs(first)>30)return 'a volta não começa na linha';
- if(Math.abs(last-first-L)>L*.03+30)return 'a volta não percorre a pista inteira';
+ if(first>30||first<-GRID_BACK)return 'a volta não começa na linha nem no grid';
+ if(Math.abs(last-L)>L*.03+30)return 'a volta não percorre a pista inteira';
  let covered=0;
  for(let k=1;k<n;k++){
   const a=(k-1)*FIELDS,b=k*FIELDS,dt=at(k)-at(k-1);
@@ -125,12 +127,15 @@ export function ghostProblem(ghost,time,circuit){
  return null;
 }
 
+// The pilot's checked best on a circuit in a car (ms), whichever mode drove it, or null.
+const bestOf=(env,user,circuit,car)=>env.DB.prepare("SELECT MIN(volta_ms) AS ms FROM recordes WHERE usuario_id=? AND circuito=? AND carro=? AND selo='conferido'").bind(user,circuit,car).first('ms');
+
 async function ticket(request,env,body){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
  if(!s.apelido)return json({erro:'Escolha um apelido primeiro.'},409);
  const {circuito:c,modo:m,carro:k}=body,v=typeof body.versao==='string'?body.versao:'';
  if(!known(c,m,k)||!VERSION.test(v))return json({erro:'Pista, modo, carro ou versão inválidos.'},400);
- const best=await env.DB.prepare("SELECT volta_ms FROM recordes WHERE usuario_id=? AND circuito=? AND modo=? AND carro=? AND selo='conferido'").bind(s.id,c,m,k).first('volta_ms');
+ const best=await bestOf(env,s.id,c,k);
  // u/sb: the account and its Google account (a lap goes only to that same one); s0: issued; sl/gl: the last
  // chunk (server ms, game s); ss/gs: the clean stretch's start; xs/xg: the last crossing within it.
  const t={u:s.id,sb:s.google_sub,c,m,k,v,s0:Date.now(),sl:null,gl:null,ss:null,gs:null,xs:null,xg:null,n:0};
@@ -153,7 +158,7 @@ async function chunk(request,env,body){
  const from=clean&&t.xg!==null?{g:t.xg,s:t.xs}:null,out={};
  if(!clean){t.gs=g;t.ss=now;t.xg=t.xs=null;}
  if(body.cruzou===true){
-  if(body.volta!==undefined)out.volta=await judge(env,t,g,now,from,body.volta);
+  if(body.volta!==undefined)out.volta=await judge(env,t,g,now,from,body.volta,isTrusted(env,s));
   t.xg=g;t.xs=now;
  }
  t.gl=g;t.sl=now;t.n++;
@@ -163,20 +168,29 @@ async function chunk(request,env,body){
 
 // The lap that ends at game time g: checked, and kept when it is the pilot's best. Every lap goes to the lap log with
 // what its controls look like (comandos.js inputSignals, against the pilot's last laps here), up to LOGGED_LAPS an hour.
+// A refused lap that would have been the pilot's best keeps its ghost there, and the answer says so (revisao: the log's
+// id): the pilot may ask for a review (/revisao), and the admin approves it into a record (admin.js) or not.
+// A trusted pilot's lap (base.js isTrusted) goes in as checked even when the checks would refuse it: the log keeps why
+// they would have (caso), its ghost and its controls, as a case for the admin panel.
 // A record goes to the panel's events, and so does a refusal with its reason, up to LOGGED_REFUSALS an hour.
-async function judge(env,t,g,now,from,lap){
+async function judge(env,t,g,now,from,lap,trusted=false){
  const ghost=readGhost(lap?.fantasma),inputs=readInputs(lap?.comandos);
  let signals=null;
  if(ghost&&inputs)try{
-  const before=(await env.DB.prepare('SELECT freios FROM voltas WHERE usuario_id=? AND circuito=? AND modo=? AND freios IS NOT NULL ORDER BY quando DESC LIMIT ?').bind(t.u,t.c,t.m,PREVIOUS_LAPS).all()).results;
+  const before=(await env.DB.prepare('SELECT freios FROM voltas WHERE usuario_id=? AND circuito=? AND carro=? AND freios IS NOT NULL ORDER BY quando DESC LIMIT ?').bind(t.u,t.c,t.k,PREVIOUS_LAPS).all()).results;
   signals=inputSignals(inputs,ghost,before.map(r=>JSON.parse(r.freios)).filter(Array.isArray));
  }catch{}
- const verdict=await check(env,t,g,now,from,ghost,inputs,signals);
+ const verdict=await check(env,t,g,now,from,ghost,inputs,signals,trusted);
  try{
-  if((await env.DB.prepare('SELECT COUNT(*) AS n FROM voltas WHERE usuario_id=? AND quando>?').bind(t.u,now-HOUR).first('n'))<LOGGED_LAPS)
-   await env.DB.prepare('INSERT INTO voltas (usuario_id,quando,circuito,modo,tempo_ms,resultado,aparelho,sinais,freios) VALUES (?,?,?,?,?,?,?,?,?)')
-    .bind(t.u,now,t.c,t.m,verdict.tempo_ms??(ghost?Math.round(ghost.time*1000):null),verdict.recorde?'recorde':verdict.conferida?'conferida':verdict.recusada,
-     signals?.aparelho??null,signals?JSON.stringify({sinais:signals.sinais,medidas:signals.medidas}):null,signals?JSON.stringify(signals.freios):null).run();
+  if((await env.DB.prepare('SELECT COUNT(*) AS n FROM voltas WHERE usuario_id=? AND quando>?').bind(t.u,now-HOUR).first('n'))<LOGGED_LAPS){
+   const ms=verdict.tempo_ms??(ghost?Math.round(ghost.time*1000):null),best=!verdict.conferida&&ghost&&ms?await bestOf(env,t.u,t.c,t.k):null;
+   const reviewable=!verdict.conferida&&!!ghost&&!!ms&&(best===null||ms<best),kept=reviewable||!!verdict.caso;
+   const r=await env.DB.prepare('INSERT INTO voltas (usuario_id,quando,circuito,modo,carro,versao,tempo_ms,resultado,aparelho,sinais,freios,fantasma,comandos,caso) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+    .bind(t.u,now,t.c,t.m,t.k,t.v,ms,verdict.recorde?'recorde':verdict.conferida?'conferida':verdict.recusada,
+     signals?.aparelho??null,signals?JSON.stringify({sinais:signals.sinais,medidas:signals.medidas}):null,signals?JSON.stringify(signals.freios):null,
+     kept&&ghost?JSON.stringify(ghost.stored):null,verdict.caso&&lap?.comandos?JSON.stringify(lap.comandos):null,verdict.caso??null).run();
+   if(reviewable&&r.meta.last_row_id)verdict.revisao=r.meta.last_row_id;
+  }
  }catch{}
  if(!verdict.conferida)try{
   if(await recent(env,t.u,['recusada'],HOUR)<LOGGED_REFUSALS)
@@ -184,19 +198,26 @@ async function judge(env,t,g,now,from,lap){
  }catch{}
  return verdict;
 }
-async function check(env,t,g,now,from,ghost,inputs,signals){
- if(!from)return {recusada:'a volta teve pausa, ficou sem sinal ou o jogo rodou mais devagar que o relógio'};
- const time=g-from.g,ms=Math.round(time*1000),real=now-from.s;
- if(Math.abs(real-ms)>LAP_SLACK+ms*.01)return {tempo_ms:ms,recusada:'o tempo da volta não bate com o relógio do servidor'};
- if(ms<fastest(t.c))return {tempo_ms:ms,recusada:'a volta foi rápida demais para esta pista'};
- const why=ghostProblem(ghost,time,t.c)??trackProblem(ghost,t.c)??dynamicsProblem(ghost,t.c)??inputsProblem(inputs,ghost);
- if(why)return {tempo_ms:ms,recusada:why};
+// The verdict: refused with the first reason (the clock, the floor, the ghost, the road, the car's physics, the controls),
+// or checked. A trusted pilot's lap with a readable ghost goes in whatever the reason (a pause: its ghost's own time),
+// the reason kept as its case (caso).
+async function check(env,t,g,now,from,ghost,inputs,signals,trusted=false){
+ let why=null,time=null;
+ if(!from){why='a volta teve pausa, ficou sem sinal ou o jogo rodou mais devagar que o relógio';time=ghost?.time??null;}
+ else{
+  time=g-from.g;const real=now-from.s,lap=Math.round(time*1000);
+  if(Math.abs(real-lap)>LAP_SLACK+lap*.01)why='o tempo da volta não bate com o relógio do servidor';
+  else if(lap<fastest(t.c,t.k))why='a volta foi rápida demais para esta pista';
+ }
+ const ms=time===null?null:Math.round(time*1000);
+ why??=ghostProblem(ghost,time,t.c)??trackProblem(ghost,t.c)??dynamicsProblem(ghost,t.c,t.k)??inputsProblem(inputs,ghost);
+ if(why&&!(trusted&&ghost&&ms))return from?{tempo_ms:ms,recusada:why}:{recusada:why};
  // Written only when it beats the pilot's best (the same crossing sent again changes nothing), with its signals.
  if(await recent(env,t.u,['conferida'],HOUR)>=SAVED_LAPS)return {tempo_ms:ms,recusada:'muitos recordes gravados nesta hora: tente de novo mais tarde'};
- const kept=signals?JSON.stringify({aparelho:signals.aparelho,sinais:signals.sinais,medidas:signals.medidas}):null;
+ const kept=JSON.stringify({aparelho:signals?.aparelho??null,sinais:signals?.sinais??[],medidas:signals?.medidas??{},...(why&&{confiavel:true,caso:why})});
  const r=await env.DB.prepare(UPSERT).bind(t.u,t.c,t.m,t.k,'conferido',ms,t.v,now,now,JSON.stringify(ghost.stored),kept).run(),record=r.meta.changes>0;
  if(record)await event(env,'conferida',t.u,{circuito:t.c,modo:t.m,volta_ms:ms}).run().catch(()=>{});
- return {tempo_ms:ms,conferida:true,recorde:record};
+ return {tempo_ms:ms,conferida:true,recorde:record,...(why&&{caso:why})};
 }
 
 // A browser's records from before the account, once per account (the server keeps when: whatever browsers say),
@@ -211,7 +232,7 @@ async function importOld(request,env,body){
  const now=Date.now(),best=new Map();
  for(const r of list){
   const {circuito:c,modo:m,volta_ms:ms}=r??{};
-  if(!known(c,m,'opala')||!Number.isInteger(ms)||ms<fastest(c)||ms>3600000)continue;
+  if(!known(c,m,'opala')||!Number.isInteger(ms)||ms<fastest(c,'opala')||ms>3600000)continue;
   const key=c+'|'+m;if(!best.has(key)||ms<best.get(key).ms)best.set(key,{c,m,ms,when:Date.parse(r.data)});
  }
  // Once: the mark goes first, and only the request that set it writes.
@@ -223,28 +244,48 @@ async function importOld(request,env,body){
  return json({importados:steps.length});
 }
 
+// The board asked for: a circuit (none: the circuit list) and a car (the Opala when none is named). A mode (the old
+// game asked per mode) is read past: a circuit's record is one.
 const view=(url)=>{
- const c=url.searchParams.get('circuito'),m=url.searchParams.get('modo'),k=url.searchParams.get('carro')||'opala';
- return (c===null||Object.hasOwn(CIRCUITS,c))&&MODES.includes(m)&&CARS.includes(k)?{c,m,k}:null;
+ const c=url.searchParams.get('circuito'),k=url.searchParams.get('carro')||'opala';
+ return (c===null||Object.hasOwn(CIRCUITS,c))&&CARS.includes(k)?{c,k}:null;
 };
-// A circuit's board: each pilot once, by their best checked lap (their best old one when they have none), with
-// its badge and the day (public: no account needed, and no time of day).
+// A circuit's board: each pilot once, by their best checked lap (their best old one when they have none), whichever
+// mode drove it, with its badge and the day (public: no account needed, and no time of day).
 async function board(request,env,url){
- const q=view(url);if(!q?.c)return json({erro:'Pista ou modo inválido.'},400);
+ const q=view(url);if(!q?.c)return json({erro:'Pista ou carro inválido.'},400);
  const me=await signedIn(request,env);
- const rows=(await env.DB.prepare('SELECT r.usuario_id AS u,u.apelido,r.selo,r.volta_ms,r.feito_em FROM recordes r JOIN usuarios u ON u.id=r.usuario_id WHERE r.circuito=? AND r.modo=? AND r.carro=? AND u.apelido IS NOT NULL ORDER BY r.volta_ms,r.feito_em LIMIT 400').bind(q.c,q.m,q.k).all()).results;
+ const rows=(await env.DB.prepare('SELECT r.usuario_id AS u,u.apelido,r.selo,r.volta_ms,r.feito_em FROM recordes r JOIN usuarios u ON u.id=r.usuario_id WHERE r.circuito=? AND r.carro=? AND u.apelido IS NOT NULL ORDER BY r.volta_ms,r.feito_em LIMIT 400').bind(q.c,q.k).all()).results;
  const pilots=new Map();
  for(const r of rows){const had=pilots.get(r.u);if(!had||had.selo!=='conferido'&&r.selo==='conferido')pilots.set(r.u,r);}
  const out=[...pilots.values()].sort((a,b)=>a.volta_ms-b.volta_ms||a.feito_em-b.feito_em).slice(0,100)
   .map(r=>({apelido:r.apelido,selo:r.selo,volta_ms:r.volta_ms,feito_em:new Date(r.feito_em).toISOString().slice(0,10),meu:me?.id===r.u}));
  return json({recordes:out});
 }
-// The best checked lap on each circuit, for the circuit list.
+// The best checked lap on each circuit in a car, for the circuit list.
 async function bests(request,env,url){
- const q=view(url);if(!q)return json({erro:'Modo inválido.'},400);
- const rows=(await env.DB.prepare("SELECT r.circuito,MIN(r.volta_ms) AS volta_ms FROM recordes r JOIN usuarios u ON u.id=r.usuario_id WHERE r.modo=? AND r.carro=? AND r.selo='conferido' AND u.apelido IS NOT NULL GROUP BY r.circuito").bind(q.m,q.k).all()).results;
+ const q=view(url);if(!q)return json({erro:'Carro inválido.'},400);
+ const rows=(await env.DB.prepare("SELECT r.circuito,MIN(r.volta_ms) AS volta_ms FROM recordes r JOIN usuarios u ON u.id=r.usuario_id WHERE r.carro=? AND r.selo='conferido' AND u.apelido IS NOT NULL GROUP BY r.circuito").bind(q.k).all()).results;
  return json({melhores:Object.fromEntries(rows.filter(r=>Object.hasOwn(CIRCUITS,r.circuito)).map(r=>[r.circuito,r.volta_ms]))});
 }
 
+// A review asked for (POST {volta: the id a refused lap's answer gave}): the pilot's own lap, one that kept its ghost
+// (it would have been their best), asked once; the admin panel lists it (admin.js). At most PENDING_REVIEWS open at once.
+const PENDING_REVIEWS=10;
+async function askReview(request,env,body){
+ const s=await signedIn(request,env);if(!s)return notSignedIn();
+ const id=body.volta;if(!Number.isSafeInteger(id)||id<1)return json({erro:'Volta inválida.'},400);
+ const lap=await env.DB.prepare('SELECT circuito,carro,tempo_ms,resultado,revisao FROM voltas WHERE id=? AND usuario_id=? AND fantasma IS NOT NULL').bind(id,s.id).first();
+ if(!lap)return json({erro:'Essa volta não pode ser revista (ela fica guardada por 90 dias).'},404);
+ if(lap.revisao)return json({revisao:lap.revisao});
+ if(await env.DB.prepare("SELECT COUNT(*) AS n FROM voltas WHERE usuario_id=? AND revisao='pedida'").bind(s.id).first('n')>=PENDING_REVIEWS)
+  return json({erro:'Você já tem revisões esperando. Aguarde a resposta delas.'},429);
+ await env.DB.batch([env.DB.prepare("UPDATE voltas SET revisao='pedida' WHERE id=? AND revisao IS NULL").bind(id),
+  event(env,'revisao_pedida',s.id,{circuito:lap.circuito,carro:lap.carro,volta_ms:lap.tempo_ms,motivo:lap.resultado})]);
+ return json({revisao:'pedida'});
+}
+
 export const RECORDS_GETS={'/api/recordes':board,'/api/recordes/melhores':bests};
-export const RECORDS_POSTS={'/api/recordes/bilhete':ticket,'/api/recordes/pedaco':chunk,'/api/recordes/importar':importOld};
+export const RECORDS_POSTS={'/api/recordes/bilhete':ticket,'/api/recordes/pedaco':chunk,'/api/recordes/importar':importOld,'/api/recordes/revisao':askReview};
+// For the admin's approval (admin.js): a reviewed lap written as the pilot's checked record when it beats it.
+export {UPSERT};

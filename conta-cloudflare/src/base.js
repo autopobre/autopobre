@@ -74,7 +74,12 @@ export async function session(request,env){
 export const signedOut=()=>setCookie(SESSION_COOKIE,'',0);
 // An administrator: an account whose Google id is in the Worker's ADMINS secret (comma separated; set in Cloudflare's
 // dashboard, it takes effect at once and no deploy overwrites it), or marked admin in the database.
-export const isAdmin=(env,s)=>!!s&&!s.gone&&(!!s.admin||String(env.ADMINS??'').split(',').map(x=>x.trim()).filter(Boolean).includes(s.google_sub));
+const listed=(text,sub)=>String(text??'').split(',').map(x=>x.trim()).filter(Boolean).includes(sub);
+export const isAdmin=(env,s)=>!!s&&!s.gone&&(!!s.admin||listed(env.ADMINS,s.google_sub));
+// A pilot whose laps are true while the detector is being tuned (recordes.js): an administrator, or a Google id in the
+// Worker's CONFIAVEIS secret (comma separated, like ADMINS). A lap of theirs the checks would refuse goes in as checked
+// all the same, and into the admin panel's cases, with its ghost and controls, to learn what the checks got wrong.
+export const isTrusted=(env,s)=>isAdmin(env,s)||!!s&&!s.gone&&listed(env.CONFIAVEIS,s.google_sub);
 export async function signedIn(request,env){
  const s=await session(request,env);
  return s&&!s.gone?s:null;

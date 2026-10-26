@@ -144,9 +144,9 @@ export function createBox99({pit,c,lerp,at,root,obstacles,textures,people,crowd,
   kit(parts,x,d,0,turn);};
  shelves(-B+.47,F+10.75,0,3);
  kit([[cyl(.3,.04,16),DARK,[0,.02,0]],[cyl(.035,1.9,10),STEEL,[0,.95,0]],[box(1.5,.06,.06),STEEL,[0,1.75,-.02]],[box(.72,.44,.05),DARK,[-.37,1.75,.04]],[box(.72,.44,.05),DARK,[.37,1.75,.04]]],B-1.15,F+1.2);
- // Record boards (layout.showRecords): the mode's best laps and best races, and the other mode's
- // best laps. The two TVs by the door show the first two, the team stand's three monitors all.
- const boards=[art.recordBoard(),art.recordBoard(),art.recordBoard()],boardMaterials=boards.map((board,i)=>new THREE.MeshBasicMaterial({name:'TV_recordes_'+['volta','corrida','outro_modo'][i],map:board.map}));
+ // Record boards (layout.showRecords): the track's best laps in the Opala (people and the AI), in the Fusca, and in the
+ // Opala by people alone. The two TVs by the door show the first two, the team stand's three monitors all.
+ const boards=[art.recordBoard(),art.recordBoard(),art.recordBoard()],boardMaterials=boards.map((board,i)=>new THREE.MeshBasicMaterial({name:'TV_recordes_'+['opala','fusca','opala_pessoas'][i],map:board.map}));
  for(const i of [0,1])add(boardMaterials[i],new THREE.PlaneGeometry(.64,.37),B-1.15+(i?.37:-.37),F+1.115,1.75);
  {const rack=[[box(.9,.04,.45),STEEL,[0,.45,0]],[box(.9,.04,.45),STEEL,[0,.02,0]]];for(const [x,z] of [[-.43,-.2],[.43,-.2],[-.43,.2],[.43,.2]])rack.push([box(.04,.9,.04),STEEL,[x,.45,z]]);
   for(const [x,y] of [[-.22,.04],[.22,.04],[-.22,.47],[.22,.47]])rack.push([box(.3,.34,.18),RED,[x,y+.17,0]],[cyl(.03,.05,8),YELLOW,[x+.1,y+.37,0]],[box(.14,.03,.04),DARK,[x-.05,y+.36,0]]);kit(rack,-B+1,F+1.25);}
@@ -325,10 +325,8 @@ export function createBox99({pit,c,lerp,at,root,obstacles,textures,people,crowd,
   return at&&way?{at:world(...at),path:way.map(p=>p.clone())}:null;});
  const layout={
   pit,anchor:{x:spotWorld.x,y:spotWorld.y+.055,z:spotWorld.z,heading:h0},label:'INTERLAGOS · BOX 99',title:'Cuida do Opala!',name:'Box 99 de Interlagos',...labels,scenery:true,
-  // lap, race: trackRecords rows (lap-records.js); mode: the story's ('immersive') or the race's.
-  // recordsShown keeps what the TVs show.
-  showRecords:({title,mode,lap,race,laps,other})=>{layout.recordsShown={title,mode,lap,race,other};const kind=m=>m==='immersive'?'MODO HISTÓRIA':'MODO CORRIDA';
-   boards[0].show({title,subtitle:`MELHOR VOLTA · ${kind(mode)}`,rows:lap});boards[1].show({title,subtitle:`CORRIDA DE ${laps} VOLTA${laps>1?'S':''} · ${kind(mode)}`,rows:race});boards[2].show({title,subtitle:`MELHOR VOLTA · ${kind(other.mode)}`,rows:other.lap});},
+  // lists: one per board, each {subtitle, rows: trackRecords rows (lap-records.js)}. recordsShown keeps what the TVs show.
+  showRecords:({title,boards:lists})=>{layout.recordsShown={title,boards:lists};lists.forEach((list,i)=>boards[i]?.show({title,...list}));},
   inBox:surface=>inServiceSpot(spot,surface),
   crew,cafeSeat:route.at(-1).clone(),cafeSign:world(-13.2,F+9.6,2.95),route,guests,heroHeading:h0+Math.PI/2,pitView:[5.6,-6.4,2.9],
   makeHero:()=>people.person(OUTFITS.driver),

@@ -1,5 +1,20 @@
 # Revisão para publicação — 13/09/2026
 
+## Atualização — 26/10/2026: recordes por pista e carro, revisão e pilotos de confiança
+
+- **Recordes:**
+  - Uma pista tem um recorde só, da corrida ou do Modo História.
+  - O Fusca ganhou tabela online própria, com piso e física do Fusca calculados pelo código do jogo. Uma volta de Opala enviada como Fusca é recusada em todas as pistas.
+  - A primeira volta da corrida, que larga até 120 m atrás da linha, passou a valer. Antes ela era sempre recusada por "não começa na linha".
+- **Revisão:**
+  - Uma volta recusada que seria o melhor tempo guarda o fantasma por 90 dias.
+  - Só o dono pede a revisão (a conta da sessão precisa ser a da volta), uma vez por volta e no máximo 10 esperando por conta.
+  - Só um administrador aprova. A aprovação grava o recorde com a marca "revisada".
+- **Pilotos de confiança** (administradores e o segredo `CONFIAVEIS`):
+  - Enquanto a conferência é ajustada, toda volta deles entra como ✓. Quando a conferência teria recusado, a volta fica como caso, com fantasma e comandos, visível só no painel.
+  - Risco aceito: uma conta de confiança roubada poderia gravar recordes falsos. A sessão é a mesma das outras contas (`__Host-`, só o SHA-256 no banco), e a lista fica num segredo do Worker. Quando a conferência estiver ajustada, esvaziar `CONFIAVEIS` e tirar a regra dos administradores.
+- **Comandos guardados:** só nos casos dos pilotos de confiança. Os casos entram em "Baixar meus dados" e vão embora com a conta.
+
 ## Atualização — 25/10/2026 (noite): conferência dos recordes mais robusta
 
 O selo ✓ podia ser forjado. Um "fantasma" inventado (um anel liso do tamanho da pista) ganhava ✓ a 1:36 em Interlagos, e uma volta real acelerada em até 10% também passava. Agora o servidor confere quatro coisas, todas calculadas com o próprio código do jogo:

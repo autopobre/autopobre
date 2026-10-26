@@ -1,8 +1,8 @@
 """The two TVs in Box 99's garage and the team stand's monitors show the current track's records,
 in a real browser.
 
-Left TV: best laps; right TV: best races over the standard distance; people and the AI together,
-for the mode being played. The stand's three monitors add the other mode's best laps. A new record for the pilot shows up on them within a couple of
+Left TV: the Opala's best laps, people and the AI together (both modes: one record a circuit); right TV: the
+Fusca's. The stand's three monitors add the Opala's people alone. A new record for the pilot shows up on them within a couple of
 seconds, and Curvelo shows its own board. Photos: renders/tv_recordes_<circuit>*.png.
 
 Usage, from the repo root, with the local server running (INTERLAGOS_URL for another port):
@@ -33,13 +33,14 @@ def run(page, circuit):
     page.evaluate('''()=>{const v=fixtureMode.visual,L=v.lane,b=v.layout.pit.box99,x=b.bay/2-1.15,p=L.point(x,b.front-2.2),o=v.crowd.position;v.hero.position.set(p.x,fixtureMode.walkGround(p.clone().add(o),99)-o.y,p.z);v.foot.floor=v.hero.position.y+o.y;v.foot.yaw=v.hero.rotation.y=L.heading+Math.PI/2;v.foot.pitch=.05;v.foot.distance=1.6;v.followPosition=null;}''')
     wait_js(page, '!!' + SHOWN); page.wait_for_timeout(1200); page.screenshot(path=str(ROOT / 'renders' / f'tv_recordes_{circuit}.png'))
     shown = page.evaluate(SHOWN); name = {'interlagos': 'INTERLAGOS', 'curvelo': 'OVAL DE CURVELO'}[circuit]
-    check('tvs_titled_for_track_' + circuit, shown['title'] == 'RECORDES · ' + name and shown['mode'] == 'immersive')
-    check('stand_shows_other_mode_' + circuit, shown['other']['mode'] == 'normal' and len(shown['other']['lap']) == 8 and all(r['ai'] for r in shown['other']['lap']))
-    check('tvs_list_track_records_' + circuit, len(shown['lap']) == 8 and all(r['time'] != '—' for r in shown['lap'] + shown['race']) and [r['place'] for r in shown['lap']] == sorted(r['place'] for r in shown['lap']))
+    opala, fusca, people = shown['boards']
+    check('tvs_titled_for_track_' + circuit, shown['title'] == 'RECORDES · ' + name and [b['subtitle'] for b in shown['boards']] == ['MELHOR VOLTA · OPALA', 'MELHOR VOLTA · FUSCA', 'MELHOR VOLTA · OPALA · PESSOAS'])
+    check('stand_shows_people_alone_' + circuit, not any(r['ai'] for r in people['rows']) and not any(r['ai'] for r in fusca['rows']))
+    check('tvs_list_track_records_' + circuit, len(opala['rows']) == 8 and all(r['time'] != '—' for r in opala['rows']) and [r['place'] for r in opala['rows']] == sorted(r['place'] for r in opala['rows']))
     # A new best lap for the pilot is saved by the game (lap-records.js) and reaches the TVs.
-    page.evaluate('''async()=>{const {saveRecord}=await import('./lap-records.js');saveRecord(localStorage,{name:'Tester TV',circuit:interlagos.circuit,mode:'immersive',bestLap:interlagos.circuit==='curvelo'?20:90,bestRace:null});}''')
-    wait_js(page, SHOWN + ".lap.some(r=>r.me)", timeout=5000)
-    mine = [r for r in page.evaluate(SHOWN + '.lap') if r['me']][0]
+    page.evaluate('''async()=>{const {saveRecord}=await import('./lap-records.js');saveRecord(localStorage,{name:'Tester TV',circuit:interlagos.circuit,mode:'immersive',bestLap:interlagos.circuit==='curvelo'?20:90});saveRecord(localStorage,{name:'Tester TV',circuit:interlagos.circuit,mode:'normal',car:'fusca',bestLap:interlagos.circuit==='curvelo'?40:150});}''')
+    wait_js(page, SHOWN + ".boards[0].rows.some(r=>r.me)&&" + SHOWN + ".boards[1].rows.some(r=>r.me)", timeout=5000)
+    mine = [r for r in page.evaluate(SHOWN + '.boards[0].rows') if r['me']][0]
     check('new_record_reaches_tvs_' + circuit, mine['place'] == 1 and mine['number'] == '99' and mine['name'] == 'Tester TV')
     page.wait_for_timeout(600); page.screenshot(path=str(ROOT / 'renders' / f'tv_recordes_{circuit}_novo.png'))
     # The team stand's monitors, from the registration circle beside the engineers.

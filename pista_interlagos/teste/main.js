@@ -485,15 +485,16 @@ const splashGround={point:new THREE.Vector3(),normal:new THREE.Vector3(0,1,0)};
 // The floodlight masts on the pit wall of the circuit loaded (floodlights.js), lit after dark.
 let floods=null;
 const fuscaBody=new FuscaBody(carBody),seatShift=new THREE.Vector3(),eyeShift=new THREE.Vector3(),noShift=new THREE.Vector3();
-// The two TVs in Box 99's garage and the team stand's monitors show this track's records (the mode
-// being played, and the other mode's best laps on the stand); they are
-// checked every 1.5 s and redrawn only when the lists change (a new record, the other mode).
+// The two TVs in Box 99's garage and the team stand's monitors show this track's best laps (one record a circuit,
+// whichever mode drove it): the Opala's with the AI, the Fusca's, and on the stand the Opala's people alone; they
+// are checked every 1.5 s and redrawn only when the lists change (a new record).
 let recordTvs=null,recordTvsKey='',recordTvsAt=0;
 function updateRecordTvs(now){
  if(!recordTvs||now<recordTvsAt)return;recordTvsAt=now+1500;
- const kind=immersive?.active?'immersive':'normal',otherKind=kind==='immersive'?'normal':'immersive',read=m=>trackRecords(pilotStorage(),circuit.id,m,immersive?.pilotName);
- const lists=read(kind),other={mode:otherKind,lap:read(otherKind).lap},key=JSON.stringify([circuit.id,kind,lists,other]);
- if(key!==recordTvsKey){recordTvsKey=key;recordTvs.showRecords({title:`RECORDES · ${circuit.name.toUpperCase()}`,mode:kind,laps:raceLaps(circuit.id,LAPS.standard),...lists,other});}
+ const read=(car,ai=true)=>trackRecords(pilotStorage(),circuit.id,car,immersive?.pilotName,8,{ai}).lap;
+ const boards=[{subtitle:'MELHOR VOLTA · OPALA',rows:read('opala')},{subtitle:'MELHOR VOLTA · FUSCA',rows:read('fusca')},{subtitle:'MELHOR VOLTA · OPALA · PESSOAS',rows:read('opala',false)}];
+ const key=JSON.stringify([circuit.id,boards]);
+ if(key!==recordTvsKey){recordTvsKey=key;recordTvs.showRecords({title:`RECORDES · ${circuit.name.toUpperCase()}`,boards});}
 }
 // Ghost lap (G): the pilot's best lap on this circuit, in the mode being played (as the records),
 // recorded while he drives (ghost-lap.js) and replayed as a see-through Opala over the race
@@ -1937,7 +1938,7 @@ window.interlagosCarros={info:()=>({...carSelect.info(),raceCar,painted:carLiver
 function renderTracks(){
  const pilot=pilotPicker.profiles.selected||'';$('tracksPilot').textContent=pilotLine();
  for(const slot of document.querySelectorAll('[data-best]')){
-  const lap=trackRecords(pilotStorage(),slot.dataset.best,'normal',pilot,8).lap,mine=lap.find(r=>r.me);
+  const lap=trackRecords(pilotStorage(),slot.dataset.best,menuModel(),pilot,8).lap,mine=lap.find(r=>r.me);   // the car chosen (the story's Opala)
   slot.textContent=mine?`Seu recorde · ${mine.time}`:lap[0]?`Recorde · ${lap[0].time}`:'';
  }
  // Modo História's season picks the track: the round to come in big (the first before the season starts, the last once it is over).
@@ -2034,7 +2035,8 @@ const lapRecords=new LapRecords(circuit.id),raceResults=new RaceResults({
  // (user, 10-24: only if the player clicks).
  onPodium:()=>{if(immersive){immersive.podiumCamera=true;immersive.mouseFree=false;}}});
 const pilotPicker=new PilotPicker(),automaticRecords=new AutomaticRecords(pilotStorage()),automaticAIRecords=new AutomaticAIRecords(pilotStorage());
-$('recordsButton').onclick=()=>{lapRecords.circuit=circuit.id;lapRecords.open();};
+// The menu's Recordes: during a session, its circuit and car; before any, the dialog's last view.
+$('recordsButton').onclick=()=>{lapRecords.circuit=circuit.id;lapRecords.open(null,sessionStarted?{circuit:circuit.id,car:raceModel}:null);};
 $('settingsButton').onclick=openSettings;
 mobile=new MobileControls({enabled:touchDevice,onMenu:openSettings,onCamera:()=>{if(ready)setCameraMode(nextCameraMode(),true);},onSkin:cycleLivery,onReset:()=>{if(ready&&!immersive.finishing){if(!immersive?.handleKey('KeyR'))reset(true);}},onUnlock:()=>carAudio.unlock(),onArrange:arrangePause});
 // Xbox / PlayStation controller (gamepad-controls.js) and racing wheel (wheel-controls.js): their
