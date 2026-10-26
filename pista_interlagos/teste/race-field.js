@@ -107,6 +107,31 @@ export function resolveContact(a,b){
 // classic outside-inside-outside), its bends, and the corners along it. Once per circuit.
 // A clean driver's lap pace runs from LAP_PEAK (his best possible lap) down by LAP_SPREAD or a little more.
 const LAP_PEAK=1.015,LAP_SPREAD=.07;
+// Central #21 (Stevan's racecraft, the levels above Fácil only). About WEIGH seconds before the next corner (the corner
+// map, known from the start of the straight: the speed plan sees a braking zone only some 1.5 s before it) a clean driver
+// within WEIGH_GAP metres of the car ahead weighs the move once (commitChance): skill from the pilots' table (the player
+// counts as PLAYER_SKILL); close in level it is a fair fight, a stronger attacker goes more often, a weaker one now and
+// then, and the dice keep the upsets. Committed, he keeps his foot in, close in the tow (no corner margin, no lifting to
+// hold a gap; the last-moment brake only for a car really about to be hit), and pulls out once the run has brought him
+// within PULL_GAP metres of the car, or within POUNCE seconds of the braking point from up to POUNCE_GAP, still at speed, and brakes later on the move (PASS_BRAKE: the inside is tighter) to get
+// alongside;
+// otherwise he follows. Earlier only on a straight past a car much slower (BIG_CLOSING m/s; not one braking or
+// cornering ahead of him) or past a stopped one. A driver just passed comes back
+// at the man who did it (REVENGE seconds, the stronger the keener); the best (skill 8 up) press the player harder.
+// The cover against another rival weighs skill too (defendChance); against the player it stays the style's (#21.2).
+const WEIGH=3.2,WEIGH_GAP=16,POUNCE=1.6,POUNCE_GAP=12,PULL_GAP=7,BIG_CLOSING=4,PLAYER_SKILL=7,REVENGE=30,PASS_BRAKE=.04;
+// A clean driver following a car that accelerates (out of a corner) reads it FOLLOW_LEAD seconds ahead: holding his gap to
+// its speed of the moment he stayed on part throttle while it pulled away, some 7 m down every straight, tow or not.
+const FOLLOW_LEAD=.8;
+// Pressed by a stronger rival a clean driver errs more: the pressure's 1.7 grows by PRESSURE_SKILL a point of skill he
+// gives away (the player's pressure stays as it was, #21.2).
+const PRESSURE_SKILL=.25;
+// A title on the line (RaceField stakes, main.js titleStakes: 0-1 for a rival who can still win the championship, all of it
+// in its last round): he gives it all, his laps nearer his best (TITLE_PACE of the swing gone) and his moves bolder
+// (TITLE_PUSH on commitChance).
+const TITLE_PACE=.35,TITLE_PUSH=.2;
+export const commitChance=(mine,theirs,aggression,boost=0)=>clamp(.5+.09*(mine-theirs)+.25*(aggression-.6)+boost,.12,.95);
+export const defendChance=(style,mine,theirs)=>clamp(style+.1*(mine-theirs),.1,.95);
 const G=9.81,BRAKE_FULL=11,LINE_MARGIN=1.3,KERB_ROOM=.45,LANE_MARGIN=1.1,CAR_GAP=2.45,CORNER_CURVE=1/260;
 const lines=new WeakMap();
 export function racingLine(data){
@@ -145,6 +170,12 @@ function lineShape(a,off,ds){
   return out;
  };
  const curve=curvature(X,Y),centre=curvature(i=>a[i][1],i=>a[i][2]);
+ // The bend a lane beside the centre line follows (laneCentre, the clean drivers'): the centre's, except where the road
+ // only widens or narrows (a pit exit merging, Interlagos' after the Sol): there one edge runs straight while the centre
+ // swings across, and a car out of its line felt a corner nobody drives (braking beside a rival onto the reta oposta,
+ // Central #21). In a real corner both edges bend with the centre (even a hairpin's outer edge keeps over half its bend).
+ const edge=side=>curvature(i=>a[i][1]+a[i][9]*side*a[i][4]/2,i=>a[i][2]+a[i][10]*side*a[i][4]/2),left=edge(1),right=edge(-1);
+ const laneCentre=centre.map((k,i)=>{const l=left[i],r=right[i];return Math.abs(l)<.5*Math.abs(k)||Math.abs(r)<.5*Math.abs(k)?(Math.abs(l)<Math.abs(r)?l:r):k;});
  // Corners are runs of real bend on the line; each sample knows the corner it is in,
  // or the next one, and how far away its turn-in is.
  const bend=i=>Math.abs(curve[(i+n)%n])>CORNER_CURVE,corners=[],owner=new Int32Array(n).fill(-1);
@@ -158,7 +189,7 @@ function lineShape(a,off,ds){
  }
  const cornerAt=new Int32Array(n).fill(-1),cornerDist=new Float64Array(n);
  for(let t=2*n-1,id=-1,run=0;t>=0;t--){const i=t%n;if(owner[i]>=0){id=owner[i];run=0;}else run++;if(t<n){cornerAt[i]=id;cornerDist[i]=run*ds;}}
- return {curve,centre,corners,cornerAt,cornerDist,ds};
+ return {curve,centre,laneCentre,corners,cornerAt,cornerDist,ds};
 }
 // --- Branch roads (data.branches, branch-lane.js: Pampulha's avenue past the Igrejinha): a second way past a stretch of
 // the lap, both valid. Each rival takes one way past each fork for the whole race (RaceField reset). The way by a branch
@@ -339,7 +370,8 @@ export class RaceField {
  // race option "Abandonos", on in the game, off by default here so seeded checks race full fields).
  // body: the rivals' body (physics.js OPALA_BODY, FUSCA_BODY in a Fusca race), taken at the next reset.
  // forkChoice (checks, reference runs): (entry, fork index) => true to send that rival by the branch, instead of the dice.
- constructor(data,{onStep,onReset,seed,ace=false,level='facil',retirements=false,roster=RIVAL_ROSTER,body=OPALA_BODY,weatherGrip=1,forkChoice=null}={}){this.data=data;this.weatherGrip=weatherGrip;this.body=body;this.onStep=onStep;this.onReset=onReset;this.seed=seed;this.ace=ace;this.level=level;this.retirements=retirements;this.roster=roster;this.line=racingLine(data);this.route=pitRoute(data);this.forkChoice=forkChoice;this.views();this.time=0;this.collisions=0;this.cooldowns=new Map();this.reset();}
+ // stakes: {number: 0-1} the championship's title stakes (TITLE_PACE), set by main.js before a round, taken at the next reset.
+ constructor(data,{onStep,onReset,seed,ace=false,level='facil',retirements=false,roster=RIVAL_ROSTER,body=OPALA_BODY,weatherGrip=1,forkChoice=null}={}){this.data=data;this.weatherGrip=weatherGrip;this.body=body;this.onStep=onStep;this.onReset=onReset;this.seed=seed;this.ace=ace;this.level=level;this.stakes=null;this.retirements=retirements;this.roster=roster;this.line=racingLine(data);this.route=pitRoute(data);this.forkChoice=forkChoice;this.views();this.time=0;this.collisions=0;this.cooldowns=new Map();this.reset();}
  // The ways a car is driven by (decide's view): plain, the lap as ever (a track without a branch road, and the last
  // resort); main, the lap on a track with branch roads (a car on a branch's own road away from the lap is not on it:
  // mainFrame null); one per branch, the lap with that branch in it (forkRoutes, forkFrame). a, line, L: the stations,
@@ -412,7 +444,7 @@ export class RaceField {
    const car=new TestCar(this.data).setBody(this.body);car.reset(index);car.awaitingStart=grid;car.engineScale=style.engineScale;car.weatherGrip=this.weatherGrip;if(style.heavy)car.contactMass=style.heavy;
    const lane=gridSlot(slot).lane;car.x+=car.surface.lx*lane;car.y+=car.surface.ly*lane;car.surface=car.sample(car.x,car.y);
    const rating=levelRating(entry,level);
-   const rival={car,entry,rosterIndex:field.indexOf(entry),style,level,progress,start:progress,splits:[],lastS:car.surface.s,finished:false,finishTime:null,stun:0,
+   const rival={car,entry,rosterIndex:field.indexOf(entry),style,level,stake:style.clean?clamp(+(this.stakes?.[entry.number]??0)||0,0,1):0,progress,start:progress,splits:[],lastS:car.surface.s,finished:false,finishTime:null,stun:0,
     // Personal line: share of the road used, apex timing and a slow wander of a few decimetres.
     lineUse:clamp(style.lineUse*pick(.95,1.04),.8,1),apex:style.apex+Math.round(pick(-1.4,1.4)),
     wander:{amp:pick(.08,.3)*(1.4-rating),rate:pick(.06,.14)*2*Math.PI,phase:pick(0,2*Math.PI)},
@@ -552,7 +584,7 @@ export class RaceField {
    // laps a few tenths to two seconds off it (the pilots: "1:51, 1:52, 1:53, then 1:51 again"). The
    // lap's pace scales his braking and how much of the engine's edge he uses, and on a slower lap his grip
    // (never above his style's: at the ace's grip the car is at its limit).
-   if(lap!==r.lap){r.lap=lap;const u=rand();if(st.clean){r.pace=LAP_PEAK-(LAP_SPREAD+.04*(1-st.consistency))*u;r.form=r.day*Math.min(1,r.pace);c.engineScale=1+(st.engineScale-1)*r.pace**8;}else r.form=r.day*(1+(u-.5)*.03*(1.4-st.consistency));}
+   if(lap!==r.lap){r.lap=lap;const u=rand();if(st.clean){r.pace=LAP_PEAK-(LAP_SPREAD+.04*(1-st.consistency))*u*(1-TITLE_PACE*(r.stake??0));r.form=r.day*Math.min(1,r.pace);c.engineScale=1+(st.engineScale-1)*r.pace**8;}else r.form=r.day*(1+(u-.5)*.03*(1.4-st.consistency));}
    r.cooldown=Math.max(0,r.cooldown-dt);r.modeTime+=dt;
    // The ace keeps his move lanes 60 cm further off the edges: at the limit a car can overshoot.
    const wander=r.wander.amp*Math.sin(t*r.wander.rate+r.wander.phase),edge=st.clean?.6:0,fit=(v,k)=>clamp(v,line.laneLo[k]+edge,line.laneHi[k]-edge);
@@ -579,7 +611,8 @@ export class RaceField {
     const forward=dx*fx+dy*fy,side=dy*fx-dx*fy,relative=speed-(o.vx*fx+o.vy*fy);
     // (The ace only for a car he is closing on: one pulling away is no reason to lift. Nor for one on another
     // level where the lap passes over itself: physics.js sameLevel.)
-    if(forward>0&&forward<6+Math.max(0,relative)*.8&&Math.abs(side)<2&&!(st.clean&&relative<.5)&&sameLevel(c,o))emergency=Math.max(emergency,clamp((7+relative-forward)/7,.2,1));
+    const bumper=st.clean&&r.go&&r.weighed===lap*1000+line.cornerAt[i]?4.5+Math.max(0,relative)*.7:6+Math.max(0,relative)*.8;
+    if(forward>0&&forward<bumper&&Math.abs(side)<2&&!(st.clean&&relative<.5)&&sameLevel(c,o))emergency=Math.max(emergency,clamp((7+relative-forward)/7,.2,1));
    }
    const corner=line.cornerAt[i],bend=line.corners[corner],toCorner=line.cornerDist[i];
    const attack=!!ahead&&ahead.gap<Math.max(12,along*1.1),pressured=!!behind&&behind.gap>-Math.max(8,along*.5);
@@ -587,7 +620,8 @@ export class RaceField {
    // Once per braking zone a driver may misjudge it, more so under pressure or on the attack:
    // brakes too late or carries too much speed, and runs wide.
    if(bend&&corner!==r.rolled&&toCorner<140&&toCorner>40&&speed>22&&!r.finished&&!st.ace){
-    r.rolled=corner;const chance=(st.errors??(.006+.03*(1-r.entry.rating)))*(pressured?1.7:1)*(attack?1+.6*st.aggression:1);
+    const hunter=pressured&&st.clean?driverOf.get(behind.o):null,gives=hunter?Math.max(0,hunter.entry.skill-(r.entry.skill??PLAYER_SKILL)):0;
+    r.rolled=corner;const chance=(st.errors??(.006+.03*(1-r.entry.rating)))*(pressured?1.7*(1+PRESSURE_SKILL*gives):1)*(attack?1+.6*st.aggression:1);
     if(rand()<chance){
      // Either a hesitant corner (early braking, lost time) or an overcooked one that runs wide.
      // A clean driver's hesitation is a smaller lift.
@@ -599,12 +633,13 @@ export class RaceField {
    const m=r.mistake,rh=r.rhythm,wobble=rh.amp*(.6*Math.sin(t*rh.rates[0]+rh.phases[0])+.4*Math.sin(t*rh.rates[1]+rh.phases[1])),push=(attack?st.aggression:0)+(r.mode==='pass'?1+st.aggression:0);
    // The ace is already at the limit: a move asks only a little more of him, and a move round the
    // outside of the corner ahead leaves him a margin instead (the car drifts out as it gets there).
-   const outside=st.clean&&r.mode==='pass'&&!!bend&&r.passSide===-bend.dir,pushGrip=st.clean?(outside?0:.006):.02,pushBrake=st.clean?.025:.05;
+   const outside=st.clean&&r.mode==='pass'&&!!bend&&r.passSide===-bend.dir,pushGrip=st.clean?(outside?0:.006):.02,pushBrake=st.clean?(r.mode==='pass'?PASS_BRAKE:.025):.05;
    // The style's grip and braking are an Opala's: a car with stickier tyres (physics.js mechanics) corners and brakes harder.
    const tyres=(c.mechanics?.grip??1)*(c.weatherGrip??1),grip=(m?m.grip:st.cornerGrip*r.form*(1+wobble)*(1+pushGrip*push)*(outside?.97:1))*tyres,braking=(m?m.brake:st.braking*(1+1.5*wobble)*(1+pushBrake*push)*(st.clean?r.pace:1))*tyres;
    // Bend of the planned path at sample k. A parallel lane bends tighter on the inside
    // (curvature / (1 - curvature * offset)); banking helps.
-   const bendAt=k=>{const cl=line.centre[k],mine=r.lineUse*line.curve[(k-r.apex+n)%n]+(1-r.lineUse)*cl;return mine+(cl/Math.max(.5,1-cl*fit(r.lane,k))-mine)*r.blend;};
+   // (laneCentre: a clean driver reads a lane's bend off the edges where the road only changes width; Fácil keeps the centre's.)
+   const cen=st.clean?line.laneCentre:line.centre,bendAt=k=>{const cl=cen[k],mine=r.lineUse*line.curve[(k-r.apex+n)%n]+(1-r.lineUse)*cl;return mine+(cl/Math.max(.5,1-cl*fit(r.lane,k))-mine)*r.blend;};
    // maxSpeed is a style target, not a limiter: engine, drag and the tow decide the straights.
    let target=st.maxSpeed*r.form*1.12,bindV=target,bindDist=0,planNeed=0,slow=null;
    if(st.ellipse){
@@ -618,7 +653,7 @@ export class RaceField {
      // Where the plan lies further across than the car can move by then (about 0.15 m per metre),
      // the car is still on a lane nearer its own: that lane's bend counts if it is tighter.
      const k=(i+j)%n,want=plan(k),room=.3+.15*j*ds,on=clamp(d,line.laneLo[i],line.laneHi[i]),off=clamp(want,on-room,on+room);let kap=bendAt(k);
-     if(Math.abs(off-want)>.4){const cl=line.centre[k],lane=cl/Math.max(.5,1-cl*off);if(Math.abs(lane)>Math.abs(kap))kap=lane;}
+     if(Math.abs(off-want)>.4){const cl=cen[k],lane=cl/Math.max(.5,1-cl*off);if(Math.abs(lane)>Math.abs(kap))kap=lane;}
      const lateral=Math.max(2,grip-G*Math.sign(kap)*a[k][5]),length=ds*Math.max(.5,1-line.centre[k]*want),vc=crest?Math.min(crest[k],Math.sqrt(lateral/Math.max(Math.abs(kap),1e-4))):Math.sqrt(lateral/Math.max(Math.abs(kap),1e-4));
      if(v<Infinity){const use=Math.min(1,v*v*Math.abs(kap)/lateral);v=Math.sqrt(Math.max(0,v*v+2*length*(braking*Math.sqrt(1-use*use)+G*a[k][6])));}
      v=Math.min(v,vc);if(vc<slowV){slowV=vc;slowJ=j;}
@@ -634,12 +669,20 @@ export class RaceField {
     if(limit<target){target=limit;bindV=vc;bindDist=dist;}
    }
    const free=target;
-   // On a straight they tuck into the tow; into corners they leave their own margin.
-   const g0=4.9+Math.max(0,along)*st.followTime*(r.mode==='pass'?.4:bend&&toCorner<150?1:.5),closing=ahead?along-ahead.v:0;
-   // Held up: close behind a car slower than this driver would go here.
-   r.stuck=ahead&&ahead.gap<g0+4&&free>ahead.v+1?(r.stuck??0)+dt:Math.max(0,(r.stuck??0)-2*dt);
    // For the ace: a real braking zone in view (his plan sheds more than about 10 km/h there).
    const zone=!!st.clean&&slow.v<speed-3;
+   // (Central #21) The braking point ahead and the move weighed for it, once (WEIGH): against a man he was just passed by
+   // keener, the more so the stronger he is; at the player keener for the best.
+   const brakePoint=zone?slow.dist-Math.max(0,speed*speed-slow.v*slow.v)/(2*braking):Infinity,weigh=lap*1000+corner;
+   if(st.clean&&ahead&&ahead.gap<WEIGH_GAP&&toCorner>20&&toCorner<Math.max(80,along*WEIGH)&&r.mode==='line'&&r.weighed!==weigh){
+    const foe=driverOf.get(ahead.o),theirs=foe?foe.entry.skill:PLAYER_SKILL,mine=r.entry.skill??PLAYER_SKILL,back=r.revenge?.on===ahead.o&&t<r.revenge.until;
+    r.weighed=weigh;r.go=rand()<commitChance(mine,theirs,st.aggression,(back?.25+.05*(mine-theirs):0)+(ahead.o===player&&mine>=8?.2:0)+TITLE_PUSH*(r.stake??0));
+   }
+   const committed=st.clean&&!!r.go&&r.weighed===weigh;
+   // On a straight they tuck into the tow; into corners they leave their own margin (not a clean driver set on a move).
+   const g0=committed&&r.mode!=='pass'?4.5+Math.max(0,along)*.04:4.9+Math.max(0,along)*st.followTime*(r.mode==='pass'?.4:bend&&toCorner<150?1:st.clean?.3:.5),closing=ahead?along-ahead.v:0;
+   // Held up: close behind a car slower than this driver would go here.
+   r.stuck=ahead&&ahead.gap<g0+4&&free>ahead.v+1?(r.stuck??0)+dt:Math.max(0,(r.stuck??0)-2*dt);
    // A refuelling stop (planFuel): looked at once a lap as the pit entry comes into view (wantStop), then over to the
    // pit side and down to the lane's pace by the entry, where pitInput takes the car to its garage.
    const R0=this.route,toPit=r.fuel!==undefined&&!r.finished&&R0?((R0.entryS-c.surface.s)%L+L)%L:Infinity;
@@ -680,7 +723,10 @@ export class RaceField {
     // close ahead, either side out of the tow. Only the car he is passing and those just beyond
     // it can close the lane.
     const inTime=!zone||!ahead||ahead.gap-2<(Math.max(0,closing)+3)*(slow.dist-15)/Math.max(along,1);
-    if(r.mode!=='pass'&&r.mode!=='room'&&ahead&&r.cooldown===0&&(st.clean?inTime:!late)&&(ahead.gap<g0+6&&(closing>(st.clean?.3:.8)||r.stuck>1.3*(1.4-st.aggression))||ahead.gap<st.passDistance&&closing>(st.clean?3:4)||obstacle)){
+    const want=!!ahead&&(ahead.gap<g0+6&&(closing>(st.clean?.3:.8)||r.stuck>1.3*(1.4-st.aggression))||ahead.gap<st.passDistance&&closing>(st.clean?3:4)||obstacle);
+    // (Central #21: the tow first, then the move as weighed, see WEIGH.)
+    const rush=obstacle||closing>BIG_CLOSING&&!zone&&!near&&!!ahead&&ahead.gap<WEIGH_GAP,pounce=!!ahead&&(rush?want:committed&&toCorner>15&&brakePoint>8&&(ahead.gap<PULL_GAP||ahead.gap<POUNCE_GAP&&brakePoint<Math.max(45,along*POUNCE)));
+    if(r.mode!=='pass'&&r.mode!=='room'&&r.cooldown===0&&(st.clean?pounce&&inTime:want&&!late)){
      const view=st.clean?clamp(Math.round(Math.min(slow.dist,90)/ds),8,44):44;
      let low=-Infinity,high=Infinity;for(let j=0;j<view;j+=4){const q=(i+j)%n;low=Math.max(low,line.laneLo[q]);high=Math.min(high,line.laneHi[q]);}
      // Near a bend only the inside will do. For the ace that is a braking zone, or a corner within
@@ -690,7 +736,7 @@ export class RaceField {
      for(const side of inside&&!(st.clean&&!heavy)?[pref]:[pref,-pref]){
       const lane=clamp(ahead.od+side*2.8,low,high);if(Math.abs(lane-ahead.od)<2.3||st.clean&&inside&&side!==inside&&Math.abs(lane-d)>3)continue;
       if(bodies.some(o=>{if(o===c||o===ahead.o)return false;const f=F(o);if(!f)return false;const gap=lapTravel(here.s,f.s,VL);return gap>(obstacle?0:-8)&&gap<ahead.gap+(st.clean?8:20)&&Math.abs(f.d-lane)<2.2;}))continue;
-      Object.assign(r,{mode:'pass',rival:ahead.o,passSide:side,lane,blendTarget:1,modeTime:0});break;
+      Object.assign(r,{mode:'pass',rival:ahead.o,passSide:side,lane,blendTarget:1,modeTime:0});r.attacks=(r.attacks??0)+1;break;
      }
      if(r.mode!=='pass')r.cooldown=.5;
     }
@@ -703,7 +749,8 @@ export class RaceField {
       const gap=lapTravel(here.s,f.s,VL),ov=o.vx*f.tx+o.vy*f.ty,clearOf=f.d+r.passSide*2.6;
       r.lane+=clamp(fit(r.passSide>0?Math.max(r.lane,clearOf):Math.min(r.lane,clearOf),i)-r.lane,-st.laneRate*1.5*dt,st.laneRate*1.5*dt);
       const done=gap<-5.5,shut=gap>4.2&&Math.abs(r.lane-f.d)<2.1,fading=gap>10&&along<ov-1.5,lost=gap>st.passDistance+15||r.modeTime>12;
-      if(done||shut||fading||lost){if(done)r.passes++;Object.assign(r,{mode:'line',rival:null,blendTarget:0,cooldown:done?1:st.passCooldown,stuck:0});}
+      if(done||shut||fading||lost){if(done)r.passes++;const why=done?'done':shut?'shut':fading?'fading':'lost';(r.ended??={})[why]=(r.ended[why]??0)+1;
+       const victim=driverOf.get(o);if(done&&victim?.style.clean&&!victim.style.ace)Object.assign(victim,{revenge:{on:c,until:t+REVENGE},cooldown:0});if(st.clean)r.go=false;Object.assign(r,{mode:'line',rival:null,blendTarget:0,cooldown:done?1:st.passCooldown,stuck:0});}
      }
     }
     // Leaving room (the ace, below): keep a car's width outside the attacker until one of them is clear.
@@ -712,7 +759,8 @@ export class RaceField {
     // The ace covers only a real braking zone, from a car close and quick enough to try, half-way.
     if(st.clean){
      if(r.mode==='line'&&behind&&zone&&slow.dist>30&&slow.dist<150&&slow.corner!==r.defended&&behind.gap>-9&&behind.v>along-.5){
-      r.defended=slow.corner;if(rand()<st.defend)Object.assign(r,{mode:'defend',lane:.6*(slow.dir>0?line.laneHi[i]:line.laneLo[i]),blendTarget:.5,modeTime:0});
+      const foe=behind.o===player?null:driverOf.get(behind.o),cover=foe?defendChance(st.defend,r.entry.skill??PLAYER_SKILL,foe.entry.skill??PLAYER_SKILL):st.defend;
+      r.defended=slow.corner;if(rand()<cover)Object.assign(r,{mode:'defend',lane:.6*(slow.dir>0?line.laneHi[i]:line.laneLo[i]),blendTarget:.5,modeTime:0});
      }
      if(r.mode==='defend'&&(!zone||slow.dist<10||slow.corner!==r.defended||r.modeTime>6))Object.assign(r,{mode:'line',blendTarget:0});
     }
@@ -727,7 +775,7 @@ export class RaceField {
    r.blend+=clamp(r.blendTarget-r.blend,-rate*dt,rate*dt);
    // A car we cannot pass yet: close up no faster than we could brake to its speed, then sit at
    // the driver's own following distance, in the tow.
-   const follow=ahead?ahead.v+Math.sqrt(2*.6*braking*Math.max(0,ahead.gap-g0))-Math.max(0,g0-ahead.gap):Infinity;if(ahead)target=Math.min(target,follow);
+   const follow=ahead?ahead.v+(st.clean?Math.max(0,ahead.o.longAccel??0)*FOLLOW_LEAD:0)+Math.sqrt(2*.6*braking*Math.max(0,ahead.gap-g0))-Math.max(0,g0-ahead.gap):Infinity;if(ahead)target=Math.min(target,follow);
    // A clean driver watches the brake lights too: behind a car in his path that is really braking
    // (more than lifting off or cornering takes) he keeps the distance to slow a metre off its bumper,
    // taking it to brake hard (a car on the brakes soon brakes hard). Behind another clean driver, down

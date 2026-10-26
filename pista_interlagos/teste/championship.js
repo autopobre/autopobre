@@ -81,6 +81,14 @@ export function championshipStandings(state,model='opala'){
   .map((d,i)=>({...d,position:i+1}));
 }
 
+// A round's title stakes for the rivals (race-field.js TITLE_PACE, Central #21): {number: 0-1} for each one who can still be
+// champion, at most a win's points a round short of the leader (the player counted), from three rounds out and all of it in
+// the last; null when nothing is at stake yet.
+export function titleStakes(championship,round){
+ if(!championship?.started)return null;const left=championship.total-round,near=Math.max(0,1-(left-1)/3);if(!near||left<1)return null;
+ const table=championshipStandings(championship.state,championship.model),top=table[0]?.points??0,reach=CHAMPIONSHIP_POINTS[0]*left;
+ return Object.fromEntries(table.filter(d=>!d.player&&top-d.points<reach).map(d=>[d.number,+(near*Math.sqrt(1-(top-d.points)/reach)).toFixed(3)]));
+}
 export class Championship {
  // preferredModel (main.js): the model a championship not started yet would race, its standings' field until then.
  constructor(storage=null,mode='corrida',calendar='todas'){this.storage=storage;this.mode=CHAMPIONSHIP_MODES.includes(mode)?mode:'corrida';this.calendar=championshipCalendar(calendar,this.mode);this.key=championshipKey(this.mode,this.calendar);this.preferredModel=null;this.state=this.load();}

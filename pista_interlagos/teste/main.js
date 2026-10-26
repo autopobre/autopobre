@@ -9,7 +9,7 @@ import {createCurveloData} from './curvelo-data.js';
 import {createCurveloScene} from './curvelo-scene.js';
 import {createOpenCircuit} from './open-circuit.js';
 import {RaceResults,resultRows} from './race-results.js';
-import {Championship,calendarsFor,championshipCalendar} from './championship.js';
+import {Championship,calendarsFor,championshipCalendar,titleStakes} from './championship.js';
 import {renderChampionshipPanel,ChampionshipDialog} from './championship-board.js';
 import {LapRecords,AutomaticRecords,trackRecords} from './lap-records.js';
 import {AutomaticAIRecords} from './ai-records.js';
@@ -2210,6 +2210,8 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  pitstop?.reset();walker?.reset();automatic=false;watched=0;
  // Each new race (a restart, a championship round) lets the circuit's extras draw anew (pampulha-fauna.js: another bank).
  for(const extra of circuitExtras)extra.newRace?.();
+ // The title on the line in the season's last three rounds (Central #21, race-field.js TITLE_PACE): the rivals who can still win it.
+ immersive.field.stakes=championshipRace?titleStakes(championshipRace.championship,championshipRace.round):null;
  // The story's round (Old Stock 2026) tells the pension which months it pays (story-career.js PENSION_MONTHS).
  if(preferences.values.immersive){immersive.storyRound=championshipRace?.championship.mode==='historia'?championshipRace.round:null;immersive.start();}
  else{if(immersive.active)immersive.disable();reset();setCameraMode(preferences.values.camera);updateCar(1);updateCamera(1);}
