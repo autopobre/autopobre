@@ -1029,18 +1029,25 @@ export class RaceField {
  // longer this car took to get where it is; with nobody in yet, its average pace so far.
  // Never ahead of the car in front, nor of after (the player's own finish time).
  classification(totalLaps,after=-Infinity){
-  const L=this.data.meta.reconstructed_xy_m,goal=L*totalLaps+this.gridLeadIn,t=this.time,S=SPLITS,split=L/S,G=totalLaps*S;let ahead=after??-Infinity;
-  const ref=Number.isFinite(G)?[this.playerRun,...this.rivals].filter(q=>q?.splits?.length>G).sort((a,b)=>b.splits[G]-a.splits[G])[0]:null;
+  const t=this.time;let ahead=after??-Infinity;
   return [...this.rivals].sort((a,b)=>(a.finishTime??Infinity)-(b.finishTime??Infinity)||!!a.retired-!!b.retired||b.progress-a.progress).map(r=>{
    const row={...r.entry,bestLap:r.car.best,totalTime:r.finished?r.finishTime:null,finished:r.finished,laps:r.car.laps,...(r.retired?{dnf:true,breakdown:r.broken?.kind}:{})};
-   if(r.finished||r.retired||!Number.isFinite(goal)||t<=0)return row;
-   const at=Math.max(0,(r.progress-this.gridLeadIn)/split),k=Math.floor(at),lap=Math.floor(k/S),p=r.splits??[];let left;
-   if(lap>=1&&lap<totalLaps&&p.length>lap*S){const lapTime=p[lap*S]-p[(lap-1)*S];left=p[lap*S]-p[k-S]-(at-k)*(p[k-S+1]-p[k-S])+(totalLaps-lap-1)*lapTime;}
-   else if(ref&&ref.splits[k]+(at-k)*(ref.splits[k+1]-ref.splits[k])>0){const q=ref.splits,refAt=q[k]+(at-k)*(q[k+1]-q[k]);left=t/refAt*(q[G]-refAt);}
-   else left=Math.max(0,goal-r.progress)/clamp((r.progress-(r.start??0))/t,8,90);
+   const left=this.timeLeft(r,totalLaps);if(left===null)return row;
    ahead=Math.max(t+Math.max(0,left),ahead+.2);
    return {...row,totalTime:ahead,estimated:true};
   });
+ }
+ // The time (s) a car still racing needs to the flag, as classification reckons it: a rival, or the player's own run
+ // (playerRun: a multiplayer room's race ended for everyone while it still raced, immersive-mode.js endFreeRace). Null
+ // for a car past the flag or out of the race, or before any time was raced.
+ timeLeft(r,totalLaps){
+  const L=this.data.meta.reconstructed_xy_m,goal=L*totalLaps+this.gridLeadIn,t=this.time,S=SPLITS,split=L/S,G=totalLaps*S;
+  if(r.finished||r.retired||!Number.isFinite(goal)||t<=0)return null;
+  const ref=Number.isFinite(G)?[this.playerRun,...this.rivals].filter(q=>q?.splits?.length>G).sort((a,b)=>b.splits[G]-a.splits[G])[0]:null;
+  const at=Math.max(0,(r.progress-this.gridLeadIn)/split),k=Math.floor(at),lap=Math.floor(k/S),p=r.splits??[];
+  if(lap>=1&&lap<totalLaps&&p.length>lap*S){const lapTime=p[lap*S]-p[(lap-1)*S];return p[lap*S]-p[k-S]-(at-k)*(p[k-S+1]-p[k-S])+(totalLaps-lap-1)*lapTime;}
+  if(ref&&ref.splits[k]+(at-k)*(ref.splits[k+1]-ref.splits[k])>0){const q=ref.splits,refAt=q[k]+(at-k)*(q[k+1]-q[k]);return t/refAt*(q[G]-refAt);}
+  return Math.max(0,goal-r.progress)/clamp((r.progress-(r.start??0))/t,8,90);
  }
  info(){return {collisions:this.collisions,rivals:this.rivals.map(r=>({number:r.entry.number,name:r.entry.name,level:r.entry.level,style:r.style.name,x:r.car.x,y:r.car.y,heading:r.car.heading,speed:Math.hypot(r.car.vx,r.car.vy),progress:r.progress,finished:r.finished,pit:r.pit?(r.pit.parked?'parked':'lane'):null,retired:!!r.retired,breakdown:r.broken?.kind??null,mode:r.mode,blend:r.blend,draft:r.tow,mistakes:r.mistakes,passes:r.passes,...(r.routes?{routes:[...r.routes]}:{})}))};}
 }

@@ -5,7 +5,8 @@ export const formatTime=value=>Number.isFinite(value)&&value>0?`${String(Math.fl
 // mode.playerEntry: the car a multiplayer guest races (multiplayer.js); otherwise the Opala 99.
 export function resultRows(mode){
  const rows=(mode.freeOrder??[]).map(entry=>({...entry})),me=mode.playerEntry??PLAYER_ENTRY;
- rows.splice(Math.max(0,(mode.finishPosition??mode.freePosition)-1),0,{...me,name:mode.pilotName||me.name,bestLap:mode.finishBest,totalTime:mode.finishTime,finished:true,player:true});
+ // (a multiplayer room's race ended by its host before this car was in: its time estimated, immersive-mode.js endFreeRace)
+ rows.splice(Math.max(0,(mode.finishPosition??mode.freePosition)-1),0,{...me,name:mode.pilotName||me.name,bestLap:mode.finishBest,totalTime:mode.finishTime,finished:!mode.finishEstimated,...(mode.finishEstimated&&{estimated:true}),player:true});
  return rows.map((row,index)=>({...row,position:index+1}));
 }
 export class RaceResults {
@@ -29,8 +30,8 @@ export class RaceResults {
   const $=id=>this.root.querySelector('#'+id);
   $('resultsCircuit').textContent=CIRCUITS[circuitId(mode.data?.meta.id)].name.toUpperCase();
   const laps=(mode.active?mode.storyLaps:mode.freeTotalLaps)??3;$('resultsMode').textContent=`/ ${mode.active?'IMERSIVA':mode.freeLineup?.length===1?'CORRIDA 1x1':'CORRIDA'} · ${laps} VOLTA${laps>1?'S':''}`;
-  $('resultsPlace').textContent=`VOCÊ CHEGOU EM ${mode.finishPosition}º / ${rows.length}`;
-  $('resultsTime').textContent=`TOTAL ${formatTime(mode.finishTime)}`;
+  $('resultsPlace').textContent=mode.finishEstimated?`CORRIDA ENCERRADA · VOCÊ FICOU EM ${mode.finishPosition}º / ${rows.length} (ESTIMADO)`:`VOCÊ CHEGOU EM ${mode.finishPosition}º / ${rows.length}`;
+  $('resultsTime').textContent=`TOTAL ${mode.finishEstimated?'≈ ':''}${formatTime(mode.finishTime)}`;
   $('resultsFastest').textContent=best?`VOLTA MAIS RÁPIDA · #${best.number} · ${formatTime(best.bestLap)}`:'VOLTA MAIS RÁPIDA · —';
   // A championship round: its points, the standings and the next round instead of a rerun
   // (in Modo História the podium comes first, as in any story race).

@@ -138,3 +138,13 @@ body.mp-pilula #walkHud{top:118px}
 /* A pilot's way out of the room (multiplayer.js Sair da sala): quiet, last on the card. */
 #mpRoom .mp-leave{display:block;width:100%;margin:8px 0 0;background:transparent!important;border-color:#ffffff55!important;color:#f5f6ed!important}
 #mpRoom .mp-leave[hidden]{display:none}
+/* The host's Encerrar corrida (multiplayer.js askEnd): beside the line's status on the track, red when it asks again. */
+#mpRoom .mp-end{display:block;width:100%;margin:0 0 8px;background:#3a1418!important;border-color:#ff8a8a88!important;color:#ffd7d7!important}
+#mpRoom .mp-end.mp-confirm{background:#c62828!important;border-color:#c62828!important;color:#fff!important}
+#mpRoom .mp-end[hidden]{display:none}
+#mpRoom:is(.mp-racing,.mp-tracks) .mp-end{width:auto;margin:0;white-space:nowrap}
+/* The room race's end coming (multiplayer.js endWarning): a word at one minute and at thirty seconds, then the last ten
+   seconds counted down large, in the middle of the screen, over nothing that is clicked. */
+#mpFimAviso{position:fixed;left:50%;top:28%;z-index:42;transform:translate(-50%,-50%);max-width:calc(100vw - 32px);padding:10px 22px;border-radius:12px;background:#0b1a30cc;border:1px solid #ffe08a66;color:#ffe08a;font:800 20px/1.3 Inter,"Segoe UI",Arial,sans-serif;text-align:center;text-shadow:0 2px 6px #000;pointer-events:none}
+#mpFimAviso[hidden]{display:none}
+#mpFimAviso.mp-fim-numero{padding:0 24px;background:none;border:0;font-size:120px;line-height:1;color:#fff;text-shadow:0 4px 18px #000,0 0 30px #ffb23a}

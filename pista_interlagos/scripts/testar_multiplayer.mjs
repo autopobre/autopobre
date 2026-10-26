@@ -896,6 +896,22 @@ for(let trial=0;trial<6;trial++){
  const asked=[];plain.onclose=reason=>asked.push(reason);plain.open();await wait();await wait();assert.deepEqual(asked,['chave'],'with the link alone: the password asked for');
  link.closing=true;clearTimeout(link.retry);
 }
+// The host ends its race for everyone (multiplayer.js raceEnd): its lobby says the race is finished and every guest
+// hears it once ('end'); not before the start, and never from a guest.
+{
+ let now=0;const clock=()=>now,name='fim-'+Math.random().toString(36).slice(2,8),advance=(rooms,to)=>{while(now<to-1e-9){now=Math.min(to,now+.1);for(const r of rooms)r.tick();}};
+ const A=new Room({room:name,name:'Ana',clock}),B=new Room({room:name,name:'Bia',want:'19',wait:true,clock}),ends=[];
+ B.on('race',()=>true).on('end',race=>ends.push(race.id));
+ A.start();await wait();advance([A],1);B.start();await wait();await wait();
+ const race=A.planRace({circuit:'interlagos',laps:1});A.openRace(race);await wait();await wait();
+ assert.equal(A.endRace(),false,'not before the start');
+ B.sendReady();await wait();await wait();A.lightsOut();await wait();await wait();assert.equal(B.race.state,'racing');
+ assert.equal(B.endRace(),false,'a guest ends nothing');
+ assert.equal(A.endRace(),true);await wait();await wait();
+ assert.equal(A.race.state,'finished');assert.equal(B.race.state,'finished');assert.deepEqual(ends,[race.id]);
+ A.beacon();await wait();await wait();assert.deepEqual(ends,[race.id],'heard once');
+ A.channel.close();B.channel.close();
+}
 // The room server's address is the one the page's content policy allows (scripts/publicacao.py).
 {
  const policy=fs.readFileSync(new URL('./publicacao.py',import.meta.url),'utf8').match(/^ROOM_SERVER = '([^']+)'/m)?.[1];

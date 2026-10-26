@@ -256,4 +256,32 @@ function setup(laps=2){
  }finally{if(real)Object.defineProperty(performance,'now',real);else delete performance.now;}
 }
 
+// The room's race ends for everyone at once, on the host's word (multiplayer.js raceEnd; the team's report, 10-26: one
+// window showed its result while another still raced): nothing before anyone is in; once a human is in, a countdown of
+// 5 minutes for everyone; at once when every human is in; at once when the host ends it (asked twice).
+{
+ const real=Object.getOwnPropertyDescriptor(performance,'now');let fake=5000;
+ Object.defineProperty(performance,'now',{value:()=>fake*1000,configurable:true,writable:true});
+ try{
+  const race=q=>{q.start();q.race.state='racing';q.mp.game={};q.mp.immersive.freeFinished=false;return q;};
+  const q=race(setup(1));
+  q.mp.raceEnd();assert.equal(q.mp.ended,undefined,'nobody in: nothing');assert.equal(q.mp.firstFlagAt??null,null);
+  q.rival.finished=true;q.mp.raceEnd();assert.equal(q.mp.firstFlagAt,fake,'the guest in: the countdown starts');assert(!q.mp.ended);
+  assert.match(q.mp.endText(),/acaba para todos em 5:00/);assert.match(q.mp.endText(true),/fim em 5:00/);
+  fake+=299;q.mp.raceEnd();assert(!q.mp.ended,'not before 5 minutes');assert.match(q.mp.endText(),/0:01/);
+  fake+=2;q.mp.raceEnd();assert.equal(q.mp.ended,true,'5 minutes on: over for everyone');assert.equal(q.room.race.state,'finished','the lobby says so');
+  const all=race(setup(1));all.rival.finished=true;all.mp.immersive.freeFinished=true;all.mp.raceEnd();assert.equal(all.mp.ended,true,'every human in: over at once');
+  const asked=race(setup(1));asked.mp.raceEnd();asked.mp.askEnd();asked.mp.raceEnd();assert(!asked.mp.ended,'one click only asks');
+  asked.mp.askEnd();asked.mp.raceEnd();assert.equal(asked.mp.ended,true,'the host\'s second click: over for everyone');
+  // A guest window: the host's word ends it (never its own countdown), and past the flag its result waits for it.
+  const g=race(setup(1));g.room.role='guest';g.rival.finished=true;fake+=400;g.mp.raceEnd();assert(!g.mp.ended,'a guest never ends the room\'s race');
+  // ...unless its host's word no longer carries this race (the host went to the menu or to another track, or opened a
+  // new race before its end was heard): over there at once, never left waiting (review, 10-26).
+  g.room.lobby={race:{id:g.race.id}};g.room.problem=null;g.room.outdated=false;g.mp.raceEnd();assert(!g.mp.ended,'its host still on this race: it waits');
+  g.room.lobby={race:null};g.mp.raceEnd();assert.equal(g.mp.ended,true,'its host gone from the race: over here too');
+  const next=race(setup(1));next.room.role='guest';next.room.lobby={race:{id:'0000ffff'}};next.room.problem=null;next.room.outdated=false;next.mp.raceEnd();assert.equal(next.mp.ended,true,'a new race of its host: over here too');
+  const late=race(setup(1));late.room.role='guest';late.room.lobby={race:null};late.room.outdated=true;late.mp.raceEnd();assert(!late.mp.ended,'not on an outdated word (its line just back)');
+ }finally{if(real)Object.defineProperty(performance,'now',real);else delete performance.now;}
+}
+
 console.log('testar_estados_sala: ok');

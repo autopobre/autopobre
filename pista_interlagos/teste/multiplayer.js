@@ -58,8 +58,8 @@ import {CAFE_MENU,snackHands,showSnacks,snackArms} from './pitstop.js';
 // car not heard from for QUIET seconds is reported on the room card (the host's: the race stands
 // still, updatePause), and mid-race the host leaves a guest's without a driver after STRANDED
 // (checkSilence).
-// (past the flag the result waits for the others up to RESULTS_WAIT; the car goes to the pit lane once the flag's fade
-// is over, PARK_AFTER seconds at the least)
+// (the room's race ends for everyone at once: every human in, its host's word, or RESULTS_WAIT s after the first human's
+// flag, raceEnd; past the flag the car goes to the pit lane once the flag's fade is over, PARK_AFTER seconds at the least)
 const SEND=1/30,RESULTS_WAIT=300,PARK_AFTER=1.5,QUIET=2,STRANDED=5;
 // The host's list of who is online is asked again every ONLINE_EVERY seconds while it is open; the same
 // pilot may be invited again INVITE_AGAIN seconds after the last (the room server's own pace).
@@ -128,6 +128,8 @@ const CLOSE_CONFIRM=5,CLOSE_WAIT=3;
 // A pilot invited in whose room closed (or whose invitation is gone) is back in the game after LEAVE_AFTER seconds
 // (frame), the card saying why meanwhile.
 const LEAVE_AFTER=4;
+// The end's warnings (endWarning) stay this long (s).
+const WARN_SHOWN=4;
 const HIDDEN_LOST='Este endereço esconde a parte secreta do nome da sala (depois do _). Abra o link completo que você recebeu.';
 // game: main.js hooks (session, immersive, fullGrid, template, withTemplate, pilotName, wantedCar,
 // roomCars, openCars, freeMouse, command, autopilot, startRace, hasCircuit; the account's: roomPass,
@@ -177,7 +179,7 @@ export class Multiplayer {
   this.raced=new Set();
   // A new race from the host, while this guest waits for one: load its track and start (false: busy
   // loading, asked again later).
-  this.room.on('race',race=>this.room.waiting&&this.game.hasCircuit(race.circuit)&&this.game.startRace(race.circuit)).on('go',race=>this.go(race))
+  this.room.on('race',race=>this.room.waiting&&this.game.hasCircuit(race.circuit)&&this.game.startRace(race.circuit)).on('go',race=>this.go(race)).on('end',race=>{if(this.race&&race.id===this.race.id)this.endForAll();})
    .on('state',(id,m)=>this.heardCar(id,m)).on('snap',m=>this.heardField(m)).on('leave',p=>this.left(p)).on('change',()=>this.render())
    // Someone took (or left) a seat, or renamed, while the start waits, or during the race a guest's
    // line dropped (its car without a driver) and it came back, even after this window's flag: the cars
@@ -207,7 +209,9 @@ export class Multiplayer {
   addEventListener('pagehide',()=>this.room.leave());
   // dropLine, for the checks: the line drops as a network drops it (no goodbye; net-link.js connects
   // again, after 15 s when slow).
-  window.interlagosSala={info:()=>this.info(),dropLine:(slow=false)=>{this.room.link?.drop(slow);}};
+  window.interlagosSala={info:()=>this.info(),dropLine:(slow=false)=>{this.room.link?.drop(slow);},
+   // (the checks of a room on this machine: the end's countdown moved on by seconds, verificar_sala_fim.py)
+   ...(params.local&&{hurryEnd:seconds=>{if(this.firstFlagAt!=null)this.firstFlagAt-=seconds;}})};
   const immersive=game.immersive();if(immersive)this.attach(immersive);
  }
  // Each circuit load makes a new ImmersiveMode: its free race learns the room's seats and start.
@@ -273,7 +277,7 @@ export class Multiplayer {
  // race is the full grid (seat = roster index): Treino solo, 1x1, the recon lap and the story stay
  // this window's own.
  plan(immersive){
-  this.clearPeople();this.extras.clear();this.parked=false;this.flagAt=null;this.met=false;
+  this.clearPeople();this.extras.clear();this.parked=false;this.flagAt=null;this.met=false;this.ended=this.endAsked=false;this.endAsk=this.firstFlagAt=null;
   this.phase='lobby';this.holding=false;this.finishedAt=null;this.autopilotOn=false;this.cut=null;this.reclaiming=null;this.lost=false;this.pause=null;this.raced=new Set();this.clearStops();
   const room=this.room,field=immersive.field;
   this.race=room.role==='host'?this.game.fullGrid()?room.planRace({circuit:this.game.session().circuit,laps:immersive.laps,ace:!!field.ace,level:field.level,retirements:field.retirements!==false,ghosts:this.params.ghosts,...this.game.weather?.()}):null
@@ -591,7 +595,7 @@ export class Multiplayer {
   }
   if(why&&!this.pause){this.pause={why,since:now};room.note('corrida pausada: '+why);}
   else if(why)this.pause.why=why;
-  else if(this.pause){const held=now-this.pause.since;if(this.finishedAt!==null)this.finishedAt+=held;room.note(`corrida retomada (${held.toFixed(1)} s)`);this.pause=null;}
+  else if(this.pause){const held=now-this.pause.since;if(this.finishedAt!==null)this.finishedAt+=held;if(this.firstFlagAt!=null)this.firstFlagAt+=held;room.note(`corrida retomada (${held.toFixed(1)} s)`);this.pause=null;}
  }
  // main.js: whether the race stands still for its host this frame (no physics step, no engine sound).
  frozen(){return !!this.pause;}
@@ -632,7 +636,9 @@ export class Multiplayer {
   // Out of the race (the way out of the menu, another track, Modo História): the room hears it.
   if(this.phase!=='lobby'&&(!s.started||immersive?.active)){this.phase='lobby';this.holding=false;this.cut=null;if(room.role==='host')room.closeRace();}
   if(this.phase==='racing'&&immersive&&this.race)this.checkCut();
-  if((this.phase==='racing'||this.phase==='finished')&&immersive?.freeFinished&&this.race)this.finishAndWatch();
+  if(this.phase==='racing'&&immersive&&this.race)this.raceEnd();
+  this.endWarning(s);
+  if((this.phase==='racing'||this.phase==='finished')&&immersive?.freeFinished&&this.race&&!this.ended)this.finishAndWatch();
   // While the start waits, the room meets at the Tia's café in the Box 99 (the team's wish, 10-26: meet, buy, talk, then
   // the host calls everyone to the cars): this pilot on foot by it once the track is ready (main.js meet; a track
   // without the café, none). Once: walked off or not, the pilot stays out until the start.
@@ -706,15 +712,67 @@ export class Multiplayer {
   }
   room.sendSnapshot(cars,this.seq);
  }
+ // The room's race ends for everyone at once (the team's wish, 10-26: one window showed its result while another still
+ // raced, and the host did not know): once every human is past the flag or out of the race for good, when the host ends
+ // it (Encerrar corrida), or RESULTS_WAIT s after the first human's flag; the host decides and says so (net-room.js
+ // endRace), and every window counts that time down from the first flag it saw.
+ raceEnd(){
+  const now=clock(),room=this.room,mine=!!this.immersive.freeFinished;
+  if(mine||this.finishedNames().length)this.firstFlagAt??=now;
+  // A guest whose host's word no longer carries this race (the host went to the menu, to another track, or opened a new
+  // race before its end was heard): over here too, at once (never left waiting for an end that will not come).
+  if(room.role==='guest'&&!this.ended&&room.problem===null&&!room.outdated&&room.lobby&&room.lobby.race?.id!==this.race.id){this.endForAll();return;}
+  if(room.role!=='host'||this.ended||this.pause)return;
+  if(mine&&this.stillRacing()===0||this.endAsked||this.firstFlagAt!=null&&now-this.firstFlagAt>=RESULTS_WAIT){room.endRace();this.endForAll();}
+ }
+ // The race over for everyone: whoever still races gets the result now, the time to the flag estimated
+ // (immersive-mode.js endFreeRace); out of the car (the café, a walk), back in it first.
+ endForAll(){
+  if(this.ended)return;this.ended=true;this.endAsk=null;this.room.note('fim da corrida para todos');
+  const immersive=this.immersive;if(immersive&&!immersive.freeFinished){this.game.unmeet?.();immersive.endFreeRace?.();}
+  this.render();
+ }
+ // The host's Encerrar corrida: a first click asks, a second within CLOSE_CONFIRM ends the race for everyone.
+ askEnd(){const now=clock();if(this.endAsk==null||now-this.endAsk>CLOSE_CONFIRM){this.endAsk=now;this.render();return;}this.endAsk=null;this.endAsked=true;}
+ // The other humans past the flag, and those still racing (with the lap they are on), by name.
+ finishedNames(){const me=this.myNumber();return (this.race?.seats??[]).filter(s=>s.number!==me&&(this.remotes.get(s.number)?.state?.finished||this.slot(s.number)?.finished)).map(s=>s.name);}
+ racingNames(){
+  const me=this.myNumber(),laps=this.immersive?.freeTotalLaps??1;
+  return (this.race?.seats??[]).filter(s=>s.number!==me&&!(this.remotes.get(s.number)?.state?.finished||this.slot(s.number)?.finished)&&!this.slot(s.number)?.retired)
+   .map(s=>{const car=this.slot(s.number)?.car,lap=car?Math.min(laps,(car.laps??0)+1):null;return lap&&laps>1?`${s.name} (volta ${lap}/${laps})`:s.name;});
+ }
+ // The end coming, in the middle of the screen (the team's wish, 10-26): "1 minuto" for WARN_SHOWN seconds when a
+ // minute is left, "30 segundos" at thirty, then the last ten seconds counted down; on every window in the race, its
+ // own countdown from the first flag it saw (raceEnd), whether its pilot still races or waits past the flag.
+ endWarning(s){
+  const warn=this.panel?.warn;if(!warn)return;
+  const results=document.getElementById('raceResults'),left=this.firstFlagAt==null||this.ended||this.phase!=='racing'||!s.started||s.paused||results&&!results.hidden?null:RESULTS_WAIT-(clock()-this.firstFlagAt);
+  let text='',big=false;
+  if(left!==null&&left>0){
+   if(left<=10){text=String(Math.ceil(left));big=true;}
+   else if(left<=30&&left>30-WARN_SHOWN)text='Faltam 30 segundos · a corrida acaba para todos';
+   else if(left<=60&&left>60-WARN_SHOWN)text='Falta 1 minuto · a corrida acaba para todos';
+  }
+  if(warn.hidden===!!text)warn.hidden=!text;if(warn.textContent!==text)warn.textContent=text;warn.classList.toggle('mp-fim-numero',big);
+ }
+ // ' · a corrida acaba para todos em m:ss' once a human is in ('' before); short: ' · fim em m:ss'.
+ endText(short=false){
+  if(this.firstFlagAt==null||this.ended)return '';const left=Math.max(0,RESULTS_WAIT-(clock()-this.firstFlagAt));
+  return `${short?' · fim em ':' · a corrida acaba para todos em '}${Math.floor(left/60)}:${String(Math.floor(left%60)).padStart(2,'0')}`;
+ }
  // main.js asks before showing the result: not while other humans still race (up to RESULTS_WAIT), nor
  // while the race stands still for its host.
  holdResults(){
   const immersive=this.immersive;if(this.phase!=='racing'||!immersive?.freeFinished||immersive.finishing)return false;
   const now=clock();this.finishedAt??=now;
-  if(this.pause||this.stillRacing()&&now-this.finishedAt<RESULTS_WAIT)return true;
-  // Everyone is in, or the wait ran out: the order as it stands now (estimated times for whoever still races).
+  // The room's race ends for everyone at once, on its host's word (raceEnd): until then this pilot, past the flag, watches
+  // the others (or meets them at the café). Out of the room's race (its line lost for good, no room any more), it waits
+  // no longer than RESULTS_WAIT.
+  if(!this.ended&&(this.lost||!this.room.role)&&now-this.finishedAt>=RESULTS_WAIT)this.ended=true;
+  if(this.pause||!this.ended)return true;
   this.phase='finished';
-  immersive.freeOrder=immersive.field.classification(immersive.freeTotalLaps,immersive.finishTime);
+  // (the order as it stands now: estimated times for whoever still races; one's own already, if the end came first)
+  if(!immersive.finishEstimated)immersive.freeOrder=immersive.field.classification(immersive.freeTotalLaps,immersive.finishTime);
   this.render();return false;
  }
  // The other humans the result waits for: seated in the race, or out of it for a moment with their car
@@ -733,6 +791,9 @@ export class Multiplayer {
   const start=this.panel.start=add('button','mp-start');start.type='button';start.id='mpStart';start.hidden=true;
   start.onclick=()=>{this.room.lightsOut();start.blur();};
   root.insertBefore(start,this.panel.list);
+  // The host's end of the race for everyone (raceEnd), asked twice: whoever still races gets the result now.
+  const end=this.panel.end=add('button','mp-end');end.type='button';end.id='mpEnd';end.hidden=true;end.onclick=()=>{this.askEnd();end.blur();};
+  root.insertBefore(end,this.panel.list);
   // Online: the room's password (asked when the server wants it), the account's way in, and the host's doorman.
   const form=this.panel.key=add('form','mp-key');form.hidden=true;
   const field=add('input','',form);field.type='password';field.id='mpKey';field.placeholder='Senha da sala';field.autocomplete='off';field.maxLength=128;field.setAttribute('aria-label','Senha da sala');
@@ -759,7 +820,9 @@ export class Multiplayer {
   // The race standing still for its host: a plate in the middle of the screen says so, and why.
   const pause=this.panel.pause=document.createElement('div');pause.id='mpPause';pause.hidden=true;pause.setAttribute('role','status');
   this.panel.pauseTitle=add('b','',pause);this.panel.pauseTitle.textContent='CORRIDA PAUSADA';this.panel.pauseWhy=add('span','',pause);pause.append(back);this.panel.back=back;
-  document.body.append(root,pause);
+  // The end's countdown on the screen (endWarning): one minute left, thirty seconds, then the last ten, one by one.
+  const warn=this.panel.warn=document.createElement('div');warn.id='mpFimAviso';warn.hidden=true;warn.setAttribute('role','status');
+  document.body.append(root,pause,warn);
  }
  statusText(s){
   const room=this.room,me=room.number;
@@ -788,15 +851,18 @@ export class Multiplayer {
   }
   if(this.phase==='racing'){
    if(this.immersive?.freeFinished){
-    const left=this.stillRacing(),key=this.game.keyName?.('KeyN')??'N',f=this.game.keyName?.('KeyF')??'F',waiting=`Esperando ${left} piloto${left>1?'s':''}`;
+    // (short: the room's line on the track holds what comes first, who still races and the end's countdown)
+    const names=this.racingNames(),key=this.game.keyName?.('KeyN')??'N',f=this.game.keyName?.('KeyF')??'F',waiting=(names.length?`Esperando ${names.join(', ')}`:'Esperando o fim')+this.endText(true);
     if(this.game.meeting?.())return `Na lanchonete da Tia · ${waiting} · ${f}: voltar a assistir a corrida`;
-    return `Você terminou! ${waiting} · ${key} / Shift+${key}: ver os outros carros${this.game.hasCafe?.()?` · ${f}: lanchonete da Tia`:''}`;
+    return `${waiting} · ${key} / Shift+${key}: ver os outros carros${this.game.hasCafe?.()?` · ${f}: lanchonete da Tia`:''}`;
    }
    if(room.role==='guest'&&room.lobby?.race?.id!==this.race?.id)return 'O anfitrião saiu desta corrida.';
    if(this.lost)return 'A sala perdeu seu lugar nesta corrida (a conexão caiu) · você corre a próxima.';
    // A car without its pilot, a line gone quiet: what, who, where.
    const trouble=this.trouble();if(trouble)return trouble;
    // The door waits for the race to end.
+   // Someone in: who, and when the race ends for everyone.
+   const done=this.finishedNames();if(done.length)return `${done.join(' e ')} ${done.length>1?'terminaram':'terminou'}${this.endText()}`;
    const humans=this.race?.seats.length??1,door=room.role==='host'&&room.knocks.size?` · ${room.knocks.size} na porta (entra depois da corrida)`:'';
    return `Corrida com ${humans} piloto${humans>1?'s':''} ${humans>1?'humanos':'humano'}${door}.`;
   }
@@ -856,6 +922,9 @@ export class Multiplayer {
  render(){
   const p=this.panel;if(!p)return;const room=this.room,s=this.game.session(),me=room.number;
   p.start.hidden=!this.canStart();
+  {const asking=this.endAsk!=null&&clock()-this.endAsk<=CLOSE_CONFIRM;
+   p.end.hidden=!(room.role==='host'&&this.phase==='racing'&&!this.ended&&(this.firstFlagAt!=null||s.paused));p.end.classList.toggle('mp-confirm',asking);
+   const text=asking?'Clique de novo: encerrar para todos':'Encerrar corrida';if(p.end.textContent!==text)p.end.textContent=text;}
   if(!p.start.hidden){
    const {guests,ready}=this.readiness(),loading=guests-ready,choosing=this.choosing(),late=loading+choosing;
    const call=this.game.meeting?.()?'Todos para os carros':'Largar';
@@ -1171,7 +1240,7 @@ export class Multiplayer {
  // For the checks (verificar_multiplayer.py): this window's car and every other car as it shows them.
  info(){
   const immersive=this.immersive,car=immersive?.car;
-  return {...this.room.info(),parked:!!this.parked,chat:this.chat.info(),standings:this.standings&&!this.standings.root.hidden?this.standingRows(this.game.session()).map(({position,number,name,mine,finished,retired})=>({position,number,name,mine,finished,retired})):[],walkers:[...this.walkers].map(([number,w])=>({number,x:w.root.position.x,y:-w.root.position.z,look:w.key,top:w.outfit?.top??null,held:w.snack.held.map(h=>[h.id,h.side,h.bites]),eating:!!w.snack.using})),parts:[...this.carParts].map(([number,p])=>({number,mask:p.openings.openMask(),open:Object.entries(p.openings.info()).filter(([,v])=>v.open>.5).map(([k])=>k)})),drivers:(this.race?.seats??[]).map(s=>({number:s.number,look:this.carObject(s.number)?.userData.mpLookKey??null})),invites:{open:this.invites.open,list:this.invites.list.map(p=>p.nome)},label:this.params.label,address:globalThis.location?.hash??null,phase:this.phase,holding:this.holding,autopilot:this.autopilot,raceId:this.race?.id??null,
+  return {...this.room.info(),parked:!!this.parked,ended:!!this.ended,endIn:this.firstFlagAt==null?null:Math.max(0,RESULTS_WAIT-(clock()-this.firstFlagAt)),chat:this.chat.info(),standings:this.standings&&!this.standings.root.hidden?this.standingRows(this.game.session()).map(({position,number,name,mine,finished,retired})=>({position,number,name,mine,finished,retired})):[],walkers:[...this.walkers].map(([number,w])=>({number,x:w.root.position.x,y:-w.root.position.z,look:w.key,top:w.outfit?.top??null,held:w.snack.held.map(h=>[h.id,h.side,h.bites]),eating:!!w.snack.using})),parts:[...this.carParts].map(([number,p])=>({number,mask:p.openings.openMask(),open:Object.entries(p.openings.info()).filter(([,v])=>v.open>.5).map(([k])=>k)})),drivers:(this.race?.seats??[]).map(s=>({number:s.number,look:this.carObject(s.number)?.userData.mpLookKey??null})),invites:{open:this.invites.open,list:this.invites.list.map(p=>p.nome)},label:this.params.label,address:globalThis.location?.hash??null,phase:this.phase,holding:this.holding,autopilot:this.autopilot,raceId:this.race?.id??null,
    stopped:[...this.stopped].map(([number,x])=>({number,stage:x.stage})),cut:!!this.cut,lost:!!this.lost,paused:this.pause?.why??null,trucks:[...this.trucks.keys()],truckPoses:[...this.trucks].map(([number,t])=>({number,x:t.root.position.x,y:-t.root.position.z,strap:t.strap.visible,leaving:t.left!==undefined})),flags:[...this.flags.keys()],yellow:this.yellow(),
    remotes:[...this.remotes].map(([number,r])=>({number,seq:r.seq,age:r.age,finished:!!r.state?.finished,snaps:r.snaps??0,worst:r.worst??0,gaps:r.link?.gaps.length??0})),ghostMe:!!car?.netGhost,
    me:car?{x:car.x,y:car.y,vx:car.vx,vy:car.vy,ghost:!!car.ghost}:null,

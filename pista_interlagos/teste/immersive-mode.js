@@ -121,6 +121,18 @@ export class ImmersiveMode {
  get active(){return this.state.active;}
  get finishing(){return this.finishElapsed!==null&&this.finishElapsed!==undefined;}
  get freeResultReady(){return this.freeFinished&&!this.finishing;}
+ // A multiplayer room's race ended for everyone by its host while this car still raced (multiplayer.js endForAll): the
+ // race is over where the car is, its time to the flag estimated as the others' are (RaceField timeLeft), its place among
+ // them by those times, and the result at once (no flag's fade). False when it was already over here.
+ endFreeRace(){
+  if(this.active||this.freeFinished)return false;
+  const field=this.field,laps=this.freeTotalLaps,left=field.timeLeft(field.playerRun,laps);
+  this.freeFinished=true;this.finishEstimated=true;this.finishElapsed=null;this.finishBest=this.car.best;
+  this.finishTime=this.car.clock+Math.max(0,left??0);
+  this.freeOrder=field.classification(laps);
+  this.finishPosition=this.freePosition=1+this.freeOrder.filter(r=>!r.dnf&&Number.isFinite(r.totalTime)&&r.totalTime<this.finishTime).length;
+  return true;
+ }
  get finishOpacity(){const t=clamp((this.finishElapsed??0)/5,0,1);return t*t*(3-2*t);}
  beginFinish(position){
   if(this.finishing)return;
@@ -398,7 +410,7 @@ export class ImmersiveMode {
  // story's tank holds what the pilot bought at the desk, the free race starts with what it needs.
  // The story's car starts with the damage the last repair bill could not pay (career.car, story-career.js
  // repairCar); the vaquinha pays at least the race's entry and recommended litres (raceFuel).
- start(){this.freeCountdown=0;this.goTime=0;this.car.condition?.reset();this.carryDamage();this.finishElapsed=null;this.finishTime=null;this.freeOrder=null;this.recordAssisted=false;this.resetVehicle();this.inCar=this.visual.inCar=false;this.storyLaps=this.laps;this.state.entry=entryFor(circuitId(this.data.meta.id),this.state.profile.career);this.state.tank=this.tank;this.state.raceFuel=recommendedFuel(circuitId(this.data.meta.id),this.storyLaps);this.state.baseFuel=recommendedFuel(circuitId(this.data.meta.id),FUEL_LAPS);this.car.engineScale=enginePower(this.state.profile.career);this.state.round=this.storyRound??null;this.state.start();this.state.fuelScale=fuelScale(circuitId(this.data.meta.id),this.data.meta.reconstructed_xy_m);this.visual.reset();this.near=-1;this.walkToFan=this.walkToDesk=this.walkToCafe=null;this.walkToLeo=false;this.cafe=snackState();this.leoAsked=false;this.deskInside=false;this.projectile=null;this.raceProgress=0;this.previousS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:true});this.parts.reset();this.rivals=this.field.rivals;this.debrisTimer=6;this.contactCooldown=0;this.sync();this.save();}
+ start(){this.finishEstimated=false;this.freeCountdown=0;this.goTime=0;this.car.condition?.reset();this.carryDamage();this.finishElapsed=null;this.finishTime=null;this.freeOrder=null;this.recordAssisted=false;this.resetVehicle();this.inCar=this.visual.inCar=false;this.storyLaps=this.laps;this.state.entry=entryFor(circuitId(this.data.meta.id),this.state.profile.career);this.state.tank=this.tank;this.state.raceFuel=recommendedFuel(circuitId(this.data.meta.id),this.storyLaps);this.state.baseFuel=recommendedFuel(circuitId(this.data.meta.id),FUEL_LAPS);this.car.engineScale=enginePower(this.state.profile.career);this.state.round=this.storyRound??null;this.state.start();this.state.fuelScale=fuelScale(circuitId(this.data.meta.id),this.data.meta.reconstructed_xy_m);this.visual.reset();this.near=-1;this.walkToFan=this.walkToDesk=this.walkToCafe=null;this.walkToLeo=false;this.cafe=snackState();this.leoAsked=false;this.deskInside=false;this.projectile=null;this.raceProgress=0;this.previousS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:true});this.parts.reset();this.rivals=this.field.rivals;this.debrisTimer=6;this.contactCooldown=0;this.sync();this.save();}
  carryDamage(){const carried=this.state.profile.career.car,c=this.car.condition;if(!carried||!c)return;Object.assign(c.quality,carried);c.revision++;}
  disable(){this.car.engineScale=1;if(this.lastPhase==='starting'){this.restoreStartView();this.startSwitches(1,true);}document.body.classList.remove('start-scene');this.finishElapsed=null;this.state.disable();this.visual.restoreCamera();this.visual.root.visible=this.visual.damage.visible=false;this.carRoot.visible=true;this.panel.classList.add('hidden');this.hud.classList.add('hidden');document.getElementById('dqScreen').classList.add('hidden');document.body.classList.remove('disqualified-scene','podium-scene','tow-scene','story-cutscene','story-paddock');document.body.classList.remove('immersive-mode','immersive-stage');this.brand.innerHTML=this.baseBrand;this.controls.innerHTML=this.baseControls;document.title=this.baseTitle;this.lastPhase='off';}
  sync(){
@@ -612,7 +624,7 @@ export class ImmersiveMode {
  }
  // lineup: the rivals of the next free race, taken here like laps (null: the whole field; [] a solo
  // practice, which has no flag and burns no fuel; [number] a 1x1). freeLineup: the race under way's.
- resetField(){this.freeCountdown=0;this.goTime=0;this.recordAssisted=false;this.finishElapsed=null;this.finishTime=null;this.finishBest=null;this.freeOrder=null;this.freeLineup=this.lineup;this.freeTotalLaps=this.practice?Infinity:this.laps;this.freeFuel=Math.min(this.tank,recommendedFuel(circuitId(this.data.meta.id),this.freeTotalLaps));this.freeBurn=freeBurn(this.data,this.freeTotalLaps);this.freeFinished=false;this.freePlayerProgress=0;this.freeLastS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:!!this.car.awaitingStart,entrants:this.freeLineup});this.rivals=this.field.rivals;this.freePosition=this.fieldSize;this.parts.reset();}
+ resetField(){this.finishEstimated=false;this.freeCountdown=0;this.goTime=0;this.recordAssisted=false;this.finishElapsed=null;this.finishTime=null;this.finishBest=null;this.freeOrder=null;this.freeLineup=this.lineup;this.freeTotalLaps=this.practice?Infinity:this.laps;this.freeFuel=Math.min(this.tank,recommendedFuel(circuitId(this.data.meta.id),this.freeTotalLaps));this.freeBurn=freeBurn(this.data,this.freeTotalLaps);this.freeFinished=false;this.freePlayerProgress=0;this.freeLastS=this.car.surface.s;this.field.reset(this.car.surface.s,{grid:!!this.car.awaitingStart,entrants:this.freeLineup});this.rivals=this.field.rivals;this.freePosition=this.fieldSize;this.parts.reset();}
  get practice(){return !this.active&&this.freeLineup?.length===0;}
  // What the race under way needs in the tank (fuel.js); the Box 99's Completar fills back to it.
  get fuelTarget(){return Math.min(this.tank,recommendedFuel(circuitId(this.data.meta.id),this.active?this.storyLaps:this.freeTotalLaps));}
