@@ -18,6 +18,8 @@ import {finishMaterial,setCarDirt,setCarTone} from './car-finish.js';
 import {carContact} from './contact-shadows.js';
 import {midLevel,sharedMidShapes} from './car-lod.js';
 import {trunkInside,showTrunkInside,liveryPlates,liveryMaterial,sharedLivery,LIVERY_SLOTS,liveryLook,rimMaterial,sharedRims,RIM_STYLES} from './car-livery.js';
+import {towTruck,driveTowTruck,TOW_HOOK} from './tow-truck.js';
+import {createFlyingParts} from './flying-parts.js';
 // V06 parts a rival never shows on track (engine and fuel cell stay under shut panels); the
 // exporter also flags every other hidden mesh (bay, trunk, hinges) with the extra "interno".
 const HIDDEN_ON_RIVALS=['Motor_CONJUNTO','Tanque_combustivel_CONJUNTO','Interior_do_jogo'];
@@ -225,7 +227,8 @@ export class ImmersiveVisuals {
   this.crackCanvas=document.createElement('canvas');this.crackCanvas.width=1024;this.crackCanvas.height=512;this.crackTexture=new THREE.CanvasTexture(this.crackCanvas);
   const glassGeometry=new THREE.BufferGeometry();glassGeometry.setAttribute('position',new THREE.Float32BufferAttribute([.643,.927,-.66,.643,.927,.66,.295,1.333,-.59,.295,1.333,.59],3));glassGeometry.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,1,0,0,1,1,1],2));glassGeometry.setIndex([0,1,2,2,1,3]);glassGeometry.computeVertexNormals();
   this.crackedGlass=new THREE.Mesh(glassGeometry,new THREE.MeshBasicMaterial({map:this.crackTexture,transparent:true,side:THREE.DoubleSide,depthWrite:false,opacity:.9}));this.damage.add(this.crackedGlass);this.lastGlass=-1;
-  this.debris=new THREE.Mesh(new THREE.IcosahedronGeometry(.085,0),this.mat(0x655a4d));this.root.add(this.debris);
+  // The part flying off the car ahead (flying-parts.js; immersive-mode.js hazards moves it).
+  this.flying=createFlyingParts();this.debris=this.flying.root;this.root.add(this.debris);
   const leakGeometry=new THREE.BufferGeometry();leakGeometry.setAttribute('position',new THREE.BufferAttribute(new Float32Array(240*3),3));this.leak=new THREE.Points(leakGeometry,new THREE.PointsMaterial({color:0x4b341b,size:.22,transparent:true,opacity:.55,depthWrite:false}));this.leak.frustumCulled=false;this.root.add(this.leak);this.leakCount=0;this.leakCursor=0;this.leakTimer=0;
   this.judge=this.people.person({top:0xe9e5d5,bottom:0x2d3338,hat:'cap',hatColor:0x37536a,glasses:true});this.root.add(this.judge);this.judgeIdle=new Idler(this.judge,'judge',{seed:.61});this.tag(this.judge,'JUIZ',[0,2.0,0],1.2,.38,'#fff','#37536a');
   this.closedPark=this.tag(this.root,'PARQUE FECHADO · AGUARDE A VISTORIA',[0,0,0],6,.7,'#fff','#285e69');
@@ -567,31 +570,17 @@ export class ImmersiveVisuals {
    for(let side=0;side<2;side++)a.setXYZ(i*2+side,p[0]+nx/n*.035*(side*2-1),Math.max(p[1],ground(p[0],-p[2])+.025),p[2]+nz/n*.035*(side*2-1));});
   a.needsUpdate=true;
  }
- // A tow truck's amber light bar (truckModel): two quick flashes a second (now: seconds).
- flashBeacon(truck,now){const flash=(now*2)%1;truck.userData.beacon.material.emissiveIntensity=flash<.12||flash>.25&&flash<.37?7:.25;}
+ // A tow truck shown this frame (truckModel; now: seconds): its light bar and hazards flash, its wheels roll.
+ driveTruck(truck,now){driveTowTruck(truck,now);}
  // A model built here let go: its geometries, and the materials that are its own with their textures
- // (a truck's door signs; the shared materials, mat(), stay).
- disposeModel(root){const shared=new Set(Object.values(this.materials));root.traverse(o=>{if(!o.isMesh)return;o.geometry.dispose();if(!shared.has(o.material)){o.material.map?.dispose();o.material.dispose();}});}
- // Flatbed tow truck ("guincho plataforma"): white cab with an orange stripe, aluminium bed,
- // dual rear wheels and an amber light bar that flashes. It faces +x; the strap hooks at x -2.45.
- truckModel(){const root=new THREE.Group(),glass=new THREE.MeshStandardMaterial({color:0x0c1114,roughness:.08,metalness:.3});
-  this.box(root,[-.1,.62,0],[5.3,.22,1.1],0x202326);
-  this.box(root,[2.05,1.42,0],[1.7,1.25,2.08],0xe9e7e0);this.box(root,[2.05,1.02,0],[1.72,.16,2.1],0xe06a1f);this.box(root,[2.05,2.08,0],[1.55,.08,1.98],0xd8d6cf);
-  const pane=(p,size)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(...size),glass);m.position.set(...p);root.add(m);};
-  pane([2.91,1.72,0],[.04,.62,1.86]);for(const z of [-1,1])pane([2.25,1.74,z*1.045],[.95,.52,.02]);
-  this.box(root,[2.95,.78,0],[.16,.26,2.12],0x2b2e31);this.box(root,[2.93,1.18,0],[.04,.3,1.1],0x1c1f22);
-  for(const z of [-.78,.78]){const lamp=new THREE.Mesh(new THREE.BoxGeometry(.05,.16,.3),new THREE.MeshStandardMaterial({color:0xfff6dd,emissive:0xfff1c8,emissiveIntensity:1.2}));lamp.position.set(2.95,1.1,z);root.add(lamp);}
-  this.box(root,[-.75,1.02,0],[3.5,.12,2.2],0xa3a9ad);for(const z of [-1.07,1.07])this.box(root,[-.75,1.14,z],[3.5,.12,.06],0x7e8488);
-  this.box(root,[1.12,1.55,0],[.08,1.0,2.05],0x33373a);this.box(root,[-2.45,.78,0],[.28,.34,1.3],0xe0b33c);
-  const beacon=new THREE.Mesh(new THREE.BoxGeometry(.24,.12,1.3),new THREE.MeshStandardMaterial({color:0xffa21a,emissive:0xff8c00,emissiveIntensity:.3,roughness:.3}));beacon.position.set(2.1,2.18,0);root.add(beacon);root.userData.beacon=beacon;
-  for(const [x,z,wide] of [[2.3,-.95,0],[2.3,.95,0],[-1.35,-.82,1],[-1.35,.82,1]]){
-   const w=new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,wide?.52:.28,18).rotateX(Math.PI/2),this.mat(0x151719));w.position.set(x,.42,z);root.add(w);
-   const hub=new THREE.Mesh(new THREE.CylinderGeometry(.2,.2,.02,12).rotateX(Math.PI/2),this.mat(0x8b9094));hub.position.set(x,.42,z+Math.sign(z)*(wide?.27:.15));root.add(hub);
-   this.box(root,[x,.9,z*1.03],[1.05,.06,wide?.62:.36],0x202326);
-  }
-  // The joke is painted on the doors, not floating over the truck.
-  for(const side of [-1,1])this.banner(root,'REBOQUE · SEM PRESSA',new THREE.Vector3(2.05,1.42,side*1.05),side>0?0:Math.PI,1.45,.3,'#1d1d1d','#e9e7e0',512);
-  root.traverse(o=>{if(o.isMesh)o.castShadow=true;});return root;}
+ // (the shared materials, mat(), stay). A model with its own way to go (a tow truck: tow-truck.js) takes it.
+ disposeModel(root){if(root.userData.dispose){root.userData.dispose();return;}const shared=new Set(Object.values(this.materials));root.traverse(o=>{if(!o.isMesh)return;o.geometry.dispose();if(!shared.has(o.material)){o.material.map?.dispose();o.material.dispose();}});}
+ // The rescue's tow vehicle (tow-truck.js: the 4x4 pickup, or the flatbed truck kept for later) with its driver at
+ // the wheel, in the yellow cap of GUINCHO QUEBROU-LIGOU. It faces +x; the strap hooks on at TOW_HOOK.
+ truckModel(){
+  const root=towTruck(),driver=this.people.person({top:0x2f5f8a,bottom:0x2b2d31,hat:'cap',hatColor:0xf2c418,skin:0xb98058},{shadows:false});
+  driver.name='Motorista_resgate';setPose(driver,POSES.sit);driver.position.set(...root.userData.seat);root.add(driver);root.userData.driver=driver;
+  return root;}
  // Smoothed body roll and pitch from the rival's own cornering and braking.
  lean(obj,c){const u=obj.userData;u.roll=(u.roll??0)+(Math.max(-.03,Math.min(.03,(c.latAccel??0)*.0022))-(u.roll??0))*.15;u.pitch=(u.pitch??0)+(Math.max(-.025,Math.min(.015,(c.longAccel??0)*.002))-(u.pitch??0))*.15;obj.quaternion.multiply(leanRotation.setFromEuler(leanEuler.set(u.roll,0,u.pitch)));}
  // Rivals ride the same rigid body as the player: jumps, spins and rollovers show.
@@ -720,12 +709,12 @@ export class ImmersiveVisuals {
   this.tankTethers.visible=state.tankDetached;const ta=this.tankTethers.geometry.attributes.position;for(let i=0;i<2;i++){ta.setXYZ(i*2,-1.6,.24,(i-.5)*.6);ta.setXYZ(i*2+1,this.tank.position.x+.24,this.tank.position.y,(i-.5)*.6);}ta.needsUpdate=true;
   this.drawCracks(state.glass);this.crackedGlass.visible=state.glass>0;
   if(state.tankDetached&&state.fuel>0&&!staged){this.leakTimer+=dt;if(this.leakTimer>.08){this.leakTimer=0;const x=car.x-Math.cos(car.heading)*2.3,y=car.y-Math.sin(car.heading)*2.3,p=car.sample(x,y);this.leak.geometry.attributes.position.setXYZ(this.leakCursor,x,p.z+.002,-y);this.leakCursor=(this.leakCursor+1)%240;this.leakCount=Math.min(240,this.leakCount+1);this.leak.geometry.attributes.position.needsUpdate=true;this.leak.geometry.setDrawRange(0,this.leakCount);}}
-  this.leak.visible=!staged;this.debris.visible=!!projectile&&state.phase==='race';if(this.debris.visible){const t=projectile.age/projectile.duration;this.debris.position.lerpVectors(projectile.start,projectile.end,t);this.debris.position.y+=Math.sin(t*Math.PI)*.55;this.debris.rotation.set(this.time*12,this.time*9,0);}
+  this.leak.visible=!staged;const flying=!!projectile&&state.phase==='race';this.flying.show(flying?projectile.part:null);if(flying){this.debris.position.copy(projectile.pos);this.debris.quaternion.setFromAxisAngle(projectile.axis,projectile.spin);}
   const towing=['tow','snag'].includes(state.phase);this.truck.visible=towing||state.phase==='broken';this.strap.visible=towing;
   if(this.truck.visible){const point=trackPoint(this.data,towOrigin+(state.towDistance||0)+9);this.setPose(this.truck,point);
-   this.flashBeacon(this.truck,performance.now()/1000);if(towing){
+   this.driveTruck(this.truck,performance.now()/1000);if(towing){
    this.carRoot.updateWorldMatrix(true,false);this.truck.updateWorldMatrix(true,false);
-   const start=new THREE.Vector3(2.22,.12,0).applyMatrix4(this.carRoot.matrixWorld),end=new THREE.Vector3(-2.45,.12,0).applyMatrix4(this.truck.matrixWorld);
+   const start=new THREE.Vector3(2.22,.12,0).applyMatrix4(this.carRoot.matrixWorld),end=new THREE.Vector3(...TOW_HOOK).applyMatrix4(this.truck.matrixWorld);
    this.layStrap(this.strap,strapPath(start.toArray(),end.toArray(),5),(x,y)=>car.sample(x,y).z);this.strap.material.color.setHex(state.phase==='snag'?0xf34435:0xe9b640);
   }}
   this.judge.visible=state.phase==='inspection';this.closedPark.visible=this.pitSign.visible=state.phase==='inspection';if(this.judge.visible)this.judgeIdle.update(dt);

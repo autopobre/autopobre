@@ -33,8 +33,8 @@ with sync_playwright() as p:
   check('real_finish_still_sixth',page.evaluate('interlagos.immersiveInfo().podiumPlace===6'))
   page.evaluate("()=>{const m=fixtureMode;m.start();m.state.phase='race';m.state.fuel=6;m.state.hitDebris();m.sync();}");page.click('#cockpitButton');shot('vidro')
   page.evaluate("()=>{const m=fixtureMode;m.state.fail('Teste de resgate');m.sync();m.state.beginTow();m.sync();for(let i=0;i<60;i++)m.step({brake:1,left:0,right:0},1/120);}");page.click('#orbitButton');frame()
-  strap=page.evaluate('''async()=>{const THREE=await import('three'),v=fixtureMode.visual,a=v.strap.geometry.attributes.position,pts=Array.from({length:25},(_,i)=>new THREE.Vector3((a.getX(i*2)+a.getX(i*2+1))/2,(a.getY(i*2)+a.getY(i*2+1))/2,(a.getZ(i*2)+a.getZ(i*2+1))/2));
-   const start=new THREE.Vector3(2.22,.12,0).applyMatrix4(v.carRoot.matrixWorld),end=new THREE.Vector3(-2.45,.12,0).applyMatrix4(v.truck.matrixWorld);
+  strap=page.evaluate('''async()=>{const THREE=await import('three'),{TOW_HOOK}=await import('./tow-truck.js'),v=fixtureMode.visual,a=v.strap.geometry.attributes.position,pts=Array.from({length:25},(_,i)=>new THREE.Vector3((a.getX(i*2)+a.getX(i*2+1))/2,(a.getY(i*2)+a.getY(i*2+1))/2,(a.getZ(i*2)+a.getZ(i*2+1))/2));
+   const start=new THREE.Vector3(2.22,.12,0).applyMatrix4(v.carRoot.matrixWorld),end=new THREE.Vector3(...TOW_HOOK).applyMatrix4(v.truck.matrixWorld);
    return {actualStart:pts[0].toArray(),expectedStart:start.toArray(),actualEnd:pts.at(-1).toArray(),expectedEnd:end.toArray(),length:pts.slice(1).reduce((s,p,i)=>s+p.distanceTo(pts[i]),0),startError:pts[0].distanceTo(start),endError:pts.at(-1).distanceTo(end),gap:fixtureMode.state.towGap};}''');report['strap']=strap
   check('rendered_strap_attached_and_fixed',abs(strap['length']-5)<.08 and strap['startError']<.03 and strap['endError']<.03);shot('reboque')
   page.evaluate('''()=>{for(let i=0;i<2500&&fixtureMode.state.phase==='tow';i++)fixtureMode.step({brake:0,left:0,right:0},1/120);}''');shot('fita_enroscada')

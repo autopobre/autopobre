@@ -5,6 +5,7 @@ import {RIVAL_ROSTER,GRID_SIZE} from './race-roster.js';
 import {RaceField,lapTravel} from './race-field.js';
 import {recognitionInput,sameLevel} from './physics.js';
 import {CrashParts} from './crash-parts.js';
+import {FLYING_PARTS} from './flying-parts.js';
 import {ImmersiveState,FANS,JOKES,BLAZER_COST,COSTS,START,startCost} from './immersive-state.js';
 import {SWITCH_TILT} from './cockpit-instruments.js';
 import {ImmersiveVisuals,trackPoint} from './immersive-visuals.js';
@@ -576,11 +577,32 @@ export class ImmersiveMode {
    if(rival.finished)continue;const p={x:rival.car.x,y:rival.car.surface.z,z:-rival.car.y,heading:rival.car.heading},dx=p.x-c.x,dy=-p.z-c.y,forward=dx*Math.cos(c.heading)+dy*Math.sin(c.heading),side=-dx*Math.sin(c.heading)+dy*Math.cos(c.heading);
    // (Never from a car on the viaduct overhead or the street below: physics.js sameLevel.)
    if(!this.projectile&&this.debrisTimer<=0&&forward>7&&forward<34&&Math.abs(side)<2.1&&Math.hypot(c.vx,c.vy)>9&&sameLevel(c,rival.car)){
-    s.emitSound('debrisFly',{pan:clamp(side/3,-1,1)});this.projectile={age:0,duration:1.25,start:new THREE.Vector3(p.x-Math.cos(p.heading)*2,p.y+.8,p.z+Math.sin(p.heading)*2),end:new THREE.Vector3(c.x+c.vx*1.25+Math.cos(c.heading)*.45,c.surface.z+1.1,-c.y-c.vy*1.25-Math.sin(c.heading)*.45)};
-    s.warn('Peça voando do carro da frente! Mude de linha.');this.debrisTimer=8+Math.random()*5;
+    // A part of that car (flying-parts.js), tumbling about its own axis on its way to where the windscreen will be.
+    const part=FLYING_PARTS[Math.floor(Math.random()*FLYING_PARTS.length)];
+    s.emitSound('debrisFly',{pan:clamp(side/3,-1,1)});this.projectile={part:part.id,weight:part.weight,age:0,duration:1.25,start:new THREE.Vector3(p.x-Math.cos(p.heading)*2,p.y+.8,p.z+Math.sin(p.heading)*2),end:new THREE.Vector3(c.x+c.vx*1.25+Math.cos(c.heading)*.45,c.surface.z+1.1,-c.y-c.vy*1.25-Math.sin(c.heading)*.45),
+     pos:new THREE.Vector3(),vel:null,hit:null,after:0,axis:new THREE.Vector3(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize(),spin:0,rate:7+Math.random()*7};
+    s.warn(`${part.name} voando do carro da frente! Mude de linha.`);this.debrisTimer=8+Math.random()*5;
    }
   }
-  if(this.projectile){this.projectile.age+=dt;if(this.projectile.age>=this.projectile.duration){const target=this.projectile.end,fx=c.x+Math.cos(c.heading)*.45,fy=-c.y-Math.sin(c.heading)*.45;if(Math.hypot(target.x-fx,target.z-fy)<1.35)s.hitDebris();else s.emitSound('debrisMiss');this.projectile=null;}}
+  const q=this.projectile;if(!q)return;q.age+=dt;q.spin+=q.rate*dt;
+  if(q.hit===null){
+   const t=Math.min(1,q.age/q.duration);q.pos.lerpVectors(q.start,q.end,t);q.pos.y+=Math.sin(t*Math.PI)*.55;if(t<1)return;
+   // There: on the windscreen it knocks the glass as hard as it weighs and flies up over the roof, falling behind
+   // (half the car's speed, a kick upward); missed, it goes on as it flew and drops on the road.
+   const fx=c.x+Math.cos(c.heading)*.45,fy=-c.y-Math.sin(c.heading)*.45;q.hit=Math.hypot(q.end.x-fx,q.end.z-fy)<1.35;
+   if(q.hit){s.hitDebris(q.weight);q.vel=new THREE.Vector3(c.vx*.55+(Math.random()-.5)*2,3+Math.random()*1.5,-c.vy*.55+(Math.random()-.5)*2);q.rate*=1.8;}
+   else{s.emitSound('debrisMiss');q.vel=q.end.clone().sub(q.start).divideScalar(q.duration);q.vel.y=.6;}
+   return;
+  }
+  // Its fall, bouncing on the asphalt with a clang (louder the harder and the closer), for a couple of seconds.
+  q.after+=dt;q.vel.y-=9.81*dt;q.pos.addScaledVector(q.vel,dt);
+  const ground=c.sample(q.pos.x,-q.pos.z).z+.04;
+  if(q.pos.y<ground){
+   q.pos.y=ground;
+   if(q.vel.y<-1.5){const dx=q.pos.x-c.x,dy=-q.pos.z-c.y,side=-dx*Math.sin(c.heading)+dy*Math.cos(c.heading);s.emitSound('debrisBounce',{pan:clamp(side/3,-1,1),strength:clamp(-q.vel.y/6,.2,1)*clamp(1-Math.hypot(dx,dy)/60,.2,1)*q.weight});}
+   q.vel.y=Math.abs(q.vel.y)*.35;q.vel.x*=.7;q.vel.z*=.7;q.rate*=.6;
+  }
+  if(q.after>2.2)this.projectile=null;
  }
  // lineup: the rivals of the next free race, taken here like laps (null: the whole field; [] a solo
  // practice, which has no flag and burns no fuel; [number] a 1x1). freeLineup: the race under way's.
@@ -617,7 +639,7 @@ export class ImmersiveMode {
   const names={crowd:'VAQUINHA',starting:'PARTIDA',grid:'LARGADA',race:`${this.storyLaps} VOLTA${this.storyLaps>1?'S':''}`,broken:'SOCORRO',tow:'REBOQUE',snag:'FITA ENROSCADA',inspection:'PÓS-CORRIDA',podium:'SEXTO, SEMPRE',complete:'ATÉ A PRÓXIMA',disqualified:'A FOTO FICOU'};
   document.getElementById('dqScreen').classList.toggle('hidden',s.phase!=='disqualified');document.getElementById('dqCountdown').textContent='';
   document.getElementById('immPhase').textContent=names[s.phase];document.getElementById('immFuel').textContent=s.fuel.toFixed(1)+' L';document.getElementById('immHealth').textContent=Math.ceil(s.health*100)+'%';document.getElementById('immGlass').textContent=Math.round((1-s.glass)*100)+'%';document.getElementById('immPosition').textContent=s.phase==='podium'?'6º no pódio':s.position+'º / '+GRID_SIZE;
-  document.getElementById('immAlert').textContent=s.phase==='podium'?(touchScreen()?'Arraste na cena para girar a câmera pelo pódio.':keyText('Câmera livre: clique na cena e o mouse olha em volta · roda aproxima · {KeyW} {KeyA} {KeyS} {KeyD} passeia · {Space} ou {KeyE} continua · Tab solta o mouse')):s.phase==='crowd'?(this.inCar?keyText('{KeyF}: sair do Opala · o mouse olha em volta'):talking||s.scene?'':this.carHint()||this.cafeHint()||this.deskHint()):s.phase==='race'?(s.alertTime>0?s.alert:s.tankDetached?'Tanque solto · combustível vazando':s.fuel<1?'Reserva! A gasolina está acabando.':'Guarde distância: o carro da frente pode soltar peças.'):s.phase==='tow'?(s.towGap<3?'FREIE · FITA FROUXA':'Controle o freio quando o caminhão diminuir.'):'';
+  document.getElementById('immAlert').textContent=s.phase==='podium'?(touchScreen()?'Arraste na cena para girar a câmera pelo pódio.':keyText('Câmera livre: clique na cena e o mouse olha em volta · roda aproxima · {KeyW} {KeyA} {KeyS} {KeyD} passeia · {Space} ou {KeyE} continua · Tab solta o mouse')):s.phase==='crowd'?(this.inCar?keyText('{KeyF}: sair do Opala · o mouse olha em volta'):talking||s.scene?'':this.carHint()||this.cafeHint()||this.deskHint()):s.phase==='race'?(s.alertTime>0?s.alert:s.tankDetached?'Tanque solto · combustível vazando':s.fuel<1?'Reserva! A gasolina está acabando.':'Guarde distância: o carro da frente pode soltar peças.'):s.phase==='tow'?(s.towGap<3?'FREIE · FITA FROUXA':'Controle o freio quando o resgate diminuir.'):'';
   const spot=s.phase==='crowd'?this.visual.carAction():null,nearDesk=s.phase==='crowd'&&this.visual.nearDesk(),cafe=s.phase==='crowd'?[this.actionKey(),this.visual.nearCafe(),snackLabel(this.cafe),!!this.cafe.using,this.cafe.feedback].join('/'):'',key=[s.phase,s.revision,playerKeys.revision,this.near,s.fan,s.desk,s.leo,s.cafe,nearDesk,spot,spot&&this.visual.ownOpen(spot),cafe].join(':');
   if(key!==this.lastUI){this.lastUI=key;let body='';
    if(s.phase==='crowd'){
@@ -630,7 +652,7 @@ export class ImmersiveMode {
    if(s.phase==='starting')body=this.startPanel();
    if(s.phase==='grid')body='';
    if(s.phase==='broken')body=`<div class="imm-eyebrow">DEU RUIM</div><h2>${s.reason}</h2><p>O reboque está chegando. Durante o resgate, <b>{KeyS}</b> controla o freio. Não deixe a fita frouxa entrar debaixo da roda dianteira.</p>`;
-   if(s.phase==='tow')body='<div class="imm-eyebrow">REBOQUE</div><h2>Olho na fita!</h2><p>A fita tem 5 m e não recolhe sozinha. Quando o caminhão diminuir, freie com <b>{KeyS}</b>.</p><meter id="immTowGap" min="0" max="5" low="2.2" optimum="5"></meter><p id="immTowText"></p>';
+   if(s.phase==='tow')body='<div class="imm-eyebrow">REBOQUE</div><h2>Olho na fita!</h2><p>A fita tem 5 m e não recolhe sozinha. Quando o resgate diminuir, freie com <b>{KeyS}</b>.</p><meter id="immTowGap" min="0" max="5" low="2.2" optimum="5"></meter><p id="immTowText"></p>';
    if(s.phase==='snag')body=`<div class="imm-eyebrow">A FITA ENTROU NA RODA</div><h2>Mais R$ 25 na conta.</h2><p>O carro avançou sobre a fita frouxa e ela enroscou na dianteira. O socorrista vai soltar; no próximo trecho, controle o freio com <b>{KeyS}</b>.</p>${this.button('untangle','Desenroscar e continuar',true)}`;
    if(s.phase==='inspection')body=`<div class="imm-eyebrow">${s.result?.position===1?'VENCEU NA PISTA!':'FIM DA PARTICIPAÇÃO'}</div><h2>Depois da foto.</h2><p>O movimento continua no paddock. O juiz está por perto e o pessoal já espera nos boxes.</p>${s.judging?'<progress id="immInspection" max="8" value="0"></progress><p>O juiz está conferindo o carro…</p>':this.button('inspect','Parar e aguardar a vistoria',true)+this.button('box','Levar o carro ao box')}`;
    if(['podium','complete'].includes(s.phase))body=`<div class="imm-eyebrow">AUTO-POBRE RACING · PÓDIO OFICIAL DA ZOEIRA</div><h2>Sexto. Sempre sexto.</h2><p>Na pista: <b>${s.result?.position?s.result.position+'º lugar':s.result?.status}</b><br>Situação: ${s.result?.status}${s.inspected?' · vistoriado':''}<br>Na foto do pódio: <b>6º lugar</b></p><p>${s.reason||'A corrida acabou. Os boletos continuam.'}</p><p>Prêmio: <b>${money(s.prize)}</b>${s.snagCost?` · fita do guincho: −${money(s.snagCost)}`:''}${s.repair?.charged?` · conserto do carro: −${money(s.repair.charged)}`:''}</p><p>Carteira: <b>${money(s.profile.fund)}</b></p>${this.goalBlock()}${s.phase==='complete'&&this.blazerDue()?this.button('blazer','Pagar o mecânico e buscar a Blazer',true,s.profile.fund<BLAZER_COST):''}${s.phase==='complete'&&this.opalaDue()?this.button('opala','Comprar o Opala 99 da equipe',true,s.profile.fund<OPALA_GOAL):''}${s.phase==='podium'?this.button('afterPodium','Continuar →',true):this.button('again','Próxima etapa, nova vaquinha →',true)+this.button('normal','Voltar à sessão livre')}`;

@@ -108,6 +108,9 @@ desktop.ini
 !/modelo_3d/scripts/fusca_acabamento.py
 !/modelo_3d/scripts/fusca_aberturas.py
 !/modelo_3d/scripts/renderizar_fusca_jogo.py
+!/modelo_3d/scripts/veiculos_comum.py
+!/modelo_3d/scripts/adesivos_comum.py
+!/modelo_3d/scripts/renderizar_veiculo.py
 # The Fusca V2 (modelo_3d/fusca_v2), modelled from the Type 1's measurements: README, build and check scripts,
 # measurement tables and JPEG renders are versioned; its two .blend files (rebuilt by criar_fusca_v2.py) and the
 # previews stay on this machine. (The V3 it replaced adapted a BlenderKit model and left the repo on 2026-10-03.)
@@ -116,6 +119,21 @@ desktop.ini
 !/modelo_3d/fusca_v2/README.md
 !/modelo_3d/fusca_v2/*.py
 !/modelo_3d/fusca_v2/renders/
+# The tow truck (modelo_3d/guincho_v1), built by criar_guincho_v1.py: README, scripts, the sticker atlas and JPEG
+# renders are versioned; the .blend (rebuilt by the script) and the previews stay on this machine.
+!/modelo_3d/guincho_v1/
+/modelo_3d/guincho_v1/*
+!/modelo_3d/guincho_v1/README.md
+!/modelo_3d/guincho_v1/*.py
+!/modelo_3d/guincho_v1/texturas/
+!/modelo_3d/guincho_v1/renders/
+# The rescue pickup (modelo_3d/caminhonete_v1, Central #24), the same way as the tow truck.
+!/modelo_3d/caminhonete_v1/
+/modelo_3d/caminhonete_v1/*
+!/modelo_3d/caminhonete_v1/README.md
+!/modelo_3d/caminhonete_v1/*.py
+!/modelo_3d/caminhonete_v1/texturas/
+!/modelo_3d/caminhonete_v1/renders/
 /pista_interlagos/teste/assets/piloto/referencia_capacete.jpg
 
 # Servidor das salas (sala-cloudflare): segredos locais e cache do wrangler

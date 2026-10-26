@@ -21,7 +21,7 @@ MODULES = (
     'main.js', 'player-preferences.js', 'physics.js', 'camera-return.js', 'car-audio.js', 'engine-loops.js', 'tyre-sounds.js', 'car-horn.js', 'sound-tuning.js', 'car-openings.js', 'cockpit.js', 'cockpit-materials.js', 'cockpit-instruments.js', 'cockpit-rear.js', 'cockpit-equipment.js',
     'driver.js', 'driver-rig.js', 'driver-controls.js', 'driver-helmet.js', 'rival-driver.js', 'family-phone.js',
     'camera-rig.js',
-    'immersive-mode.js', 'immersive-state.js', 'immersive-visuals.js', 'story-career.js', 'story-scene.js',
+    'immersive-mode.js', 'immersive-state.js', 'immersive-visuals.js', 'tow-truck.js', 'flying-parts.js', 'story-career.js', 'story-scene.js',
     'track-history.js', 'historia.css', 'historias.js', 'historia-interlagos.js', 'historia-interlagos-en.js','interlagos-1940.js', 'historia-midia.js',
     'sun-light.js', 'car-shadow.js',
     'contact-shadows.js', 'car-wheels.js',
@@ -56,7 +56,7 @@ ASSETS = (
     'circuitos/pampulha_solo.jpg', 'circuitos/pampulha_medio.jpg', 'circuitos/pampulha_longe.jpg',
     'circuitos/pampulha_medio_relevo.bin', 'circuitos/pampulha_longe_relevo.bin',
     'circuitos/floripa_cidade.png',
-    'opala99_assinaturas_omp.glb', 'opala99_seiva_danilo.glb', 'fusca_v2.glb',
+    'opala99_assinaturas_omp.glb', 'opala99_seiva_danilo.glb', 'fusca_v2.glb', 'caminhonete_v1.glb', 'guincho_v1.glb',
     'abertura/desclassificado_v1.jpg', 'abertura/abertura_stevan_opala99.jpg', 'abertura/logo_auto_pobre_racing_v2.webp',
     # The menus' type (menus.css): Roboto Condensed, Inter and Barlow Condensed, each under the SIL Open Font License.
     'fontes/roboto-condensed-400-700.woff2', 'fontes/inter-700-800.woff2', 'fontes/barlow-condensed-600i.woff2', 'fontes/barlow-condensed-800i.woff2',

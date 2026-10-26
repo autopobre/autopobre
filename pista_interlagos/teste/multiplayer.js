@@ -38,12 +38,13 @@ import {PLAYER_ENTRY,carEntry} from './race-roster.js';
 import {TOW_ARRIVE,faintedInput,inTheWay} from './race-field.js';
 import {strapPath} from './immersive-state.js';
 import {marshalSpots} from './trackside.js';
+import {TOW_HOOK} from './tow-truck.js';
 // Car messages a second; after crossing the line, how long the results wait for the others (s); a
 // car not heard from for QUIET seconds is reported on the room card (the host's: the race stands
 // still, updatePause), and mid-race the host leaves a guest's without a driver after STRANDED
 // (checkSilence).
 const SEND=1/30,RESULTS_WAIT=60,QUIET=2,STRANDED=5;
-// The tow truck (immersive-visuals.js truckModel) stands this far ahead of the car's centre on the strap
+// The tow truck (immersive-visuals.js truckModel, tow-truck.js) stands this far ahead of the car's centre on the strap
 // (hooks 2.22 m and 2.45 m from the centres, 5 m of strap). It comes in along the side of the track,
 // TRUCK_SIDE metres past the edge, from TRUCK_BACK metres behind the car, in TRUCK_DRIVE seconds (the
 // rest of RaceField's TOW_ARRIVE it hooks up), turning onto the tow's way only past the car's nose
@@ -379,10 +380,10 @@ export class Multiplayer {
    const u=t.u+2*gone*gone,p=lane(u),q=lane(u+.5),h=Math.atan2(q.y-p.y,q.x-p.x),fx=Math.cos(h),fy=Math.sin(h);
    // (the ground's height from the towed car's stretch of track: the player's may be far away)
    const ground=(x,y)=>c.sample(x,y).z,z=ground(p.x,p.y);
-   visual.setPose(t.root,{x:p.x,y:z,z:-p.y,heading:h,grade:0,bank:0});visual.flashBeacon(t.root,now);
+   visual.setPose(t.root,{x:p.x,y:z,z:-p.y,heading:h,grade:0,bank:0});visual.driveTruck(t.root,now);
    // The strap from the truck's hook to the car's end that faces it.
    t.strap.visible=t.left===undefined&&driving>=TRUCK_DRIVE+.6;
-   if(t.strap.visible){const tx=p.x-fx*2.45,ty=p.y-fy*2.45,n=Math.hypot(tx-c.x,ty-c.y)||1,hx=c.x+(tx-c.x)/n*2.22,hy=c.y+(ty-c.y)/n*2.22;visual.layStrap(t.strap,strapPath([hx,ground(hx,hy)+.3,-hy],[tx,z+.78,-ty],5),ground);}
+   if(t.strap.visible){const tx=p.x+fx*TOW_HOOK[0],ty=p.y+fy*TOW_HOOK[0],n=Math.hypot(tx-c.x,ty-c.y)||1,hx=c.x+(tx-c.x)/n*2.22,hy=c.y+(ty-c.y)/n*2.22;visual.layStrap(t.strap,strapPath([hx,ground(hx,hy)+.3,-hy],[tx,z+TOW_HOOK[1],-ty],5),ground);}
   }
   const waving=new Set();
   for(const [number,stop] of this.stopped){
