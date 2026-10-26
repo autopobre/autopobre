@@ -149,3 +149,7 @@ volante_controles.png
 
 # Transcripts of the videos used as inspiration for the story lines: third-party content naming real people, PC only.
 /referencias/
+
+# The agents' local instructions (they name this PC's folders): PC only.
+/AGENTS.md
+/CLAUDE.md
