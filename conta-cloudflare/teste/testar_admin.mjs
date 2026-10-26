@@ -87,7 +87,7 @@ await check('the summary, the accounts, the events page by page, the last record
   {contas:3,com_apelido:2,novas_7d:3,entradas_24h:4,com_sessao:2,conferidos:1,antigos:1,recusadas_7d:5});
  assert.equal(s.recusas_por_motivo[0].n,5);assert.match(s.recusas_por_motivo[0].motivo,/pausa/);assert.equal(s.eventos_por,EVENT_DAYS);
  const users=(await boss.get('/api/admin/usuarios')).usuarios;
- assert.deepEqual(Object.keys(users[0]).sort(),['admin','antigos','apelido','conferidos','criado_em','id','importou_em','recusadas_7d','sessoes','sinalizadas_7d','ultimo_login'],'no Google id');
+ assert.deepEqual(Object.keys(users[0]).sort(),['admin','antigos','apelido','conferidas','conferidos','corridas','criado_em','dias','id','importou_em','pistas','recusadas_7d','ritmo','sessoes','sinalizadas_7d','ultimo_login','voltas'],'no Google id');
  const a=users.find(u=>u.apelido==='Ana Volta');assert.deepEqual([a.conferidos,a.antigos,a.recusadas_7d,a.sessoes,a.admin],[1,1,5,1,false],'one session: her second sign-in ended the first, same browser');
  assert.equal(users.find(u=>u.apelido==='Chefe Pista').admin,true);
  const refusals=(await boss.get('/api/admin/eventos?tipo=recusada')).eventos;assert.equal(refusals.length,5);assert.equal(refusals[0].apelido,'Ana Volta');
@@ -156,10 +156,28 @@ await check('a trusted pilot\'s lap the checks would refuse goes in all the same
  assert.equal(isTrusted({},{google_sub:'22',admin:1}),true,'an admin');assert.equal(isTrusted({CONFIAVEIS:'22'},{gone:true}),false);
 });
 
+await check('how much each pilot drives: races (each ticket), laps, days, the circuits, the pace against the driving line',async()=>{
+ const anaId=sql("SELECT id FROM usuarios WHERE apelido='Ana Volta'")[0].id,count=(table,id)=>sql(`SELECT COUNT(*) AS n FROM ${table} WHERE usuario_id=?`,id)[0].n;
+ const list=(await boss.get('/api/admin/usuarios')).usuarios,a=list.find(u=>u.apelido==='Ana Volta');
+ assert.ok(a.corridas>=4,`a race each time on track (${a.corridas})`);assert.equal(a.corridas,count('corridas',anaId));assert.equal(a.voltas,count('voltas',anaId));
+ assert.equal(a.dias,1);assert.deepEqual(a.pistas.map(p=>[p.circuito,p.corridas,p.voltas]),[['interlagos',a.corridas,a.voltas]]);
+ // Her checked best (119 s, the reviewed lap) over the Opala's driving line at Interlagos (113.285 s): 105.0%.
+ assert.deepEqual(a.ritmo,{valor:1.05,circuito:'interlagos',carro:'opala'});assert.deepEqual(a.pistas[0].melhor.opala,{ms:119000,ritmo:1.05});
+ await pilot('400000000000000000014','So Login');const idle=(await boss.get('/api/admin/usuarios')).usuarios.find(u=>u.apelido==='So Login');
+ assert.deepEqual([idle.corridas,idle.voltas,idle.dias,idle.pistas,idle.ritmo],[0,0,0,[],null],'signed in, never on track');
+ // Up to 30 races an hour are written; more tickets are answered all the same.
+ const busy=await pilot('400000000000000000013','Muitas Largadas'),busyId=sql("SELECT id FROM usuarios WHERE apelido='Muitas Largadas'")[0].id;
+ for(let i=0;i<32;i++)assert.equal((await busy.post('/api/recordes/bilhete',{circuito:'curvelo',modo:'normal',carro:'fusca',versao:'painel'})).status,200);
+ assert.equal(count('corridas',busyId),30);
+ const b=(await boss.get('/api/admin/usuarios')).usuarios.find(u=>u.apelido==='Muitas Largadas');
+ assert.deepEqual([b.corridas,b.voltas,b.ritmo,b.pistas[0].circuito],[30,0,null,'curvelo']);
+});
+
 await check('the player\'s own events in their data, and gone with the account',async()=>{
  const mine=await (await ana.go('/api/conta/meus-dados')).json();
  assert.deepEqual(mine.eventos.map(e=>e.tipo),['conta_criada','apelido','entrou','importou','conferida','recusada','recusada','recusada','recusada','recusada','removido','revisao_pedida','revisao_pedida','revisao','revisao']);
  assert.equal(mine.voltas.length,11,'her laps: the clean one, the seven broken, the two reviewed and the idle one');assert.equal(mine.voltas.filter(v=>v.fantasma).length,9,'the laps that would have been her best keep their ghosts (the seven broken ones too)');
+ assert.equal(mine.corridas.length,sql("SELECT COUNT(*) AS n FROM corridas c JOIN usuarios u ON u.id=c.usuario_id WHERE u.apelido='Ana Volta'")[0].n,'her races in her data');assert.deepEqual(Object.keys(mine.corridas[0]).sort(),['carro','circuito','modo','quando']);
  assert.equal((await ana.post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
  const left=sql("SELECT tipo,usuario_id FROM eventos WHERE tipo='conta_apagada'");assert.deepEqual(left.map(e=>({...e})),[{tipo:'conta_apagada',usuario_id:null}]);
  assert.equal(sql("SELECT COUNT(*) AS n FROM eventos e LEFT JOIN usuarios u ON u.id=e.usuario_id WHERE e.usuario_id IS NOT NULL AND u.id IS NULL")[0].n,0,'none of hers left');

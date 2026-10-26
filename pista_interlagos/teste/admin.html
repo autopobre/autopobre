@@ -23,8 +23,9 @@
   <ul id="motivos"></ul>
  </section>
  <section class="bloco">
-  <h2>Usuários</h2>
-  <div class="rolagem"><table id="usuarios"><thead><tr><th>Apelido</th><th>Conta criada</th><th>Último login</th><th class="num">Sessões</th><th class="ic" title="Recordes conferidos">✓</th><th class="ic" title="Recordes antigos">⚠️</th><th>Antigos subiram</th><th class="num">Recusas (7 dias)</th><th class="num" title="Voltas com sinais de programa nos últimos 7 dias">Sinais (7 dias)</th><th></th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nenhuma conta ainda.</p></div>
+  <div class="titulo-filtro"><h2>Usuários</h2><label>Ordenar por <select id="ordem"><option value="login">Último login</option><option value="corridas">Corridas</option><option value="voltas">Voltas</option><option value="ritmo">Ritmo</option></select></label></div>
+  <p class="nota">Corridas: cada vez que o piloto entrou na pista com a conta. Ritmo: a melhor volta conferida comparada com a linha ideal do jogo (100% é a linha; menos que isso, mais rápido que ela). Contados nos últimos 90 dias.</p>
+  <div class="rolagem"><table id="usuarios"><thead><tr><th>Apelido</th><th class="num">Corridas</th><th class="num">Voltas</th><th class="num" title="Dias em que correu">Dias</th><th class="num" title="Melhor volta conferida sobre a linha ideal">Ritmo</th><th>Pistas (corridas)</th><th>Conta criada</th><th>Último login</th><th class="num">Sessões</th><th class="ic" title="Recordes conferidos">✓</th><th class="ic" title="Recordes antigos">⚠️</th><th>Antigos subiram</th><th class="num">Recusas (7 dias)</th><th class="num" title="Voltas com sinais de programa nos últimos 7 dias">Sinais (7 dias)</th><th></th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nenhuma conta ainda.</p></div>
  </section>
  <section class="bloco">
   <div class="titulo-filtro"><h2>Eventos</h2><label>Tipo <select id="tipo"><option value="">Todos</option></select></label></div>

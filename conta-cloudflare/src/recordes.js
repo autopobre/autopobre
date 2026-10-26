@@ -65,6 +65,7 @@ const LOGGED_REFUSALS=5;      // refused laps an account writes to the panel's e
 const SAVED_LAPS=120;         // records an account may write in an hour: more than a pilot sets, even at Curvelo's 32 s
 const LOGGED_LAPS=150;        // laps an account writes to the lap log in an hour (Curvelo's 32 s laps make 112)
 const PREVIOUS_LAPS=10;       // earlier laps a lap's brakes are compared with (inputSignals: a replay brakes where they did)
+const RACES_PER_HOUR=30;      // races (tickets) an account writes to the races' log in an hour
 export const RECORDS_BODY={'/api/recordes/pedaco':GHOST_BYTES+INPUT_CHARS+4096,'/api/recordes/importar':16384};
 const known=(c,m,k)=>typeof c==='string'&&Object.hasOwn(CIRCUITS,c)&&MODES.includes(m)&&CARS.includes(k);
 const UPSERT=`INSERT INTO recordes (usuario_id,circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma,sinais) VALUES (?,?,?,?,?,?,?,?,?,?,?)
@@ -136,6 +137,12 @@ async function ticket(request,env,body){
  const {circuito:c,modo:m,carro:k}=body,v=typeof body.versao==='string'?body.versao:'';
  if(!known(c,m,k)||!VERSION.test(v))return json({erro:'Pista, modo, carro ou versão inválidos.'},400);
  const best=await bestOf(env,s.id,c,k);
+ // A ticket is the pilot going on track: one race (or practice, or story race) for the admin panel's pilots, up to
+ // RACES_PER_HOUR an hour (a ticket writes nothing else; past that, it is answered all the same).
+ try{
+  if(await env.DB.prepare('SELECT COUNT(*) AS n FROM corridas WHERE usuario_id=? AND quando>?').bind(s.id,Date.now()-HOUR).first('n')<RACES_PER_HOUR)
+   await env.DB.prepare('INSERT INTO corridas (usuario_id,quando,circuito,modo,carro) VALUES (?,?,?,?,?)').bind(s.id,Date.now(),c,m,k).run();
+ }catch{}
  // u/sb: the account and its Google account (a lap goes only to that same one); s0: issued; sl/gl: the last
  // chunk (server ms, game s); ss/gs: the clean stretch's start; xs/xg: the last crossing within it.
  const t={u:s.id,sb:s.google_sub,c,m,k,v,s0:Date.now(),sl:null,gl:null,ss:null,gs:null,xs:null,xg:null,n:0};

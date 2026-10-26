@@ -94,6 +94,25 @@ function armed(label,act){
 }
 // Remover takes the record off the boards.
 const removeButton=record=>armed('Remover',()=>get('remover',{recorde:record.id}));
+// The accounts, with how much each drives (conta-cloudflare/src/admin.js pilots), in the order the select asks: the last
+// sign-in, the most races or laps, or the best pace first (those who never set a checked lap last).
+let users=[];
+const pace=v=>v===null||v===undefined?'—':`${(v*100).toFixed(1).replace('.',',')}%`;
+const ORDERS={login:(a,b)=>b.ultimo_login-a.ultimo_login,corridas:(a,b)=>b.corridas-a.corridas||b.voltas-a.voltas,voltas:(a,b)=>b.voltas-a.voltas||b.corridas-a.corridas,
+ ritmo:(a,b)=>(a.ritmo?.valor??Infinity)-(b.ritmo?.valor??Infinity)||b.voltas-a.voltas};
+// A pilot's circuits, most raced first ("Interlagos 12 · Brasília 3"); the title has each one's races, laps and best laps.
+function tracksCell(x){
+ const span=document.createElement('span');span.textContent=x.pistas?.length?x.pistas.slice(0,4).map(p=>`${track(p.circuito)} ${p.corridas}`).join(' · ')+(x.pistas.length>4?' …':''):'—';
+ span.title=(x.pistas??[]).map(p=>`${track(p.circuito)}: ${p.corridas} corrida${p.corridas===1?'':'s'}, ${p.voltas} volta${p.voltas===1?'':'s'}`+
+  Object.entries(p.melhor).map(([car,m])=>` · ${CARS[car]??car} ${lap(m.ms)} (${pace(m.ritmo)})`).join('')).join('\n');
+ return span;
+}
+function drawUsers(){
+ const list=[...users].sort(ORDERS[$('ordem').value]??ORDERS.login);
+ rows('usuarios',list,[[x=>(x.apelido??'(sem apelido)')+(x.admin?' · admin':'')],[x=>String(x.corridas??0),'num'],[x=>String(x.voltas??0),'num'],[x=>String(x.dias??0),'num'],
+  [x=>x.ritmo?`${pace(x.ritmo.valor)} · ${track(x.ritmo.circuito)}`:'—','num'],[tracksCell,'acao'],[x=>when(x.criado_em)],[x=>when(x.ultimo_login)],[x=>String(x.sessoes),'num'],
+  [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>x.importou_em?when(x.importou_em):'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num'],[nicknameButton,'acao']]);
+}
 // Trocar apelido: the admin gives a pilot a nickname, a reserved one too (the real Stevan's "Stevan").
 function nicknameButton(user){
  const b=document.createElement('button');b.type='button';b.textContent='Trocar apelido';
@@ -122,8 +141,7 @@ async function load(){
   summary(s);
   rows('casos',c.casos,[[x=>when(x.quando)],[x=>x.apelido??'(apagada)'],[x=>where(x)],[x=>lap(x.tempo_ms),'num'],[x=>x.caso,'sinais'],[x=>x.aparelho??'—'],[x=>x.versao??'—'],[caseLink,'acao']]);
   rows('revisoes',v.revisoes,[[x=>when(x.quando)],[x=>x.apelido??'(apagada)'],[x=>where(x)],[x=>lap(x.tempo_ms),'num'],[x=>x.resultado],[x=>x.aparelho??'—'],[x=>signals(x.sinais),'sinais'],[reviewButtons,'acao']]);
-  rows('usuarios',u.usuarios,[[x=>(x.apelido??'(sem apelido)')+(x.admin?' · admin':'')],[x=>when(x.criado_em)],[x=>when(x.ultimo_login)],[x=>String(x.sessoes),'num'],
-   [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>x.importou_em?when(x.importou_em):'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num'],[nicknameButton,'acao']]);
+  users=u.usuarios;drawUsers();
   rows('recordes',r.recordes,[[x=>when(x.enviado_em)],[x=>x.apelido],[x=>where(x)],[x=>MODES[x.modo]??x.modo],[x=>lap(x.volta_ms),'num'],
    [x=>x.selo!=='conferido'?'⚠️ antigo':x.sinais?.revisada?'✓ revisado':x.sinais?.confiavel?'✓ confiável (caso)':'✓ conferido'],[x=>x.versao],[x=>x.selo==='conferido'?signals(x.sinais):'—','sinais'],[removeButton,'acao']]);
   oldest=null;oldestLap=null;await Promise.all([events(),laps()]);
@@ -137,6 +155,7 @@ async function load(){
 for(const [value,label] of Object.entries(KINDS)){const o=document.createElement('option');o.value=value;o.textContent=label;$('tipo').append(o);}
 $('tipo').onchange=()=>{kind=$('tipo').value;oldest=null;events().catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});};
 $('mais').onclick=()=>events(true).catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});
+$('ordem').onchange=drawUsers;
 $('soSinais').onchange=()=>{oldestLap=null;laps().catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});};
 $('maisVoltas').onclick=()=>laps(true).catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});
 $('atualizar').onclick=load;

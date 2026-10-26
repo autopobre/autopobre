@@ -8,6 +8,7 @@ import {json,signedIn,notSignedIn,isAdmin} from './base.js';
 import {EVENT_DAYS,event} from './eventos.js';
 import {UPSERT} from './recordes.js';
 import {cleanNickname,nicknameKey,NICKNAME_RULE} from './apelidos.js';
+import {LINE_TIMES} from './pisos.js';
 
 const DAY=86400000;
 async function admin(request,env){
@@ -53,7 +54,33 @@ async function users(request,env){
   FROM usuarios u ORDER BY u.ultimo_login DESC LIMIT 500`).bind(now,now-7*DAY));
  const listed=new Set(String(env.ADMINS??'').split(',').map(x=>x.trim()).filter(Boolean));
  const subs=new Map((await rows(env.DB.prepare('SELECT id,google_sub FROM usuarios'))).map(u=>[u.id,u.google_sub]));
- return json({usuarios:list.map(u=>({...u,admin:!!u.admin||listed.has(subs.get(u.id))}))});
+ const driving=await pilots(env);
+ return json({usuarios:list.map(u=>({...u,admin:!!u.admin||listed.has(subs.get(u.id)),...(driving.get(u.id)??NOT_DRIVEN)}))});
+}
+// How much each pilot drives, to tell the good ones from who only signed in (the last EVENT_DAYS: races and laps go with
+// them): races (each time on track), laps, the days they drove, and per circuit (most raced first) the races, the laps,
+// the checked best per car and its pace: that best over the car's driving line (pisos.js; 0.964: 3.6% quicker than the
+// line). ritmo: the pilot's best pace on any circuit, and where.
+const NOT_DRIVEN=Object.freeze({corridas:0,voltas:0,conferidas:0,dias:0,pistas:[],ritmo:null});
+async function pilots(env){
+ const [races,laps,bests,days]=await Promise.all([
+  rows(env.DB.prepare('SELECT usuario_id AS u,circuito AS c,COUNT(*) AS n FROM corridas GROUP BY u,c')),
+  rows(env.DB.prepare("SELECT usuario_id AS u,circuito AS c,COUNT(*) AS n,SUM(resultado IN ('recorde','conferida')) AS ok FROM voltas GROUP BY u,c")),
+  rows(env.DB.prepare("SELECT usuario_id AS u,circuito AS c,carro AS k,MIN(volta_ms) AS ms FROM recordes WHERE selo='conferido' GROUP BY u,c,k")),
+  // Days in Brasília's clock (UTC-3), on track or with a lap.
+  rows(env.DB.prepare('SELECT u,COUNT(DISTINCT d) AS n FROM (SELECT usuario_id AS u,(quando-10800000)/86400000 AS d FROM corridas UNION SELECT usuario_id,(quando-10800000)/86400000 FROM voltas) GROUP BY u'))]);
+ const out=new Map(),pilot=u=>{if(!out.has(u))out.set(u,{corridas:0,voltas:0,conferidas:0,dias:0,pistas:new Map(),ritmo:null});return out.get(u);};
+ const track=(u,c)=>{const p=pilot(u).pistas;if(!p.has(c))p.set(c,{circuito:c,corridas:0,voltas:0,melhor:{}});return p.get(c);};
+ for(const r of races){pilot(r.u).corridas+=r.n;track(r.u,r.c).corridas=r.n;}
+ for(const r of laps){const p=pilot(r.u);p.voltas+=r.n;p.conferidas+=r.ok??0;track(r.u,r.c).voltas=r.n;}
+ for(const r of bests){
+  const line=LINE_TIMES[r.k]?.[r.c],pace=line?Math.round(r.ms/line)/1000:null,p=pilot(r.u);
+  track(r.u,r.c).melhor[r.k]={ms:r.ms,ritmo:pace};
+  if(pace!==null&&(p.ritmo===null||pace<p.ritmo.valor))p.ritmo={valor:pace,circuito:r.c,carro:r.k};
+ }
+ for(const r of days)pilot(r.u).dias=r.n;
+ for(const p of out.values())p.pistas=[...p.pistas.values()].sort((a,b)=>b.corridas-a.corridas||b.voltas-a.voltas);
+ return out;
 }
 
 // What happened, newest first, 100 at a time (antes: the oldest id already shown), of one kind or all.
