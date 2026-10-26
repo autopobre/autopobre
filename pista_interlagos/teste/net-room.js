@@ -1,7 +1,8 @@
 // Multiplayer room (multiplayer.js). Two ways to carry the same messages:
 // - online (the default): through the room server (net-link.js, sala-cloudflare), for players on
-//   different machines. The server checks the group key, says who is who and who hosts, lets a
-//   guest in once the host admits it, and relays: this module then takes its word for the roles;
+//   different machines. The server checks the account and the password (or an invitation), says who
+//   is who and who hosts, lets a guest in once the host admits it, and relays: this module then takes
+//   its word for the roles;
 // - same machine (&local=1): windows of one browser talk through a BroadcastChannel, with no server
 //   and no network; the windows elect their host among themselves.
 // The first window in a room hosts it: it gives out the seats (a seat is one of the grid's 15 cars:
@@ -17,6 +18,7 @@
 import {CAR_CHOICES} from './race-roster.js';
 import {readCar} from './net-cars.js';
 import {TIMES_OF_DAY,RAIN_LEVELS} from './weather.js';
+import {CHAT_LENGTH,chatText,chatLink} from './chat-text.js';
 // The seats, the 99 first: the car of a pilot who asks for none (or for one already taken).
 export const SEATS=Object.freeze(CAR_CHOICES.map(e=>e.number));
 // Seconds: a silent player (or host) is gone after SILENT; a window hosts once ELECTION passes
@@ -37,6 +39,8 @@ export const SEATS=Object.freeze(CAR_CHOICES.map(e=>e.number));
 // racing host's place as long).
 const SILENT=3,ONLINE_SILENT=30,ELECTION=.9,READY_WAIT=60,FROZEN=.25,TIE=.5,BEACON=1,PING=1,HELLO=2,RATE=240,HOST_GRACE=10,RECLAIM=30,TWIN=3,ECHO=1,ECHO_LATE=2.5,LINK_QUIET=10,RACE_HOST_WAIT=600;
 const SAVED='autopobre-sala-id-',SAVED_SEAT='autopobre-sala-carro-';
+// Why a connection ended that is tried again (net-link.js), the tab still who it was in the room.
+const LINE_TROUBLE=new Set(['reconectando','fora','contas']);
 const sessionStore=()=>{try{return globalThis.sessionStorage??null;}catch{return null;}};
 function readSaved(storage,room){
  try{const v=JSON.parse(storage?.getItem(SAVED+room)||'null');return v&&isId(v.id)&&typeof v.host==='boolean'&&isNum(v.at,0,1e14)?{...v,since:isNum(v.since,0,1e14)?v.since:null,number:SEATS.includes(v.number)?v.number:null}:null;}catch{return null;}
@@ -87,18 +91,32 @@ export function roomAddress(hash,store){
  const as=v=>{q.set(ROOM_KEY,v);return '#'+q.toString();};
  return {hash:as(full),shown:as(`${head}_${HIDDEN}`),lost:false};
 }
+// A host's invitation to a room, kept in this browser (localStorage) once the pilot took it (saguao.js),
+// by the room's name: the room server takes it instead of the password (net-link.js sends it), until it
+// runs out; refused, it goes (dropInvite).
+const INVITES='autopobre-convite-';
+export function keepInvite(store,room,token){try{if(roomName(room)===room&&typeof token==='string'&&token.length<=1024)store?.setItem(INVITES+room,token);}catch{}}
+export function savedInvite(store,room){try{const t=store?.getItem(INVITES+room);return typeof t==='string'&&t.length<=1024?t:null;}catch{return null;}}
+export function dropInvite(store,room){try{store?.removeItem(INVITES+room);}catch{}}
 // A pilot's name as the others see it: plain text without control or format characters (bidi
 // overrides, zero-width), at most 24 characters. It is only ever shown as text.
 export function playerName(value){return String(value??'').replace(/\p{C}/gu,'').replace(/\s+/g,' ').trim().slice(0,24);}
+// The room's chat (multiplayer.js T): a line of CHAT_LENGTH characters at most, no links, one every
+// CHAT_GAP seconds from this window; cleaned as the room server cleans it (chat-text.js, the same file).
+export {CHAT_LENGTH,chatText,chatLink} from './chat-text.js';
+export const CHAT_GAP=2;
 // index.html#desafio=NOME[&carro=73][&auto=1][&fantasmas=1][&local=1][&servidor=local][&lag=150][&perda=5];
 // null without a room. label: the room's name as shown (roomLabel: NOME_SEGREDO shows NOME_***; the
 // hidden address is read by roomAddress first). carro: the car asked for, instead of the car screen's choice. fantasmas: the
 // host's races let humans pass through each other (by default they collide). local: this browser's
 // windows only, no server. servidor=local: wrangler dev here.
+// address: the room's name as written (its secret too), for an invitation (only the letters, digits, "_"
+// and "-" the room server takes; the room is the same once read as a name).
 export function roomParams(hash){
  const q=query(hash),room=roomName(q.get(ROOM_KEY));if(!room)return null;
+ const address=String(q.get(ROOM_KEY)).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Za-z0-9_-]/g,'').slice(0,48);
  const num=(key,hi)=>{const v=Number(q.get(key));return Number.isFinite(v)?clamp(v,0,hi):0;},car=q.get('carro');
- return {room,label:roomLabel(q.get(ROOM_KEY)),car:SEATS.includes(car)?car:null,auto:q.get('auto')==='1',ghosts:q.get('fantasmas')==='1',local:q.get('local')==='1',server:q.get('servidor')==='local'?'local':null,lag:num('lag',1000),loss:num('perda',50)/100};
+ return {room,address,label:roomLabel(q.get(ROOM_KEY)),car:SEATS.includes(car)?car:null,auto:q.get('auto')==='1',ghosts:q.get('fantasmas')==='1',local:q.get('local')==='1',server:q.get('servidor')==='local'?'local':null,lag:num('lag',1000),loss:num('perda',50)/100};
 }
 const validSeat=s=>s&&typeof s==='object'&&isId(s.id)&&typeof s.name==='string'&&s.name.length<=64&&SEATS.includes(s.number);
 const validSeats=v=>Array.isArray(v)&&v.length<=SEATS.length&&v.every(validSeat);
@@ -129,19 +147,25 @@ export function validMessage(m){
   case 'pong':return isId(m.to)&&isInt(m.n,0,1e9);
   case 'state':return isId(m.race)&&isInt(m.seq,0,1e9)&&isNum(m.lat,0,5)&&isCar(m.car);
   case 'snap':return isId(m.race)&&isInt(m.seq,0,1e9)&&Array.isArray(m.cars)&&m.cars.length<=SEATS.length&&m.cars.every(c=>Array.isArray(c)&&c.length===3&&SEATS.includes(c[0])&&isNum(c[1],0,5)&&isCar(c[2]));
+  case 'chat':return typeof m.name==='string'&&m.name.length<=64&&typeof m.text==='string'&&m.text.length<=4*CHAT_LENGTH;
   default:return false;
  }
 }
 // The room server's own word (online): who this tab is and its role, a knock at the host's door, a
-// guest let in, the host gone for a moment, back, or replaced, and this tab made host.
-const TOKEN=/^[0-9a-f]{32}$/;
+// guest let in (and whose room it is), the host gone for a moment, back, replaced, or gone for good
+// with nobody to take its place (host: null), and this tab made host.
+const TOKEN=/^[0-9a-f]{32}$/,ACCOUNT=/^[A-Za-z0-9_-]{22}$/;
 export function validControl(m){
  switch(m?.t){
   case 'welcome':return isId(m.id)&&TOKEN.test(m.token)&&['host','guest'].includes(m.role)&&(m.host===null||isId(m.host))&&typeof m.pending==='boolean';
   case 'knock':return isId(m.id)&&typeof m.name==='string'&&m.name.length<=64;
-  case 'host':return isId(m.id);
+  case 'host':return m.id===null||isId(m.id);
   case 'role':return m.role==='host';
-  case 'admitted':case 'host-away':return true;
+  case 'admitted':return m.host===undefined||m.host===null||isId(m.host);
+  case 'host-away':return true;
+  // (the host's: who is online, for its invitations, and whether one reached the pilot)
+  case 'online':return Array.isArray(m.pilotos)&&m.pilotos.length<=50&&m.pilotos.every(p=>p&&typeof p==='object'&&ACCOUNT.test(p.conta)&&typeof p.nome==='string'&&p.nome.length<=64);
+  case 'convidado':return ACCOUNT.test(m.conta)&&typeof m.entregue==='boolean';
   default:return false;
  }
 }
@@ -151,6 +175,7 @@ const cleanSeats=seats=>seats.map(s=>({...s,name:playerName(s.name)||'Piloto'}))
 function cleanNames(m){
  if(m.t==='lobby')return {...m,name:playerName(m.name)||'Anfitrião',players:m.players.map(p=>({...p,name:playerName(p.name)||'Piloto'})),race:m.race&&{...m.race,seats:cleanSeats(m.race.seats)}};
  if(m.t==='go')return {...m,seats:cleanSeats(m.seats)};
+ if(m.t==='chat')return {...m,name:playerName(m.name)||'Piloto',text:chatText(m.text)};
  return m;
 }
 export class Room {
@@ -223,14 +248,23 @@ export class Room {
   if(r?.host&&r.since!==null&&Date.now()-r.at<RECLAIM*1000)this.becomeHost(now,r.since);else this.elect();
  }
  leave(){if(this.online){this.send({t:'bye'});this.link.close();return;}this.save();this.send({t:'bye'});this.channel.close();}
- // Online, after a refusal the player can fix (the key): connect again.
+ // Online, after a refusal the player can fix (the password, signing in): connect again.
  retry(){if(this.online){this.link.close();this.start();}}
  // The connection ended: the reason the server gave (net-link.js CLOSED), or the network's. A line
- // that dropped is tried again (net-link.js): back in time, the tab is who it was, in its race. Who
- // knocked meanwhile may have gone: a host welcomed back hears every knock still at the door again.
+ // that dropped is tried again (net-link.js; so is an accounts server out of reach, contas): back in
+ // time, the tab is who it was, in its race. Who knocked meanwhile may have gone: a host welcomed back
+ // hears every knock still at the door again.
  closed(reason){
-  if(reason!==this.problem)this.note('conexão: '+reason);this.problem=reason;this.outdated=true;this.knocks.clear();if(reason!=='reconectando'&&reason!=='fora'){this.role=null;this.pending=false;}
+  if(reason!==this.problem)this.note('conexão: '+reason);this.problem=reason;this.outdated=true;this.knocks.clear();if(!LINE_TROUBLE.has(reason)){this.role=null;this.pending=false;}
   this.emit('change');
+ }
+ // The chat: a line from this window to everyone in the room (chatText cleans it; online the server
+ // cleans it again and keeps its own pace), shown here at once ('chat', mine). Not from the door, nor
+ // sooner than CHAT_GAP after the last one: false (the line stays to be sent again).
+ say(value){
+  const text=chatText(value),now=this.clock();
+  if(!text||chatLink(text)||!this.role||this.pending||now-(this.saidAt??-Infinity)<CHAT_GAP)return false;
+  this.saidAt=now;this.send({t:'chat',name:this.name,text});this.emit('chat',{id:this.id,name:this.name,text,mine:true});return true;
  }
  // Online: the server's word on who this tab is, who hosts, and who waits at the door.
  control(m,now){
@@ -243,15 +277,27 @@ export class Room {
     else{if(this.role!=='guest'||this.hostId!==m.host||renamed){this.race=null;this.lobby=null;}this.role='guest';this.hostId=m.host;this.hostSeen=now;this.hostLeft=undefined;if(!m.pending)this.hello();}
     break;
    }
-   case 'admitted':this.pending=false;this.hello();break;
+   // (whose room it is: one let in after waiting where nobody hosted yet learns it here)
+   case 'admitted':this.pending=false;if(m.host&&m.host!==this.hostId){this.hostId=m.host;this.race=null;this.lobby=null;}this.hostSeen=now;this.hello();break;
    case 'knock':if(this.role==='host'&&!this.players.has(m.id))this.knocks.set(m.id,{id:m.id,name:playerName(m.name)||'Piloto'});break;  // again: a new name
    case 'host-away':if(this.role==='guest')this.hostLeft=now;break;
-   // The host is back (same id) or another took the room: a new host starts a new room state.
-   case 'host':if(this.role==='guest'){if(m.id!==this.hostId){this.hostId=m.id;this.race=null;this.lobby=null;}this.hostLeft=undefined;this.hostSeen=now;this.hello();}break;
-   case 'role':this.becomeHost(now);break;
+   // The host is back (same id) or another took the room: a new host starts a new room state. None
+   // (null): the host is gone for good and nobody with the host's password is here to take over.
+   case 'host':if(this.role==='guest'){
+    if(m.id!==this.hostId){this.hostId=m.id;this.race=null;this.lobby=null;}this.hostLeft=undefined;this.hostSeen=now;
+    if(m.id)this.hello();
+   }break;
+   // (from the door too: whoever has the host's password takes a room left without a host)
+   case 'role':this.pending=false;this.becomeHost(now);break;
+   case 'online':if(this.role==='host')this.emit('online',m.pilotos.map(p=>({conta:p.conta,nome:playerName(p.nome)||'Piloto'})));break;
+   case 'convidado':if(this.role==='host')this.emit('invited',m.conta,m.entregue);break;
   }
   this.emit('change');
  }
+ // Host, online: who is online now (the 'online' event brings them), and an invitation to one of them
+ // to this room by its address (its name as written, its secret too: the invited pilot's game opens it).
+ askOnline(){if(this.role==='host'&&this.online)this.send({t:'online'});}
+ invite(account,address){if(this.role==='host'&&this.online&&ACCOUNT.test(account??''))this.send({t:'convidar',conta:account,endereco:address});}
  // Host, online: let a guest in, turn it away, or send it out for good.
  admit(id){if(this.role!=='host')return;this.knocks.delete(id);this.send({t:'admit',to:id});this.emit('change');}
  deny(id){if(this.role!=='host')return;this.knocks.delete(id);this.send({t:'deny',to:id});this.emit('change');}
@@ -297,6 +343,8 @@ export class Room {
    case 'pong':if(m.to===this.id&&this.pings.has(m.n)){const half=(now-this.pings.get(m.n))/2;this.pings.delete(m.n);this.latency=this.latency?this.latency*.8+half*.2:half;}break;
    case 'state':if(host){this.touch(m.from,now);if(this.race?.id===m.race)this.emit('state',m.from,m);}break;
    case 'snap':if(fromHost&&this.race?.id===m.race){this.hostSeen=now;this.emit('snap',m);}break;
+   // (online the server sends it only from someone let in, under that account's name)
+   case 'chat':if(m.text&&!chatLink(m.text))this.emit('chat',{id:m.from,name:m.name,text:m.text});break;
   }
  }
  // A host's lobby: a guest follows it. Of two hosts in one room (one too busy to answer a new

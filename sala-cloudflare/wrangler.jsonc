@@ -1,5 +1,6 @@
 // Servidor das salas multiplayer (src/index.js). Publicar: .\wrangler deploy
-// A chave do grupo fica só no Cloudflare: .\wrangler secret put CHAVE_GRUPO
+// Os segredos ficam só no Cloudflare: .\wrangler secret put SENHA_ANFITRIAO, SENHA_PILOTOS e SALA_PASSE
+// (este, o mesmo do servidor de contas, conta-cloudflare: é com ele que os passes das contas são conferidos).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "sala-autopobre",
@@ -10,19 +11,20 @@
   "routes": [{ "pattern": "sala.autopobre.com.br", "custom_domain": true }],
   "workers_dev": false,
   "preview_urls": false,
-  // SALAS: one per room. PORTEIRO: a single one for all of them (wrong keys and sockets waiting for
-  // their key, per IP, across every room).
+  // SALAS: one per room. PORTEIRO: a single one for all of them (wrong passwords and sockets waiting
+  // for their key, per IP, across every room). SAGUAO: a single one too, who is online for the hosts'
+  // invitations (hibernating: an idle line costs nothing).
   "durable_objects": {
-    "bindings": [{ "name": "SALAS", "class_name": "Sala" }, { "name": "PORTEIRO", "class_name": "Porteiro" }]
+    "bindings": [{ "name": "SALAS", "class_name": "Sala" }, { "name": "PORTEIRO", "class_name": "Porteiro" }, { "name": "SAGUAO", "class_name": "Saguao" }]
   },
   // The free plan runs SQLite-backed Durable Objects only.
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sala"] }, { "tag": "v2", "new_sqlite_classes": ["Porteiro"] }],
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sala"] }, { "tag": "v2", "new_sqlite_classes": ["Porteiro"] }, { "tag": "v3", "new_sqlite_classes": ["Saguao"] }],
   "vars": {
-    // Pages allowed to open a room: the site only, the main link (whose /dev/ folder still carries
-    // the multiplayer) and the test version at dev.autopobre.com.br (autopobre/dev). The local
-    // preview (INICIAR_TESTE) talks to wrangler dev (&servidor=local, origins in .dev.vars), never to
-    // this server. The old address (www.inteligenciamilgrau.com.br, an origin all of that account's
-    // Pages projects share) only redirects here now, so it no longer opens rooms.
-    "ORIGENS": "https://autopobre.com.br,https://dev.autopobre.com.br"
+    // Pages allowed to open a room: the test version at dev.autopobre.com.br (autopobre/dev) only,
+    // the one site with the accounts (a room lets in only pilots signed in). The museum at
+    // autopobre.com.br/dev/ (no accounts) no longer opens rooms. The local preview (INICIAR_TESTE)
+    // talks to wrangler dev (&servidor=local, origins in .dev.vars), never to this server. The old
+    // address (www.inteligenciamilgrau.com.br) only redirects.
+    "ORIGENS": "https://dev.autopobre.com.br"
   }
 }

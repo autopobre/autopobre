@@ -39,7 +39,7 @@ export const KEY_ACTIONS=Object.freeze([
  {id:'ignicao',group:'fora',name:'Ignição (IGN)',note:'na partida do Modo História',codes:['KeyL']},
  {id:'partida',group:'fora',name:'Partida',note:'segure, dosando o acelerador',codes:['KeyI']},
  {id:'resgate',group:'fora',name:'Reposicionar ou pedir reboque',note:'na selfie, vira o celular entre vertical e horizontal · a pé com a bola no Mineirão, passe rasteiro (segure para mais forte)',codes:['KeyR']},
- {id:'arena',group:'arena',name:'Painel da arena',note:'layouts, desafios e editor',codes:['KeyT']},
+ {id:'arena',group:'arena',name:'Painel da arena',note:'layouts, desafios e editor · numa sala multiplayer, escrever no chat (com Shift, mostrar ou esconder o chat)',codes:['KeyT']},
  {id:'gasMenos',group:'arena',name:'Acelerador: menos',note:'quanto o carro acelera com a tecla no fundo',codes:['Digit9','Numpad9']},
  {id:'gasMais',group:'arena',name:'Acelerador: mais',note:'',codes:['Digit0','Numpad0']},
  {id:'volanteMenos',group:'arena',name:'Volante: menos',note:'quanto as rodas viram',codes:['Minus','NumpadSubtract']},

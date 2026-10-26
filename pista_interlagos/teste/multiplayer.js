@@ -4,14 +4,16 @@
 // the address asks for a room:
 //   index.html#desafio=NOME  the first in a room hosts it; every pilot races the car chosen on
 //                            Modo Corrida's car screen (or the one in &carro=73) if nobody else has
-//                            it, else the first free one. Online, the group key opens the door and
-//                            the host lets each guest in. The old #sala= and #corrida= open nothing
+//                            it, else the first free one. Online, only pilots signed in with their
+//                            account (and a nickname, their name in the room) get in: the host's
+//                            password opens a room, the pilots' enters one someone opened, and the
+//                            host lets each guest in. The old #sala= and #corrida= open nothing
 //   &local=1                 this browser's windows only, no server; &servidor=local: wrangler dev
 //   &auto=1                  the automatic pilot drives this window's car from the start
 //   &fantasmas=1             (host) humans pass through each other instead of colliding
 //   &lag=150&perda=5         simulate 150 ms of network delay and 5% of lost car messages
-//   #desafio=NOME_SEGREDO    what follows the "_" is never on screen (the card and the address bar
-//                            read NOME_***): a pilot streaming his screen does not give the room away
+//   #desafio=NOME_SEGREDO    what follows the "_" is never on screen (the address bar reads NOME_***;
+//                            the card shows no room name at all): a stream does not give the room away
 // A guest the host lets in goes to Modo Corrida's car screen, picks its car and presses "Aguardar
 // início da corrida". The host lets pilots in until the start (on the car screen, the track screen and
 // on the grid; its mouse is let go on the grid when someone knocks), picks the track and presses
@@ -29,9 +31,12 @@
 // flag before it, the rivals easing off). Back in time, the pilot takes the car from where it stands;
 // a car that reached the flag with nobody at the wheel is AB, its race over. The host out of reach
 // (its line down, its window gone) stands the race still in every window until it is back.
+// T writes in the room's chat, Shift+T shows or hides its window (multiplayer-chat.js): each line also
+// shows in a balloon over the car of whoever said it.
 import * as THREE from 'three';
-import {Room,roomParams,roomAddress,roomLabel,roomIn} from './net-room.js';
+import {Room,roomParams,roomAddress,savedInvite,dropInvite} from './net-room.js';
 import {ServerLink,ROOM_SERVER,LOCAL_SERVER} from './net-link.js';
+import {RoomChat} from './multiplayer-chat.js';
 import {RemoteCar,packCar,readCar} from './net-cars.js';
 import {GuestRaceState} from './net-verify.js';
 import {PLAYER_ENTRY,carEntry} from './race-roster.js';
@@ -44,6 +49,8 @@ import {TOW_HOOK} from './tow-truck.js';
 // still, updatePause), and mid-race the host leaves a guest's without a driver after STRANDED
 // (checkSilence).
 const SEND=1/30,RESULTS_WAIT=60,QUIET=2,STRANDED=5;
+// The host's list of who is online is asked again every ONLINE_EVERY seconds while it is open.
+const ONLINE_EVERY=5;
 // The tow truck (immersive-visuals.js truckModel, tow-truck.js) stands this far ahead of the car's centre on the strap
 // (hooks 2.22 m and 2.45 m from the centres, 5 m of strap). It comes in along the side of the track,
 // TRUCK_SIDE metres past the edge, from TRUCK_BACK metres behind the car, in TRUCK_DRIVE seconds (the
@@ -60,8 +67,9 @@ const seatIndex=(field,number)=>field.roster.findIndex(e=>e.number===number);
 const clock=()=>performance.now()/1000;
 // How far down the track a point at s is from one at from, going forward (0..L metres).
 const along=(from,s,L)=>((s-from)%L+L)%L;
-// The group key, typed once on this browser (the server keeps the real one as a secret).
-const KEY_STORE='autopobre-chave-grupo';
+// The room's password, typed once on this browser: the host's opens rooms, the pilots' enters them (the
+// server keeps both as secrets and tells which one it was by this tab's role).
+const KEY_STORE='autopobre-senha-sala';
 const readKey=()=>{try{return localStorage.getItem(KEY_STORE)??'';}catch{return '';}};
 const localStore=()=>{try{return globalThis.localStorage??null;}catch{return null;}};
 const saveKey=key=>{try{localStorage.setItem(KEY_STORE,key);}catch{}};
@@ -69,38 +77,49 @@ const saveKey=key=>{try{localStorage.setItem(KEY_STORE,key);}catch{}};
 // moment (the server's word), or silent.
 const PAUSES={linha:()=>'Sua conexão caiu · corrida pausada para todos até ela voltar…',saiu:()=>'O anfitrião caiu · corrida pausada até ele voltar…',
  silencio:secs=>`Sem sinal do anfitrião há ${secs} s · corrida pausada até ele voltar…`};
-// What the card says when the server closed the door (net-link.js CLOSED) or the line dropped.
-const PROBLEMS={conectando:'Conectando ao servidor da sala…',reconectando:'Conexão caiu · tentando de novo…',chave:'Digite a chave do grupo para entrar na sala.',
+// What the card says when the server closed the door (net-link.js CLOSED), the line dropped, or the
+// account is missing (the room server lets in only pilots signed in, with a nickname).
+const PROBLEMS={conectando:'Conectando ao servidor da sala…',reconectando:'Conexão caiu · tentando de novo…',chave:'Digite a senha da sala.',
+ conta:'Só entra na sala quem está com a conta do Google conectada.',apelido:'Escolha o seu apelido na conta: é o seu nome na sala.',
+ passe:'A sala não reconheceu a sua conta · tente de novo.',contas:'O servidor de contas não respondeu · tentando de novo…',
  cheia:'Sala cheia.',recusado:'O anfitrião recusou sua entrada.',expulso:'Você foi removido da sala.',excesso:'Conexão encerrada: mensagens demais.',
- ocupada:'Muitas tentativas com a chave errada · tente de novo em um minuto.','outra-aba':'Esta sala foi aberta em outra aba.',origem:'Endereço não autorizado.',
+ ocupada:'Muitas tentativas com a senha errada · tente de novo em um minuto.','outra-aba':'Esta sala foi aberta em outra aba.',origem:'Endereço não autorizado.',
  fora:'Sem conexão com o servidor da sala (internet, ou o limite do dia do servidor).',saiu:'Você saiu da sala.'};
+// The card's button for an account problem: what it says, and what it does (Multiplayer accountAction).
+const ACCOUNT_ACTIONS={conta:'Entrar com Google',apelido:'Escolher apelido',passe:'Tentar de novo'};
 const HIDDEN_LOST='Este endereço esconde a parte secreta do nome da sala (depois do _). Abra o link completo que você recebeu.';
 // game: main.js hooks (session, immersive, fullGrid, template, withTemplate, pilotName, wantedCar,
-// roomCars, openCars, freeMouse, command, autopilot, startRace, hasCircuit).
+// roomCars, openCars, freeMouse, command, autopilot, startRace, hasCircuit; the account's: roomPass,
+// accountName, signIn, openAccount; the chat's balloons: camera, playerCar).
 export function startMultiplayer(game,hash=location.hash){
  // The room's secret leaves the address bar at once (net-room.js roomAddress); an address that came
  // with it hidden and unknown here opens no room, only the card saying so.
  const address=roomAddress(hash,localStore());
- if(address.lost){roomCard(roomLabel(roomIn(hash)),HIDDEN_LOST);return null;}
+ if(address.lost){roomCard(HIDDEN_LOST);return null;}
  if(address.shown!==hash)try{history.replaceState(history.state,'',address.shown);}catch{}
  const params=roomParams(address.hash);return params?new Multiplayer(game,params):null;
 }
 // The room card's frame (Multiplayer buildPanel fills it in): its sheet (the release's version,
-// preparar_publicacao.py tags this module's address, keeps a cached old sheet out) and its head.
-function roomCard(name,text){
+// preparar_publicacao.py tags this module's address, keeps a cached old sheet out) and its head. The
+// room's name is never on screen (the team's wish, 10-26: the pilot opened the link, the card needs no
+// name; a stream shows nothing of it either).
+function roomCard(text){
  const link=document.createElement('link');link.rel='stylesheet';link.href='./multiplayer.css'+new URL(import.meta.url).search;document.head.append(link);
  const root=document.createElement('section');root.id='mpRoom';root.setAttribute('aria-label','Sala multiplayer');document.body.classList.add('mp-room');
  const add=(tag,className,parent=root)=>{const e=document.createElement(tag);if(className)e.className=className;parent.append(e);return e;};
  const head=add('div','mp-head');add('b','',head).textContent='SALA';
- const card={root,add,room:add('span','mp-name',head),role:add('small','mp-role',head),status:add('p','mp-status')};
- card.room.textContent=name??'';card.status.setAttribute('role','status');if(text){card.status.textContent=text;document.body.append(root);}
+ const card={root,add,role:add('small','mp-role',head),status:add('p','mp-status')};
+ card.status.setAttribute('role','status');if(text){card.status.textContent=text;document.body.append(root);}
  return card;
 }
 // (exported for testar_multiplayer.mjs, which runs its race-time checks without a page)
 export class Multiplayer {
  constructor(game,params){
   this.game=game;this.params=params;this.autopilot=params.auto;this.autopilotOn=false;
-  const link=params.local?null:new ServerLink({url:params.server==='local'?LOCAL_SERVER:ROOM_SERVER,room:params.room,key:readKey,name:()=>this.room?.name??game.pilotName()});
+  // (the account's pass: conta.js, through main.js; a build without accounts has none to give)
+  // (and a host's invitation to this room this browser took: it stands for the password)
+  const link=params.local?null:new ServerLink({url:params.server==='local'?LOCAL_SERVER:ROOM_SERVER,room:params.room,key:readKey,pass:room=>game.roomPass?.(room)??{problema:'contas'},
+   invite:()=>savedInvite(localStore(),params.room),forgetInvite:()=>dropInvite(localStore(),params.room)});
   this.room=new Room({room:params.room,name:game.pilotName(),want:params.car??game.wantedCar(),lag:params.lag,loss:params.loss,link});
   this.race=null;this.phase='lobby';this.holding=false;this.remotes=new Map();this.seq=0;this.sendClock=0;this.readyClock=0;this.finishedAt=null;this.panelClock=0;this.immersive=null;this.rows='';this.cars='';
   this.welcomed=false;this.knocking=0;
@@ -120,7 +139,18 @@ export class Multiplayer {
    // and their name tags follow. A guest that is itself out of the seats (its own line dropped) waits
    // until the host seats it again.
    .on('seats',race=>{if(this.race&&race.id===this.race.id&&(this.phase==='waiting'||(this.phase==='racing'||this.phase==='finished')&&race.seats.some(s=>s.id===this.room.id))){this.race=race;this.seatHumans();}});
-  this.buildPanel();this.room.start();
+  // The host's invitations: who is online (asked again every ONLINE_EVERY while the list is open), their
+  // records on the host's track, and what became of each invitation.
+  this.invites={open:false,list:[],sent:new Map(),records:null,asked:0};
+  this.room.on('online',list=>{this.invites.list=list;this.invites.heard=true;this.renderInvites();}).on('invited',(account,delivered)=>{this.invites.sent.set(account,{at:clock(),delivered});this.renderInvites();});
+  this.buildPanel();
+  // The chat: lines from the room into its window and their balloons.
+  this.chat=new RoomChat({say:text=>this.room.say(text),anchor:(id,out)=>this.chatAnchor(id,out),camera:()=>game.camera?.(),view:()=>document.getElementById('view'),
+   canSay:()=>!!this.room.role&&!this.room.pending,freeMouse:()=>game.freeMouse(),key:code=>game.keyName?.(code)??code.slice(3),racing:()=>!!game.session().started});
+  this.room.on('chat',line=>this.chat.heard(line));
+  // The account as the card last saw it: signing in, or picking a nickname, tries the room again.
+  this.accountSeen=game.accountName?.()??null;
+  this.room.start();
   // Enter gives the start too (the mouse may be captured by the track).
   addEventListener('keydown',e=>{if(e.code==='Enter'&&this.canStart()&&!e.target.closest?.('input,select,textarea,dialog')){e.preventDefault();this.room.lightsOut();}});
   addEventListener('pagehide',()=>this.room.leave());
@@ -550,7 +580,27 @@ export class Multiplayer {
    }
   }
   if((this.panelClock-=dt)<=0){this.panelClock=.25;this.render();}
+  this.chat.frame();
+  if(this.invites.open){
+   if(!this.canInvite())this.showInvites(false);
+   else if(clock()-this.invites.asked>=ONLINE_EVERY){this.invites.asked=clock();room.askOnline();this.loadRecords();}
+  }
+  const account=this.game.accountName?.()??null;
+  if(account!==this.accountSeen){this.accountSeen=account;if(account&&['conta','apelido'].includes(room.problem))room.retry();}
  }
+ // The world point over a pilot's car for its chat balloon (this window's own: over its car, or over the
+ // pilot out of it, main.js playerAnchor); none outside a race, nor for a pilot not in it.
+ chatAnchor(id,out){
+  if(!this.game.session().started||!this.immersive||this.immersive.active)return null;
+  if(id===this.room.id)return this.game.playerAnchor?.(out)??null;
+  const number=this.race?.seats.find(s=>s.id===id)?.number;if(!number)return null;
+  const field=this.immersive.field,k=field.rivals.findIndex(r=>(r.seat??r.entry.number)===number),obj=k>=0?this.immersive.visual.rivals[k]:null;
+  if(!obj?.visible||!obj.parent)return null;
+  obj.getWorldPosition(out);out.y+=2.5;return out;
+ }
+ // The card's button for an account problem: sign in (Google), pick the nickname (the account's dialog),
+ // or try again (a pass the room did not take).
+ accountAction(){const problem=this.room.problem;if(problem==='conta')this.game.signIn?.();else if(problem==='apelido')this.game.openAccount?.();else this.room.retry();}
  send(paused){
   const immersive=this.immersive,car=immersive.car,room=this.room,command=this.game.command()??{},L=immersive.data.meta.reconstructed_xy_m,still=paused||this.holding||!!this.pause;
   const progress=Math.min(immersive.freePlayerProgress,car.laps*L+car.surface.s+immersive.field.gridLeadIn);
@@ -585,18 +635,24 @@ export class Multiplayer {
   return [...numbers].filter(n=>!this.remotes.get(n)?.state?.finished&&!this.slot(n)?.finished&&stops.get(n)?.back!==false).length;
  }
  buildPanel(){
-  const {root,add,room,role,status}=roomCard(this.params.label);
-  this.panel={root,room,role,status,list:add('ol','mp-players')};
+  const {root,add,role,status}=roomCard();
+  this.panel={root,role,status,list:add('ol','mp-players')};
   // The host's start, shown while its race waits (Enter does the same).
   const start=this.panel.start=add('button','mp-start');start.type='button';start.id='mpStart';start.hidden=true;
   start.onclick=()=>{this.room.lightsOut();start.blur();};
   root.insertBefore(start,this.panel.list);
-  // Online: the group key (asked when the server wants it), and the host's doorman.
+  // Online: the room's password (asked when the server wants it), the account's way in, and the host's doorman.
   const form=this.panel.key=add('form','mp-key');form.hidden=true;
-  const field=add('input','',form);field.type='password';field.id='mpKey';field.placeholder='Chave do grupo';field.autocomplete='off';field.maxLength=128;
+  const field=add('input','',form);field.type='password';field.id='mpKey';field.placeholder='Senha da sala';field.autocomplete='off';field.maxLength=128;field.setAttribute('aria-label','Senha da sala');
   const enter=add('button','',form);enter.type='submit';enter.textContent='Entrar';
   form.onsubmit=e=>{e.preventDefault();const key=field.value.trim();if(!key)return;saveKey(key);field.value='';field.blur();this.room.retry();};
   root.insertBefore(form,this.panel.list);
+  // The host's invitations (online, out of a race): who is online, their records, Convidar.
+  const invite=this.panel.invite=add('button','mp-invite');invite.type='button';invite.hidden=true;invite.textContent='Convidar pilotos online';invite.onclick=()=>{this.showInvites(!this.invites.open);invite.blur();};
+  root.insertBefore(invite,this.panel.list);
+  this.buildInvites();
+  const account=this.panel.account=add('button','mp-account');account.type='button';account.hidden=true;account.onclick=()=>{this.accountAction();account.blur();};
+  root.insertBefore(account,this.panel.list);
   this.panel.knocks=add('ul','mp-knocks');root.insertBefore(this.panel.knocks,this.panel.list);
   const label=add('label','mp-auto'),box=add('input','',label);box.type='checkbox';box.id='mpAuto';box.checked=this.autopilot;label.append(' Piloto automático neste carro');
   // The box gives the focus back at once: typed driving keys are ignored while an input has it.
@@ -611,10 +667,12 @@ export class Multiplayer {
   const room=this.room,me=room.number;
   // The race standing still for its host; racing with this guest's line down: what becomes of the car.
   if(this.pause)return PAUSES[this.pause.why](Math.floor(clock()-room.hostSeen));
-  if(this.cut&&['reconectando','fora'].includes(room.problem))return 'Conexão caiu · seu carro segue sem piloto até você voltar…';
+  if(this.cut&&['reconectando','fora','contas'].includes(room.problem))return 'Conexão caiu · seu carro segue sem piloto até você voltar…';
   if(room.problem&&PROBLEMS[room.problem])return PROBLEMS[room.problem];
   if(!room.role)return 'Procurando a sala…';
-  if(room.pending)return 'Esperando o anfitrião aceitar você…';
+  // At the door of a room nobody with the host's password has opened yet (or whose host is gone).
+  if(room.pending)return room.hostId?'Esperando o anfitrião aceitar você…':'A sala ainda não foi aberta · esperando o anfitrião chegar…';
+  if(room.online&&room.role==='guest'&&!room.hostId)return 'A sala ficou sem anfitrião · esperando alguém com a senha do anfitrião…';
   // The host said goodbye (a reload, most likely): its guests wait for it before electing another.
   if(room.hostAway)return 'O anfitrião saiu · esperando ele voltar…';
   if(this.immersive?.active)return 'A sala corre só no Modo Corrida.';
@@ -711,15 +769,16 @@ export class Multiplayer {
   const taken=room.members.filter(m=>m.id!==room.id&&m.number).map(m=>[m.number,m.name]),mine=room.settled?me:null,asking=room.settled?null:room.want;
   const guest=this.guest()?{admitted:this.admitted(),waiting:room.waiting}:null,cars=JSON.stringify([taken,mine,asking,guest]);
   if(cars!==this.cars){this.cars=cars;this.game.roomCars({taken:new Map(taken),mine,asking,guest});}
-  p.room.textContent=this.params.label;
   p.role.textContent=room.role==='host'?`anfitrião · #${me}`:room.pending?'na porta':room.role==='guest'?(me?`convidado · #${me}`:'assistindo'):'…';
   p.status.textContent=this.statusText(s);
   p.pause.hidden=!this.pause||!s.started||s.paused;if(!p.pause.hidden)p.pauseWhy.textContent=p.status.textContent;
-  // The key form when the server asks for it; knocks and kicks for an online host. Names only ever
+  // The password form when the server asks for it, the account's button; knocks and kicks for an online host. Names only ever
   // reach the page as text. The door is open until the start: on the car screen, the track screen
   // and on the grid (a knock there lets the host's mouse go, main.js freeMouse); from the start it
   // waits for the race to end.
   p.key.hidden=!(room.online&&room.problem==='chave');
+  p.invite.hidden=!this.canInvite();p.invite.setAttribute('aria-expanded',String(this.invites.open));
+  const action=room.online?ACCOUNT_ACTIONS[room.problem]:null;p.account.hidden=!action;if(action&&p.account.textContent!==action)p.account.textContent=action;
   const knocks=room.role==='host'&&this.phase!=='racing'?[...room.knocks.values()]:[],kickable=room.online&&room.role==='host'&&!(s.started&&!s.paused);
   if(knocks.length>this.knocking&&this.phase==='waiting')this.game.freeMouse();this.knocking=knocks.length;
   const rows=room.members.map(m=>({id:m.id,text:`#${m.number??'—'} ${m.name}${this.doing(m)}${m.id===room.id?' · você':''}`,kick:kickable&&m.id!==room.id}));
@@ -732,10 +791,55 @@ export class Multiplayer {
   p.net.textContent=[room.online?'servidor':'mesmo PC',room.role==='guest'?`ping ${Math.round(room.latency*2000)} ms`:room.role==='host'?`${Math.max(0,room.members.length-1)} convidado(s)`:'',
    this.params.lag?`atraso simulado ${this.params.lag} ms`:'',this.params.loss?`perda simulada ${Math.round(this.params.loss*100)}%`:''].filter(Boolean).join(' · ');
  }
+ // The host may invite: online, its line up, not in the middle of its race.
+ canInvite(){const room=this.room;return room.online&&room.role==='host'&&room.problem===null&&this.phase!=='racing';}
+ // The list of who is online, beside the card: each pilot with their record on this track (the online
+ // records' board, Opala: the room's car), the fastest first, and Convidar. An invitation lets that pilot
+ // in without the password and without waiting at the door (sala-cloudflare: signed by the room for that
+ // account).
+ buildInvites(){
+  const root=this.invites.root=document.createElement('section');root.id='mpOnline';root.hidden=true;root.setAttribute('aria-label','Pilotos online');
+  const head=document.createElement('div');head.className='mp-online-head';
+  const title=document.createElement('b');title.textContent='PILOTOS ONLINE';
+  const close=document.createElement('button');close.type='button';close.textContent='✕';close.setAttribute('aria-label','Fechar');close.onclick=()=>this.showInvites(false);
+  head.append(title,close);
+  this.invites.track=document.createElement('small');this.invites.track.className='mp-online-track';
+  this.invites.rows=document.createElement('ol');this.invites.rows.className='mp-online-list';
+  const note=document.createElement('p');note.className='mp-online-note';note.textContent='Quem você convida entra direto, sem senha e sem esperar na porta.';
+  root.append(head,this.invites.track,this.invites.rows,note);document.body.append(root);
+ }
+ showInvites(on){
+  const v=this.invites;v.open=on&&this.canInvite();v.root.hidden=!v.open;
+  if(v.open){v.asked=-Infinity;v.records=null;v.list=[];v.heard=false;}
+  this.renderInvites();this.render();
+ }
+ // The records of the host's track (once per opening and track; a board that does not come leaves the times out).
+ loadRecords(){
+  const v=this.invites,circuit=this.game.session().circuit;if(!this.game.records||v.records?.circuit===circuit||v.loading===circuit)return;
+  v.loading=circuit;
+  Promise.resolve(this.game.records(circuit)).then(rows=>{v.loading=null;v.records={circuit,rows:Array.isArray(rows)?rows:[]};this.renderInvites();}).catch(()=>{v.loading=null;v.records={circuit,rows:[]};});
+ }
+ renderInvites(){
+  const v=this.invites;if(!v.root||!v.open)return;
+  const circuit=this.game.session().circuit,name=this.game.circuitName?.(circuit)??circuit;
+  v.track.textContent=`Recorde em ${name} (Opala)`;
+  const best=new Map((v.records?.rows??[]).map(r=>[String(r.apelido).toLowerCase(),r]));
+  const lap=ms=>`${Math.floor(ms/60000)}:${String(Math.floor(ms/1000)%60).padStart(2,'0')}.${String(ms%1000).padStart(3,'0')}`;
+  const rows=v.list.map(p=>({...p,record:best.get(p.nome.toLowerCase())??null})).sort((a,b)=>(a.record?.volta_ms??Infinity)-(b.record?.volta_ms??Infinity)||a.nome.localeCompare(b.nome,'pt-BR'));
+  const now=clock(),empty=document.createElement('li');empty.className='mp-online-empty';empty.textContent=v.heard?'Ninguém mais online agora.':'Procurando quem está online…';
+  v.rows.replaceChildren(...(rows.length?rows.map(p=>{
+   const li=document.createElement('li'),who=document.createElement('span'),time=document.createElement('small'),sent=v.sent.get(p.conta),fresh=sent&&now-sent.at<20;
+   who.textContent=p.nome;time.textContent=p.record?`${p.record.selo==='conferido'?'✓':'⚠️'} ${lap(p.record.volta_ms)}`:'sem recorde aqui';
+   const b=document.createElement('button');b.type='button';
+   b.textContent=fresh?sent.waiting?'Enviando…':sent.delivered?'Convite enviado ✓':'Saiu do jogo':'Convidar';b.disabled=!!fresh;
+   b.onclick=()=>{this.room.invite(p.conta,this.params.address);v.sent.set(p.conta,{at:clock(),waiting:true});this.renderInvites();};
+   li.append(who,time,b);return li;
+  }):[empty]));
+ }
  // For the checks (verificar_multiplayer.py): this window's car and every other car as it shows them.
  info(){
   const immersive=this.immersive,car=immersive?.car;
-  return {...this.room.info(),label:this.panel?.room.textContent??null,address:globalThis.location?.hash??null,phase:this.phase,holding:this.holding,autopilot:this.autopilot,raceId:this.race?.id??null,
+  return {...this.room.info(),chat:this.chat.info(),invites:{open:this.invites.open,list:this.invites.list.map(p=>p.nome)},label:this.params.label,address:globalThis.location?.hash??null,phase:this.phase,holding:this.holding,autopilot:this.autopilot,raceId:this.race?.id??null,
    stopped:[...this.stopped].map(([number,x])=>({number,stage:x.stage})),cut:!!this.cut,lost:!!this.lost,paused:this.pause?.why??null,trucks:[...this.trucks.keys()],truckPoses:[...this.trucks].map(([number,t])=>({number,x:t.root.position.x,y:-t.root.position.z,strap:t.strap.visible,leaving:t.left!==undefined})),flags:[...this.flags.keys()],yellow:this.yellow(),
    remotes:[...this.remotes].map(([number,r])=>({number,seq:r.seq,age:r.age,finished:!!r.state?.finished})),
    me:car?{x:car.x,y:car.y,vx:car.vx,vy:car.vy,ghost:!!car.ghost}:null,

@@ -1,9 +1,9 @@
 /* Car screen (Modo Corrida, before the track screen): the chosen car turning in the middle of the team's garage,
    drawn by the game's canvas behind this screen's open middle (car-select.js, car-garage.js), an arrow on each side
    for the grid's other cars, and under it the car's plate and the way on to the tracks. */
-/* Only the canvas (the studio) and this screen show (and a multiplayer room's card); the race's HUD
-   and tools hide meanwhile. */
-body.cars-open>:not(#view):not(#cars):not(#rotatePhone):not(#mpRoom):not(dialog){visibility:hidden!important}
+/* Only the canvas (the studio) and this screen show (and a multiplayer room's card, chat, online list and
+   invitation); the race's HUD and tools hide meanwhile. */
+body.cars-open>:not(#view):not(#cars):not(#rotatePhone):not(#mpRoom):not(#mpChat):not(#mpOnline):not(#conviteSala):not(dialog){visibility:hidden!important}
 #cars{z-index:30;align-items:stretch;justify-content:center;padding:22px 4vw;overflow:auto;backdrop-filter:none;
  background:radial-gradient(ellipse at 50% 58%,#20403a 0,#10231f 48%,#060d0c 100%)}
 /* With the studio drawn, only the top and the bottom darken, under the title and the plate. */

@@ -15,6 +15,8 @@ import {DatabaseSync} from 'node:sqlite';
 import worker from '../src/index.js';
 
 export const CLIENT_ID='cliente-de-teste.apps.googleusercontent.com',CLIENT_SECRET='segredo-de-teste-local';
+// The rooms' pass secret on this machine: sala-cloudflare's .dev.vars (wrangler dev) has the same SALA_PASSE.
+export const ROOM_PASS_SECRET='passe-das-salas-de-teste-local';
 
 // D1's API as the Worker uses it: prepare().bind().first()/all()/run(), and batch() in one transaction.
 // admins: Google ids made administrators as their accounts are made (a check driving the admin panel).
@@ -92,7 +94,7 @@ export async function startLocal({port=8788,origem,banco=':memory:',ponte=null,a
    const headers=new Headers();for(const [k,v] of Object.entries(req.headers))if(typeof v==='string')headers.set(k,v);
    const request=new Request(url,{method:req.method,headers,body:['GET','HEAD'].includes(req.method)?undefined:Buffer.concat(chunks)});
    const env={DB,ORIGEM:origem??`http://127.0.0.1:${server.address().port}`,GOOGLE_CLIENT_ID:CLIENT_ID,GOOGLE_CLIENT_SECRET:CLIENT_SECRET,
-    GOOGLE_AUTH_URL:`http://127.0.0.1:${server.address().port}/falso-google/auth`,GOOGLE_TOKEN_URL:`http://127.0.0.1:${server.address().port}/falso-google/token`,...(ponte&&{PONTE_RECORDES:ponte}),...(adminSecret&&{ADMINS:adminSecret})};
+    GOOGLE_AUTH_URL:`http://127.0.0.1:${server.address().port}/falso-google/auth`,GOOGLE_TOKEN_URL:`http://127.0.0.1:${server.address().port}/falso-google/token`,SALA_PASSE:ROOM_PASS_SECRET,...(ponte&&{PONTE_RECORDES:ponte}),...(adminSecret&&{ADMINS:adminSecret})};
    const response=url.pathname.startsWith('/falso-google/')?await google.handle(request,url):await worker.fetch(request,env);
    const out={};for(const [k,v] of response.headers)if(k!=='set-cookie')out[k]=v;
    const cookies=response.headers.getSetCookie();if(cookies.length)out['set-cookie']=cookies;

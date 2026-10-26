@@ -6,7 +6,7 @@
   "scripts": {
     "local": "node --no-warnings teste/local.mjs",
     "deploy": "wrangler deploy",
-    "test": "node --no-warnings teste/testar_conta.mjs && node --no-warnings teste/testar_recordes.mjs && node --no-warnings teste/testar_recordes_jogo.mjs && node --no-warnings teste/testar_admin.mjs && node --no-warnings teste/testar_comandos.mjs && node --no-warnings teste/testar_dinamica.mjs && node --no-warnings teste/testar_trajeto.mjs && wrangler d1 migrations apply conta-autopobre-dev --local && node --no-warnings teste/testar_wrangler.mjs"
+    "test": "node --no-warnings teste/testar_conta.mjs && node --no-warnings teste/testar_recordes.mjs && node --no-warnings teste/testar_recordes_jogo.mjs && node --no-warnings teste/testar_admin.mjs && node --no-warnings teste/testar_passe_sala.mjs && node --no-warnings teste/testar_comandos.mjs && node --no-warnings teste/testar_dinamica.mjs && node --no-warnings teste/testar_trajeto.mjs && wrangler d1 migrations apply conta-autopobre-dev --local && node --no-warnings teste/testar_wrangler.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.149.0"

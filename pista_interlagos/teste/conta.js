@@ -59,6 +59,7 @@ export class Conta {
    <li><b>Onde fica:</b> num banco Cloudflare D1, no leste dos EUA. Ficam a conta (identificador, apelido, datas), as sessões e os recordes.</li>
    <li><b>Recordes:</b> pista, modo, tempo, versão do jogo, data e o fantasma da volta. Uma volta é <i>conferida</i> quando o servidor acompanha o relógio dela, com pedaços enviados a cada 10 segundos, não deixa passar volta absurdamente mais rápida que a linha ideal do Opala, confere o trajeto dentro da pista, confere se o Opala do jogo consegue fazer aquela volta (motor, freios e pneus) e se os comandos do piloto explicam o movimento. Os recordes antigos (deste navegador e do autopobre.com.br) sobem uma única vez por conta, marcados com ⚠️ (recordes de versões anteriores do Auto Pobre podem conter erros).</li>
    <li><b>Voltas:</b> de cada volta, o tempo, o carro, o resultado da conferência, o aparelho (teclado, controle, volante ou toque) e o ritmo dos comandos (quando cada pedal e tecla mudou), para achar programas pilotando no lugar de pessoas. Uma volta que seria o seu recorde e não foi conferida fica guardada com o fantasma, para você poder pedir revisão. Tudo isso fica 90 dias e é visto só pela administração do jogo.</li>
+   <li><b>Salas multiplayer:</b> só entra quem está com a conta conectada. O servidor das salas recebe o seu apelido e um código da conta (não o número do Google). Com o jogo aberto, quem abre uma sala vê que você está online, para te convidar. O chat da sala não fica guardado.</li>
    <li><b>Registro de eventos:</b> quando a conta foi criada, entradas e saídas, troca de apelido, a subida dos recordes antigos, os recordes conferidos e as voltas recusadas (com o motivo). Sem IP, guardado por 90 dias e visto só pela administração do jogo.</li>
    <li><b>Seus direitos (LGPD):</b> "Baixar meus dados" entrega tudo num arquivo JSON, e "Apagar conta" apaga a conta, as sessões e os recordes. As cópias de segurança automáticas do banco somem em até 7 dias.</li>
   </ul>
@@ -146,6 +147,23 @@ export class Conta {
   clearTimeout(this.confirmTimer);const button=document.getElementById('contaApagar');
   if(button?.dataset.confirmar){delete button.dataset.confirmar;button.textContent='Apagar conta';}
  }
+}
+
+// A pass for a multiplayer room (multiplayer.js, through net-link.js): the room server's proof that this
+// pilot is signed in, and under which nickname (conta-cloudflare sala.js). {passe, validade} or {problema:
+// 'conta' (not signed in), 'apelido' (no nickname yet) or 'contas' (the accounts server did not answer)}.
+export async function roomPass(room){
+ let r,data=null;
+ try{r=await fetch(API+'passe-sala',{method:'POST',cache:'no-store',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({sala:room})});
+  if((r.headers.get('Content-Type')??'').startsWith('application/json'))data=await r.json().catch(()=>null);}catch{return {problema:'contas'};}
+ if(r.ok&&typeof data?.passe==='string')return {passe:data.passe,validade:data.validade};
+ return {problema:r.status===401?'conta':r.status===409?'apelido':'contas'};
+}
+
+// A track's online records, the Opala's (the room's car): [{apelido, selo, volta_ms}] (a host's invitations show them).
+export async function boardFor(circuit){
+ try{const r=await fetch(API.replace('conta/','recordes')+'?circuito='+encodeURIComponent(circuit)+'&carro=opala',{cache:'no-store',credentials:'same-origin'});
+  const data=r.ok&&(r.headers.get('Content-Type')??'').startsWith('application/json')?await r.json():null;return Array.isArray(data?.recordes)?data.recordes:[];}catch{return [];}
 }
 
 export async function startConta(options){

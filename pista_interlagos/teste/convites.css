@@ -1,0 +1,10 @@
+/* A host's invitation to a room (saguao.js), on any screen: top centre, over the view and the menus. */
+#conviteSala{position:fixed;left:50%;top:clamp(84px,14vh,130px);z-index:60;transform:translateX(-50%);width:min(440px,calc(100vw - 32px));padding:14px 16px;border:1px solid #e2fb5799;border-radius:12px;background:#0b1012f2;color:#f5f6ed;font:14px/1.4 Inter,"Segoe UI",Arial,sans-serif;box-shadow:0 10px 34px #000a;animation:convite-chega .35s ease-out}
+#conviteSala[hidden]{display:none}
+#conviteSala p{margin:0 0 10px}
+#conviteSala b{color:#e2fb57;overflow-wrap:anywhere}
+#conviteSala div{display:flex;gap:8px;flex-wrap:wrap}
+#conviteSala button{padding:8px 13px;border:1px solid #fff4;border-radius:7px;background:#ffffff14;color:#f5f6ed;font:700 13px Inter,"Segoe UI",Arial,sans-serif;cursor:pointer}
+#conviteSala .convite-sim{background:#e2fb57;border-color:#e2fb57;color:#14181a}
+@keyframes convite-chega{from{opacity:0;transform:translate(-50%,-12px)}}
+@media(prefers-reduced-motion:reduce){#conviteSala{animation:none}}

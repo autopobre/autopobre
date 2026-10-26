@@ -135,7 +135,7 @@ jobs:
       - name: Conferir que o multiplayer e a bancada de som ficaram so em /dev/ e as contas fora deste site
         run: |
           for pasta in principal; do
-            for arquivo in multiplayer.js multiplayer.css net-room.js net-cars.js net-link.js net-verify.js; do
+            for arquivo in multiplayer.js multiplayer-chat.js chat-text.js saguao.js convites.css multiplayer.css net-room.js net-cars.js net-link.js net-verify.js; do
               if [ -e "$pasta/dist/$arquivo" ]; then
                 echo "::error::A versao de $pasta tem o multiplayer ($arquivo); ele so pode ir para /dev/."
                 exit 1

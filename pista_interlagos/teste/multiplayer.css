@@ -2,7 +2,6 @@
 #mpRoom{position:absolute;right:24px;bottom:78px;z-index:40;width:250px;padding:12px 14px;background:var(--glass);border:1px solid #fff3;border-radius:10px;font:12px/1.35 Inter,"Segoe UI",Arial,sans-serif;color:#f5f6ed;box-shadow:0 8px 30px #0006}
 #mpRoom .mp-head{display:flex;align-items:baseline;gap:7px;font-size:11px;letter-spacing:1.5px}
 #mpRoom .mp-head b{color:var(--lime)}
-#mpRoom .mp-name{font-weight:800;text-transform:uppercase}
 #mpRoom .mp-role{margin-left:auto;letter-spacing:0;opacity:.75}
 #mpRoom .mp-status{margin:7px 0 6px}
 #mpRoom .mp-players{margin:0 0 8px;padding:0;list-style:none;font-size:11px;opacity:.9}
@@ -48,6 +47,8 @@
 #mpPause b{display:block;margin-bottom:4px;font-size:24px;letter-spacing:3px;color:#9cc4ff}
 #mpPause[hidden]{display:none}
 #mpRoom.mp-tracks{bottom:12px}
+/* (on the menus' screens it keeps clear of their buttons at the corners: the track list, LARGAR, the car's next step) */
+#mpRoom.mp-tracks{max-width:min(680px,calc(100vw - 460px))}
 /* The car screen keeps that bottom edge free for it (the chosen car's plate sits low on the stage). */
 body.mp-room #cars{padding-bottom:58px}
 @media(max-height:520px){body.mp-room #cars{padding-bottom:48px}}
@@ -58,3 +59,51 @@ body.mp-room #cars{padding-bottom:58px}
 #mpRoom:is(.mp-racing,.mp-tracks) :is(.mp-knocks,.mp-key){margin:0}
 #mpRoom:is(.mp-racing,.mp-tracks) .mp-knocks li{white-space:nowrap}
 @media(max-width:850px){#mpRoom{right:12px;bottom:64px;width:210px}#mpRoom.mp-racing{top:60px}#mpRoom:is(.mp-racing,.mp-tracks) .mp-auto{display:none}}
+/* The account's way in (multiplayer.js accountAction): signing in, the nickname, trying again. */
+#mpRoom .mp-account{display:block;width:100%;margin:0 0 8px;background:var(--lime)!important;border-color:var(--lime)!important;color:var(--ink)!important}
+#mpRoom .mp-account[hidden]{display:none}
+#mpRoom:is(.mp-racing,.mp-tracks) .mp-account{width:auto;margin:0;white-space:nowrap}
+/* The room's chat (multiplayer-chat.js): bottom left, over the view, dark glass and light text to read
+   at any time of day; the line being typed below. Balloons over the cars: dark text on a light bubble. */
+#mpChat{position:absolute;left:24px;bottom:150px;z-index:39;width:min(340px,calc(100vw - 32px));font:13px/1.35 Inter,"Segoe UI",Arial,sans-serif;color:#f5f6ed;pointer-events:none}
+#mpChat .mp-chat-head{display:flex;gap:6px;pointer-events:auto}
+/* Out of a race with nothing said yet the chat keeps out of the menus (T still opens it). */
+#mpChat.mp-chat-idle{display:none}
+#mpChat button{padding:4px 9px;border:1px solid #fff3;border-radius:6px;background:#0d1214d9;color:#f5f6ed;font:700 10px Inter,"Segoe UI",Arial,sans-serif;letter-spacing:1px;cursor:pointer}
+#mpChat .mp-chat-write{font-weight:600;letter-spacing:0}
+#mpChat.mp-chat-closed .mp-chat-write{display:none}
+#mpChat .mp-chat-lines{margin:5px 0 0;padding:7px 10px;list-style:none;border-radius:8px;background:#0b1012d9;box-shadow:0 4px 18px #0007}
+#mpChat .mp-chat-lines[hidden]{display:none}
+#mpChat .mp-chat-lines li{padding:2px 0;overflow-wrap:anywhere;text-shadow:0 1px 1px #000}
+#mpChat .mp-chat-lines b{margin-right:6px;font-weight:800}
+#mpChat .mp-chat-form{display:flex;align-items:center;gap:6px;margin-top:5px;padding:6px;border-radius:8px;background:#0b1012f0;pointer-events:auto;box-shadow:0 4px 18px #0008}
+#mpChat .mp-chat-form[hidden]{display:none}
+#mpChat .mp-chat-form input{flex:1;min-width:0;padding:6px 8px;border:1px solid #e2fb5799;border-radius:6px;background:#000c;color:#fff;font:13px Inter,"Segoe UI",Arial,sans-serif;outline:none}
+#mpChat .mp-chat-form button{background:var(--lime);border-color:var(--lime);color:var(--ink);letter-spacing:0}
+#mpChat .mp-chat-left{min-width:20px;text-align:right;font-size:10px;opacity:.65;font-variant-numeric:tabular-nums}
+#mpChat .mp-chat-left.mp-chat-few{color:#ffb86b;opacity:1}
+#mpChat.mp-chat-noted::after{content:attr(data-note);display:block;margin-top:4px;padding:4px 8px;border-radius:6px;background:#0b1012e6;color:#ffd84d;font-size:11px}
+#mpBalloons{position:fixed;inset:0;z-index:4;overflow:hidden;pointer-events:none}
+#mpBalloons .mp-balloon{position:absolute;left:0;top:0;max-width:240px;padding:6px 10px 7px;border-radius:12px;background:#fffef6;color:#14181a;font:600 13px/1.3 Inter,"Segoe UI",Arial,sans-serif;overflow-wrap:anywhere;box-shadow:0 3px 12px #0007;transform-origin:50% 100%;margin-top:-9px}
+#mpBalloons .mp-balloon b{display:block;font-size:10px;letter-spacing:.5px;text-transform:uppercase}
+#mpBalloons .mp-balloon::after{content:"";position:absolute;left:50%;bottom:-8px;margin-left:-8px;border:8px solid transparent;border-bottom:0;border-top-color:#fffef6}
+@media(max-width:850px){#mpChat{left:12px;bottom:120px;width:min(280px,calc(100vw - 24px));font-size:12px}#mpBalloons .mp-balloon{max-width:180px;font-size:12px}}
+/* The host's invitations (multiplayer.js buildInvites): who is online, their record here, Convidar. */
+#mpRoom .mp-invite{display:block;width:100%;margin:0 0 8px}
+#mpRoom .mp-invite[hidden]{display:none}
+#mpRoom:is(.mp-racing,.mp-tracks) .mp-invite{width:auto;margin:0;white-space:nowrap}
+#mpOnline{position:absolute;right:24px;top:84px;z-index:42;width:300px;max-height:min(440px,calc(100vh - 200px));display:flex;flex-direction:column;padding:12px 14px;background:#0b1012f2;border:1px solid #fff3;border-radius:10px;font:12px/1.35 Inter,"Segoe UI",Arial,sans-serif;color:#f5f6ed;box-shadow:0 8px 30px #0008}
+#mpOnline[hidden]{display:none}
+#mpOnline .mp-online-head{display:flex;align-items:center;justify-content:space-between;letter-spacing:1.5px;font-size:11px}
+#mpOnline .mp-online-head b{color:var(--lime)}
+#mpOnline button{padding:5px 9px;border:1px solid #fff4;border-radius:6px;background:#ffffff14;color:#f5f6ed;font:600 11px Inter,"Segoe UI",Arial,sans-serif;cursor:pointer}
+#mpOnline .mp-online-track{display:block;margin:4px 0 6px;opacity:.75}
+#mpOnline .mp-online-list{flex:1;min-height:0;overflow:auto;margin:0;padding:0;list-style:none}
+#mpOnline .mp-online-list li{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #ffffff14}
+#mpOnline .mp-online-list li span{flex:1;min-width:0;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mpOnline .mp-online-list li small{font-variant-numeric:tabular-nums;opacity:.85;white-space:nowrap}
+#mpOnline .mp-online-list li button:not(:disabled){background:var(--lime);border-color:var(--lime);color:var(--ink)}
+#mpOnline .mp-online-list li button:disabled{opacity:.8;cursor:default}
+#mpOnline .mp-online-empty{justify-content:center;opacity:.7}
+#mpOnline .mp-online-note{margin:8px 0 0;font-size:11px;opacity:.7}
+@media(max-width:850px){#mpOnline{right:12px;width:min(300px,calc(100vw - 24px))}}

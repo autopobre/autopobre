@@ -1,4 +1,5 @@
-// Accounts for Auto-Pobre Racing: sign in with Google, so the records say who drove them (recordes.js).
+// Accounts for Auto-Pobre Racing: sign in with Google, so the records say who drove them (recordes.js),
+// and the multiplayer rooms who races in them (sala.js).
 // The Worker answers <site>/api/* on the game's own origin (the pages stay on GitHub Pages), so the
 // session is a plain first-party cookie and the game needs no CORS.
 //
@@ -19,6 +20,7 @@
 import {SESSION_COOKIE,LOGIN_COOKIE,b64url,fromB64url,random,sha256,hashed,sameText,readCookies,setCookie,json,redirect,seal,unseal,session,signedOut,signedIn,notSignedIn,readPost,isAdmin} from './base.js';
 import {RECORDS_GETS,RECORDS_POSTS,RECORDS_BODY} from './recordes.js';
 import {ADMIN_GETS,ADMIN_POSTS} from './admin.js';
+import {ROOM_POSTS} from './sala.js';
 import {event,forgetOld,recent,HOUR} from './eventos.js';
 import {cleanNickname,nicknameKey,RESERVED,NICKNAME_RULE} from './apelidos.js';
 
@@ -151,7 +153,7 @@ async function myData(request,env){
 }
 
 const GETS={'/api/conta/eu':me,'/api/conta/entrar':signIn,'/api/conta/google':googleBack,'/api/conta/meus-dados':myData,...RECORDS_GETS,...ADMIN_GETS};
-const POSTS={'/api/conta/apelido':setNickname,'/api/conta/sair':signOut,'/api/conta/apagar':deleteAccount,...RECORDS_POSTS,...ADMIN_POSTS};
+const POSTS={'/api/conta/apelido':setNickname,'/api/conta/sair':signOut,'/api/conta/apagar':deleteAccount,...RECORDS_POSTS,...ADMIN_POSTS,...ROOM_POSTS};
 
 export default {
  async fetch(request,env){

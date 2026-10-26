@@ -1,5 +1,17 @@
 # Revisão para publicação — 13/09/2026
 
+## Atualização — 26/10/2026 (noite): salas só com conta, duas senhas, convites e chat
+
+- **Conta obrigatória:** o servidor de salas só deixa entrar quem mostra um passe do servidor de contas (`POST /api/conta/passe-sala`: sessão válida e apelido escolhido). O passe é um HMAC-SHA256 com o segredo `SALA_PASSE`, igual nos dois Workers, vale 5 minutos e uma sala só. A sala conhece a conta só por um HMAC do identificador do Google. Sem passe, nenhuma senha é testada (4014), então quem não tem conta de teste nem chega a tentar senhas.
+- **Duas senhas** (segredos `SENHA_ANFITRIAO` e `SENHA_PILOTOS`, comparadas byte a byte): só a do anfitrião abre ou assume uma sala. Um token de reconexão só vale para a mesma conta e o mesmo tipo de senha. O limite de senhas erradas por IP (Porteiro) continua valendo em todas as salas. A chave antiga `CHAVE_GRUPO` deixou de existir.
+- **Nomes:** o nome na sala é o apelido da conta, carimbado pelo servidor na porta, no "hello", na lista, no grid e no chat. Ninguém se passa por outro piloto, nem o anfitrião.
+- **Expulsão por conta:** a conta expulsa sai de todas as abas e não volta naquela sala (enquanto a sala lembrar, 24 h), nem por convite.
+- **Convites:** o saguão (`Saguao`, hibernando) sabe quem está online pelo passe da conta. Só o anfitrião da sala pede a lista (a cada 2 s no máximo, até 50 nomes, sem quem já está na sala nem os expulsos) e convida (10 por minuto, o mesmo piloto a cada 20 s). O convite é assinado pela sala para aquela conta, vale 12 horas e só naquela sala; substitui a senha e a porta. O saguão aceita 400 linhas, 8 por IP, 4 páginas por conta, e nada além do passe e do eco. A página trata o convite como texto: só mostra o nome de quem convidou e o nome visível da sala (a parte secreta, depois do "_", vai para o armazenamento do navegador e nunca aparece).
+- **Chat:** uma regra só para o jogo e o servidor (`pista_interlagos/teste/chat-text.js`): no máximo 80 caracteres; sem caracteres de controle, de formatação (inversão bidirecional, largura zero, tags) ou "letras em branco"; no máximo dois acentos empilhados por letra; espaços juntados. **Links são recusados**, também disfarçados (espaços ou colchetes no ponto, "ponto com", pontos parecidos, letras de largura cheia ou acentuadas, IP, encurtadores). O servidor limpa de novo e descarta link, e só repassa de quem já entrou, no máximo 4 linhas a cada 8 s por conexão. A página mostra o chat e os balões só com `textContent` e a CSP continua bloqueando scripts inline. Nada do chat é gravado.
+- **Origem:** o servidor de salas aceita só `https://dev.autopobre.com.br`. O museu em autopobre.com.br/dev/ não abre mais salas.
+- **Privacidade:** com o jogo aberto e a conta conectada, quem abre uma sala vê que o piloto está online. O texto "O que guardamos" da conta diz isso.
+- **Testes:** `sala-cloudflare` `npm test` (em memória e no runtime do Cloudflare), `testar_sala_jogo.mjs`, `conta-cloudflare` `testar_passe_sala.mjs` e `testar_wrangler.mjs`, `testar_multiplayer.mjs`, e no navegador `verificar_sala_conta.py` e `verificar_multiplayer.py --servidor`.
+
 ## Atualização — 26/10/2026: recordes por pista e carro, revisão e pilotos de confiança
 
 - **Recordes:**

@@ -31,7 +31,7 @@ MODULES = (
 )
 # The multiplayer test room is published only under /dev/ (preparar_publicacao.py --multiplayer);
 # the main link's build leaves these files and the room server out. The local preview serves them.
-MULTIPLAYER = ('multiplayer.js', 'multiplayer.css', 'net-room.js', 'net-cars.js', 'net-link.js', 'net-verify.js')
+MULTIPLAYER = ('multiplayer.js', 'multiplayer-chat.js', 'chat-text.js', 'saguao.js', 'convites.css', 'multiplayer.css', 'net-room.js', 'net-cars.js', 'net-link.js', 'net-verify.js')
 # The sound bench, where the pilots tune the engines by ear: also only under /dev/ (the same --multiplayer build).
 BANCADA = ('bancada-som.html', 'bancada-som.js')
 # The track editor, where a circuit's centreline is painted or corrected over reference images: also only under /dev/.

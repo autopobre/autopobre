@@ -8,19 +8,25 @@ lets her in from the grid, its captured mouse let go for it, no menu), gets the 
 paints its own car as its own. They race one lap of Interlagos on the automatic pilot, every window shows the
 others' cars where they really are (solid: humans collide unless the host asks for ghosts) (through
 the server, a guest's line also drops mid-race: nobody drives her car, it rolls on, the tow and
-the yellow flag come, until she is back in it), and every
+the yellow flag come, until she is back in it), the chat works (T, a line, Enter: the others read it
+in the chat window and see it in a balloon over her car; a link is refused in the box), and every
 result sheet lists all three pilots; a guest's sheet leads back to its car screen, still waiting for
 the next race. Then the host reloads (F5): it hosts again under the same
 identity and the guests keep their cars. A window opened without #desafio shows nothing of it and does
 not even load the module.
 
 Two ways, as in the game: the windows of one browser alone (&local=1, the default here), or through
-the room server (--servidor): wrangler dev from sala-cloudflare on this machine, with the group key
-of its .dev.vars, and the host letting each guest in (Aceitar) as the doorman asks.
+the room server (--servidor): wrangler dev from sala-cloudflare on this machine, with this check's own
+secret and passwords, and the host letting each guest in (Aceitar) as the doorman asks. The room lets
+in only pilots signed in: each window gets its account's pass as the accounts server would give it
+(signed here with the same secret, one account per pilot), and the host's password typed once.
 
 Usage: verificar_multiplayer.py [porta] [--servidor]  (INTERLAGOS_SHOTS=pasta keeps the screenshots;
 INTERLAGOS_NODE=node.exe when node is not on the PATH)."""
 import atexit
+import base64
+import hashlib
+import hmac
 import json
 import os
 import random
@@ -41,7 +47,8 @@ URL = f'http://127.0.0.1:{PORT}/pista_interlagos/teste/'
 SERVER = '--servidor' in sys.argv
 # The room's way: this browser only, or the room server on this machine.
 MODE = '&servidor=local' if SERVER else '&local=1'
-SERVER_KEY = 'chave-de-teste-local'
+# The room server's secrets for this check (wrangler dev --var): the passes' secret and the passwords.
+PASS_SECRET, SERVER_KEY, PILOTS_KEY = 'passe-de-teste-do-verificar', 'anfitriao-do-verificar', 'pilotos-do-verificar'
 SHOTS = Path(os.environ.get('INTERLAGOS_SHOTS') or tempfile.gettempdir()) / 'verificar_multiplayer'
 SHOTS.mkdir(parents=True, exist_ok=True)
 ROOM = f'verif{random.randrange(10**6)}'
@@ -54,6 +61,30 @@ PROBE = "()=>{const s=interlagosSala.info();return {t:performance.timeOrigin+per
 FPS = "new Promise(done=>{let n=0;const t=performance.now();const f=()=>{n++;if(performance.now()-t<1000)requestAnimationFrame(f);else done(n);};requestAnimationFrame(f);})"
 MODULES = ('multiplayer.js', 'multiplayer.css', 'net-room.js', 'net-cars.js')
 errors, requests, report_extra = [], {}, {}
+
+
+def b64url(data):
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
+
+
+def room_pass(name, room):
+    """A pilot's pass for a room as the accounts server gives it (sala-cloudflare/src/passe.js): one
+    account per pilot (an HMAC of a stand-in Google id), the pilot's name as the nickname."""
+    key = PASS_SECRET.encode()
+    account = b64url(hmac.new(key, ('conta\n' + 'g-' + name).encode(), hashlib.sha256).digest()[:16])
+    data = b64url(json.dumps({'v': 1, 'c': account, 'n': name, 's': room, 'e': int(time.time() * 1000) + 300000}).encode())
+    return data + '.' + b64url(hmac.new(key, ('sala-passe-v1.' + data).encode(), hashlib.sha256).digest())
+
+
+# Which pilot each window is (its pass): the host's page, then each popup as it opens (opening).
+page_pilots, opening = {}, ['host']
+
+
+def give_pass(route):
+    page = route.request.frame.page
+    name = PILOTS[page_pilots.get(page, 'host')][0]
+    room = json.loads(route.request.post_data or '{}').get('sala', '')
+    route.fulfill(status=200, content_type='application/json', body=json.dumps({'passe': room_pass(name, room), 'validade': 300000}))
 
 
 def watch(page, name):
@@ -84,6 +115,7 @@ def guest_window(context, host, pages, name, car=None):
     with its own pilot saved as the last one used (a guest seated while the start waits is pulled
     into the race before anyone could type)."""
     host.evaluate("name=>localStorage.setItem('autopobre-pilots-v1',JSON.stringify({selected:name,names:[name]}))", PILOTS[name][0])
+    opening[0] = name
     with context.expect_page() as popup:
         host.evaluate("url=>{window.open(url,'_blank','popup,noopener,width=800,height=450');}", f'{URL}?intro=0&cinema=off#desafio={ROOM}&auto=1{MODE}' + (f'&carro={car}' if car else ''))
     page = pages[name] = popup.value
@@ -255,6 +287,7 @@ def race_room(context, host, pages):
             car = seen(own, number)
             assert car['name'] == pilot and car['shown'] and not car['ghost'], (name, other, car)
         assert not own['me']['ghost']
+    report_extra['chat'] = chat(pages)
     fps = {name: page.evaluate(FPS) for name, page in pages.items()}
 
     # Mid-race: where each window shows the others' cars, against where they really were.
@@ -303,12 +336,41 @@ def race_room(context, host, pages):
     return fps, speed, gaps
 
 
+def chat(pages):
+    """Right after the start (the cars together): the guest writes with T; the host and the late guest
+    read the line in the chat window, and the balloon goes over her car; a link stays in her box."""
+    guest = pages['guest']
+    guest.keyboard.press('t')
+    wait_js(guest, "document.activeElement?.id==='mpChatText'", timeout=5000)
+    guest.keyboard.type('boa corrida!')
+    guest.keyboard.press('Enter')
+    wait_js(guest, "document.activeElement?.id!=='mpChatText'&&interlagosSala.info().chat.lines.some(l=>l.mine&&l.text==='boa corrida!')", timeout=5000)
+    seen = {}
+    for name in ('host', 'late'):
+        wait_js(pages[name], f"interlagosSala.info().chat.lines.some(l=>l.text==='boa corrida!'&&l.name==={PILOTS['guest'][0]!r})", timeout=10000)
+        pages[name].wait_for_timeout(300)
+        seen[name] = pages[name].evaluate("interlagosSala.info().chat.balloons.find(b=>b.text==='boa corrida!')?.visible??null")
+        pages[name].screenshot(path=str(SHOTS / f'3_{name}_chat.png'))
+    assert any(seen.values()), f'nobody sees the balloon over her car: {seen}'
+    guest.keyboard.press('t')
+    wait_js(guest, "document.activeElement?.id==='mpChatText'", timeout=5000)
+    guest.keyboard.type('olha meusite.com')
+    guest.keyboard.press('Enter')
+    wait_js(guest, "document.querySelector('#mpChat').dataset.note.includes('Links')", timeout=5000)
+    guest.screenshot(path=str(SHOTS / '3_guest_chat_link.png'))
+    guest.keyboard.press('Escape')
+    pages['host'].wait_for_timeout(2500)
+    assert not pages['host'].evaluate("interlagosSala.info().chat.lines.some(l=>l.text.includes('meusite'))"), 'a link never goes'
+    return {'balloon': seen}
+
+
 def start_server():
     """wrangler dev on 8787 (net-link.js LOCAL_SERVER), from sala-cloudflare with its .dev.vars."""
     root = Path(__file__).resolve().parents[2] / 'sala-cloudflare'
     node = os.environ.get('INTERLAGOS_NODE') or shutil.which('node')
     assert node, 'node not found: set INTERLAGOS_NODE'
-    process = subprocess.Popen([node, str(root / 'node_modules/wrangler/bin/wrangler.js'), 'dev', '--ip', '127.0.0.1', '--port', '8787', '--show-interactive-dev-session=false'],
+    secrets = ['--var', f'SALA_PASSE:{PASS_SECRET}', '--var', f'SENHA_ANFITRIAO:{SERVER_KEY}', '--var', f'SENHA_PILOTOS:{PILOTS_KEY}']
+    process = subprocess.Popen([node, str(root / 'node_modules/wrangler/bin/wrangler.js'), 'dev', '--ip', '127.0.0.1', '--port', '8787', '--show-interactive-dev-session=false', *secrets],
                                cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', env={**os.environ, 'WRANGLER_SEND_METRICS': 'false'})
     deadline = time.monotonic() + 90
     log = open(SHOTS / 'wrangler.log', 'w', encoding='utf-8')
@@ -341,8 +403,11 @@ with sync_playwright() as p:
     # (try: a noopener popup first opens about:blank, whose opaque origin has no localStorage)
     context.add_init_script("try{localStorage.setItem('opala99-preferences-v1',JSON.stringify({circuit:'interlagos',immersive:false,laps:1,camera:'chase'}));}catch{}")
     if SERVER:
-        # The group key, as a pilot types it once on the room card.
-        context.add_init_script("try{localStorage.setItem('autopobre-chave-grupo'," + json.dumps(SERVER_KEY) + ");}catch{}")
+        # The host's password, as a pilot types it once on the room card (the guests are let in at the
+        # door all the same); each window's account pass (give_pass).
+        context.add_init_script("try{localStorage.setItem('autopobre-senha-sala'," + json.dumps(SERVER_KEY) + ");}catch{}")
+        context.route('**/api/conta/passe-sala', give_pass)
+        context.on('page', lambda page: page_pilots.setdefault(page, opening[0]))
 
     # The normal game: no card, no room, no multiplayer file requested.
     plain = context.new_page()
@@ -354,6 +419,7 @@ with sync_playwright() as p:
     assert not [u for u in requests['plain'] if any(m in u for m in MODULES)], 'the normal game loads no multiplayer file'
     plain.close()
 
+    opening[0] = 'host'
     host = context.new_page()
     watch(host, 'host')
     pages = {'host': host}

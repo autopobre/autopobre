@@ -2,7 +2,7 @@
 // prediction under network delay, and RaceField's remote and ghost cars.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {Room,roomParams,roomName,roomLabel,roomAddress,roomIn,HIDDEN,playerName,validMessage,SEATS} from '../teste/net-room.js';
+import {Room,roomParams,roomName,roomLabel,roomAddress,roomIn,HIDDEN,playerName,validMessage,SEATS,chatText,chatLink,CHAT_LENGTH,keepInvite,savedInvite,dropInvite} from '../teste/net-room.js';
 import {fieldRoster} from '../teste/race-roster.js';
 import {RemoteCar,packCar,readCar,CAR_FIELDS} from '../teste/net-cars.js';
 import {RaceField,TOW_ARRIVE,FAINTED,faintedInput,inTheWay,pitRoute} from '../teste/race-field.js';
@@ -17,7 +17,7 @@ const report={};
 // --- The address: #desafio=NOME and its options.
 {
  const p=roomParams('#desafio=Teste Óla&carro=73&auto=1&lag=150&perda=5');
- assert.deepEqual(p,{room:'testeola',label:'testeola',car:'73',auto:true,ghosts:false,local:false,server:null,lag:150,loss:.05});
+ assert.deepEqual(p,{room:'testeola',address:'TesteOla',label:'testeola',car:'73',auto:true,ghosts:false,local:false,server:null,lag:150,loss:.05});
  assert.equal(roomParams('#desafio=a&local=1').local,true);assert.equal(roomParams('#desafio=a&servidor=local').server,'local');assert.equal(roomParams('#desafio=a&servidor=outro').server,null);
  assert.equal(roomParams('#desafio=a&fantasmas=1').ghosts,true,'humans pass through each other only when asked');
  assert.equal(roomParams('#carro=73'),null,'no room without desafio');
@@ -37,7 +37,7 @@ const report={};
  assert.equal(roomLabel('Amigos_Segredo7'),'amigos_***');assert.equal(roomLabel('amigos'),'amigos');
  assert.equal(roomLabel('amigos_'),'amigos','nothing after the "_": nothing hidden');assert.equal(roomLabel('_xyz'),'_***');
  assert.equal(roomLabel(`amigos_${HIDDEN}`),'amigos_***');
- const p=roomParams('#desafio=Amigos_Segredo7&carro=73');assert.equal(p.room,'amigossegredo7','the same room as before ("_" not kept)');assert.equal(p.label,'amigos_***');
+ const p=roomParams('#desafio=Amigos_Segredo7&carro=73');assert.equal(p.room,'amigossegredo7','the same room as before ("_" not kept)');assert.equal(p.label,'amigos_***');assert.equal(p.address,'Amigos_Segredo7','the address as written, for an invitation');
  // Opened whole: read whole, shown hidden (the other options kept), the secret kept in this browser.
  const whole=roomAddress('#desafio=Amigos_Segredo7&carro=73&servidor=local',local);
  assert.equal(whole.lost,false);assert.equal(roomParams(whole.hash).room,'amigossegredo7');assert.equal(roomParams(whole.hash).server,'local');
@@ -394,7 +394,9 @@ const report={};
  G.receive({t:'welcome',id:'0000000c',token:'1'.repeat(32),role:'guest',host,pending:true});assert.equal(G.race,null);assert.equal(G.id,'0000000c');
  // net-link.js: after the quick tries it goes on trying, every 15 s.
  const reasons=[],sockets=[],fake=()=>{const ws={readyState:0,send(){},close(code){ws.closed=code;}};sockets.push(ws);return ws;};
- const server=new ServerLink({url:'ws://x',room:'linha',key:()=>'k',name:()=>'Gil',storage:null,socket:fake});server.onclose=r=>reasons.push(r);
+ const server=new ServerLink({url:'ws://x',room:'linha',key:()=>'k',pass:()=>({passe:'p',validade:3600000}),storage:null,socket:fake});server.onclose=r=>reasons.push(r);
+ // (the account's pass first: kept, it lets every later connection go at once)
+ await server.passFor();
  server.open();sockets[0].readyState=1;sockets[0].onopen();
  // A reconnect opens a new socket at once and leaves the old one to the server (no goodbye: a false
  // alarm costs nothing); the old one closing later says nothing. None while the new one connects.
@@ -424,7 +426,7 @@ const report={};
  // false alarm) leaves the old one on, without a word.
  {
   const heard=[],socks=[],said=[],mk=()=>{const ws={readyState:0,sent:[],send(d){ws.sent.push(JSON.parse(d).t);},close(code){ws.closed=code;}};socks.push(ws);return ws;};
-  const line=new ServerLink({url:'ws://x',room:'linha',key:()=>'k',name:()=>'Gil',storage:null,socket:mk});line.onmessage=m=>heard.push(m.t);line.onclose=r=>said.push(r);
+  const line=new ServerLink({url:'ws://x',room:'linha',key:()=>'k',pass:()=>({passe:'p',validade:3600000}),storage:null,socket:mk});line.onmessage=m=>heard.push(m.t);line.onclose=r=>said.push(r);await line.passFor();
   const msg=(ws,t)=>t==='welcome'?welcome(ws):ws.onmessage({data:JSON.stringify({t})});
   line.open();const [old]=socks;old.readyState=1;old.onopen();msg(old,'welcome');msg(old,'lobby');
   line.reconnect();const neu=socks[1];msg(old,'snap');line.send({t:'eco'});assert.deepEqual(old.sent,['auth','eco'],'sent through the old one meanwhile');
@@ -434,6 +436,60 @@ const report={};
   line.reconnect();socks[2].onclose({code:1006});assert.deepEqual(said,[],'a false alarm says nothing');assert.equal(line.ws,neu);msg(neu,'lobby');assert.equal(heard.at(-1),'lobby');
   line.close();assert.equal(neu.closed,1000);
  }
+}
+// The account and the password (net-link.js): the pass first, kept for new connections while fresh; not
+// signed in, no nickname: the card says so and nothing connects; the accounts server out of reach: tried
+// again; no password and no invitation: asked at once; an invitation stands for the password, and one the
+// server refused goes; a pass the server refused is never offered again.
+{
+ let problem={problema:'conta'},key='',invite=null,forgot=0,asked=0;const reasons=[],sockets=[];
+ const fake=()=>{const ws={readyState:0,sent:[],send(d){ws.sent.push(JSON.parse(d));},close(code){ws.closed=code;}};sockets.push(ws);return ws;};
+ const link=new ServerLink({url:'ws://x',room:'conta',key:()=>key,pass:async()=>{asked++;return problem;},invite:()=>invite,forgetInvite:()=>{forgot++;invite=null;},storage:null,socket:fake});
+ link.onclose=r=>reasons.push(r);
+ link.open();await wait();assert.deepEqual(reasons,['conta']);assert.equal(sockets.length,0,'not signed in: no connection');
+ problem={problema:'apelido'};link.open();await wait();assert.equal(reasons.at(-1),'apelido');
+ problem=null;link.open();await wait();assert.equal(reasons.at(-1),'contas','the accounts server out of reach');assert(link.retry,'tried again');clearTimeout(link.retry);
+ problem={passe:'p1',validade:300000};link.open();await wait();assert.equal(reasons.at(-1),'chave','no password: asked at once');assert.equal(sockets.length,0);
+ invite='convite-x';link.open();assert.equal(sockets.length,1,'the pass kept: at once');sockets[0].readyState=1;sockets[0].onopen();
+ assert.deepEqual(sockets[0].sent[0],{t:'auth',key:'',passe:'p1',token:null,convite:'convite-x'},'the invitation instead of the password');
+ sockets[0].onclose({code:4001});assert.equal(forgot,1,'refused: the invitation goes');assert.equal(reasons.at(-1),'chave');
+ key='senha';const before=asked;link.open();assert.equal(sockets.length,2);assert.equal(asked,before);
+ sockets[1].readyState=1;sockets[1].onopen();assert.equal(sockets[1].sent[0].key,'senha');assert.equal(sockets[1].sent[0].convite,undefined);
+ sockets[1].onclose({code:4014});assert.equal(reasons.at(-1),'passe');link.open();await wait();assert.equal(asked,before+1,'a refused pass is asked for anew');
+ link.close();
+}
+// The chat (net-room.js say, chat-text.js): cleaned, no links, one line every CHAT_GAP, not from the door;
+// a line from the room is cleaned on arrival too. A room nobody opened: a guest waits at the door without a
+// host; let in, it learns whose room it is; a room left without a host says so (host: null). The host's
+// invitations: who is online and what became of each, checked as they come; a guest asks for neither.
+{
+ let now=0;const sent=[],link={open(){},send(m){sent.push(m);},close(){},reconnect(){}},clock=()=>now;
+ const G=new Room({room:'conversa',name:'Gil',link,clock});G.start();
+ G.receive({t:'welcome',id:'0000000a',token:'0'.repeat(32),role:'guest',host:null,pending:true});
+ assert.equal(G.hostId,null);assert.equal(G.say('oi'),false,'not from the door');
+ G.receive({t:'host',id:'0000000b'});assert.equal(G.hostId,'0000000b');
+ G.receive({t:'admitted',host:'0000000c'});assert.equal(G.hostId,'0000000c','let in: whose room it is');assert.equal(G.pending,false);
+ const heard=[];G.on('chat',l=>heard.push(l));
+ assert.equal(G.say('  oi‮  galera '),true);assert.deepEqual(sent.at(-1),{t:'chat',name:'Gil',text:'oi galera',from:'0000000a'});
+ assert.equal(G.say('de novo'),false,'too soon');now+=2.1;assert.equal(G.say('www.x.com'),false,'no links');assert.equal(G.say('   '),false);
+ G.receive({t:'chat',from:'0000000c',name:'Ana​',text:'boa‮ sorte'});G.receive({t:'chat',from:'0000000c',name:'Ana',text:'site.com'});
+ assert.deepEqual(heard.map(l=>[l.name,l.text,!!l.mine]),[['Gil','oi galera',true],['Ana','boa sorte',false]]);
+ G.receive({t:'host',id:null});assert.equal(G.hostId,null,'the host gone for good, nobody to take over');
+ const H=new Room({room:'convites',name:'Ana',link,clock});H.start();H.receive({t:'welcome',id:'0000000d',token:'1'.repeat(32),role:'host',host:'0000000d',pending:false});
+ const lists=[],answers=[];H.on('online',l=>lists.push(l)).on('invited',(a,d)=>answers.push([a,d]));
+ const conta='A'.repeat(22);H.askOnline();assert.deepEqual(sent.at(-1),{t:'online',from:'0000000d'});
+ H.receive({t:'online',pilotos:[{conta,nome:'Eva‮'}]});assert.deepEqual(lists,[[{conta,nome:'Eva'}]]);
+ H.receive({t:'online',pilotos:[{conta:'curta',nome:'X'}]});assert.equal(lists.length,1,'checked as it comes');
+ H.invite(conta,'Convites_x');assert.deepEqual(sent.at(-1),{t:'convidar',conta,endereco:'Convites_x',from:'0000000d'});
+ H.receive({t:'convidado',conta,entregue:true});assert.deepEqual(answers,[[conta,true]]);
+ const count=sent.length;G.askOnline();G.invite(conta,'x');assert.equal(sent.length,count,'a guest asks for neither');
+ assert.ok(chatLink('acesse meusite . com')&&chatLink('http://x')&&!chatLink('Bom. Com certeza')&&!chatLink('1:23.456'));
+ assert.equal(chatText('ㅤ'),'');assert.equal([...chatText('é'.repeat(200))].length,CHAT_LENGTH);
+ // The invitation a pilot took is kept for that room only, and goes when refused.
+ const store=new Map(),fakeStore={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)};
+ keepInvite(fakeStore,'convites','tok');keepInvite(fakeStore,'Outra Sala','x');assert.equal(savedInvite(fakeStore,'convites'),'tok');assert.equal(store.size,1,'a room\'s name only');
+ dropInvite(fakeStore,'convites');assert.equal(savedInvite(fakeStore,'convites'),null);
+ report.chat='ok';
 }
 // Two windows opened at once: both host for a moment, then the smaller id keeps the room.
 {

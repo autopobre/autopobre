@@ -1,32 +1,40 @@
 // The room server (src/index.js) in Cloudflare's local runtime (wrangler dev, as in development):
-// the group key, the origin, who is who, the roles, the doorman, the limits, a host's reload and
-// its handover. Run: npm test (from sala-cloudflare). The fixture key and origin below override
-// local configuration; these checks never require a production credential.
+// the account's pass, the two passwords, the origin, who is who, the roles, the doorman, the chat, the
+// lobby and the invitations, the limits, a host's reload and its handover. Run: npm test (from
+// sala-cloudflare). The fixture secret, passwords and origin below override local configuration; these
+// checks never require a production credential. The passes are signed here as the accounts server signs them.
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {startWrangler} from './wrangler-dev.mjs';
-const PORT=8797,KEY='chave-de-teste-local',ORIGIN='http://teste.local',GRACE=600,RACE_GRACE=2500,AUTH_WAIT=1500;
+import {makePass,accountKey,LOBBY} from '../src/passe.js';
+const PORT=8797,SECRET='passe-de-teste-da-sala-wrangler',KEY='anfitriao-de-teste-local',PILOT='pilotos-de-teste-local',ORIGIN='http://teste.local',GRACE=600,RACE_GRACE=2500,AUTH_WAIT=1500;
 const wait=(ms=40)=>new Promise(r=>setTimeout(r,ms));
-const stop=await startWrangler({port:PORT,vars:{CHAVE_GRUPO:KEY,ORIGENS:ORIGIN,HOST_GRACE_MS:GRACE,RACE_GRACE_MS:RACE_GRACE,AUTH_WAIT_MS:AUTH_WAIT}});
+const stop=await startWrangler({port:PORT,vars:{SALA_PASSE:SECRET,SENHA_ANFITRIAO:KEY,SENHA_PILOTOS:PILOT,ORIGENS:ORIGIN,HOST_GRACE_MS:GRACE,RACE_GRACE_MS:RACE_GRACE,AUTH_WAIT_MS:AUTH_WAIT}});
+// A pilot's pass for a room (or the lobby): its account from its Google id (sub), its nickname.
+const pass=async(room,name,sub='g-'+name)=>makePass(SECRET,{account:await accountKey(SECRET,sub),name,room});
 let rooms=0;const fresh=()=>'sala-'+(++rooms)+'-'+Math.random().toString(36).slice(2,6);
 // The HTTP status of a WebSocket request that is turned away before the upgrade.
 const refused=(path,origin)=>new Promise(done=>{const req=http.request({host:'127.0.0.1',port:PORT,path,headers:{Connection:'Upgrade',Upgrade:'websocket','Sec-WebSocket-Version':'13','Sec-WebSocket-Key':'dGhlIHNhbXBsZSBub25jZQ==',...(origin?{Origin:origin}:{})}});
  req.on('response',res=>{res.resume();done(res.statusCode);});req.on('upgrade',(res,socket)=>{socket.destroy();done(101);});req.on('error',()=>done(0));req.end();});
 // A client: its messages, its close, and helpers to wait for them.
-async function open(room,{origin=ORIGIN,key=KEY,token=null,name='Piloto',auth=true,ip='192.0.2.1',headers={}}={}){
+// (a pilot named is the same account each time; one unnamed is someone new)
+async function open(room,{origin=ORIGIN,key=KEY,token=null,name,sub,passe,convite,auth=true,ip='192.0.2.1',headers={}}={}){
+ sub??=name?'g-'+name:'g-'+Math.random().toString(36).slice(2);name??='Piloto';
  const ws=new WebSocket(`ws://127.0.0.1:${PORT}/sala/${room}`,{headers:{...headers,Origin:origin,'CF-Connecting-IP':ip}}),c={ws,got:[],closed:null};
  ws.onmessage=e=>c.got.push(JSON.parse(e.data));ws.onclose=e=>{c.closed={code:e.code,reason:e.reason};};ws.onerror=()=>{};
  await new Promise(r=>{ws.onopen=r;const t=setInterval(()=>{if(c.closed){clearInterval(t);r();}},20);});
  c.send=m=>{try{ws.send(typeof m==='string'?m:JSON.stringify(m));}catch{}};
  c.of=t=>c.got.filter(m=>m.t===t);
  c.until=async(check,ms=3000)=>{const end=Date.now()+ms;while(Date.now()<end){const v=check();if(v)return v;await wait(10);}throw new Error('timeout: '+check);};
- if(auth&&!c.closed){c.send({t:'auth',key,token,name});await c.until(()=>c.of('welcome')[0]||c.closed);c.me=c.of('welcome')[0];}
+ if(auth&&!c.closed){c.send({t:'auth',key,token,passe:passe===undefined?await pass(room,name,sub):passe,...(convite&&{convite})});await c.until(()=>c.of('welcome')[0]||c.closed);c.me=c.of('welcome')[0];}
  return c;
 }
 const report={};
 
-// The door itself: the page's origin, the room's name, the key.
+// The door itself: the page's origin, the room's name, the account, the password.
 {
+ const nopass=await open(fresh(),{passe:null});assert.equal(nopass.closed?.code,4014,'no account, no room');
+ const lobbyPass=await open(fresh(),{passe:await pass(LOBBY,'Ana')});assert.equal(lobbyPass.closed?.code,4014,'the lobby\'s pass opens no room');
  assert.equal(await refused('/sala/abc','https://outro-site.com'),403,'another site cannot open a room');
  assert.equal(await refused('/sala/abc',null),403,'nor a page that says nothing');
  assert.equal(await refused('/sala/Nome%20Ruim',ORIGIN),404);
@@ -47,9 +55,9 @@ const report={};
  const bia=await open(room,{name:'Bia‮​'});
  assert.equal(bia.me.role,'guest');assert.equal(bia.me.pending,true,'a guest waits at the door');assert.equal(bia.me.host,host.me.id);
  const knock=await host.until(()=>host.of('knock')[0]);assert.equal(knock.id,bia.me.id);assert.equal(knock.name,'Bia','names are cleaned on the server too');
- // Outside the door nothing gets through, either way; a new name only knocks again, cleaned.
+ // Outside the door nothing gets through, either way; a name typed changes nothing (the account's).
  bia.send({t:'hello',name:'Bia Souza​',want:null});host.send({t:'lobby',name:'Ana',age:1,players:[],race:null});
- await host.until(()=>host.of('knock').some(k=>k.id===bia.me.id&&k.name==='Bia Souza'));
+ await wait(150);assert.deepEqual(host.of('knock').map(k=>k.name),['Bia']);
  assert.equal(host.of('hello').length,0);assert.equal(bia.of('lobby').length,0);
  // The line check: the server echoes it itself, to the one who asked only (a guest at the door too).
  bia.send({t:'eco'});await bia.until(()=>bia.of('eco')[0]);host.send({t:'eco'});await host.until(()=>host.of('eco')[0]);await wait(40);
@@ -107,19 +115,20 @@ const report={};
 // someone comes in; the host back hosts again and hears the knock.
 {
  const room=fresh(),host=await open(room,{name:'Ana'});
- const eva=await open(room,{name:'Eva'});await host.until(()=>host.of('knock').some(k=>k.id===eva.me.id));
+ const eva=await open(room,{name:'Eva',key:PILOT});await host.until(()=>host.of('knock').some(k=>k.id===eva.me.id));
  host.send({t:'deny',to:eva.me.id});await eva.until(()=>eva.closed);
- const knocking=await open(room,{token:eva.me.token,name:'Eva'});
+ const knocking=await open(room,{token:eva.me.token,name:'Eva',key:PILOT});
  assert.equal(knocking.me.pending,true);assert.notEqual(knocking.me.id,eva.me.id,'refused: it knocks again as someone new');
  const bia=await open(room,{name:'Bia'});await host.until(()=>host.of('knock').some(k=>k.id===bia.me.id));
  host.send({t:'admit',to:bia.me.id});await bia.until(()=>bia.of('admitted')[0]);
  // Eva came first, but only Bia was let in.
  host.send({t:'bye'});await bia.until(()=>bia.of('role')[0],GRACE+2000);
- assert.equal(knocking.of('role').length,0,'one at the door never hosts');
+ assert.equal(knocking.of('role').length,0,'one at the door with the pilots\' password never hosts');
  await bia.until(()=>bia.of('knock').some(k=>k.id===knocking.me.id));
  // Nobody let in is left: no host, until the old host is back.
  bia.send({t:'bye'});await wait(GRACE+700);
  assert.equal(knocking.of('role').length,0,'not even when it is alone');assert.equal(knocking.closed,null);
+ await knocking.until(()=>knocking.of('host').some(m=>m.id===null),GRACE+2000);
  const back=await open(room,{token:host.me.token,name:'Ana'});assert.equal(back.me.role,'host','the room hosts the first to come in');
  await back.until(()=>back.of('knock').some(k=>k.id===knocking.me.id));
  for(const c of [back,knocking])c.ws.close();
@@ -155,11 +164,11 @@ const report={};
  assert(others.every(o=>o.me?.role==='guest'));
  const late=await open(room);assert.equal(late.closed?.code,4002,'19 in the room: the 20th is turned away');
  for(const c of [host,...others])c.ws.close();
- const BAD='192.0.2.7',locked=fresh(),owner=await open(locked,{ip:BAD});
+ const BAD='192.0.2.7',locked=fresh(),owner=await open(locked,{ip:BAD,name:'Dono'});
  for(let i=0;i<20;i++)await open(locked,{key:'errada',ip:BAD});
  const right=await open(locked,{ip:'192.0.2.2'});assert(right.me,'another IP can still enter');
  const blocked=await open(locked,{key:'errada',ip:BAD});assert.equal(blocked.closed?.code,4009,'only the offending IP waits');
- const back=await open(locked,{token:owner.me.token,ip:BAD});assert.equal(back.me?.role,'host','known host resumes on the same IP');
+ const back=await open(locked,{token:owner.me.token,ip:BAD,name:'Dono'});assert.equal(back.me?.role,'host','known host resumes on the same IP');
  // The Porteiro counts the wrong keys of every room: a new room name gives no fresh tries, and a
  // header the client sets itself changes nothing.
  await wait(200);
@@ -170,11 +179,11 @@ const report={};
  // (with the doorman off: the door's own limit is checked below)
  const retained=fresh(),keeper=await open(retained),tokens=[];keeper.send({t:'config',porteiro:false});await wait(30);
  for(let i=0;i<20;i++){
-  const guest=await open(retained);tokens.push(guest.me.token);guest.ws.close();await guest.until(()=>guest.closed);
+  const guest=await open(retained,{name:'G'+i});tokens.push(guest.me.token);guest.ws.close();await guest.until(()=>guest.closed);
   await keeper.until(()=>keeper.of('bye').some(m=>m.from===guest.me.id));
  }
  const rejoined=[];
- for(const token of tokens)rejoined.push(await open(retained,{token}));
+ for(const [i,token] of tokens.entries())rejoined.push(await open(retained,{token,name:'G'+i}));
  assert.equal(rejoined.filter(c=>c.me).length,18,'old tokens cannot exceed the 19 slots');
  assert(rejoined.slice(18).every(c=>c.closed?.code===4002));
  for(const c of [keeper,...rejoined])c.ws.close();
@@ -196,6 +205,50 @@ const report={};
  const sixth=await open(hall,{ip:'192.0.2.4'});assert(sixth.me?.pending,'one let in makes room at the door');
  for(const c of [warden,...knocks,stranger,sixth])c.ws.close();
  report.limits='ok';
+}
+// The pilots' password: no room opens with it; its pilot waits at the door of a room nobody opened,
+// and knocks for the first to come with the host's password.
+{
+ const room=fresh(),bia=await open(room,{name:'Bia',key:PILOT});
+ assert.equal(bia.me.role,'guest');assert.equal(bia.me.host,null);assert.equal(bia.me.pending,true);
+ const ana=await open(room,{name:'Ana'});assert.equal(ana.me.role,'host');
+ await ana.until(()=>ana.of('knock').some(k=>k.id===bia.me.id&&k.name==='Bia'));await bia.until(()=>bia.of('host').some(m=>m.id===ana.me.id));
+ ana.send({t:'admit',to:bia.me.id});const admitted=await bia.until(()=>bia.of('admitted')[0]);assert.equal(admitted.host,ana.me.id);
+ // The chat: cleaned, under the account's name, to the others let in; a link never relayed.
+ bia.send({t:'chat',text:'boa  corrida\u202E!',name:'Ana'});const line=await ana.until(()=>ana.of('chat')[0]);
+ assert.deepEqual({name:line.name,text:line.text,from:line.from},{name:'Bia',text:'boa corrida!',from:bia.me.id});
+ ana.send({t:'chat',text:'olha autopobre.com.br'});ana.send({t:'chat',text:'valeu'});await bia.until(()=>bia.of('chat')[0]);
+ assert.deepEqual(bia.of('chat').map(m=>m.text),['valeu'],'no link reaches anyone');
+ for(const c of [ana,bia])c.ws.close();
+ report.passwords='ok';
+}
+// The lobby and the invitations: pages online keep a line (the runtime answers their echo), the host
+// sees who is online and invites one, whose pages all get it; with it the pilot comes straight in, no
+// password, no door.
+{
+ const line=async name=>{
+  const ws=new WebSocket(`ws://127.0.0.1:${PORT}/saguao`,{headers:{Origin:ORIGIN}}),c={ws,got:[],closed:null};
+  ws.onmessage=e=>c.got.push(JSON.parse(e.data));ws.onclose=e=>{c.closed=e.code;};ws.onerror=()=>{};
+  await new Promise(r=>{ws.onopen=r;});ws.send(JSON.stringify({t:'auth',passe:await pass(LOBBY,name)}));
+  const end=Date.now()+3000;while(!c.got.some(m=>m.t==='welcome')&&Date.now()<end)await wait(20);
+  return c;
+ };
+ assert.equal(await refused('/saguao','https://outro-site.com'),403,'the lobby takes the game\'s origin only');
+ const eva=await line('Eva'),eva2=await line('Eva'),gil=await line('Gil');
+ assert(eva.got.some(m=>m.t==='welcome'));
+ eva.ws.send('{"t":"eco"}');const end=Date.now()+3000;while(!eva.got.some(m=>m.t==='eco')&&Date.now()<end)await wait(20);assert(eva.got.some(m=>m.t==='eco'),'the echo, answered by the runtime');
+ const room=fresh(),ana=await open(room,{name:'Ana',key:KEY});
+ ana.send({t:'online'});const online=await ana.until(()=>ana.of('online')[0]);
+ const names=online.pilotos.map(p=>p.nome).sort();assert(names.includes('Eva')&&names.includes('Gil'),'who is online: '+names);
+ const evaAccount=online.pilotos.find(p=>p.nome==='Eva').conta;
+ ana.send({t:'convidar',conta:evaAccount,endereco:room});const sent=await ana.until(()=>ana.of('convidado')[0]);assert.equal(sent.entregue,true);
+ const end2=Date.now()+3000;while(!(eva.got.some(m=>m.t==='convite')&&eva2.got.some(m=>m.t==='convite'))&&Date.now()<end2)await wait(20);
+ const offer=eva.got.find(m=>m.t==='convite');assert(offer&&eva2.got.some(m=>m.t==='convite'),'every page of hers');assert(!gil.got.some(m=>m.t==='convite'),'nobody else');
+ assert.equal(offer.de,'Ana');assert.equal(offer.sala,room);
+ const evaIn=await open(room,{name:'Eva',key:'',convite:offer.convite});assert.equal(evaIn.me?.pending,false,'invited: straight in, no password');
+ const zeca=await open(room,{name:'Zeca',key:'',convite:offer.convite});assert.equal(zeca.closed?.code,4001,'her invitation is hers only');
+ for(const c of [ana,evaIn,eva,eva2,gil])c.ws.close();
+ report.invitations='ok';
 }
 stop();
 console.log(JSON.stringify(report));

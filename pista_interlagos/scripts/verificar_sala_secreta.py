@@ -1,5 +1,5 @@
 """A room's secret off the screen (lives): #desafio=Amigos_Segredo7 opens the room amigossegredo7, the address
-bar right away reads #desafio=Amigos_*** and the room card amigos_***, nothing on the page says the secret;
+bar right away reads #desafio=Amigos_***, the room card shows no name at all, nothing on the page says the secret;
 F5 on the hidden address is the same room; the hidden address on another browser (copied off a stream)
 opens no room, the card says to ask for the whole link; the old links (#sala=, #corrida=) open the plain
 game and ask for no multiplayer file. Usage: verificar_sala_secreta.py [porta].
@@ -27,7 +27,7 @@ with sync_playwright() as p:
  wait_js(page,'window.interlagosSala&&interlagosSala.info().role')
  a=page.evaluate(ROOM)
  assert a['room']=='amigossegredo7' and a['label']=='amigos_***' and a['address']=='#desafio=Amigos_***&local=1',a
- assert 'amigos_***' in a['card'].lower(),a['card'];secret_free(page)
+ assert 'amigos' not in a['card'].lower(),a['card'];secret_free(page)
  page.screenshot(path=str(RENDERS/'sala_secreta_cartao.png'))
  result['aberta']={'sala':a['room'],'cartao':a['label'],'endereco':a['address'],'papel':a['role']}
 
@@ -41,7 +41,7 @@ with sync_playwright() as p:
  viewer.goto(f'{URL}#desafio=Amigos_***&local=1',wait_until='load')
  wait_js(viewer,"document.querySelector('#mpRoom .mp-status')?.textContent.includes('link completo')")
  c=viewer.evaluate("()=>({room:!!window.interlagosSala,card:document.querySelector('#mpRoom').innerText})")
- assert not c['room'] and 'amigos_***' in c['card'].lower(),c
+ assert not c['room'] and 'amigos' not in c['card'].lower(),c
  viewer.screenshot(path=str(RENDERS/'sala_secreta_link_escondido.png'))
  result['link_escondido']=c['card'].replace('\n',' · ')
 
@@ -57,4 +57,4 @@ with sync_playwright() as p:
  browser.close()
 assert not errors,errors
 print(json.dumps(result,ensure_ascii=False,indent=1))
-print('Room secret passed in the browser: card and address bar hide it, F5 keeps the room, the hidden link alone opens none.')
+print('Room secret passed in the browser: the card shows no name, the address bar hides the secret, F5 keeps the room, the hidden link alone opens none.')

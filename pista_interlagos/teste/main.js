@@ -845,9 +845,17 @@ $('soundBench').hidden=!MULTIPLAYER;$('soundBenchState').textContent=carAudio.tu
 // them (preparar_publicacao.py --conta: the accounts' server answers only there); the others turn this off.
 const CONTA=true;
 // The online records (recordes-online.js, through conta.js): fed the run every frame (onlineRun) and each lap that counts (recordGhost).
-let contaOnline=null;
-if(CONTA)import('./conta.js').then(m=>m.startConta({pilot:()=>pilotPicker.profiles.selected,usePilot:(name,open)=>pilotPicker.useAccount(name,open),records:lapRecords}))
- .then(conta=>{contaOnline=conta?.online??null;}).catch(()=>{});
+// contaModule: the module itself, for a multiplayer room's pass (conta.js roomPass); conta: the account's menu line and dialog.
+let contaOnline=null,conta=null;
+const contaModule=CONTA?import('./conta.js'):null;
+contaModule?.then(m=>m.startConta({pilot:()=>pilotPicker.profiles.selected,usePilot:(name,open)=>pilotPicker.useAccount(name,open),records:lapRecords}))
+ .then(c=>{conta=c;contaOnline=c?.online??null;startLobby();}).catch(()=>{});
+// Online for the hosts' invitations to their rooms (saguao.js): the test version only (the multiplayer and the accounts),
+// signed in with a nickname; an invitation taken opens that room here.
+function startLobby(){
+ if(!MULTIPLAYER||!conta)return;
+ import('./saguao.js').then(m=>m.startLobby({pass:()=>contaModule.then(mod=>mod.roomPass('@saguao')),account:()=>conta?.account?.apelido??null,racing:()=>sessionStarted})).catch(()=>{});
+}
 // The run as the online records see it: the Opala's clock and laps while the pilot drives a race they count (not
 // the recon lap's autopilot, a run that used it, the Arena, nor a multiplayer room, whose clock the room may move).
 const onlineRun=()=>({circuit:circuit.id,mode:immersive.active?'immersive':'normal',car:raceModel,clock:car.clock,lapStart:car.lapStart,
@@ -2769,6 +2777,18 @@ if(roomWanted)import('./multiplayer.js').then(({startMultiplayer})=>{multiplayer
  // A knock at the host's door while its grid waits: the mouse is let go to answer it (no menu, no pause).
  freeMouse:()=>{if(document.pointerLockElement!==$('view'))return;mouseFreed=true;document.exitPointerLock();},
  command:()=>automatic?pilot():input(),
+ // The account (conta.js): the room server lets in only pilots signed in, with a nickname. Signing in leaves for
+ // Google and comes back to this address; the nickname is picked in the account's dialog.
+ roomPass:room=>contaModule?contaModule.then(m=>m.roomPass(room)).catch(()=>({problema:'contas'})):{problema:'contas'},
+ accountName:()=>conta?.account?.apelido??null,
+ // The host's invitations (multiplayer.js): a track's online records (the board: nickname, badge, best lap) and its name.
+ records:circuit=>contaModule?contaModule.then(m=>m.boardFor(circuit)):[],circuitName:id=>CIRCUITS[id]?.name??id,
+ signIn:()=>conta?.signIn(),openAccount:()=>conta?.open(),
+ // The chat's balloons (multiplayer-chat.js): the scene's camera, and the point over this window's own car, or over
+ // its pilot out of it.
+ camera:()=>camera,
+ playerAnchor:out=>walker?.active?out.copy(walker.hero.position).setY(walker.hero.position.y+2.05):out.copy(carRoot.position).setY(carRoot.position.y+1.45),
+ keyName,
  autopilot:on=>{if(on!==undefined&&ready&&sessionStarted&&!immersive.active){if(on)automatic=true;else takeWheel();}return automatic;},
  hasCircuit:id=>Object.hasOwn(CIRCUITS,id),
  // The weather a host announces with its race (weather.js; Aleatório's draw, never 'aleatorio'), and a guest racing
