@@ -3,11 +3,13 @@ name: Publicar Auto-Pobre Racing
 # Publishing is manual: pushes to main no longer replace the live game.
 # Actions -> Publicar Auto-Pobre Racing -> Run workflow, choosing what to publish.
 # The main link shows `versao` (the announced version; its `default` below is the only place that
-# names it) and /dev/ shows `versao_dev` (the one in progress, main). Each is built from its own
-# checkout, tested and packed into one Pages site; the same commit on both is tested once. An
-# empty versao_dev leaves /dev/ out. The legacy versions (apr-1.0, apr-2.1) are no longer
-# published: they stay as tags. The multiplayer test room is published only under /dev/; the run
-# fails if the main link would carry it.
+# names it). /dev/ is the museum (user, 2026-10-25): the old test version, kept at `versao_dev`
+# (apr-3.3-rc6, as it was when dev.autopobre.com.br took over). The test version now lives at
+# dev.autopobre.com.br, published by autopobre/dev through montar-dev.yml. Each address here is built
+# from its own checkout, tested and packed into one Pages site; the same commit on both is tested once.
+# An empty versao_dev leaves /dev/ out. The legacy versions (apr-1.0, apr-2.1) are no longer published:
+# they stay as tags. The multiplayer test room goes only to the test versions (/dev/ here); the run fails
+# if the main link would carry it.
 on:
   workflow_dispatch:
     inputs:
@@ -16,9 +18,9 @@ on:
         required: true
         default: apr-3.3-rc6
       versao_dev:
-        description: 'Endereço autopobre.com.br/dev/ (versão em teste, a única com multiplayer): qual versão vai ali. Se apagar este campo, o /dev/ sai do ar.'
+        description: 'Endereço autopobre.com.br/dev/ (o museu: a versão de testes antiga, parada na apr-3.3-rc6; a versão de testes agora é dev.autopobre.com.br). Se apagar este campo, o /dev/ sai do ar.'
         required: false
-        default: main
+        default: apr-3.3-rc6
 
 permissions:
   contents: read
