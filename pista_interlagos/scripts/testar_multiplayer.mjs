@@ -883,9 +883,17 @@ for(let trial=0;trial<6;trial++){
  advance([A,B],30);assert.equal(A.role,null,'nobody hosts it again');assert.equal(B.role,null);
  A.channel.close();B.channel.close();
  assert.equal(CLOSED[4017],'fechada');
- let forgot=0;const link=new ServerLink({url:'wss://sala.invalid',room:'x',key:()=>'',invite:()=>'convite',forgetInvite:()=>forgot++,pass:async()=>({passe:'p'}),socket:()=>{const ws={send(){},close(){}};queueMicrotask(()=>ws.onclose?.({code:4017}));return ws;}});
- const heard=[];link.onclose=reason=>heard.push(reason);link.open();await wait();await wait();
- assert.deepEqual(heard,['fechada']);assert.equal(forgot,1,'the invitation to a closed room is forgotten');
+ // An invited tab (its invitation kept in this browser): the room closed, the invitation forgotten, and opened again
+ // (a reload, the browser restoring the tab) it is out again, never asked for the password it was never given; a tab
+ // that came with the link alone is asked for it.
+ const tab=new Map(),storage={getItem:k=>tab.get(k)??null,setItem:(k,v)=>tab.set(k,String(v)),removeItem:k=>tab.delete(k)};
+ let forgot=0,saved='convite';const link=new ServerLink({url:'wss://sala.invalid',room:'x',key:()=>'',invite:()=>saved,forgetInvite:()=>{forgot++;saved=null;},storage,pass:async()=>({passe:'p'}),socket:()=>{const ws={send(){},close(){}};queueMicrotask(()=>ws.onclose?.({code:4017}));return ws;}});
+ const heard=[];link.onclose=reason=>heard.push(reason);assert.equal(link.invited,false);link.open();await wait();await wait();
+ assert.deepEqual(heard,['fechada']);assert.equal(forgot,1,'the invitation to a closed room is forgotten');assert.equal(link.invited,true,'this tab came in invited');
+ link.open();await wait();await wait();assert.deepEqual(heard,['fechada','fechada'],'opened again: out, no password asked');
+ const room=new Room({room:'x',name:'Bia',link:{open(){},close(){},send(){},invited:true}});assert.equal(room.invited,true);
+ const plain=new ServerLink({url:'wss://sala.invalid',room:'x',key:()=>'',pass:async()=>({passe:'p'}),storage:{getItem:()=>null,setItem(){}},socket:()=>{throw new Error('no connection without a password');}});
+ const asked=[];plain.onclose=reason=>asked.push(reason);plain.open();await wait();await wait();assert.deepEqual(asked,['chave'],'with the link alone: the password asked for');
  link.closing=true;clearTimeout(link.retry);
 }
 // The room server's address is the one the page's content policy allows (scripts/publicacao.py).

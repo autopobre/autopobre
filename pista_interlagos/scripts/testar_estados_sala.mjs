@@ -225,4 +225,35 @@ function setup(laps=2){
  assert(Math.hypot(car.x-spot.x,car.y-spot.y)>45);
 }
 
+// A guest's line as its states reach the host (multiplayer.js linkGhosts: when they arrive, never what the guest says):
+// steady, its car solid; three stalls of more than 0.3 s within 10 s, see-through and going through the others, the host's
+// snapshot saying so (g) and a guest's window taking it; solid again only after 5 s steady and clear of the other cars.
+// A car left without its pilot goes see-through too.
+{
+ const real=Object.getOwnPropertyDescriptor(performance,'now');let fake=1000;
+ Object.defineProperty(performance,'now',{value:()=>fake*1000,configurable:true,writable:true});
+ try{
+  const q=setup();q.start();const number=q.rival.entry.number;let at=.1;
+  const state=()=>{at+=1/30;q.send(q.rival.car,{},at);};
+  const steady=secs=>{for(let i=0;i<secs*30;i++){fake+=1/30;state();q.mp.linkGhosts(1/30);}};
+  steady(2);assert.equal(q.rival.car.netGhost,false,'a steady line: solid');assert.equal(q.mp.ghostWord(number),false);
+  for(let k=0;k<3;k++){fake+=.4;state();q.mp.linkGhosts(1/30);}
+  assert.equal(q.rival.car.netGhost,true,'a line that stalls: see-through');assert.equal(q.mp.ghostWord(number),true,'the host says so in its snapshot');
+  steady(3);assert.equal(q.rival.car.netGhost,true,'not back at the first good states');
+  steady(8);assert.equal(q.rival.car.netGhost,true,'still among the cars on the grid: see-through until clear of them');
+  q.rival.car.x+=400;q.rival.car.y+=400;steady(6);assert.equal(q.rival.car.netGhost,false,'steady and clear of the others: solid again');
+  q.field.strand(q.rival,'conexão caiu');q.mp.linkGhosts(1/30);assert.equal(q.rival.car.netGhost,true,'left without its pilot: see-through');
+  // A guest's window: the host's word on a car (g in its snapshot), and on its own.
+  const field=new RaceField(data,{seed:11}),car=new TestCar(data);car.resetGrid();field.reset(car.surface.s,{grid:true});
+  const seats=[{id:'0000000a',name:'Host',number:'99'},{id:q.guest,name:'Guest',number:field.rivals[1].entry.number},{id:'0000000c',name:'Other',number:field.rivals[2].entry.number}];
+  const race={...q.race,seats},room={role:'guest',id:q.guest,problem:null,outdated:false,race,lobby:{race},note(){}};
+  const guest=Object.assign(Object.create(Multiplayer.prototype),{room,race,phase:'racing',remotes:new Map(),immersive:{car,data,field},myNumber:()=>seats[1].number});
+  const other=field.rivals[2],values=packCar(other.car);
+  guest.heardField({race:race.id,seq:1,cars:[[seats[2].number,0,values,{g:1}],[seats[1].number,0,packCar(car),{g:1}]]});guest.linkGhosts(1/30);
+  assert.equal(other.car.netGhost,true,'the host\'s word on another guest');assert.equal(car.netGhost,true,'and on this window\'s own car: it goes through the others here too');
+  assert.equal(field.rivals[3].car.netGhost,false,'a bot: never');
+  fake+=1.5;guest.linkGhosts(1/30);assert.equal(car.netGhost,false,'the word no longer said: solid');
+ }finally{if(real)Object.defineProperty(performance,'now',real);else delete performance.now;}
+}
+
 console.log('testar_estados_sala: ok');

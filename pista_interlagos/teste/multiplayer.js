@@ -48,9 +48,10 @@ import {strapPath} from './immersive-state.js';
 import {marshalSpots} from './trackside.js';
 import {TOW_HOOK} from './tow-truck.js';
 import {CarOpenings} from './car-openings.js';
-import {createPeople,OUTFITS} from './pit-crew.js';
+import {createPeople} from './pit-crew.js';
+import {pilotOutfit} from './free-walk.js';
 import {footLimbs} from './on-foot.js';
-import {lookOutfit,lookColors,lookKey} from './pilot-look.js';
+import {lookColors,lookKey} from './pilot-look.js';
 import {createRivalDriver} from './rival-driver.js';
 import {CAFE_MENU,snackHands,showSnacks,snackArms} from './pitstop.js';
 // Car messages a second; after crossing the line, how long the results wait for the others (s); a
@@ -72,6 +73,14 @@ const TRUCK_AHEAD=9.4,TRUCK_BACK=24,TRUCK_SIDE=2.6,TRUCK_CUT=3,TRUCK_DRIVE=TOW_A
 // The breakdown a car left without its pilot is AB for at the flag (RaceField strand).
 const NO_DRIVER='conexão caiu';
 const NO_STOPS=Object.freeze([]);
+// A guest's line as its states reach the host (never its own word: faking a bad line would buy a car that goes through
+// the others): unsteady with LINK_GAPS gaps over LINK_GAP s within LINK_WINDOW s, or nothing for LINK_STALE s; steady
+// again only after LINK_CALM s without either and LINK_CLEAR metres clear of every other car. Unsteady, or left without
+// its pilot, its car goes through every car and shows see-through (GHOST_OPACITY), on every screen and on its own
+// pilot's too, who is told so (linkGhosts; the team's wish, 10-07 and 10-26: as ACC and iRacing do, the instability
+// punished and not a far but steady line; the netcode study of 10-07, step 3). A guest also sees through a human's car
+// it has heard nothing of for LINK_STALE s (steady again LINK_CALM_HERE s after).
+const LINK_GAP=.3,LINK_GAPS=3,LINK_WINDOW=10,LINK_STALE=.6,LINK_CALM=5,LINK_CALM_HERE=1.5,LINK_CLEAR=6,GHOST_OPACITY=.55;
 // A bite or a sip takes this long (pitstop.js stepSnack): the others' hands go to the mouth and back in it.
 const SNACK_USE=1.25;
 // A car parked in the pit lane past the flag: on its brakes, nobody at the wheel.
@@ -116,6 +125,9 @@ const ACCOUNT_ACTIONS={conta:'Entrar com Google',apelido:'Escolher apelido',pass
 // The host's Fechar sala asks to be clicked again within CLOSE_CONFIRM seconds; closing, its window leaves the room
 // once the server let it go, or after CLOSE_WAIT seconds anyway.
 const CLOSE_CONFIRM=5,CLOSE_WAIT=3;
+// A pilot invited in whose room closed (or whose invitation is gone) is back in the game after LEAVE_AFTER seconds
+// (frame), the card saying why meanwhile.
+const LEAVE_AFTER=4;
 const HIDDEN_LOST='Este endereço esconde a parte secreta do nome da sala (depois do _). Abra o link completo que você recebeu.';
 // game: main.js hooks (session, immersive, fullGrid, template, withTemplate, pilotName, wantedCar,
 // roomCars, openCars, freeMouse, command, autopilot, startRace, hasCircuit; the account's: roomPass,
@@ -587,6 +599,8 @@ export class Multiplayer {
   if(this.phase==='lobby'||m.race!==this.race?.id)return;
   const seat=this.race.seats.find(s=>s.id===id),state=seat&&readCar(m.car),remote=state&&this.remotes.get(seat.number);
   if(!remote||m.seq<=remote.seq)return;
+  // (when each state reached this window: the line's steadiness, linkGhosts)
+  {const L=remote.link??={last:clock(),gaps:[]},now=clock();if(now-L.last>LINK_GAP)L.gaps.push(now);L.last=now;}
   this.heardExtra(seat.number,m.pe,m.ab);
   // The host is authoritative for the guest's progress and times. Raw packets are never relayed:
   // all windows see the host's checked pose and lap book, including after a drop and tow.
@@ -602,7 +616,7 @@ export class Multiplayer {
  heardField(m){
   if(this.phase==='lobby'||m.race!==this.race?.id)return;const me=this.myNumber();
   // (this window's own car, as the host has it: where it is taken back after a cut)
-  for(const [number,age,values,extra] of m.cars){if(number===me){const state=this.cut&&readCar(values);if(state)this.cut.mine={state,at:clock()};continue;}const state=readCar(values);if(state)this.remotes.get(number)?.receive(state,{age:age+this.room.latency,seq:m.seq,raw:values});this.heardExtra(number,extra?.pe,extra?.ab);}
+  for(const [number,age,values,extra] of m.cars){if(extra?.g)(this.hostGhosts??=new Map()).set(number,clock());if(number===me){const state=this.cut&&readCar(values);if(state)this.cut.mine={state,at:clock()};continue;}const state=readCar(values);if(state)this.remotes.get(number)?.receive(state,{age:age+this.room.latency,seq:m.seq,raw:values});this.heardExtra(number,extra?.pe,extra?.ab);}
  }
  // Every frame (main.js), paused or not: the room's clockwork, this window's car on the wire.
  frame(dt){
@@ -610,6 +624,9 @@ export class Multiplayer {
   room.setName(s.started&&immersive?.pilotName||game.pilotName());room.setLook(game.look?.());room.tick();
   // The host closed the room: its window out of it once the server let it go (or after CLOSE_WAIT anyway).
   if(this.closingAt!=null&&(room.problem==='fechada'||clock()-this.closingAt>CLOSE_WAIT)){this.leaveRoom();return;}
+  // Invited in (the team's wish, 10-26: who was invited knows of no password, nor of a way in by hand): the room closed
+  // or the invitation gone, this pilot just leaves it.
+  if(room.invited&&['fechada','convite','chave'].includes(room.problem)){this.leaveAt??=clock()+LEAVE_AFTER;if(clock()>=this.leaveAt){this.leaveRoom();return;}}
   // Let in: the guest goes to the car screen (once; not out of a race, nor without a pilot's name).
   if(!this.welcomed&&this.admitted()){this.welcomed=true;game.openCars();}
   // Out of the race (the way out of the menu, another track, Modo História): the room hears it.
@@ -622,6 +639,7 @@ export class Multiplayer {
   if(this.phase==='waiting'&&this.holding&&this.race&&!this.met&&immersive&&this.game.hasCafe?.())this.met=!!this.game.meet?.(this.humanIndex(this.myNumber()),this.meetingAway());
   this.updatePause();
   if((this.phase==='racing'||this.phase==='finished')&&immersive&&room.role==='host')this.checkSilence();
+  if((this.phase==='racing'||this.phase==='finished')&&immersive&&this.race)this.linkGhosts(dt);
   if((this.phase==='racing'||this.phase==='finished')&&immersive)this.syncStops();else if(this.stopped.size||this.trucks.size||this.flags.size)this.clearStops();
   // A window waiting outside any race (a guest's rerun before the host starts one) sends nothing.
   if(this.phase!=='lobby'&&immersive&&this.race){
@@ -682,8 +700,9 @@ export class Multiplayer {
   const cars=[[this.myNumber(),0,mine,...(extra?[extra]:[])]];
   for(const r of immersive.field.rivals){
    const remote=r.puppet?this.remotes.get(r.seat):null;
-   const more=remote?.raw?this.freshExtra(r.seat):null;
-   cars.push(remote?.raw?[r.seat,Math.min(remote.age,5),remote.raw,...(more?[more]:[])]:[r.entry.number,0,packCar(r.car,{progress:r.progress,finished:r.finished,retired:!!r.retired,finishTime:r.finishTime,brake:r.input?.brake??0,throttle:r.input?.throttle??0,still})]);
+   // (a human's car the host sees through: g, on top of its extras; one left without its pilot too)
+   const ghost=this.ghostWord(r.seat??r.entry.number),fresh=remote?.raw?this.freshExtra(r.seat):null,more=ghost?{...(fresh??{}),g:1}:fresh;
+   cars.push(remote?.raw?[r.seat,Math.min(remote.age,5),remote.raw,...(more?[more]:[])]:[r.entry.number,0,packCar(r.car,{progress:r.progress,finished:r.finished,retired:!!r.retired,finishTime:r.finishTime,brake:r.input?.brake??0,throttle:r.input?.throttle??0,still}),...(ghost?[{g:1}]:[])]);
   }
   room.sendSnapshot(cars,this.seq);
  }
@@ -733,6 +752,8 @@ export class Multiplayer {
   this.panel.auto=box;this.panel.net=add('small','mp-net');
   // The host's way out, everybody with it (closeRoom): last, out of the way of the rest.
   const close=this.panel.close=add('button','mp-close');close.type='button';close.id='mpClose';close.hidden=true;close.onclick=()=>{this.closeRoom();close.blur();};
+  // A pilot's own way out of the room, back to the game alone (the host's is Fechar sala; the team's wish, 10-26).
+  const leave=this.panel.leave=add('button','mp-leave');leave.type='button';leave.id='mpLeave';leave.hidden=true;leave.textContent='Sair da sala';leave.onclick=()=>{leave.blur();this.leaveRoom();};
   // The race standing still because its host closed the room: the way back to the game, there too.
   const back=document.createElement('button');back.type='button';back.id='mpBack';back.hidden=true;back.textContent='Voltar ao jogo';back.onclick=()=>this.leaveRoom();
   // The race standing still for its host: a plate in the middle of the screen says so, and why.
@@ -745,7 +766,8 @@ export class Multiplayer {
   // The race standing still for its host; racing with this guest's line down: what becomes of the car.
   if(this.pause)return PAUSES[this.pause.why](Math.floor(clock()-room.hostSeen));
   if(this.cut&&['reconectando','fora','contas','salas'].includes(room.problem))return 'Conexão caiu · seu carro segue sem piloto até você voltar…';
-  if(room.problem&&PROBLEMS[room.problem])return PROBLEMS[room.problem];
+  if(this.immersive?.car.netGhost&&this.phase==='racing')return 'Sua conexão está instável · os outros te veem transparente, sem batidas, até ela firmar.';
+  if(room.problem&&PROBLEMS[room.problem])return PROBLEMS[room.problem]+(this.leaveAt!=null?' Voltando ao jogo…':'');
   if(!room.role)return 'Procurando a sala…';
   // At the door of a room nobody with the host's password has opened yet (or whose host is gone).
   if(room.pending)return room.hostId?'Esperando o anfitrião aceitar você…':'A sala ainda não foi aberta · esperando o anfitrião chegar…';
@@ -848,7 +870,9 @@ export class Multiplayer {
   const results=document.getElementById('raceResults');p.root.hidden=!!results&&!results.hidden;
   this.standings?.show(this.standingRows(s,results&&!results.hidden));
   const shown=id=>!document.getElementById(id)?.classList.contains('hidden');
-  p.root.classList.toggle('mp-racing',s.started&&!s.paused);p.root.classList.toggle('mp-yellow',this.yellow()&&!this.pause);p.root.classList.toggle('mp-paused',!!this.pause);p.root.classList.toggle('mp-tracks',shown('tracks')||shown('cars'));
+  p.root.classList.toggle('mp-racing',s.started&&!s.paused);
+  // (the one-line card on the track: the walking panel goes under it, multiplayer.css, never over the host's start)
+  document.body.classList.toggle('mp-pilula',s.started&&!s.paused&&!p.root.hidden);p.root.classList.toggle('mp-yellow',this.yellow()&&!this.pause);p.root.classList.toggle('mp-paused',!!this.pause);p.root.classList.toggle('mp-tracks',shown('tracks')||shown('cars'));
   // The car screen (main.js roomCars): the cars other pilots have, this window's car once the host
   // has answered its last choice, the car still being asked for, and for a guest its way on: the
   // host's answer at the door, then "Aguardar início da corrida".
@@ -863,18 +887,21 @@ export class Multiplayer {
    if(closed&&!p.pause.hidden&&!this.closedSeen){this.closedSeen=true;this.game.freeMouse?.();}}
   // The host's Fechar sala: out of the driving (the menu, the screens before the race), asked again before it closes.
   {const asking=this.closeAsk!=null&&clock()-this.closeAsk<=CLOSE_CONFIRM,closing=this.closingAt!=null;
-   p.close.hidden=!closing&&!(room.role==='host'&&room.problem===null&&!(s.started&&!s.paused));p.close.disabled=closing;p.close.classList.toggle('mp-confirm',asking);
+   p.close.hidden=!closing&&!(room.role==='host'&&room.problem===null&&!(s.started&&!s.paused));
+   p.leave.hidden=room.role==='host'||closing||room.problem==='fechada'||s.started&&!s.paused;p.close.disabled=closing;p.close.classList.toggle('mp-confirm',asking);
    const text=closing?'Fechando a sala…':asking?'Clique de novo: fechar a sala e desconectar todos':'Fechar sala';if(p.close.textContent!==text)p.close.textContent=text;}
   // The password form when the server asks for it, the account's button; knocks and kicks for an online host. Names only ever
   // reach the page as text. The door is open until the start: on the car screen, the track screen
   // and on the grid (a knock there lets the host's mouse go, main.js freeMouse); from the start it
   // waits for the race to end.
-  p.key.hidden=!(room.online&&['chave','convite'].includes(room.problem));
+  p.key.hidden=!(room.online&&['chave','convite'].includes(room.problem))||room.invited;
   p.invite.hidden=!this.canInvite();p.invite.setAttribute('aria-expanded',String(this.invites.open));
   const action=room.online||room.problem==='fechada'?ACCOUNT_ACTIONS[room.problem]:null;p.account.hidden=!action;if(action&&p.account.textContent!==action)p.account.textContent=action;
   const knocks=room.role==='host'&&this.phase!=='racing'?[...room.knocks.values()]:[],kickable=room.online&&room.role==='host'&&!(s.started&&!s.paused);
   if(knocks.length>this.knocking&&this.phase==='waiting')this.game.freeMouse();this.knocking=knocks.length;
-  const rows=room.members.map(m=>({id:m.id,text:`#${m.number??'—'} ${m.name}${this.doing(m)}${m.id===room.id?' · você':''}`,kick:kickable&&m.id!==room.id}));
+  // (a pilot whose line is unsteady, as the host sees it: linkGhosts)
+  const unsteady=n=>!!n&&(room.role==='host'?!!this.ghostState?.get(n)?.on:clock()-(this.hostGhosts?.get(n)??-Infinity)<1);
+  const rows=room.members.map(m=>({id:m.id,text:`#${m.number??'—'} ${m.name}${this.doing(m)}${unsteady(m.number)?' · conexão instável':''}${m.id===room.id?' · você':''}`,kick:kickable&&m.id!==room.id}));
   // (each list rebuilt only when it changed: a pilot's progress never swaps a button under a click)
   const button=(text,action)=>{const b=document.createElement('button');b.type='button';b.textContent=text;b.onclick=()=>{action();b.blur();};return b;};
   const listKey=JSON.stringify(rows),knockKey=JSON.stringify(knocks);
@@ -986,9 +1013,11 @@ export class Multiplayer {
   if(w&&(w.key!==key||w.name!==seat.name)){this.dropWalker(seat.number);w=null;}
   if(!w){
    this.people??=createPeople();
-   const root=this.people.person(look?lookOutfit(look,{back:seat.number==='99'}):OUTFITS.driver);root.name='Piloto_a_pe_'+seat.number;
+   // (dressed as their own window dresses them, free-walk.js pilotOutfit: their look; without one, the 99's red overalls,
+   // another car's team colours)
+   const outfit=pilotOutfit({look,entry:seat.number==='99'?null:obj?.userData.entry??carEntry(seat.number)}),root=this.people.person(outfit);root.name='Piloto_a_pe_'+seat.number;
    const tag=this.immersive.visual.tag(root,seat.name,[0,2.12,0],1.9,.26,'#e2fb57','#172a2ddb');
-   scene.add(root);w={root,tag,key,name:seat.name,car:null,s:{cycle:0,running:false,crouch:false,crouchAmount:0,lift:0},placed:false,hands:snackHands(root),snack:{held:[],using:null},code:0};this.walkers.set(seat.number,w);
+   scene.add(root);w={root,tag,key,outfit,name:seat.name,car:null,s:{cycle:0,running:false,crouch:false,crouchAmount:0,lift:0},placed:false,hands:snackHands(root),snack:{held:[],using:null},code:0};this.walkers.set(seat.number,w);
   }
   const [x,y,z,facing,run,crouch,lift]=pe,root=w.root,before=root.position.clone();
   // (a jump of more than WALK_SNAP metres, the first look at him, or a frame without time: put there at once)
@@ -1030,7 +1059,52 @@ export class Multiplayer {
   d.root.position.copy(own.root.position);d.root.quaternion.copy(own.root.quaternion);d.root.scale.copy(own.root.scale);d.root.visible=shown;parent.add(d.root);u.driver=d;
  }
  // Out of the room's race: nobody on foot, every part shut and every driver back in its own suit.
+ // Every frame of a room's race: which humans' cars go through the others and show see-through (LINK_* above). The host
+ // decides from each guest's states as they reach it (and for a car left without its pilot) and says so in its snapshot;
+ // a guest takes that word, and sees through a human's car it has heard nothing of for a while; its own car is the
+ // host's word on it.
+ linkGhosts(dt){
+  const immersive=this.immersive,field=immersive.field,me=this.myNumber(),now=clock(),host=this.room.role==='host';
+  const humans=new Set(this.race.seats.map(s=>s.number)),cars=[immersive.car,...field.rivals.map(r=>r.car)].filter(Boolean);
+  const states=this.ghostState??=new Map();
+  const clear=c=>cars.every(o=>o===c||Math.hypot(o.x-c.x,o.y-c.y)>LINK_CLEAR);
+  field.rivals.forEach((r,k)=>{
+   const number=r.seat??r.entry.number;let ghost=false;
+   if(humans.has(number)&&number!==me){
+    const remote=this.remotes.get(number),st=states.get(number)??{on:false,calm:null,here:false,hereCalm:null};states.set(number,st);
+    if(host){
+     const L=remote?.link;if(L)L.gaps=L.gaps.filter(t=>now-t<LINK_WINDOW);
+     const driverless=!r.puppet&&!r.finished,bad=driverless||(L?.gaps.length??0)>=LINK_GAPS||!!remote&&remote.seq>=0&&remote.age>LINK_STALE;
+     if(bad){st.on=true;st.calm=null;}else if(st.on){st.calm??=now;if(now-st.calm>=LINK_CALM&&clear(r.car))st.on=false;}
+     ghost=st.on;
+    }else{
+     const stale=!!remote&&remote.seq>=0&&remote.age>LINK_STALE;
+     if(stale){st.here=true;st.hereCalm=null;}else if(st.here){st.hereCalm??=now;if(now-st.hereCalm>=LINK_CALM_HERE&&clear(r.car))st.here=false;}
+     ghost=now-(this.hostGhosts?.get(number)??-Infinity)<1||st.here;
+    }
+   }
+   r.car.netGhost=ghost;this.showGhost(immersive.visual?.rivals[k],r,ghost,dt);
+  });
+  if(immersive.car)immersive.car.netGhost=!host&&now-(this.hostGhosts?.get(me)??-Infinity)<1;
+ }
+ // The host's word on a car in its snapshot (send): see-through, for every window.
+ ghostWord(number){return this.room.role==='host'&&!!this.ghostState?.get(number)?.on;}
+ // A car's see-through copy (ghost-car.js instance, in its team's colour) on its object, fading in and out; its own
+ // meshes step aside while it shows (immersive-visuals.js seeThrough).
+ showGhost(obj,r,ghost,dt){
+  if(!obj)return;const copies=this.ghostCopies??=new Map();let g=copies.get(obj);
+  if(ghost&&!g){g=this.game.ghostShell?.(r.entry.color??0x3fc6ff)??null;if(g){g.alpha=0;obj.add(g.root);copies.set(obj,g);}}
+  obj.userData.seeThrough=ghost&&!!g;if(!g)return;
+  g.alpha+=((ghost?GHOST_OPACITY:0)-g.alpha)*Math.min(1,dt*6);g.setOpacity(g.alpha);g.update(dt);
+  const camera=this.game.camera?.();if(camera)g.detail(camera.position.distanceTo(obj.position));
+ }
+ // Out of the room's race: every car solid again, every see-through copy gone.
+ clearGhosts(){
+  for(const [obj,g] of this.ghostCopies??[]){g.dispose();obj.userData.seeThrough=false;}this.ghostCopies?.clear();this.ghostState?.clear();this.hostGhosts?.clear();
+  for(const r of this.immersive?.field.rivals??[])r.car.netGhost=false;if(this.immersive)this.immersive.car.netGhost=false;
+ }
  clearPeople(){
+  this.clearGhosts();
   if(!this.walkers)return;   // (testar_multiplayer.mjs builds the room's race-time part without a page)
   for(const number of [...this.walkers.keys()])this.dropWalker(number);
   for(const {openings} of this.carParts.values()){openings.closeAll(true);}this.carParts.clear();
@@ -1097,11 +1171,11 @@ export class Multiplayer {
  // For the checks (verificar_multiplayer.py): this window's car and every other car as it shows them.
  info(){
   const immersive=this.immersive,car=immersive?.car;
-  return {...this.room.info(),parked:!!this.parked,chat:this.chat.info(),standings:this.standings&&!this.standings.root.hidden?this.standingRows(this.game.session()).map(({position,number,name,mine,finished,retired})=>({position,number,name,mine,finished,retired})):[],walkers:[...this.walkers].map(([number,w])=>({number,x:w.root.position.x,y:-w.root.position.z,look:w.key,held:w.snack.held.map(h=>[h.id,h.side,h.bites]),eating:!!w.snack.using})),parts:[...this.carParts].map(([number,p])=>({number,mask:p.openings.openMask(),open:Object.entries(p.openings.info()).filter(([,v])=>v.open>.5).map(([k])=>k)})),drivers:(this.race?.seats??[]).map(s=>({number:s.number,look:this.carObject(s.number)?.userData.mpLookKey??null})),invites:{open:this.invites.open,list:this.invites.list.map(p=>p.nome)},label:this.params.label,address:globalThis.location?.hash??null,phase:this.phase,holding:this.holding,autopilot:this.autopilot,raceId:this.race?.id??null,
+  return {...this.room.info(),parked:!!this.parked,chat:this.chat.info(),standings:this.standings&&!this.standings.root.hidden?this.standingRows(this.game.session()).map(({position,number,name,mine,finished,retired})=>({position,number,name,mine,finished,retired})):[],walkers:[...this.walkers].map(([number,w])=>({number,x:w.root.position.x,y:-w.root.position.z,look:w.key,top:w.outfit?.top??null,held:w.snack.held.map(h=>[h.id,h.side,h.bites]),eating:!!w.snack.using})),parts:[...this.carParts].map(([number,p])=>({number,mask:p.openings.openMask(),open:Object.entries(p.openings.info()).filter(([,v])=>v.open>.5).map(([k])=>k)})),drivers:(this.race?.seats??[]).map(s=>({number:s.number,look:this.carObject(s.number)?.userData.mpLookKey??null})),invites:{open:this.invites.open,list:this.invites.list.map(p=>p.nome)},label:this.params.label,address:globalThis.location?.hash??null,phase:this.phase,holding:this.holding,autopilot:this.autopilot,raceId:this.race?.id??null,
    stopped:[...this.stopped].map(([number,x])=>({number,stage:x.stage})),cut:!!this.cut,lost:!!this.lost,paused:this.pause?.why??null,trucks:[...this.trucks.keys()],truckPoses:[...this.trucks].map(([number,t])=>({number,x:t.root.position.x,y:-t.root.position.z,strap:t.strap.visible,leaving:t.left!==undefined})),flags:[...this.flags.keys()],yellow:this.yellow(),
-   remotes:[...this.remotes].map(([number,r])=>({number,seq:r.seq,age:r.age,finished:!!r.state?.finished})),
+   remotes:[...this.remotes].map(([number,r])=>({number,seq:r.seq,age:r.age,finished:!!r.state?.finished,snaps:r.snaps??0,worst:r.worst??0,gaps:r.link?.gaps.length??0})),ghostMe:!!car?.netGhost,
    me:car?{x:car.x,y:car.y,vx:car.vx,vy:car.vy,ghost:!!car.ghost}:null,
-   cars:immersive?immersive.field.rivals.map((r,i)=>{const obj=immersive.visual.rivals[i];return {number:r.seat??r.entry.number,name:r.entry.shortName,x:r.car.x,y:r.car.y,speed:Math.hypot(r.car.vx,r.car.vy),pit:!!r.car.surface?.pit,finished:!!r.finished,retired:!!r.retired,parked:r.puppet===parkedPuppet,remote:!!r.car.remote,ghost:!!r.car.ghost,
+   cars:immersive?immersive.field.rivals.map((r,i)=>{const obj=immersive.visual.rivals[i];return {number:r.seat??r.entry.number,name:r.entry.shortName,x:r.car.x,y:r.car.y,speed:Math.hypot(r.car.vx,r.car.vy),pit:!!r.car.surface?.pit,finished:!!r.finished,retired:!!r.retired,parked:r.puppet===parkedPuppet,remote:!!r.car.remote,ghost:!!r.car.ghost,netGhost:!!r.car.netGhost,seeThrough:!!obj?.userData.seeThrough,
     shown:!!obj?.visible&&!!obj.parent,drawn:obj?[obj.position.x,-obj.position.z]:null};}):[]};
  }
 }

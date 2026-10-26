@@ -91,8 +91,13 @@ export function bodyContact(a,b){
  const point=points.length?[0,1].map(i=>points.reduce((sum,p)=>sum+p[i],0)/points.length):ac.map((v,i)=>(v+bc[i])/2);
  return {depth,normal,point};
 }
+// A car drawn from the network (remote) is a guess of where its owner is, some tenths of a second old: it pushes a car of
+// this window only so hard, REMOTE_PUSH m/s a contact and REMOTE_SHOVE metres a resolution, so a guess corrected into it
+// never launches it (iRacing's and ACC's lesson: the netcode study of 10-07, step 6).
+const REMOTE_PUSH=4,REMOTE_SHOVE=.008;
 export function resolveContact(a,b){
  const hit=bodyContact(a,b);if(!hit)return null;
+ const own=a.remote===b.remote?null:a.remote?b:a,before=own&&[own.vx,own.vy,own.yaw,own.x,own.y];
  const {normal:n,point:p}=hit,ra=[p[0]-a.x,p[1]-a.y],rb=[p[0]-b.x,p[1]-b.y];
  // A car's contactMass (the ace's) scales its mass and inertia in the contact only.
  const ma=MASS*(a.contactMass??1),mb=MASS*(b.contactMass??1),ia=INERTIA*(a.contactMass??1),ib=INERTIA*(b.contactMass??1);
@@ -101,6 +106,10 @@ export function resolveContact(a,b){
  const impulse=(j,axis)=>{a.vx-=axis[0]*j/ma;a.vy-=axis[1]*j/ma;b.vx+=axis[0]*j/mb;b.vy+=axis[1]*j/mb;a.yaw=clamp(a.yaw-cross(ra,axis)*j/ia,-3,3);b.yaw=clamp(b.yaw+cross(rb,axis)*j/ib,-3,3);};
  if(closing>0){const j=1.12*closing/(1/ma+1/mb+cross(ra,n)**2/ia+cross(rb,n)**2/ib);impulse(j,n);const tangent=[-n[1],n[0]],friction=clamp(-dot(rv,tangent)/(1/ma+1/mb+cross(ra,tangent)**2/ia+cross(rb,tangent)**2/ib),-j*.3,j*.3);impulse(friction,tangent);}
  const share=mb/(ma+mb),correction=hit.depth+.002;a.x-=n[0]*correction*share;a.y-=n[1]*correction*share;b.x+=n[0]*correction*(1-share);b.y+=n[1]*correction*(1-share);
+ if(own){
+  const dvx=own.vx-before[0],dvy=own.vy-before[1],dv=Math.hypot(dvx,dvy);if(dv>REMOTE_PUSH){const k=REMOTE_PUSH/dv;own.vx=before[0]+dvx*k;own.vy=before[1]+dvy*k;own.yaw=before[2]+(own.yaw-before[2])*k;}
+  const dx=own.x-before[3],dy=own.y-before[4],d=Math.hypot(dx,dy);if(d>REMOTE_SHOVE){const k=REMOTE_SHOVE/d;own.x=before[3]+dx*k;own.y=before[4]+dy*k;}
+ }
  return {...hit,speed:Math.max(0,closing)};
 }
 // --- Racing line: centreline offsets that minimise curvature inside the asphalt (the
@@ -363,7 +372,9 @@ export const lapTravel=(s0,s1,L)=>{let d=s1-s0;if(d>L/2)d-=L;if(d<-L/2)d+=L;retu
 const trackGap=(from,to,L)=>lapTravel(from.surface.s,to.surface.s,L);
 // Multiplayer (multiplayer.js): a remote car is placed from its owner's messages, so two of them
 // never push each other here; in a room raced with ghosts the humans' cars pass through one another.
-const apart=(a,b)=>a.remote&&b.remote||a.ghost&&b.ghost;
+// (netGhost: a car whose line is unsteady, or left without its pilot, in a multiplayer room: it goes through every car,
+// multiplayer.js linkGhosts)
+const apart=(a,b)=>a.remote&&b.remote||a.ghost&&b.ghost||!!a.netGhost||!!b.netGhost;
 export class RaceField {
  // ace: Koyzinho drives as the ace from the next reset (the race option, main.js); level: the rivals'
  // level (AI_LEVELS), also taken at the next reset; retirements: one to four cars break down (the

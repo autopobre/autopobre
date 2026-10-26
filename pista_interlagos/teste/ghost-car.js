@@ -144,6 +144,21 @@ export class GhostCar {
   this.lensMaterial.opacity=this.lampMaterial.opacity=Math.min(1,value*1.6);this.haloMaterial.opacity=value;
  }
  update(dt){this.shellMaterial.uniforms.time.value=(this.shellMaterial.uniforms.time.value+dt)%1000;}
+ // A see-through copy of the shell shown now for another car (multiplayer.js: a car whose line is unsteady, or left
+ // without its pilot): the same geometry (nothing built again), its own colour and opacity, placed by its parent (that
+ // car's object, in the same frame as this shell). Null before a shell is built.
+ instance(color){
+  const shown=this.shells.get(this.model);if(!shown)return null;
+  const material=this.shellMaterial.clone();material.uniforms.baseColor.value.set(color).lerp(new THREE.Color(0xffffff),.25);material.uniforms.opacity.value=0;
+  const root=new THREE.Group();root.name='Fantasma_da_conexao';root.visible=false;
+  const copy=group=>{if(!group)return null;const out=new THREE.Group();for(const m of group.children){const c=new THREE.Mesh(m.geometry,m.material===this.depthMaterial?this.depthMaterial:material);c.renderOrder=m.renderOrder;c.name=m.name;out.add(c);}root.add(out);return out;};
+  const near=copy(shown.near),far=copy(shown.far);
+  return {root,
+   setOpacity(v){material.uniforms.opacity.value=v;root.visible=v>.01;},
+   detail(distance){if(far){near.visible=distance<NEAR;far.visible=!near.visible;}},
+   update(dt){material.uniforms.time.value=(material.uniforms.time.value+dt)%1000;},
+   dispose(){root.removeFromParent();material.dispose();}};
+ }
  // The lap time on the plate: white, the blue band on top reading FANTASMA where a real one reads BRASIL.
  setPlate(text){
   if(text===this.plateText)return;this.plateText=text;const c=this.plateCanvas,ctx=c.getContext('2d'),w=c.width,h=c.height,band=Math.round(h*.27);

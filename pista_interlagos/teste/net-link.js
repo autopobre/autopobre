@@ -37,6 +37,11 @@ export class ServerLink {
   this.ticket=null;this.asking=false;
  }
  get tokenKey(){return 'autopobre-sala-token-'+this.room;}
+ // This tab came in by an invitation (kept as its token is): once the invitation is gone (its room closed, or it ran
+ // out) the tab is out of the room, never asked for a password it was never given (the team's wish, 10-26: who was
+ // invited need not know there is one; who came with the link and the password is asked as before).
+ get invitedKey(){return 'autopobre-sala-convidado-'+this.room;}
+ get invited(){try{return this.storage?.getItem(this.invitedKey)==='1';}catch{return false;}}
  get token(){try{const t=this.storage?.getItem(this.tokenKey);return TOKEN.test(t??'')?t:null;}catch{return null;}}
  saveToken(token){if(!TOKEN.test(token??''))return;try{this.storage?.setItem(this.tokenKey,token);}catch{}}
  // The pass for this room: the last one while fresh, else a new one.
@@ -62,10 +67,11 @@ export class ServerLink {
   if(pass.problema==='salas'){this.off();return;}
   if(pass.problema){this.shutAll();this.onclose?.(pass.problema);return;}
   // No password typed yet, nor an invitation: asked for at once (the server would only say it is wrong).
-  const key=String(this.key()??''),invite=this.invite()||null;if(!key&&!invite){this.onclose?.('chave');return;}
+  const key=String(this.key()??''),invite=this.invite()||null;if(!key&&!invite){this.onclose?.(this.invited?'fechada':'chave');return;}
   this.connect(pass.passe,key,invite);
  }
  connect(passe,key,invite){
+  if(invite)try{this.storage?.setItem(this.invitedKey,'1');}catch{}
   let ws;try{ws=this.ws=this.socket(`${this.url}/sala/${encodeURIComponent(this.room)}`);}catch{this.ws=null;this.lost();return;}
   ws.onopen=()=>{ws.send(JSON.stringify({t:'auth',key,passe,token:this.token,...(invite&&{convite:invite})}));this.onopen?.();};
   // The room hears the live connection only: a new one from its welcome on, the old one until then.

@@ -866,6 +866,11 @@ const DRIVING_KEYS=Object.freeze(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDo
 const inputSources=()=>(DRIVING_KEYS.some(code=>keys.has(code))?1:0)|(mobile&&(mobile.throttle||mobile.brake||mobile.steering||mobile.pressed.size)?2:0)
  |(gamepad.driving||DRIVING_KEYS.some(code=>gamepad.holds(code))?4:0)|(wheel.throttle||wheel.brake||Math.abs(wheel.steering)>.02||DRIVING_KEYS.some(code=>wheel.holds(code))?8:0);
 const roomWanted=MULTIPLAYER&&new URLSearchParams(window.location.hash.slice(1)).has('desafio');let multiplayer=null;
+// In a room only the room's things (the team's wish, 10-26: so many choices left players and hosts lost; the rest comes
+// back as players ask for it): Modo Corrida's single race to the end and the next one, the car and the pilot's look,
+// the settings that are the player's own; the room's card has the way out (multiplayer.js: Sair da sala, the host's
+// Fechar sala). menus.css hides the rest (body.modo-sala) and these handlers refuse it.
+if(roomWanted)document.body.classList.add('modo-sala');
 let pitstop,rivalGarages=null,peekView=null,walker=null,walkView=null,immersive,car,data,roadSurface,roadRails,roadCurbs,driver,wheels=[],trunkInterior=[],model,carStructure,paused=true,automatic=false,mode='chase',ready=false,loadToken=0,activeLivery='';
 // The car raced now ('99', or Modo Corrida's choice), the car at the back of its grid whose driver
 // sits out (the same, or a multiplayer host's: seatCar), whether it is the recon lap, its paint on
@@ -1781,6 +1786,9 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  // The selfie's shot (selfie.js): that one frame drawn denser, the photo cut from it while the canvas still holds it.
  const raceRatio=renderer.getPixelRatio(),shotRatio=walker?.selfie.pending?walker.selfie.density(raceRatio):raceRatio,sharpShot=shotRatio>raceRatio+.01;
  if(sharpShot){renderer.setPixelRatio(shotRatio);renderer.setSize(innerWidth,innerHeight,false);}
+ // (the Visual screen open at the room's meeting: its studio instead of the track; the meeting over, it closes)
+ if(lookInRace&&!meetingWalk())closeCafeLook();
+ if(lookInRace){if(sharpShot){renderer.setPixelRatio(raceRatio);renderer.setSize(innerWidth,innerHeight,false);}lookSelect.render(renderer,dt);return;}
  cinematic.render(scene,camera,{dt:paused?0:dt,topSpeed:topSpeed(subject.mechanics),mode:smearMode,hazeBase:hazeBase(),dof,roadSmear,smearCars:(graphics.values.motionBlur||roadSmear)&&smearMode!=='still'?ridingCars(watchedCar?.obj??carRoot,subject):null});
  if(hudMirrorShown)drawHudMirror();
  walker?.selfie.capture(renderer.domElement);
@@ -1925,7 +1933,7 @@ function menu(show){mobile?.arrange(false,false,true);if(!show)sceneryToast();he
  if(show&&(!paused||resumeLeft>0)){pausedRacing=stillRacing();resumeLeft=0;}const counting=!show&&countBack();
  paused=show||counting;if(show)takeDrop();updateMenuLabels();carAudio.setPaused(paused);if(!paused)carAudio.unlock();if(show&&document.pointerLockElement===$('view'))document.exitPointerLock();cameraReturn.reset(performance.now());updateScreens();keys.clear();mobile?.clear();status('');}
 function updateScreens(){
- const free=paused&&!sessionStarted,tracks=free&&screen==='tracks',cars=free&&screen==='cars',visual=free&&screen==='visual',histories=free&&screen==='historias';
+ const free=paused&&!sessionStarted,tracks=free&&screen==='tracks',cars=free&&screen==='cars',visual=(free||lookInRace)&&screen==='visual',histories=free&&screen==='historias';
  $('historias').classList.toggle('hidden',!histories);
  // The arena's panel and editor pause the car without the menu (drift-arena-mode.js).
  $('menu').classList.toggle('hidden',!paused||resumeLeft>0||tracks||cars||visual||histories||!!(arenaMode?.editing||arenaMode?.panelOpen||mobile?.arranging));$('tracks').classList.toggle('hidden',!tracks);$('cars').classList.toggle('hidden',!cars);$('visual').classList.toggle('hidden',!visual);
@@ -1958,8 +1966,21 @@ function openCarScreen(){
 // browser (pilot-look.js); opened from the car screen (Visual, after the Opala and Fusca tabs: Modo Corrida and the
 // arena; user, 2026-10-20) and back there. The story always races Stevan's own look (pilotLook), and has no car screen.
 const lookStore=new LookStore();let lookFrom='opening';
-const lookSelect=new LookSelect({root:$('visual'),store:lookStore,pilot:()=>pilotPicker.profiles.selected,onBack:()=>showScreen(lookFrom),quality:()=>graphics.values.reflections});
-function openVisual(from){if(sessionStarted||loading||from==='opening'&&!pilotPicker.commit())return;lookFrom=from;showScreen('visual');}
+const lookSelect=new LookSelect({root:$('visual'),store:lookStore,pilot:()=>pilotPicker.profiles.selected,onBack:()=>lookFrom==='cafe'?closeCafeLook():showScreen(lookFrom),quality:()=>graphics.values.reflections});
+// A multiplayer room's meeting at the Tia's café (multiplayer.js meet; the team's wish, 10-26: change clothes while the
+// start waits): the Visual screen over the race, which goes on behind it (the studio drawn instead of the track,
+// runFrame); back, the pilot on foot in the new clothes, the room seeing them as they are chosen (multiplayer.js look).
+let lookInRace=false,lookScreen='opening';
+function openVisual(from){
+ if(from==='cafe'){
+  if(!walker?.away||loading||lookInRace)return;
+  lookInRace=true;lookScreen=screen;lookFrom='cafe';keys.clear();mobile?.clear();
+  if(document.pointerLockElement===$('view')){mouseFreed=true;document.exitPointerLock();}
+  showScreen('visual');return;
+ }
+ if(sessionStarted||loading||from==='opening'&&!pilotPicker.commit())return;lookFrom=from;showScreen('visual');
+}
+function closeCafeLook(){if(!lookInRace)return;lookInRace=false;screen=lookScreen;updateScreens();walker?.redress();keys.clear();}
 function openVisualScreen(){lookSelect.show();$('visualDone').focus({preventScroll:true});try{initializeRenderer();}catch(err){console.error(err);lookSelect.failed();}}
 $('carsVisual').onclick=()=>openVisual('cars');
 // The look the player races in now: none in the story (Stevan's), the pilot's own elsewhere (null: Stevan's too).
@@ -2149,6 +2170,8 @@ function padStatus(pad){
 document.addEventListener('keydown',e=>{
  // F3 cycles the performance overlay (off, FPS, full) anywhere, menus and dialogs included.
  if(e.code==='F3'){e.preventDefault();if(!e.repeat)setDebugOverlay({debugOverlay:{off:'fps',fps:'full',full:'off'}[preferences.values.debugOverlay]});return;}
+ // The Visual screen open at a room's meeting (openVisual 'cafe'): its own keys; Escape back to the café.
+ if(lookInRace){if(e.code==='Escape'){e.preventDefault();closeCafeLook();}return;}
  // The track's story playing (track-history.js) has every key: play, pause, jumps, Escape out; none drives.
  if(trackHistory.active&&!$('settings').open){if(trackHistory.handleKey(e))e.preventDefault();return;}
  if(lapRecords.dialog.open||championshipDialog.dialog.open)return;
@@ -2191,8 +2214,9 @@ document.addEventListener('keydown',e=>{
  if(e.code==='KeyO')cycleDrivingLine();
 if(e.code==='KeyK')toggleHeadlights();
 if(e.code==='KeyJ')toggleWipers();
- if(e.code==='KeyY')cycleWeather('time');
- if(e.code==='KeyU')cycleWeather('rain');
+ // (in a room the weather is the host's, announced with its race)
+ if(e.code==='KeyY'&&!roomWanted)cycleWeather('time');
+ if(e.code==='KeyU'&&!roomWanted)cycleWeather('rain');
  // P pauses on the track (from the menu it resumes, as before); Escape opens the menu and, pressed again there, goes back
  // to the track (the team's request, 10-15).
  if(e.code==='KeyP'){if(resumeLeft>0)hold(true);else if(held||!paused)hold(!held);else menu(false);}
@@ -2291,8 +2315,8 @@ function renderHistorias(){
  }));
 }
 trackHistory.onExit=()=>{carRoot.visible=true;ghostCar.setOpacity(0);camera.up.set(0,1,0);camera.fov=baseFov(mode,camera.aspect);camera.updateProjectionMatrix();followInitialized=false;returnToMainMenu();leftHistory();};
-$('historyStart').onclick=()=>beginHistory('tracks');
-$('historiasStart').onclick=()=>{if(sessionStarted||loading||!pilotPicker.commit())return;showScreen('historias');$('historiasList').querySelector('button')?.focus({preventScroll:true});};
+$('historyStart').onclick=()=>{if(!roomWanted)beginHistory('tracks');};
+$('historiasStart').onclick=()=>{if(sessionStarted||loading||roomWanted||!pilotPicker.commit())return;showScreen('historias');$('historiasList').querySelector('button')?.focus({preventScroll:true});};
 $('historiasBack').onclick=()=>showScreen('opening');
 for(const b of document.querySelectorAll('[data-hlang]'))b.onclick=()=>{trackHistory.setLang(b.dataset.hlang);renderHistorias();};
 // For checks: the story's state, a jump, play or pause, and starting it as the button does.
@@ -2353,7 +2377,7 @@ function nextStoryRound(){
  if(!championship.active)championshipDialog.open(championship);
 }
 // The opening picks the mode; the track screen then the circuit and a single race or the championship.
-function chooseMode(mode){if(sessionStarted||loading||!pilotPicker.commit())return;menuMode=mode;carSelect.drift=mode==='drift';carSelect.show();showScreen(carScreen()?'cars':'tracks');}
+function chooseMode(mode){if(sessionStarted||loading||roomWanted&&mode!=='corrida'||!pilotPicker.commit())return;menuMode=mode;carSelect.drift=mode==='drift';carSelect.show();showScreen(carScreen()?'cars':'tracks');}
 // The Arena de Drift (drift-arena.js): its own place, never one of CIRCUITS (no championship, records, ghosts or
 // room), driven alone in the car screen's car. Leaving it brings back the circuit chosen before.
 async function beginArena(){
@@ -2414,14 +2438,15 @@ for(const nav of document.querySelectorAll('.menu-steps'))nav.onclick=e=>{
 // The screen then shows that race's start button (Largar) and what it needs: the 1x1's rival, the championship's
 // calendar. Modo História races only its season. The classic menus show every start button, as before.
 const RACE_STARTS={single:'singleRace',solo:'soloRace',duel:'duelRace',championship:'championshipStart'};
-const raceMode=()=>menuMode==='historia'?'championship':preferences.values.raceMode;
+// (a multiplayer room races the single race only, whatever was picked before: modo-sala)
+const raceMode=()=>roomWanted?'single':menuMode==='historia'?'championship':preferences.values.raceMode;
 function showRaceMode(){
  const mode=raceMode();$('tracks').dataset.race=mode;
  for(const tab of $('raceModes').querySelectorAll('[data-race]')){const on=tab.dataset.race===mode;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;}
  // The 1x1's rival right after its tab, the row's last (user, 10-24); the classic menus keep it under the 1x1's button.
  const pick=document.querySelector('.duel-pick'),home=paddockMenus()?$('raceModes'):document.querySelector('.duel-card');if(pick.parentElement!==home)home.append(pick);
 }
-function pickRaceMode(mode,focus=false){if(sessionStarted||loading||!RACE_STARTS[mode])return;preferences.update({raceMode:mode});showRaceMode();if(focus)$('raceModes').querySelector(`[data-race="${mode}"]`).focus();}
+function pickRaceMode(mode,focus=false){if(sessionStarted||loading||!RACE_STARTS[mode]||roomWanted&&mode!=='single')return;preferences.update({raceMode:mode});showRaceMode();if(focus)$('raceModes').querySelector(`[data-race="${mode}"]`).focus();}
 for(const tab of $('raceModes').querySelectorAll('[data-race]'))tab.onclick=()=>pickRaceMode(tab.dataset.race);
 $('raceModes').addEventListener('keydown',e=>{const step={ArrowLeft:-1,ArrowRight:1}[e.key];if(!step||!e.target.closest('[role=tab]'))return;e.preventDefault();const modes=[...$('raceModes').querySelectorAll('[data-race]')].map(tab=>tab.dataset.race);pickRaceMode(modes[(modes.indexOf(raceMode())+step+modes.length)%modes.length],true);});
 // The button that starts the race the track screen offers first: the mode's Largar (paddock look), or Corrida única.
@@ -2433,11 +2458,11 @@ window.interlagosHistoria={
  skipCards:()=>{const s=immersive?.state;for(let i=0;i<60&&s?.scene;i++){const card=s.sceneCard().type;if(card==='over')break;if(card==='expense')immersive.action('scene:pay');else immersive.action(i?'scene:next':'scene:skip');}return !s?.scene;}
 };
 $('singleRace').onclick=()=>{if(sessionStarted||menuMode==='historia')return;championshipRace=null;pendingMode='single';beginRace(false,false,menuMode==='historia');};
-$('soloRace').onclick=()=>{if(sessionStarted)return;championshipRace=null;pendingMode='solo';beginRace(false,false,false);};
-$('duelRace').onclick=()=>{if(sessionStarted)return;championshipRace=null;pendingMode='duel';beginRace(false,false,false);};
+$('soloRace').onclick=()=>{if(sessionStarted||roomWanted)return;championshipRace=null;pendingMode='solo';beginRace(false,false,false);};
+$('duelRace').onclick=()=>{if(sessionStarted||roomWanted)return;championshipRace=null;pendingMode='duel';beginRace(false,false,false);};
 $('resume').onclick=resumeRace;
 $('leaveRace').onclick=returnToMainMenu;
-$('championshipStart').onclick=()=>startChampionshipRound();
+$('championshipStart').onclick=()=>{if(!roomWanted)startChampionshipRound();};
 $('championshipTableButton').onclick=()=>championshipDialog.open(championshipFor());
 // The calendar tabs (championship-board.js draws them): click, or the arrows between them.
 function showChampionshipCalendar(id,focus=false){
@@ -2452,9 +2477,9 @@ $('championshipTabs').onkeydown=e=>{
 // Erasing a championship under way takes a second click.
 // In Modo História it starts the whole story over: the season and the career (wallet, bars, challenges).
 $('championshipReset').onclick=()=>{const b=$('championshipReset'),story=menuMode==='historia';if(b.dataset.armed){championshipFor().reset();if(story)resetStoryCareer();delete b.dataset.armed;renderTracks();return;}b.dataset.armed='1';b.textContent=story?'Apagar a carreira e os pontos? Clique de novo':'Apagar pontos? Clique de novo';setTimeout(()=>{delete b.dataset.armed;b.textContent=menuMode==='historia'?'Recomeçar história':'Recomeçar campeonato';},4000);};
-$('restartRace').onclick=()=>beginRace(true);
-$('settingsRestart').onclick=()=>{$('settings').close();beginRace(true);};
-$('tour').onclick=()=>{$('settings').close();beginRace(true,true,false);};$('menuButton').onclick=openSettings;$('camera').onchange=e=>setCameraMode(e.target.value,true);$('livery').onchange=async e=>{preferences.update({livery:e.target.value});if(!ready||!sessionStarted||raceCar!=='99'||raceModel==='fusca')return;try{await setLivery(e.target.value);}catch(err){status('Não foi possível carregar a pintura. Tente novamente.');console.error(err);}};
+$('restartRace').onclick=()=>{if(!roomWanted)beginRace(true);};
+$('settingsRestart').onclick=()=>{if(roomWanted)return;$('settings').close();beginRace(true);};
+$('tour').onclick=()=>{if(roomWanted)return;$('settings').close();beginRace(true,true,false);};$('menuButton').onclick=openSettings;$('camera').onchange=e=>setCameraMode(e.target.value,true);$('livery').onchange=async e=>{preferences.update({livery:e.target.value});if(!ready||!sessionStarted||raceCar!=='99'||raceModel==='fusca')return;try{await setLivery(e.target.value);}catch(err){status('Não foi possível carregar a pintura. Tente novamente.');console.error(err);}};
 // Keep the car and audio session; release the previous circuit before loading another.
 function clearCircuit(){
  explosions=null;circuitExtras=[];farMerges=[];enclosure=null;futebol?.dispose();futebol=null;fallView.stop(camera);
@@ -2702,7 +2727,9 @@ async function loadCircuit(){
   play:futebol?.game??null,
   // The Box 99's café: the Tia's menu, paid from the team's money (pitstop.js: Modo Corrida's Verba da equipe, the
   // story's cash).
-  cafe:pitstop?.cafeSeat?{seat:pitstop.cafeSeat,pay:cost=>pitstop.spend(cost),wallet:()=>pitstop.wallet}:null});
+  cafe:pitstop?.cafeSeat?{seat:pitstop.cafeSeat,pay:cost=>pitstop.spend(cost),wallet:()=>pitstop.wallet}:null,
+  // At a room's meeting (meet), V opens the Visual screen to change clothes there.
+  wardrobe:()=>openVisual('cafe')});
  futebol?.attach(walker);
  syncDamage(true);
  if(circuit.arena){
@@ -2827,6 +2854,8 @@ if(roomWanted)import('./multiplayer.js').then(({startMultiplayer})=>{multiplayer
  // car, whether there is a café at all and whether this pilot is there.
  meet:meetAtCafe,unmeet:()=>{if(walker?.away)walker.leave();},hasCafe:()=>!!pitstop?.cafeSeat,meeting:()=>!!walker?.away,
  openMask:()=>openings.openMask(),look:()=>pilotLook(),
+ // The ghost lap's see-through shell (ghost-car.js instance): a car whose line is unsteady is drawn so for the others.
+ ghostShell:color=>ghostCar.instance(color),
  // Past the flag (multiplayer.js finishAndWatch): the car taken to the pit lane (its trails and smoke broken there), and the
  // cameras on a car by its number (N and Shift+N then go round).
  teleported:()=>{skidMarks.breakTrails();tyreSmoke.reset();driver?.reset();},watchCar,

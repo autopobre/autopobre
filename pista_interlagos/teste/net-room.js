@@ -127,7 +127,7 @@ const validLook=v=>v===undefined||v===null||!!v&&typeof v==='object'&&!Array.isA
 // SHARED_OPENINGS bits). Seen only: nothing here moves a car or counts in a race.
 const validWalk=v=>Array.isArray(v)&&(v.length===7||v.length===8&&isInt(v[7],0,1023))&&isNum(v[0],-1e5,1e5)&&isNum(v[1],-1e5,1e5)&&isNum(v[2],-2000,9000)&&isNum(v[3],-1e3,1e3)&&(v[4]===0||v[4]===1)&&isNum(v[5],0,1)&&isNum(v[6],0,60);
 const validMask=v=>v===undefined||isInt(v,0,127);
-export const validExtra=e=>!!e&&typeof e==='object'&&!Array.isArray(e)&&(e.pe===undefined||validWalk(e.pe))&&validMask(e.ab);
+export const validExtra=e=>!!e&&typeof e==='object'&&!Array.isArray(e)&&(e.pe===undefined||validWalk(e.pe))&&validMask(e.ab)&&(e.g===undefined||e.g===1);
 const validSeat=s=>s&&typeof s==='object'&&isId(s.id)&&typeof s.name==='string'&&s.name.length<=64&&SEATS.includes(s.number);
 const validSeats=v=>Array.isArray(v)&&v.length<=SEATS.length&&v.every(validSeat);
 const validPick=v=>v===undefined||isInt(v,0,1e9);
@@ -262,6 +262,8 @@ export class Room {
  leave(){if(this.online){this.send({t:'bye'});this.link.close();return;}this.save();this.send({t:'bye'});this.channel.close();}
  // Online, after a refusal the player can fix (the password, signing in): connect again.
  retry(){if(this.online){this.link.close();this.start();}}
+ // Whether this tab came in by a host's invitation (net-link.js invited): no password is ever asked of it.
+ get invited(){return !!this.link?.invited;}
  // The connection ended: the reason the server gave (net-link.js CLOSED), or the network's. A line
  // that dropped is tried again (net-link.js; so is an accounts server out of reach, contas): back in
  // time, the tab is who it was, in its race. Who knocked meanwhile may have gone: a host welcomed back

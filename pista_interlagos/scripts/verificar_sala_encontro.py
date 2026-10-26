@@ -1,6 +1,6 @@
 """The room's meeting at the Tia's café in the Box 99 (the team's wish, 10-26), in two windows of one browser
 (&local=1, one lap of Interlagos): while the start waits both pilots are on foot by the café, apart, the frozen 3 off
-the screen, each seeing the other; the guest walks to the counter, opens the Tia's menu (E), buys a coffee and a pão
+the screen, each seeing the other (in the same clothes on either screen); the guest walks to the counter, opens the Tia's menu (E), buys a coffee and a pão
 de queijo (1, 2) from the team's money, sips (E), and the host sees them in her hands; F there only says who calls
 everyone to the cars. The host's Todos para os carros puts each pilot in their car on the grid for the 3, 2, 1 (hands
 empty). Past her flag (the guest on the automatic pilot) F takes her to the café, the host sees her there, and F
@@ -71,6 +71,11 @@ with sync_playwright() as p:
     assert host.evaluate("document.body.classList.contains('mp-encontro')&&getComputedStyle(document.getElementById('raceCountdown')).visibility==='hidden'"), 'no frozen 3 meanwhile'
     assert 'Todos para os carros' in host.inner_text('#mpStart'), host.inner_text('#mpStart')
     assert a['cafe']['wallet'] == 450, a['cafe']
+    # Without a look of her own, Bia wears her car's team colours: the same on the host's screen as on her own (the
+    # team's report, 10-26: orange on hers, the 99's red on the host's).
+    own_top = guest.evaluate("JSON.parse(interlagos.walker().outfitKey).top")
+    seen_top = host.evaluate("interlagosSala.info().walkers.find(w=>w.number==='64').top")
+    assert own_top == seen_top and own_top != host.evaluate("JSON.parse(interlagos.walker().outfitKey).top"), (own_top, seen_top)
     report['encontro'] = {'distancia_entre_eles_m': round(apart, 2), 'ana_do_balcao_m': round(a['cafe']['distance'], 2), 'bia_do_balcao_m': round(b['cafe']['distance'], 2)}
 
     # The guest at the counter: the menu, a coffee and a pão de queijo, a sip; the host sees them in her hands.
@@ -102,6 +107,26 @@ with sync_playwright() as p:
     host.screenshot(path=str(SHOTS / '2_ana_ve_bia_no_cafe.png'))
     guest.screenshot(path=str(SHOTS / '2_bia_no_cafe.png'))
     report['lanche'] = {'comprou': bought['held'], 'verba': bought['wallet'], 'anfitria_ve': seen['held']}
+
+    # A change of clothes while the start waits (the team's wish, 10-26): V opens the Visual screen over the meeting, a
+    # purple suit chosen there shows on the host's screen at once, and back at the café she wears it.
+    guest.keyboard.press('KeyV')
+    wait_js(guest, "interlagosVisual.info().screen==='visual'&&document.body.classList.contains('visual-open')&&interlagosVisual.info().from==='cafe'", timeout=10000)
+    assert walk(guest)['active'], 'still on foot at the café behind the Visual screen'
+    guest.evaluate("()=>{const i=document.querySelector('#visual [data-field=\"suit\"] input[value=\"roxo\"]');i.click();}")
+    wait_js(guest, "interlagosVisual.info().look?.suit==='roxo'", timeout=5000)
+    guest.wait_for_timeout(1200)
+    guest.screenshot(path=str(SHOTS / '2_bia_trocando_de_roupa.png'))
+    wait_js(host, "(()=>{const w=interlagosSala.info().walkers.find(w=>w.number==='64');return !!w&&w.look.includes('roxo');})()", timeout=10000)
+    guest.click('#visualDone')
+    wait_js(guest, "interlagosVisual.info().screen!=='visual'&&!document.body.classList.contains('visual-open')", timeout=5000)
+    assert walk(guest)['active'] and walk(guest)['away'], 'back at the café'
+    new_top = guest.evaluate("JSON.parse(interlagos.walker().outfitKey).top")
+    seen_new = host.evaluate("interlagosSala.info().walkers.find(w=>w.number==='64').top")
+    assert new_top != own_top and new_top == seen_new, (own_top, new_top, seen_new)
+    host.wait_for_timeout(600)
+    host.screenshot(path=str(SHOTS / '2_ana_ve_bia_de_roxo.png'))
+    report['troca_de_roupa'] = {'antes': own_top, 'depois': new_top}
 
     # Everyone to the cars: each pilot in their car on the grid for the 3, 2, 1, hands empty.
     host.click('#mpStart')

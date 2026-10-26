@@ -560,3 +560,11 @@ html:not(.menus-paddock) .settings-sources{display:none}
 @media(max-height:520px) and (max-width:720px){.menus-paddock #tracks[data-mode=historia] #championshipStart{font-size:17px;max-width:calc(100% - 470px)}}
 @media(max-height:520px){.menus-paddock #tracks[data-mode=historia] .championship-tools{position:static;padding:0;background:none}}
 @media(prefers-reduced-motion:reduce){.menus-paddock :is(#menu .menu-modes button,.car-thumbs button,#carsNext,#singleRace,#soloRace,#duelRace,#championshipStart){transition:none}}
+
+/* A multiplayer room (main.js body.modo-sala; the team's wish, 10-26): only the room's things. Modo Corrida's single race
+   (the track and its laps, the host's), the car and the pilot's look, the player's own settings; no story, drift arena,
+   circuits' histories, records, practice, 1x1, championship, recon lap, restart, Fusca tab nor the race's rules, which
+   are the host's (or the defaults). */
+body.modo-sala :is(#storyStart,#driftStart,#historiasStart,#recordsButton,#restartRace,#settingsRestart,#soloRace,#duelRace,#championshipPanel,#storyCareer,#historyStart,#carModels,#tab-tour,#tourBadge,#touchTourBadge){display:none!important}
+body.modo-sala #raceModes [data-race]:not([data-race="single"]){display:none!important}
+body.modo-sala :is(.tracks-weather,label:has(#tracksAiLevel),label:has(#raceLaps),label:has(#aiLevel),.weather-choices,.realism-choice){display:none!important}

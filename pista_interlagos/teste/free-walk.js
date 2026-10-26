@@ -17,7 +17,8 @@
 // At a circuit's Box 99 the Tia serves him too (cafe; the team's wish, 10-26): E by her counter opens her menu (1, 2, 3
 // buy, paid from the team's money; E, F or Esc close it), what he buys goes into a free hand (pitstop.js snacks) and E
 // eats or drinks it, sip by sip, wherever he walks; back in the car his hands are empty. A multiplayer room meets there
-// before its start and past the flag (meet: on foot by the café, the car left where it is, F the room's way back).
+// before its start and past the flag (meet: on foot by the café, the car left where it is, F the room's way back), and
+// V there opens the Visual screen to change clothes (wardrobe; the team's wish, 10-26), the others seeing the new ones.
 import * as THREE from 'three';
 import {keyName,keyText} from './key-bindings.js';
 import {footState,stepOnFoot,footGround,placeFootCamera,turnFootView,zoomFootView,footJump} from './on-foot.js';
@@ -69,9 +70,9 @@ export class FreeWalk {
  // and mouse, as he gets out and back in; hud: the walking panel (none in the Node checks); selfie: the phone's options
  // (selfie.js: label, freeMouse, lockMouse); play: a game on foot (pampulha-futebol.js FootballGame: blocks, aim, kick);
  // cafe: the Box 99's café where the circuit has one ({seat: its counter, a world point; pay(price): false without the
- // money; wallet(): the money there is}).
- constructor({scene,car,driver,openings=null,layout=null,obstacles=[],water=null,outfit=()=>OUTFITS.driver,title=()=>'A PÉ · A CORRIDA CONTINUA',emit=()=>{},onOut=()=>{},onIn=()=>{},hud=typeof document!=='undefined',selfie={},play=null,cafe=null}){
-  Object.assign(this,{scene,car,driver,openings,layout,obstacles,water,outfit,title,emit,onOut,onIn,play,cafe});
+ // money; wallet(): the money there is}); wardrobe(): the Visual screen, to change clothes at a room's meeting (meet).
+ constructor({scene,car,driver,openings=null,layout=null,obstacles=[],water=null,outfit=()=>OUTFITS.driver,title=()=>'A PÉ · A CORRIDA CONTINUA',emit=()=>{},onOut=()=>{},onIn=()=>{},hud=typeof document!=='undefined',selfie={},play=null,cafe=null,wardrobe=null}){
+  Object.assign(this,{scene,car,driver,openings,layout,obstacles,water,outfit,title,emit,onOut,onIn,play,cafe,wardrobe});
   // What he holds from the Tia's (and her menu open), the snacks in his hands, the mouse let go for the menu; away: the
   // room's meeting (meet).
   this.snack=snackState({menu:false});this.hands=null;this.mouse={free:selfie.freeMouse,lock:selfie.lockMouse};this.away=null;
@@ -122,11 +123,12 @@ export class FreeWalk {
  // On his feet at spot (a world point; floor: its height), the camera's yaw and the way he faces (track angles), in
  // the clothes of this race (another car's team, a story stage).
  standAt(spot,floor,yaw,facing){
-  const outfit=this.outfit(),key=JSON.stringify(outfit);if(key!==this.outfitKey){dressPerson(this.hero,outfit);this.outfitKey=key;}
-  applyPose(this.hero.userData.rig,clonePose(POSES.stand));
+  this.redress();applyPose(this.hero.userData.rig,clonePose(POSES.stand));
   this.foot=footState(yaw,{floor});this.hero.position.copy(spot).setY(floor);this.hero.rotation.set(0,facing,0);this.hero.visible=true;
   this.tumble=this.goingIn=this.follow=this.kicking=this.charge=this.pending=null;this.message='';this.messageTime=0;this.motion={x:spot.x,y:-spot.z,vx:0,vy:0};this.intent=[0,0];
  }
+ // The clothes outfit() gives now, if they changed (a look changed on the Visual screen at the room's meeting).
+ redress(){const outfit=this.outfit(),key=JSON.stringify(outfit);if(key===this.outfitKey)return false;dressPerson(this.hero,outfit);this.outfitKey=key;return true;}
  // On foot away from his car (multiplayer.js: the room's meeting at the Tia's café before the start, and past the
  // flag): at the first of spots (world points) he can stand on, facing toward face (a world point); no door opens and
  // the car stays where it is. away: {title (the walking panel's heading), label (what F does here; '' for nothing),
@@ -241,6 +243,7 @@ export class FreeWalk {
   if(this.snack.menu){if(code in MENU_KEYS)this.buy(CAFE_MENU[MENU_KEYS[code]].id);else if(code==='KeyE'||code==='KeyF')this.closeMenu();return true;}
   if(code==='KeyF'){this.getIn();return true;}
   if(this.tumble)return true;
+  if(code==='KeyV'&&this.away&&this.wardrobe){this.wardrobe();return true;}
   if(code==='KeyQ'){this.takeSelfie();return true;}
   if(code==='KeyE'){this.action();return true;}
   if(code==='KeyR'){this.press('passe');return true;}
@@ -353,10 +356,11 @@ export class FreeWalk {
  }
  buildHud(){
   const hud=this.hud=document.createElement('aside');hud.id='walkHud';hud.hidden=true;
-  hud.innerHTML='<div><b id="walkTitle"></b><span id="walkCarDistance"></span></div><span id="walkMessage" role="status"></span><small id="walkHint"></small><div id="walkPower" hidden><span id="walkPowerLabel"></span><b><i></i></b></div><div id="walkBall" hidden><button id="walkKick"></button><button id="walkPass"></button></div><span id="walkHold" hidden></span><div id="walkMenu" hidden><small>CARDÁPIO DA TIA · <span id="walkWallet"></span></small>'+CAFE_MENU.map((item,i)=>`<button data-snack="${item.id}"><b>${i+1}</b> ${item.name} <em>${money(item.price)}</em></button>`).join('')+'<span id="walkCafeStatus"></span></div><button id="walkAction" hidden></button><button id="walkCar" hidden></button><button id="walkSelfie" hidden>Selfie</button>';
+  hud.innerHTML='<div><b id="walkTitle"></b><span id="walkCarDistance"></span></div><span id="walkMessage" role="status"></span><small id="walkHint"></small><div id="walkPower" hidden><span id="walkPowerLabel"></span><b><i></i></b></div><div id="walkBall" hidden><button id="walkKick"></button><button id="walkPass"></button></div><span id="walkHold" hidden></span><div id="walkMenu" hidden><small>CARDÁPIO DA TIA · <span id="walkWallet"></span></small>'+CAFE_MENU.map((item,i)=>`<button data-snack="${item.id}"><b>${i+1}</b> ${item.name} <em>${money(item.price)}</em></button>`).join('')+'<span id="walkCafeStatus"></span></div><button id="walkAction" hidden></button><button id="walkLook" hidden></button><button id="walkCar" hidden></button><button id="walkSelfie" hidden>Selfie</button>';
   document.body.append(hud);this.$=id=>hud.querySelector('#'+id);
   this.$('walkCar').onclick=()=>this.getIn();this.$('walkAction').onclick=()=>this.action();this.$('walkSelfie').onclick=()=>this.takeSelfie();
   for(const b of hud.querySelectorAll('[data-snack]'))b.onclick=()=>{this.buy(b.dataset.snack);b.blur();};
+  this.$('walkLook').onclick=()=>{this.$('walkLook').blur();this.wardrobe?.();};
   // Chutar and Passe are held like the keys: pressed they wind up, let go they kick.
   for(const [id,kind] of [['walkKick','chute'],['walkPass','passe']]){const b=this.$(id),up=()=>{this.touchHold[kind]=false;};
    b.addEventListener('pointerdown',e=>{e.preventDefault();this.touchHold[kind]=true;this.press(kind);});for(const t of ['pointerup','pointercancel','pointerleave'])b.addEventListener(t,up);}
@@ -379,11 +383,12 @@ export class FreeWalk {
   set('walkMessage','textContent',this.tumble?this.tumbleText||'Atropelado! Espere ele levantar…':this.messageTime>0?this.message:this.goingIn?'Indo até a porta…':'');
   // With a ball at his feet: the shot and the pass, held for more (keys and buttons), and the wind-up's bar.
   const ball=action==='chutar a bola'||!!(this.charge||this.pending),wind=this.charge??this.pending;
-  set('walkHint','textContent',touch?'Pedais: andar · direção: virar':keyText('Mouse: câmera · {KeyW}/{KeyA}/{KeyS}/{KeyD}: andar · {ShiftLeft}: correr · {Space}: pular · {KeyC}: agachar · {KeyQ}: selfie')+(ball?keyText(' · {KeyE} ou clique: chutar (segure: mais forte) · {KeyR} ou botão direito: passe rasteiro'):`${action&&action!=='entrar no carro'?` · ${keyName('KeyE')}: ${action}`:''}`)+(fText?` · ${keyName('KeyF')}: ${fText}`:''));
+  set('walkHint','textContent',touch?'Pedais: andar · direção: virar':keyText('Mouse: câmera · {KeyW}/{KeyA}/{KeyS}/{KeyD}: andar · {ShiftLeft}: correr · {Space}: pular · {KeyC}: agachar · {KeyQ}: selfie')+(ball?keyText(' · {KeyE} ou clique: chutar (segure: mais forte) · {KeyR} ou botão direito: passe rasteiro'):`${action&&action!=='entrar no carro'?` · ${keyName('KeyE')}: ${action}`:''}`)+(fText?` · ${keyName('KeyF')}: ${fText}`:'')+(away&&this.wardrobe&&!touch?` · ${keyName('KeyV')}: trocar de roupa`:''));
   set('walkBall','hidden',!ball||!!this.tumble);set('walkKick','textContent',touch?'Chutar (segure)':`Chutar · ${keyName('KeyE')}`);set('walkPass','textContent',touch?'Passe (segure)':`Passe · ${keyName('KeyR')}`);
   set('walkPower','hidden',!wind);
   if(wind){const k=this.charge?Math.min(1,this.charge.t/KICK_FULL):this.pending.power;set('walkPower','className',wind.kind);set('walkPowerLabel','textContent',wind.kind==='passe'?'PASSE':'CHUTE');const w=`${Math.round(k*100)}%`;if(this.shown.power!==w){this.shown.power=w;this.$('walkPower').querySelector('i').style.width=w;}}
   set('walkAction','hidden',!action||ball||action==='entrar no carro'||!!this.tumble);if(action)set('walkAction','textContent',action[0].toUpperCase()+action.slice(1)+(touch?'':` · ${keyName('KeyE')}`));
+  set('walkLook','hidden',!(away&&this.wardrobe)||!!this.tumble||snack.menu);set('walkLook','textContent',touch?'Trocar de roupa':`Trocar de roupa · ${keyName('KeyV')}`);
   set('walkCar','hidden',(away?!away.label:!close)||!!this.tumble);set('walkSelfie','hidden',!touch||!!this.tumble);set('walkCar','textContent',(away?away.label.slice(0,1).toUpperCase()+away.label.slice(1):atDoor?'Entrar no carro':'Voltar ao carro')+(touch?'':` · ${keyName('KeyF')}`));
  }
  // The circuit goes (main.js clearCircuit): the driver back in his seat, no camera to hand back.

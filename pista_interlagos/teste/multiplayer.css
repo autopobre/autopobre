@@ -130,3 +130,11 @@ body.mp-room #cars{padding-bottom:58px}
 #mpPause #mpBack[hidden]{display:none}
 /* The room at the Tia's café while the start waits (multiplayer.js meet): no frozen 3 on the screen. */
 body.mp-encontro #raceCountdown{visibility:hidden!important}
+/* On foot in a room (free-walk.js #walkHud: the café meeting, past the flag) the walking panel sits under the card's line
+   on the track, never over the host's start (#mpStart). */
+body.mp-pilula #walkHud{top:118px}
+@media(max-width:850px){body.mp-pilula #walkHud{top:100px}}
+@media(max-height:520px){body.mp-pilula #walkHud{top:100px}}
+/* A pilot's way out of the room (multiplayer.js Sair da sala): quiet, last on the card. */
+#mpRoom .mp-leave{display:block;width:100%;margin:8px 0 0;background:transparent!important;border-color:#ffffff55!important;color:#f5f6ed!important}
+#mpRoom .mp-leave[hidden]{display:none}

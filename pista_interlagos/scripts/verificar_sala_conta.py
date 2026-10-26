@@ -225,30 +225,50 @@ with sync_playwright() as p:
     wait_js(ana, "!document.getElementById('mpChat').classList.contains('mp-chat-closed')", timeout=5000)
     report['chat'] = ana.evaluate("interlagosSala.info().chat.lines")
 
-    # Ana closes the room (Fechar sala, asked twice): everybody out (the server's 4017), Bia's card says so with
-    # Voltar ao jogo, her invitation is forgotten; Ana's page is the game without the room, and so is Bia's once she
-    # clicks it.
+    # Ana closes the room (Fechar sala, asked twice): everybody out (the server's 4017), her page the game without the
+    # room. Bia came in by the invitation: her card says the room closed and she is back in the game by herself, never
+    # asked for a password (the team's wish, 10-26: who was invited knows of none); her invitation is forgotten, and
+    # the room opened again in her tab (a reload, the browser restoring it) has her out again, password never asked.
+    def leaves_without_password(page, timeout=20000):
+        seen = []
+        deadline = time.monotonic() + timeout / 1000
+        while True:
+            try:
+                state = page.evaluate("({room:!!window.interlagosSala,hash:location.hash,form:!!document.querySelector('#mpRoom .mp-key')&&!document.querySelector('#mpRoom .mp-key').hidden,status:document.querySelector('#mpRoom .mp-status')?.textContent??'',ready:document.readyState})")
+            except Exception:   # (the page reloading meanwhile)
+                assert time.monotonic() < deadline, 'the page never settled'
+                page.wait_for_timeout(100)
+                continue
+            assert not state['form'], f'a password asked of an invited pilot: {state}'
+            if state['status']:
+                seen.append(state['status'])
+            if not state['room'] and 'desafio' not in state['hash'] and state['ready'] == 'complete':
+                return seen
+            assert time.monotonic() < deadline, state
+            page.wait_for_timeout(100)
+
     assert bia.evaluate(f"localStorage.getItem('autopobre-convite-{ROOM}')"), 'Bia keeps her invitation while the room is open'
+    bia_room = bia.evaluate('location.hash')
     ana.click('#mpClose')
     wait_js(ana, "document.getElementById('mpClose').classList.contains('mp-confirm')", timeout=5000)
     assert 'de novo' in ana.inner_text('#mpClose'), 'the first click only asks'
     ana.screenshot(path=str(SHOTS / '8_ana_fechar_confirma.png'))
     assert bia.evaluate("interlagosSala.info().problem") is None, 'nothing closed yet'
     ana.click('#mpClose')
-    wait_js(bia, "interlagosSala.info().problem==='fechada'", timeout=15000)
-    wait_js(bia, "document.querySelector('#mpRoom .mp-status')?.textContent.includes('fechou a sala')&&!document.querySelector('#mpRoom .mp-account').hidden", timeout=5000)
-    assert bia.inner_text('#mpRoom .mp-account') == 'Voltar ao jogo'
-    assert bia.evaluate(f"localStorage.getItem('autopobre-convite-{ROOM}')") is None, 'the invitation to a closed room is forgotten'
+    wait_js(bia, "interlagosSala.info().problem==='fechada'&&document.querySelector('#mpRoom .mp-status')?.textContent.includes('fechou a sala')", timeout=15000)
     bia.screenshot(path=str(SHOTS / '8_bia_sala_fechada.png'))
+    said = leaves_without_password(bia)
+    assert any('Voltando ao jogo' in t for t in said), said
+    assert bia.evaluate(f"localStorage.getItem('autopobre-convite-{ROOM}')") is None, 'the invitation to a closed room is forgotten'
     wait_js(ana, "!location.hash.includes('desafio')&&!window.interlagosSala&&document.readyState==='complete'", timeout=20000)
     ana.wait_for_timeout(3000)
     assert not ana.evaluate("!!window.interlagosSala||!!document.getElementById('mpRoom')"), 'Ana is out of the room: the game alone'
-    bia.wait_for_timeout(4000)
-    assert bia.evaluate("interlagosSala.info().problem") == 'fechada', 'nobody tries again'
-    bia.click('#mpRoom .mp-account')
-    wait_js(bia, "!location.hash.includes('desafio')&&document.readyState==='complete'", timeout=20000)
-    bia.wait_for_timeout(3000)
-    assert not bia.evaluate("!!window.interlagosSala||!!document.getElementById('mpRoom')")
+    bia.wait_for_timeout(2000)
+    assert not bia.evaluate("!!window.interlagosSala||!!document.getElementById('mpRoom')"), 'Bia is out of the room: the game alone'
+    bia.evaluate("h=>{location.hash=h;location.reload();}", bia_room)
+    bia.wait_for_timeout(1500)
+    said_again = leaves_without_password(bia, timeout=40000)
+    assert any('fechou a sala' in t for t in said_again), said_again
     report['fechar_sala'] = 'ok'
     browser.close()
 

@@ -9,6 +9,13 @@ a=body(0,0,0,0,6);b=body(0,1.5);resolveContact(a,b);assert(!bodyContact(a,b));as
 a=body(0,0,0,25);b=body(3,1.3,Math.PI/5);resolveContact(a,b);assert(!bodyContact(a,b));assert(Math.abs(a.yaw)+Math.abs(b.yaw)>.05);
 a=body(0,0);b=body(0,0,Math.PI/2);resolveContact(a,b);assert(!bodyContact(a,b));assert([a.x,a.y,b.x,b.y].every(Number.isFinite));
 a=body(0,0);b=body(5,0);assert(!bodyContact(a,b));b=body(0,2);assert(!bodyContact(a,b));
+// A car drawn from the network (remote: a guess some tenths old) pushes a car of this window only so hard: 4 m/s a contact,
+// a few millimetres a resolution, however deep its correction lands it (the netcode study of 10-07, step 6); between
+// two local cars nothing changes.
+{const own=body(0,0,0,30),guess=body(4.5,0,0,10);guess.remote=true;const at=[own.x,own.y];resolveContact(own,guess);
+ assert(Math.hypot(own.vx-30,own.vy)<=4+1e-9,'pushed at most 4 m/s');assert(Math.hypot(own.x-at[0],own.y-at[1])<=.008+1e-9,'shoved a few millimetres');assert(guess.vx>10,'the guess takes the rest');
+ const deep=body(0,0),inside=body(.5,.2,.4);inside.remote=true;resolveContact(deep,inside);assert(Math.hypot(deep.x,deep.y)<=.008+1e-9);
+ const free=body(0,0,0,30),other=body(4.5,0,0,10);resolveContact(free,other);assert(Math.abs(free.vx-30)>4,'two local cars: the full contact');}
 // A 120 Hz simulation catches a closing speed much higher than race speeds.
 a=body(-9,0,0,90);b=body(0,0);let collided=false;for(let i=0;i<30;i++){a.x+=a.vx/120;b.x+=b.vx/120;collided=!!resolveContact(a,b)||collided;}assert(collided);assert(a.x<b.x);assert(!bodyContact(a,b));
 const data=JSON.parse(fs.readFileSync(new URL('../dados/pista.json',import.meta.url))),player=new TestCar(data),field=new RaceField(data,{seed:1});

@@ -244,7 +244,7 @@ def race_room(context, host, pages):
         # The host's mouse on the track (the page's own pointer lock, browser_config): a knock lets it
         # go so Aceitar can be clicked, and that opens no menu.
         wait_js(host, "window.interlagos?.ready", timeout=60000)
-        host.mouse.click(330, 250)
+        host.mouse.click(400, 340)   # (on the track, clear of the walking panel at the café meeting)
         wait_js(host, "document.pointerLockElement===document.querySelector('#view')", timeout=10000)
     # A third window arrives during that wait: let in, it picks a car on its car screen and is seated
     # once it says it waits, then loads the race by itself.
