@@ -7,6 +7,7 @@
 import {json,signedIn,notSignedIn,isAdmin} from './base.js';
 import {EVENT_DAYS,event} from './eventos.js';
 import {UPSERT} from './recordes.js';
+import {cleanNickname,nicknameKey,NICKNAME_RULE} from './apelidos.js';
 
 const DAY=86400000;
 async function admin(request,env){
@@ -95,6 +96,20 @@ async function removeRecord(request,env,body){
  return json({removido:true});
 }
 
+// A pilot's nickname given by the admin (POST {usuario: the account's id, apelido}): the rules and the uniqueness as
+// ever, but a reserved name may be given (the real Stevan's "Stevan"). The pilot's events say the admin gave it.
+async function giveNickname(request,env,body){
+ const {refused}=await admin(request,env);if(refused)return refused;
+ const id=body.usuario;if(!Number.isSafeInteger(id)||id<1)return json({erro:'Conta inválida.'},400);
+ const nick=cleanNickname(body.apelido);if(!nick)return json({erro:NICKNAME_RULE},400);
+ const key=nicknameKey(nick);
+ if(!await env.DB.prepare('SELECT 1 FROM usuarios WHERE id=?').bind(id).first())return json({erro:'Essa conta não existe.'},404);
+ if(await env.DB.prepare('SELECT 1 FROM usuarios WHERE apelido_chave=? AND id<>?').bind(key,id).first())return json({erro:'Esse apelido já é de outro piloto.'},409);
+ try{await env.DB.batch([env.DB.prepare('UPDATE usuarios SET apelido=?,apelido_chave=? WHERE id=?').bind(nick,key,id),event(env,'apelido',id,{apelido:nick,pela_administracao:true})]);}
+ catch(error){if(/UNIQUE/i.test(String(error?.message)))return json({erro:'Esse apelido já é de outro piloto.'},409);throw error;}
+ return json({usuario:{id,apelido:nick}});
+}
+
 // The reviews pilots asked for: those waiting first, oldest first, then the last decided.
 async function reviews(request,env){
  const {refused}=await admin(request,env);if(refused)return refused;
@@ -136,4 +151,4 @@ async function caseFile(request,env,url){
 }
 
 export const ADMIN_GETS={'/api/admin/resumo':summary,'/api/admin/usuarios':users,'/api/admin/eventos':events,'/api/admin/recordes':lastRecords,'/api/admin/voltas':laps,'/api/admin/revisoes':reviews,'/api/admin/casos':cases,'/api/admin/caso':caseFile};
-export const ADMIN_POSTS={'/api/admin/remover':removeRecord,'/api/admin/revisar':decideReview};
+export const ADMIN_POSTS={'/api/admin/remover':removeRecord,'/api/admin/revisar':decideReview,'/api/admin/apelido':giveNickname};

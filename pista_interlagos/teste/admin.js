@@ -39,7 +39,7 @@ function rows(id,list,columns,append=false){
 function detail(e){
  const d=e.detalhe??{};
  switch(e.tipo){
-  case 'apelido':return d.apelido??'';
+  case 'apelido':return (d.apelido??'')+(d.pela_administracao?' (dado pela administração)':'');
   case 'importou':return `${d.recordes??0} recorde${d.recordes===1?'':'s'}`;
   case 'conferida':return `${track(d.circuito)} · ${MODES[d.modo]??d.modo} · ${lap(d.volta_ms)}`;
   case 'recusada':return `${track(d.circuito)} · ${lap(d.volta_ms)} · ${d.motivo??''}`;
@@ -94,6 +94,17 @@ function armed(label,act){
 }
 // Remover takes the record off the boards.
 const removeButton=record=>armed('Remover',()=>get('remover',{recorde:record.id}));
+// Trocar apelido: the admin gives a pilot a nickname, a reserved one too (the real Stevan's "Stevan").
+function nicknameButton(user){
+ const b=document.createElement('button');b.type='button';b.textContent='Trocar apelido';
+ b.onclick=async()=>{
+  const name=prompt(`Novo apelido para ${user.apelido??'(sem apelido)'}:`,user.apelido??'');if(name===null||!name.trim())return;
+  b.disabled=true;
+  try{await get('apelido',{usuario:user.id,apelido:name});await load();}
+  catch(error){$('aviso').textContent=error.message;$('aviso').hidden=false;b.disabled=false;}
+ };
+ return b;
+}
 // A case as a file: the lap whole (its ghost and controls), to study where the checks went wrong.
 function caseLink(v){const a=document.createElement('a');a.href=`/api/admin/caso?volta=${v.id}`;a.download=`caso-${v.id}-${v.circuito}.json`;a.textContent='Baixar';return a;}
 // A review waiting: Aprovar (the lap becomes the pilot's checked record) or Recusar; a decided one says which.
@@ -112,7 +123,7 @@ async function load(){
   rows('casos',c.casos,[[x=>when(x.quando)],[x=>x.apelido??'(apagada)'],[x=>where(x)],[x=>lap(x.tempo_ms),'num'],[x=>x.caso,'sinais'],[x=>x.aparelho??'—'],[x=>x.versao??'—'],[caseLink,'acao']]);
   rows('revisoes',v.revisoes,[[x=>when(x.quando)],[x=>x.apelido??'(apagada)'],[x=>where(x)],[x=>lap(x.tempo_ms),'num'],[x=>x.resultado],[x=>x.aparelho??'—'],[x=>signals(x.sinais),'sinais'],[reviewButtons,'acao']]);
   rows('usuarios',u.usuarios,[[x=>(x.apelido??'(sem apelido)')+(x.admin?' · admin':'')],[x=>when(x.criado_em)],[x=>when(x.ultimo_login)],[x=>String(x.sessoes),'num'],
-   [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>x.importou_em?when(x.importou_em):'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num']]);
+   [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>x.importou_em?when(x.importou_em):'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num'],[nicknameButton,'acao']]);
   rows('recordes',r.recordes,[[x=>when(x.enviado_em)],[x=>x.apelido],[x=>where(x)],[x=>MODES[x.modo]??x.modo],[x=>lap(x.volta_ms),'num'],
    [x=>x.selo!=='conferido'?'⚠️ antigo':x.sinais?.revisada?'✓ revisado':x.sinais?.confiavel?'✓ confiável (caso)':'✓ conferido'],[x=>x.versao],[x=>x.selo==='conferido'?signals(x.sinais):'—','sinais'],[removeButton,'acao']]);
   oldest=null;oldestLap=null;await Promise.all([events(),laps()]);

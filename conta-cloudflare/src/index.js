@@ -20,6 +20,7 @@ import {SESSION_COOKIE,LOGIN_COOKIE,b64url,fromB64url,random,sha256,hashed,sameT
 import {RECORDS_GETS,RECORDS_POSTS,RECORDS_BODY} from './recordes.js';
 import {ADMIN_GETS,ADMIN_POSTS} from './admin.js';
 import {event,forgetOld,recent,HOUR} from './eventos.js';
+import {cleanNickname,nicknameKey,RESERVED,NICKNAME_RULE} from './apelidos.js';
 
 const SESSION_DAYS=30;        // a session's life; signing in again makes a new one
 const MAX_SESSIONS=10;        // per account (browsers, phones): the oldest go first
@@ -28,19 +29,8 @@ const NICKNAME_CHANGES=10;    // per account and hour: each one is a write
 const GOOGLE_AUTH='https://accounts.google.com/o/oauth2/v2/auth',GOOGLE_TOKEN='https://oauth2.googleapis.com/token';
 const ISSUERS=new Set(['https://accounts.google.com','accounts.google.com']);
 const SUB=/^[\x21-\x7e]{1,255}$/;
-// A nickname: 3 to 20 letters or digits, with single spaces, dots, dashes or underscores between them. Letters of
-// Portuguese and its neighbours only (A-Z and the accented ones of Latin-1): no small capitals, no look-alikes from
-// other alphabets. Its key, unique, reads it the way an eye does: no case, no accents, no separators, and I, l and
-// 1 alike, O and 0 alike ("João", "joao", "J.O.A.O" are one pilot; "KIeber" is "Kleber").
-const NICKNAME=/^[A-Za-z0-9À-ÖØ-öø-ÿ](?:[A-Za-z0-9À-ÖØ-öø-ÿ ._-]{1,18})[A-Za-z0-9À-ÖØ-öø-ÿ]$/;
-export function cleanNickname(value){
- const nick=String(value??'').normalize('NFKC').replace(/\s+/g,' ').trim().normalize('NFC');
- return NICKNAME.test(nick)&&!/[ ._-]{2}/.test(nick)?nick:null;
-}
-export const nicknameKey=nick=>nick.normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase().replace(/[ ._-]/g,'').replace(/[i1]/g,'l').replace(/0/g,'o');
-// Names nobody takes: the game's people and the ones that would pass for its staff.
-const RESERVED=new Set(['stevan','stevangaipo','gaipo','pobrepiloto','kleber','admin','administrador','moderador','moderacao','autopobre','autopobreracing','suporte','oficial','google'].map(nicknameKey));
-const NICKNAME_RULE='Use de 3 a 20 letras ou números (espaço, ponto, traço ou sublinhado só entre eles).';
+// The nickname's rules: apelidos.js (the admin panel gives names too).
+export {cleanNickname,nicknameKey} from './apelidos.js';
 // Where to land after Google: a path on this site, never another site ("//host" or a backslash).
 export const safeReturn=value=>typeof value==='string'&&value.length<=512&&/^\/(?![/\\])[^\s\\]*$/.test(value)?value:'/';
 
@@ -110,7 +100,8 @@ async function setNickname(request,env,body){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
  const nick=cleanNickname(body.apelido);if(!nick)return json({erro:NICKNAME_RULE},400);
  const key=nicknameKey(nick),taken=()=>json({erro:'Esse apelido já é de outro piloto.'},409);
- if(RESERVED.has(key))return json({erro:'Esse apelido é reservado. Escolha outro.'},409);
+ // A reserved name only for whoever the admin gave it to (its case or accents changed, it is still theirs).
+ if(RESERVED.has(key)&&!(s.apelido&&nicknameKey(s.apelido)===key))return json({erro:'Esse apelido é reservado. Escolha outro.'},409);
  if(nick===s.apelido)return json({conta:account(s,env)});   // the same again: nothing to write
  if(await recent(env,s.id,['apelido'],HOUR)>=NICKNAME_CHANGES)return json({erro:'Muitas trocas de apelido seguidas. Tente de novo daqui a uma hora.'},429);
  if(await env.DB.prepare('SELECT id FROM usuarios WHERE apelido_chave=? AND id<>?').bind(key,s.id).first())return taken();

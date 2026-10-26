@@ -183,5 +183,20 @@ await check("the Worker's ADMINS secret makes an admin by Google id, without the
  const other=await pilot('400000000000000000010','Nao Listado');assert.equal((await other.get('/api/admin/resumo')).status,403,'an id not in the list');
 });
 
+await check('the admin gives a reserved nickname to whoever it belongs to (the real Stevan), and nobody else takes it',async()=>{
+ const stevan=await pilot('400000000000000000011','Stevisson'),id=sql("SELECT id FROM usuarios WHERE apelido='Stevisson'")[0].id;
+ const self=await stevan.post('/api/conta/apelido',{apelido:'Stevan'});assert.equal(self.status,409);assert.match(self.erro,/reservado/,'a pilot cannot take it');
+ assert.equal((await stevan.post('/api/admin/apelido',{usuario:id,apelido:'Stevan'})).status,403,'nor give it to themselves');
+ assert.deepEqual(await boss.post('/api/admin/apelido',{usuario:id,apelido:'Stevan'}),{status:200,usuario:{id,apelido:'Stevan'}});
+ assert.equal((await stevan.get('/api/conta/eu')).conta.apelido,'Stevan');
+ assert.equal((await stevan.post('/api/conta/apelido',{apelido:'STEVAN'})).status,200,'his own name, its case changed');
+ const other=await pilot('400000000000000000012','Outro Stevan');
+ assert.equal((await other.post('/api/conta/apelido',{apelido:'stevan'})).status,409,'reserved for anyone else');
+ assert.equal((await boss.post('/api/admin/apelido',{usuario:sql("SELECT id FROM usuarios WHERE apelido='Outro Stevan'")[0].id,apelido:'Stevan'})).status,409,'taken: one pilot per name');
+ for(const [body,status] of [[{usuario:id,apelido:'x'},400],[{usuario:'x',apelido:'Stevan'},400],[{usuario:999999,apelido:'Novo Nome'},404]])assert.equal((await boss.post('/api/admin/apelido',body)).status,status,JSON.stringify(body));
+ const given=(await boss.get('/api/admin/eventos?tipo=apelido')).eventos.find(e=>e.detalhe?.pela_administracao);
+ assert.deepEqual(given.detalhe,{apelido:'Stevan',pela_administracao:true},'his events say the admin gave it');
+});
+
 await local.close();Date.now=realNow;
 console.log(`${passed} grupos de verificações do painel passaram.`);
