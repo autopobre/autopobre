@@ -131,7 +131,10 @@ const INTERLAGOS_RAILS={
 const FULL_RAIL=[[0,Infinity]];
 // Circuits built from open data carry their own sections (meta.rails, by side).
 export function guardrailSections(data,side){const key=side<0?'-1':'1';return data.meta.rails?.[key]??(data.meta.id==='curvelo'?FULL_RAIL:INTERLAGOS_RAILS[key]);}
-export function guardrailPresent(data,s,side){const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L;return guardrailSections(data,side).some(([from,to])=>t>=from&&t<=to);}
+// The lap distance s within [0, L): s itself when it already is (((s%L)+L)%L put a section's own end 2e-13 past it, off the
+// section: the last station of a rail drawn at its end lost the flare, a 5 m stub back toward the road).
+const lapWrap=(s,L)=>s>=0&&s<L?s:((s%L)+L)%L;
+export function guardrailPresent(data,s,side){const L=data.meta.reconstructed_xy_m,t=lapWrap(s,L);return guardrailSections(data,side).some(([from,to])=>t>=from&&t<=to);}
 // A street circuit (Floripa) gives each station its own gap from the asphalt to the face of its concrete walls
 // (columns wall_right_m, wall_left_m): a few decimetres on the bridges, a sidewalk's width in the city.
 const wallColumns=new WeakMap();
@@ -180,7 +183,7 @@ function segmentGrid(a){
 }
 export function guardrailClearance(data,s,side){
  if(data.meta.id!=='curvelo'){
-  const L=data.meta.reconstructed_xy_m,t=((s%L)+L)%L,section=guardrailSections(data,side).find(([from,to])=>t>=from&&t<=to),gap=wallGap(data,t,side),base=gap??GUARDRAIL_CLEARANCE;
+  const L=data.meta.reconstructed_xy_m,t=lapWrap(s,L),section=guardrailSections(data,side).find(([from,to])=>t>=from&&t<=to),gap=wallGap(data,t,side),base=gap??GUARDRAIL_CLEARANCE;
   if(!section)return base;
   // Flare exposed ends away from the driving line; the timing-line seam stays joined. A city's side street opened to
   // roam (meta.roam's gaps) keeps its walls straight to the curbs: the walls end square at the street's mouth; so do

@@ -65,6 +65,7 @@ import {SunPlacement} from './sun-light.js';import {CarShadow} from './car-shado
 import {createLandscape,loadTerrainTextures,buildTrackField,readOrtho,looseGround,terrainMaterial,structureMaterial,createCrowd,SKYLINE_FAR} from './landscape.js';
 import {LakeContact} from './lake-contact.js';
 import {fitGround,applyGroundHeights,groundHeight} from './track-clearance.js';
+import {smoothVerges} from './track-verge.js';
 import {createGrandstands} from './interlagos-stands.js';
 import {createTrackside} from './trackside.js';
 import {createFlagField} from './trackside-flags.js';
@@ -2522,6 +2523,9 @@ async function loadCircuit(){
 
  // Track files live in dados/, beside teste/ here and beside index.html once published (preparar_publicacao.py).
  data=circuit.id==='curvelo'?createCurveloData():circuit.arena?createArenaData():await (await fetch('../dados/'+(circuit.data??'pista.json'))).json();data.meta.id=circuit.id;data.meta.name=circuit.name;
+ // Regular verges (track-verge.js): the ground beside the lap smoothed along it and the asphalt's width eased, before the
+ // physics, the ground or anything set on it reads the track.
+ const verges=circuit.arena?null:smoothVerges(data);
  // The circuit name sits in the top band of the map (#mapTitle); phones hide it and keep the whole canvas.
  projectMap=mapProjection(circuit.arena?floorOutline(0,6).map(([x,y])=>[0,x,y]):data.samples,260,300,touchDevice?0:40);$('map').height=projectMap.height??300;
  // The arena's car drives on a drift physics of its own (drift-physics.js); the circuits' cars are physics.js's own.
@@ -2631,7 +2635,7 @@ async function loadCircuit(){
  // The fans standing on a city's sidewalks are in the way of a car out in the city (meta.roam).
  if(data.meta.roam)landscape.stats.fanSolids=addRoamSolids(data,crowd.standing);await ensureCarModel();await fuscaWanted();
  if(circuit.arena){roadRails={root:new THREE.Group(),rails:null,setQuality(){}};roadCurbs=new THREE.Group();roadCurbs.userData.setQuality=()=>{};}
- else{roadRails=createGuardrails(data,{quality:graphics.values.materials});scene.add(roadRails.root);cameraObstacles.push(roadRails.rails);landscape.stats.barrier=roadRails.stats;
+ else{roadRails=createGuardrails(data,{quality:graphics.values.materials});scene.add(roadRails.root);cameraObstacles.push(roadRails.rails);landscape.stats.barrier=roadRails.stats;landscape.stats.verges=verges;
  roadCurbs=createCurbs(data,{quality:graphics.values.materials});scene.add(roadCurbs);}
  // Surveyed pit lane: entry after the Cafe, garages, exit around the S do Senna.
  let pitLayout=null;rivalGarages=null;if(data.pit){const pitLaneScene=createInterlagosPit(data,roadSurface,terrainTextures,circuit.track?{label:`${circuit.track} · BOX 99`,title:circuit.boxTitle,name:`Box 99 de ${circuit.name}`,track:circuit.track}:undefined);scene.add(pitLaneScene.root);fixed.push(pitLaneScene.root);cameraObstacles.push(...pitLaneScene.obstacles);pitLayout=pitLaneScene.box;rivalGarages=pitLaneScene.garages;}

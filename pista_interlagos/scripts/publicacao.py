@@ -9,7 +9,7 @@ GAME = 'pista_interlagos/teste/'
 MODULES = (
     'pilot-profile.js', 'ai-records.js', 'ai-record-references.js',
     'car-condition.js', 'fuel.js', 'pit-lane.js', 'interlagos-pit.js', 'pit-building.js', 'pit-box99.js', 'pit-crew.js', 'pit-textures.js', 'on-foot.js', 'free-walk.js', 'selfie.js', 'selfie.css', 'pitstop.js', 'pitstop.css',
-    'circuits.js', 'curvelo-data.js', 'curvelo-scene.js', 'open-circuit.js', 'track-clearance.js', 'interlagos-stands.js',
+    'circuits.js', 'curvelo-data.js', 'curvelo-scene.js', 'open-circuit.js', 'track-clearance.js', 'track-verge.js', 'interlagos-stands.js',
     'cliff-edge.js', 'cliff-fall.js', 'cliff-scenery.js', 'far-terrain.js', 'explosion.js',
     'drift-arena.js', 'drift-arena-world.js', 'drift-score.js', 'drift-physics.js', 'drift-arena-ai.js', 'drift-arena-props.js', 'drift-arena-mode.js', 'drift-arena-scene.js', 'drift-arena-stadium.js', 'arena.css',
     'sea-water.js', 'street-walls.js', 'floripa-bridges.js', 'floripa-landmarks.js', 'minhocao-structures.js', 'minhocao-landmarks.js', 'pampulha-estadios.js', 'pampulha-igrejinha.js', 'pampulha-fauna.js', 'pampulha-guanabara.js', 'pampulha-niemeyer.js', 'pampulha-orla.js', 'pampulha-barragem.js', 'pampulha-parques.js', 'pampulha-pontes.js', 'pampulha-futebol.js', 'futebol.css', 'flying-saucer.js', 'branch-layout.js', 'branch-scenery.js', 'branch-lane.js', 'closed-roads.js',

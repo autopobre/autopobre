@@ -39,6 +39,7 @@ testar_grid_fusca
 testar_clima
 testar_arena_drift
 testar_muro_curvas
+testar_margens
 testar_passeio_cidade
 testar_ramal
 testar_a_pe

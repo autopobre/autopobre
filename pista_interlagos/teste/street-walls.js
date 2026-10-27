@@ -3,6 +3,7 @@ import {TestCar,guardrailClearance,guardrailSections,onDeck,inTunnel} from './ph
 import {canvasTexture} from './pit-textures.js';
 import {splitByCells} from './perf-probe.js';
 import {branchWallLines} from './branch-layout.js';
+import {LineFit} from './track-verge.js';
 
 // The walls of a street circuit (Floripa, meta.barrier 'street'): a line of concrete New Jersey blocks on each side,
 // set a few decimetres off the asphalt (wall_right_m / wall_left_m, physics.js guardrailClearance), with a catch fence
@@ -29,8 +30,8 @@ const CAP=[[0,1,7],[1,6,7],[1,2,6],[2,5,6],[2,3,5],[3,4,5]];
 // their own beside it. Stations every metre on a street circuit (a block is three), at every track sample (2 m) for the
 // rails (node: the sample's index), and at the section's two ends; each with the foot of the barrier's face (width/2 +
 // guardrailClearance off the asphalt, along the track's normal made unit again: interpolated between two samples of a
-// bend it is short, and the walls wobbled in by up to 7 cm at every other station of a hairpin), the ground there (z)
-// and the outward unit vector (ox, oy).
+// bend it is short, and the walls wobbled in by up to 7 cm at every other station of a hairpin), the ground there (z;
+// along a steel rail fitted over a few metres, steadyRail) and the outward unit vector (ox, oy).
 const lineCache=new WeakMap();
 export function barrierLines(data){
  if(lineCache.has(data))return lineCache.get(data);
@@ -44,13 +45,31 @@ export function barrierLines(data){
   else{at.push({s:from});a.forEach((p,k)=>{if(p[0]>from&&p[0]<to)at.push({s:p[0],node:k});});at.push({s:to});}
   // (A station at the lap's end is the lap's start: p[0] is 0 there, and a lap-long barrier closes on itself.)
   const stations=at.map(({s,node})=>{
-   const p=point(s),t=Math.hypot(p[7],p[8])||1,tx=p[7]/t,ty=p[8]/t,off=side*(p[4]/2+guardrailClearance(data,p[0],side)),x=p[1]-ty*off,y=p[2]+tx*off;
+   // (Its clearance at s, inside the section: at the lap's end point(L) is the lap's first sample, whose s is 0.)
+   const p=point(s),t=Math.hypot(p[7],p[8])||1,tx=p[7]/t,ty=p[8]/t,off=side*(p[4]/2+guardrailClearance(data,Math.min(s,to-1e-6),side)),x=p[1]-ty*off,y=p[2]+tx*off;
    probe.index=Math.min(N-1,Math.floor(p[0]/L*N));
    return {s,node,p,x,y,z:probe.sample(x,y).z,ox:-ty*side,oy:tx*side};
   });
-  out[side].push({side,from,to,stations:untangle(stations)});
+  out[side].push({side,from,to,stations:street?untangle(stations):steadyRail(untangle(stations),Math.max(RAIL_SMOOTH,data.terrain?.step/2||0),from<=0&&to>=L?L:0)});
  }
  lineCache.set(data,out);return out;
+}
+// A steel rail is bolted to posts on the ground, a straight beam between two, never a ribbon laid on every facet of the
+// terrain grid under it (a line crossing the cells of a 4 m grid, or Curvelo's 10 m one, runs over a facet's fold every
+// few metres): its height is the ground's along it, fitted over RAIL_SMOOTH metres (a line, so the end of a stretch keeps
+// its slope), and where the verges are smooth (track-verge.js) it stays within centimetres of them; its posts reach a
+// metre into the ground either way. loop: the lap's length when the rail runs the whole lap, closing on itself.
+const RAIL_SMOOTH=3;
+function steadyRail(st,sigma,loop){
+ const n=st.length,apart=(i,j)=>{const d=st[j].s-st[i].s;return loop?d-Math.round(d/loop)*loop:d;};
+ return st.map((q,i)=>{
+  const fit=new LineFit();fit.add(0,q.z,1);
+  for(const dir of [-1,1])for(let k=1;k<n;k++){
+   const j=loop?((i+dir*k)%n+n)%n:i+dir*k;if(j<0||j>=n)break;
+   const d=apart(i,j);if(Math.abs(d)>3*sigma)break;fit.add(d,st[j].z,Math.exp(-d*d/(2*sigma*sigma)));
+  }
+  return {...q,z:fit.at0()};
+ });
 }
 // On the inside of a hairpin whose radius is under the barrier's offset (a rail 5 m off the asphalt round Interlagos'
 // Junção, Piracicaba's hairpin) the offset line runs backward for a few stations and crosses itself: a loop of rail
