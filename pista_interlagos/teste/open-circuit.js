@@ -55,24 +55,21 @@ export function terrainMesh(data,heights,material){
  return group;
 }
 
-export async function createOpenCircuit(data,roadSurface,{heights,textures,field,groundUrl,label,mobile=false,city=null}){
- const root=new THREE.Group();root.name='Circuito_'+data.meta.id;
- const loader=new THREE.TextureLoader(),ground=await loader.loadAsync(groundUrl);ground.colorSpace=THREE.SRGBColorSpace;ground.anisotropy=4;
- const cover=coverTexture(data.scenery.cover,{city:!!data.meta.street}),groundMaterial=terrainMaterial(textures,field,{ortho:ground,cover,mobile,steep:!!data.scenery.cliff,city:city&&{...city,asphalt:roadSurface.material.map}});groundMaterial.userData.terrain=true;
- // Kept on the material too, so clearing the circuit (main.js) disposes it with the map.
- groundMaterial.coverMap=cover;
- // On a plateau's rim (Chapada dos Sonhos, cliff-scenery.js) no grid triangle leans across the lip: the wall and the
- // ground along its top are drawn apart.
- root.add(terrainMesh(data,data.scenery.cliff?cliffShownHeights(data,heights):heights,groundMaterial));
+// The lap's asphalt and its two edge lines, from the track's samples as track-verge.js leaves them: the open circuits'
+// and Interlagos' (its GLB's ribbon and lines, baked from the samples as surveyed, are retired: main.js flattenStatic).
+// drop: the asphalt under the plane the car drives on (physics.js sample), 2 cm, 1.5 as Interlagos' GLB drew it; edge:
+// the line's two offsets in from the asphalt's edge. road(x, y, i): the asphalt's height there, beside station i.
+export function lapRoad(data,roadSurface,textures,{drop=.02,edge=[.32,.18]}={}){
+ const root=new THREE.Group();root.name='Asfalto_volta';
  const probe=new TestCar(data),a=data.samples,n=a.length,L=data.meta.reconstructed_xy_m;
- const cliff=data.scenery.cliff?createCliff(data,{groundMaterial,probe,mobile}):null;if(cliff)root.add(cliff.root);
- // Road height at (x, y): the plane the car drives on, drawn 3.5 cm above it like the GLB asphalt.
- const road=(x,y,i)=>{probe.index=i;return probe.sample(x,y,i).z-.02;};
+ const road=(x,y,i)=>{probe.index=i;return probe.sample(x,y,i).z-drop;};
  function strip(from,to,material,name,lift=0,{s0=-Infinity,s1=Infinity,cut=null}={}){
   const positions=[],uv=[],indices=[];
   for(let k=0;k<=n;k++){
-   const i=k%n,p=a[i];
-   for(const f of [from,to]){const d=f(p),x=p[1]+p[9]*d,y=p[2]+p[10]*d;positions.push(x,road(x,y,i)+lift,-y);uv.push(d/2,(k===n?L:p[0])/2);}
+   const i=k%n,p=a[i],d0=from(p),d1=to(p);
+   // Right to left across the lap, whichever way the offsets came: the faces then look up (the right edge line, from
+   // -(w/2 - .32) to -(w/2 - .18), was wound the other way, facing down and culled: drawn on one side only).
+   for(const d of d0<=d1?[d0,d1]:[d1,d0]){const x=p[1]+p[9]*d,y=p[2]+p[10]*d;positions.push(x,road(x,y,i)+lift,-y);uv.push(d/2,(k===n?L:p[0])/2);}
    if(k&&a[k-1][0]>=s0&&a[k-1][0]<=s1&&!cut?.(k-1)){const b=(k-1)*2;indices.push(b,b+2,b+1,b+1,b+2,b+3);}
   }
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();
@@ -84,7 +81,22 @@ export async function createOpenCircuit(data,roadSurface,{heights,textures,field
  // Where a branch road leaves or rejoins (data.branches) the edge line on its side is left out across the mouth: the
  // branch's own lines and the dashed one there are branch-scenery.js's.
  const cuts=lapLineCuts(data);
- for(const side of [-1,1])strip(p=>side*(p[4]/2-.32),p=>side*(p[4]/2-.18),paint,side<0?'Linha_borda_direita':'Linha_borda_esquerda',.006,{cut:cuts.some(c=>c.side===side)?i=>cuts.some(c=>c.side===side&&i>=c.i0&&i<c.i1):null});
+ for(const side of [-1,1])strip(p=>side*(p[4]/2-edge[0]),p=>side*(p[4]/2-edge[1]),paint,side<0?'Linha_borda_direita':'Linha_borda_esquerda',.006,{cut:cuts.some(c=>c.side===side)?i=>cuts.some(c=>c.side===side&&i>=c.i0&&i<c.i1):null});
+ return {root,road};
+}
+
+export async function createOpenCircuit(data,roadSurface,{heights,textures,field,groundUrl,label,mobile=false,city=null}){
+ const root=new THREE.Group();root.name='Circuito_'+data.meta.id;
+ const loader=new THREE.TextureLoader(),ground=await loader.loadAsync(groundUrl);ground.colorSpace=THREE.SRGBColorSpace;ground.anisotropy=4;
+ const cover=coverTexture(data.scenery.cover,{city:!!data.meta.street}),groundMaterial=terrainMaterial(textures,field,{ortho:ground,cover,mobile,steep:!!data.scenery.cliff,city:city&&{...city,asphalt:roadSurface.material.map}});groundMaterial.userData.terrain=true;
+ // Kept on the material too, so clearing the circuit (main.js) disposes it with the map.
+ groundMaterial.coverMap=cover;
+ // On a plateau's rim (Chapada dos Sonhos, cliff-scenery.js) no grid triangle leans across the lip: the wall and the
+ // ground along its top are drawn apart.
+ root.add(terrainMesh(data,data.scenery.cliff?cliffShownHeights(data,heights):heights,groundMaterial));
+ const probe=new TestCar(data),a=data.samples,n=a.length,L=data.meta.reconstructed_xy_m;
+ const cliff=data.scenery.cliff?createCliff(data,{groundMaterial,probe,mobile}):null;if(cliff)root.add(cliff.root);
+ const lap=lapRoad(data,roadSurface,textures),road=lap.road;root.add(lap.root);
  // Timing line: two rows of checks across the asphalt at s = 0.
  const check=canvasTexture((ctx,w,h)=>{const cells=16;for(let r=0;r<2;r++)for(let c=0;c<cells;c++){ctx.fillStyle=(r+c)%2?'#141414':'#f1eee4';ctx.fillRect(c*w/cells,r*h/2,w/cells,h/2);}},512,64);
  const p0=a[0],w0=p0[4],line=new THREE.Mesh(new THREE.PlaneGeometry(w0-.4,1.3),new THREE.MeshStandardMaterial({name:'Linha_chegada',map:check,roughness:.7,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3}));

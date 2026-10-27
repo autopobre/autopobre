@@ -21,6 +21,7 @@ import {ENGINE_PARTS} from '../../pista_interlagos/teste/story-career.js';
 import {readGhost} from '../src/recordes.js';
 import {LINE_TIMES} from '../src/pisos.js';
 import {ENVELOPES} from '../src/envelope.js';
+import {smoothVerges} from '../../pista_interlagos/teste/track-verge.js';
 import {dynamicsProblem,dynamicsScore,BUDGET} from '../src/dinamica.js';
 
 const REAL=process.env.FANTASMAS_REAIS??null;
@@ -28,8 +29,9 @@ const DT=1/120,FIELDS=7,PUSH=/motor/,TURN=/aderência/,FAST=/velocidade máxima/
 const BODIES={opala:OPALA_BODY,fusca:FUSCA_BODY},NAMES={opala:'Opala',fusca:'Fusca'};
 let passed=0;
 const check=(name,fn)=>{fn();passed++;console.log('ok',name);};
+// The tracks as the game races them (track-verge.js smoothVerges, main.js).
 const tracks=new Map(),track=id=>{
- if(!tracks.has(id)){const data=id==='curvelo'?createCurveloData():JSON.parse(fs.readFileSync(new URL(`../../pista_interlagos/dados/${CIRCUITS[id].data??'pista.json'}`,import.meta.url)));data.meta.id=id;tracks.set(id,data);}
+ if(!tracks.has(id)){const data=id==='curvelo'?createCurveloData():JSON.parse(fs.readFileSync(new URL(`../../pista_interlagos/dados/${CIRCUITS[id].data??'pista.json'}`,import.meta.url)));data.meta.id=id;smoothVerges(data);tracks.set(id,data);}
  return tracks.get(id);
 };
 const served=lap=>readGhost(encodeGhost(lap));               // as the game sends it (a long lap thinned) and the server reads it

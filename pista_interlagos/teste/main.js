@@ -7,7 +7,7 @@ import {CIRCUITS,selectedCircuit,mapProjection,fixedLaps,raceLaps} from './circu
 import {tankFor} from './fuel.js';
 import {createCurveloData} from './curvelo-data.js';
 import {createCurveloScene} from './curvelo-scene.js';
-import {createOpenCircuit} from './open-circuit.js';
+import {createOpenCircuit,lapRoad} from './open-circuit.js';
 import {RaceResults,resultRows} from './race-results.js';
 import {Championship,calendarsFor,championshipCalendar,titleStakes} from './championship.js';
 import {renderChampionshipPanel,ChampionshipDialog} from './championship-board.js';
@@ -897,9 +897,10 @@ const CAMERA_KEYS=Object.fromEntries(cameraModes.flatMap((view,i)=>[[`Digit${i+1
 const wheelForward=new THREE.Vector3(),wheelUp=new THREE.Vector3(0,1,0),wheelAxle=new THREE.Vector3(),wheelMatrix=new THREE.Matrix4(),wheelTurn=new THREE.Quaternion(),wheelSpin=new THREE.Quaternion(),axleAxis=new THREE.Vector3(0,0,1);
 function status(text){$('status').textContent=text;$('status').classList.toggle('hidden',!text);}
 function flattenStatic(root){
- // The GLB's walls, kerbs and step-only grandstands are rebuilt from the data (Curvelo's stands stay).
+ // The GLB's walls, kerbs and step-only grandstands are rebuilt from the data (Curvelo's stands stay), and so are its
+ // asphalt ribbon and edge lines (open-circuit.js lapRoad: on the plan track-verge.js smoothed, not the survey's zigzag).
  // GLTFLoader drops the dot from Blender's numbered names: Arquibancada.001 arrives as Arquibancada001.
- const retired=[];root.traverse(ob=>{if(/^(Muro_protecao|Zebras_|Arquibancada\d*$)/.test(ob.name))retired.push(ob);});retired.forEach(ob=>ob.removeFromParent());
+ const retired=[];root.traverse(ob=>{if(/^(Muro_protecao|Zebras_|Arquibancada\d*$|Circuito_4309m_colisao$|Linha_limite_)/.test(ob.name))retired.push(ob);});retired.forEach(ob=>ob.removeFromParent());
  root.updateMatrixWorld(true);const batches=new Map(),structures=new Map(),standTops=[];
  root.traverse(ob=>{if(!ob.isMesh||ob.isInstancedMesh)return;
   if(Array.isArray(ob.material)){ob.receiveShadow=true;return;}
@@ -2627,6 +2628,8 @@ async function loadCircuit(){
   if(landscape.digLakeBeds(groundFit.heights))track.scene.traverse(o=>{if(o.material?.userData.terrain)applyGroundHeights(o.geometry,data,groundFit.heights);});
   if(landscape.stats.water){lakeContact=new LakeContact({water:landscape.water,mobile:scenery.mobile,onSound:(name,options)=>carAudio.effect(name,options)});scene.add(lakeContact.mesh);}
   const legacyStands=flattenStatic(track.scene).length;
+  // Its asphalt and edge lines as the GLB drew them (1.5 cm under the plane the car drives on, the lines 15 to 30 cm in).
+  const lap=lapRoad(data,roadSurface,terrainTextures,{drop:.015,edge:[.30,.15]});scene.add(lap.root);fixed.push(lap.root);
   const stands=createGrandstands(data,terrainTextures,(x,y)=>groundHeight(data.terrain,groundFit.heights,x,y));scene.add(stands.root);fixed.push(stands.root);cameraObstacles.push(...stands.obstacles);standTops=stands.rows;
   Object.assign(landscape.stats,{ground:groundFit.stats,stands:stands.stats,legacyStands});
  }

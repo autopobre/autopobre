@@ -161,7 +161,7 @@ await check('how much each pilot drives: races (each ticket), laps, days, the ci
  const list=(await boss.get('/api/admin/usuarios')).usuarios,a=list.find(u=>u.apelido==='Ana Volta');
  assert.ok(a.corridas>=4,`a race each time on track (${a.corridas})`);assert.equal(a.corridas,count('corridas',anaId));assert.equal(a.voltas,count('voltas',anaId));
  assert.equal(a.dias,1);assert.deepEqual(a.pistas.map(p=>[p.circuito,p.corridas,p.voltas]),[['interlagos',a.corridas,a.voltas]]);
- // Her checked best (119 s, the reviewed lap) over the Opala's driving line at Interlagos (113.285 s): 105.0%.
+ // Her checked best (119 s, the reviewed lap) over the Opala's driving line at Interlagos (113.362 s): 105.0%.
  assert.deepEqual(a.ritmo,{valor:1.05,circuito:'interlagos',carro:'opala'});assert.deepEqual(a.pistas[0].melhor.opala,{ms:119000,ritmo:1.05});
  await pilot('400000000000000000014','So Login');const idle=(await boss.get('/api/admin/usuarios')).usuarios.find(u=>u.apelido==='So Login');
  assert.deepEqual([idle.corridas,idle.voltas,idle.dias,idle.pistas,idle.ritmo],[0,0,0,[],null],'signed in, never on track');

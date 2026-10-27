@@ -1,9 +1,17 @@
 import {clamp,wrap,guardrailClearance} from './physics.js';
+import {pitGeometry,locatePit} from './pit-lane.js';
 
 // The verges of a circuit made regular (user, 2026-10-26: the guardrails rose and fell with every hump of the terrain, "como
 // se eles estivessem corretos em um chão regular", and some bends had a notch in the asphalt's edge, "curvas irregulares que
 // parece que foram feitas erradas"). Run once on the track data as it loads (main.js), before anything reads it: the
 // physics, the drawn ground and everything set on it then meet the same verges.
+// - The lap's plan (smoothPlan), on the circuits in PLAN (Interlagos, 2026-10-27: in its light bends "a borda da curva está
+//   toda irregular!! Um zigue-zague praticamente"). The painted lines it was traced from on the 20 cm orthophoto
+//   (refinar_tracado.py) left the centre line's curvature swinging every 15 to 20 m and the width wobbling by centimetres:
+//   in perspective, a zigzag along both edges. The curvature is smoothed along the lap (less in a tight bend: a hairpin
+//   keeps its shape) and the centre line moved sideways to it, the width smoothed too; each edge moves a few centimetres,
+//   0.45 m at most, onto the painted line the photo shows, and beside a pit lane's paved band it stays where surveyed. Its
+//   asphalt is drawn from the samples then (open-circuit.js lapRoad; Interlagos' baked GLB ribbon retired, main.js).
 // - The ground beside the lap (smoothGround): the terrain grid from under the asphalt out past the barrier's line, smoothed
 //   along the lap. Each node takes the Gaussian mean (VERGE_SIGMA) of the survey at its own offset from the centre line up
 //   and down the lap, so a bank or a ditch beside the road runs on as one and the bumps of the grid (a LiDAR return off a
@@ -11,15 +19,114 @@ import {clamp,wrap,guardrailClearance} from './physics.js';
 //   wide. Not on a street circuit (its walls stand on the city's own flattened sidewalks, gerar_pista.aplainar_ruas),
 //   nor round the pit lane and its garages, a closed road's asphalt (Velocitta) or a plateau's rim (Chapada): those keep
 //   the survey.
-// - The lap's width (smoothWidth), where the asphalt is drawn from the track file (not Interlagos' Blender road, not a
-//   city's streets): a width that changes faster than WIDTH_SLOPE is eased, only ever narrower (the generator's caps
+// - The kerbs (fillKerbs): a hole in a run of kerb filled (2026-10-27: "a zebra começa e depois termina com um buraco no
+//   meio, principalmente em curvas!! Faz a zebra toda nas curvas quando tiver buraco").
+// - The lap's width (smoothWidth), on the circuits built from open data (not Interlagos, whose plan is smoothed whole; not
+//   a city's streets): a width that changes faster than WIDTH_SLOPE is eased, only ever narrower (the generator's caps
 //   against a hairpin's fold or a neighbouring stretch hold). Piracicaba's Junção went from 13.6 to 15.7 m in 4 m: a notch.
 const done=new WeakMap();
 export function smoothVerges(data){
- if(!done.has(data))done.set(data,{width:smoothWidth(data),ground:smoothGround(data)});
+ if(!done.has(data)){const plan=smoothPlan(data);done.set(data,{plan,width:smoothWidth(data),ground:smoothGround(data),kerbs:fillKerbs(data)});}
  return done.get(data);
 }
 const smooth=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
+
+// Plan: the curvature's Gaussian mean along the lap over PLAN_SIGMA metres, divided by 1 + (b/PLAN_TIGHT)² where the bend
+// b (|curvature| over PLAN_BEND metres) is tight; the width's over PLAN_WIDTH. The centre line's move e (along its left
+// normal) gives a curvature of about c + e'' + c²·e: brought to the smoothed one by least squares, with PLAN_STIFF·e²
+// against drifting off (its long waves stay as surveyed). An edge that comes within PLAN_PIT_GAP metres of a pit lane's
+// paved band stays put, its change fading in over PLAN_PIT_FADE metres of lap. A circuit joins PLAN once its edges are
+// checked against its own photo.
+export const PLAN=new Set(['interlagos']);
+export const PLAN_SIGMA=8,PLAN_TIGHT=.03,PLAN_BEND=10,PLAN_WIDTH=6,PLAN_STIFF=1e-4,PLAN_PIT_GAP=3,PLAN_PIT_FADE=25;
+function smoothPlan(data){
+ if(!PLAN.has(data.meta.id))return null;
+ const A=data.samples,n=A.length,L=data.meta.reconstructed_xy_m,apart=(i,j)=>{const d=A[j][0]-A[i][0];return d-Math.round(d/L)*L;};
+ const lapMean=(v,sigma)=>v.map((_,i)=>{
+  const sg=typeof sigma==='function'?sigma(i):sigma;let sum=v[i],weight=1;
+  for(const dir of [-1,1])for(let k=1;k<n;k++){const j=((i+dir*k)%n+n)%n,d=apart(i,j);if(Math.abs(d)>3*sg)break;const g=Math.exp(-d*d/(2*sg*sg));sum+=g*v[j];weight+=g;}
+  return sum/weight;
+ });
+ const ds=A.map((p,i)=>{const q=A[(i+1)%n];return Math.hypot(q[1]-p[1],q[2]-p[2])||1e-3;});
+ const curve=A.map((p,i)=>{const a=A[(i-1+n)%n],b=A[(i+1)%n],ax=p[1]-a[1],ay=p[2]-a[2],bx=b[1]-p[1],by=b[2]-p[2];return 2*Math.atan2(ax*by-ay*bx,ax*bx+ay*by)/(ds[(i-1+n)%n]+ds[i]);});
+ const bend=lapMean(curve.map(Math.abs),PLAN_BEND),target=lapMean(curve,i=>Math.max(1,PLAN_SIGMA/(1+(bend[i]/PLAN_TIGHT)**2)));
+ // The curvature's change from e (the stencil M) and its transpose; conjugate gradients on (MᵀM + PLAN_STIFF) e = Mᵀ r.
+ const M=(e,o)=>{for(let i=0;i<n;i++){const a=(i-1+n)%n,b=(i+1)%n;o[i]=2*((e[b]-e[i])/ds[i]-(e[i]-e[a])/ds[a])/(ds[a]+ds[i])+curve[i]*curve[i]*e[i];}return o;};
+ const MT=(v,o)=>{o.fill(0);for(let i=0;i<n;i++){const a=(i-1+n)%n,b=(i+1)%n,c=2/(ds[a]+ds[i]);o[b]+=v[i]*c/ds[i];o[a]+=v[i]*c/ds[a];o[i]+=v[i]*(curve[i]*curve[i]-c/ds[i]-c/ds[a]);}return o;};
+ const tmp=new Float64Array(n),normal=(e,o)=>{MT(M(e,tmp),o);for(let i=0;i<n;i++)o[i]+=PLAN_STIFF*e[i];return o;};
+ const e=new Float64Array(n),res=MT(Float64Array.from(target,(c,i)=>c-curve[i]),new Float64Array(n)),dir=Float64Array.from(res),step=new Float64Array(n);
+ const dot=(u,v)=>{let s=0;for(let i=0;i<n;i++)s+=u[i]*v[i];return s;};
+ let rr=dot(res,res),iterations=0;const start=rr;
+ while(rr>1e-14*start&&iterations<4*n){
+  normal(dir,step);const k=rr/dot(dir,step);for(let i=0;i<n;i++){e[i]+=k*dir[i];res[i]-=k*step[i];}
+  const next=dot(res,res);for(let i=0;i<n;i++)dir[i]=res[i]+next/rr*dir[i];rr=next;iterations++;
+ }
+ const w0=A.map(p=>p[4]),w=lapMean(w0,PLAN_WIDTH),keep=[-1,1].map(side=>pitKeep(data,side));
+ // Each edge's move (along the left normal): the left one e + dw/2, the right one e - dw/2; one kept by the pit lane stays.
+ let most=0;
+ for(let i=0;i<n;i++){
+  const dw=w[i]-w0[i],left=(e[i]+dw/2)*keep[1][i],right=(e[i]-dw/2)*keep[0][i];
+  e[i]=(left+right)/2;w[i]=w0[i]+left-right;most=Math.max(most,Math.abs(left),Math.abs(right));
+ }
+ const x=A.map((p,i)=>p[1]+p[9]*e[i]),y=A.map((p,i)=>p[2]+p[10]*e[i]);
+ A.forEach((p,i)=>{
+  const a=(i-1+n)%n,b=(i+1)%n,tx=x[b]-x[a],ty=y[b]-y[a],t=Math.hypot(tx,ty)||1;
+  // (The centre's height read on the road's plane where it moved: the surface stays where it was.)
+  p[3]+=p[5]*e[i];p[1]=x[i];p[2]=y[i];p[4]=w[i];p[7]=tx/t;p[8]=ty/t;p[9]=-ty/t;p[10]=tx/t;
+ });
+ return {iterations,edge:+most.toFixed(3)};
+}
+// Kerbs (the flags each station carries, 13 right and 14 left, read off the photo: track-surface.js createCurbs draws them,
+// kerb-contact.js feels them): between two runs of kerb on the same side, a hole of KERB_HOLE metres or less is filled,
+// and in a bend one of KERB_BEND_GAP or less (the lap turning KERB_BEND_TURN degrees or more over it and KERB_PAD metres
+// either side): a block or two the photo's reading missed, a kerb's stretch it read off the edge. Not on a city's
+// streets (a side street's mouth is a real gap), nor where the pit lane's paved band or a closed road's asphalt reaches
+// the edge (the cars cross there).
+export const KERB_HOLE=16,KERB_BEND_GAP=50,KERB_BEND_TURN=10,KERB_PAD=10;
+function fillKerbs(data){
+ const A=data.samples,n=A.length,L=data.meta.reconstructed_xy_m;
+ if(data.meta.street||!(A[0]?.length>14))return null;
+ const geo=data.pit?pitGeometry(data):null,heading=q=>{const p=A[((q%n)+n)%n];return Math.atan2(p[8],p[7]);};
+ const roads=(data.closed_roads??[]).map(road=>{const c=Object.fromEntries(road.columns.map((k,i)=>[k,i]));return road.samples.map(p=>[p[c.x],p[c.y],p[c.width]/2]);});
+ const crossed=(i,side)=>{
+  const p=A[i];
+  for(const gap of [0,1]){
+   const d=side*(p[4]/2+gap),x=p[1]+p[9]*d,y=p[2]+p[10]*d,q=geo&&locatePit(geo,x,y);if(q&&q.d>=q.lo-.5&&q.d<=q.hi+.5)return true;
+   for(const road of roads)for(const [rx,ry,half] of road)if(Math.hypot(x-rx,y-ry)<half+3)return true;
+  }
+  return false;
+ };
+ const pad=Math.round(KERB_PAD/(L/n));let holes=0,metres=0;
+ for(const [side,col] of [[-1,13],[1,14]]){
+  const on=A.map(p=>p[col]>.5);if(!on.some(Boolean)||on.every(Boolean))continue;
+  for(let a=0;a<n;a++){
+   // a: the last kerbed station before a hole, j: the first after it, k stations between.
+   if(!on[a]||on[(a+1)%n])continue;
+   let j=(a+1)%n,k=0;while(!on[j]){j=(j+1)%n;k++;}
+   const gap=((A[j][0]-A[a][0])%L+L)%L;if(gap>KERB_BEND_GAP)continue;
+   let turn=0;for(let m=-pad;m<=k+pad;m++)turn+=wrap(heading(a+m+1)-heading(a+m));
+   if(gap>KERB_HOLE&&Math.abs(turn)*180/Math.PI<KERB_BEND_TURN)continue;
+   let free=true;for(let m=1;m<=k&&free;m++)free=!crossed((a+m)%n,side);
+   if(!free)continue;
+   for(let m=1;m<=k;m++)A[(a+m)%n][col]=1;
+   holes++;metres+=gap;
+  }
+ }
+ return {holes,metres:Math.round(metres)};
+}
+// 1 where the lap's edge on that side may move, 0 where it comes within PLAN_PIT_GAP of the pit lane's paved band, faded
+// between by lap distance.
+function pitKeep(data,side){
+ const A=data.samples,n=A.length,L=data.meta.reconstructed_xy_m,geo=data.pit?pitGeometry(data):null,far=new Float64Array(n).fill(Infinity);
+ if(!geo)return far.fill(1);
+ A.forEach((p,i)=>{for(let gap=0;gap<=PLAN_PIT_GAP;gap++){const d=side*(p[4]/2+gap),q=locatePit(geo,p[1]+p[9]*d,p[2]+p[10]*d);if(q&&q.d>=q.lo-.5&&q.d<=q.hi+.5){far[i]=0;break;}}});
+ const gap=i=>{const d=(i+1<n?A[i+1][0]:L)-A[i][0];return d>0?d:1;};
+ for(let pass=0;pass<2;pass++){
+  for(let k=1;k<=n;k++){const i=k%n,j=k-1;far[i]=Math.min(far[i],far[j]+gap(j));}
+  for(let k=n-1;k>=0;k--){const j=(k+1)%n;far[k]=Math.min(far[k],far[j]+gap(k));}
+ }
+ return far.map(d=>smooth(d/PLAN_PIT_FADE));
+}
 // A straight line z = a + b·x fitted to weighted points, read at x = 0 (the mean where the points stand on one side only).
 export class LineFit{
  constructor(){this.s0=this.s1=this.s2=this.t0=this.t1=0;}

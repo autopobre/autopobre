@@ -14,9 +14,11 @@ import {fieldRoster} from '../pista_interlagos/teste/race-roster.js';
 import {ENGINE_PARTS} from '../pista_interlagos/teste/story-career.js';
 import {CIRCUITS} from '../pista_interlagos/teste/circuits.js';
 import {createCurveloData} from '../pista_interlagos/teste/curvelo-data.js';
+import {smoothVerges} from '../pista_interlagos/teste/track-verge.js';
 
 const G=9.81,DT=1/120,STEP=.25,NONE={left:0,right:0,throttle:0,brake:0,reverse:0,handbrake:0};
-const load=id=>{const data=id==='curvelo'?createCurveloData():JSON.parse(fs.readFileSync(new URL(`../pista_interlagos/dados/${CIRCUITS[id].data??'pista.json'}`,import.meta.url)));data.meta.id=id;return data;};
+// The track as the game races it (track-verge.js smoothVerges, main.js).
+const load=id=>{const data=id==='curvelo'?createCurveloData():JSON.parse(fs.readFileSync(new URL(`../pista_interlagos/dados/${CIRCUITS[id].data??'pista.json'}`,import.meta.url)));data.meta.id=id;smoothVerges(data);return data;};
 const interlagos=load('interlagos'),profiles=Object.keys(CIRCUITS).map(id=>[id,load(id).samples]);
 const check=(ok,what)=>{if(!ok)throw new Error('gerar_envelope: '+what);};
 const forward=c=>c.vx*Math.cos(c.heading)+c.vy*Math.sin(c.heading);

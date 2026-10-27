@@ -10,8 +10,10 @@ import {CIRCUITS} from '../../pista_interlagos/teste/circuits.js';
 import {createCurveloData} from '../../pista_interlagos/teste/curvelo-data.js';
 import {GhostRecorder,GhostLap} from '../../pista_interlagos/teste/ghost-lap.js';
 import {LapInputs} from '../../pista_interlagos/teste/comandos-volta.js';
+import {smoothVerges} from '../../pista_interlagos/teste/track-verge.js';
 
-export const loadCircuit=id=>{const data=id==='curvelo'?createCurveloData():JSON.parse(fs.readFileSync(new URL(`../../pista_interlagos/dados/${CIRCUITS[id].data??'pista.json'}`,import.meta.url)));data.meta.id=id;return data;};
+// The track as the game races it (track-verge.js smoothVerges, main.js).
+export const loadCircuit=id=>{const data=id==='curvelo'?createCurveloData():JSON.parse(fs.readFileSync(new URL(`../../pista_interlagos/dados/${CIRCUITS[id].data??'pista.json'}`,import.meta.url)));data.meta.id=id;smoothVerges(data);return data;};
 const driven=new Map();
 // The first `count` laps from the grid on circuit id: [{lap: {time, rate, values, brakes}, inputs, commands}].
 export function aiLaps(id,count=2){

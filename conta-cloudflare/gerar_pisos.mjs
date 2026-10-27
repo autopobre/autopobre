@@ -8,8 +8,10 @@ import {drivingLine} from '../pista_interlagos/teste/driving-line.js';
 import {OPALA_MECHANICS,FUSCA_MECHANICS} from '../pista_interlagos/teste/physics.js';
 import {CIRCUITS} from '../pista_interlagos/teste/circuits.js';
 import {createCurveloData} from '../pista_interlagos/teste/curvelo-data.js';
+import {smoothVerges} from '../pista_interlagos/teste/track-verge.js';
 
-const load=id=>{const data=id==='curvelo'?createCurveloData():JSON.parse(fs.readFileSync(new URL(`../pista_interlagos/dados/${CIRCUITS[id].data??'pista.json'}`,import.meta.url)));data.meta.id=id;return data;};
+// The track as the game races it (track-verge.js smoothVerges, main.js).
+const load=id=>{const data=id==='curvelo'?createCurveloData():JSON.parse(fs.readFileSync(new URL(`../pista_interlagos/dados/${CIRCUITS[id].data??'pista.json'}`,import.meta.url)));data.meta.id=id;smoothVerges(data);return data;};
 const CARS={opala:OPALA_MECHANICS,fusca:FUSCA_MECHANICS},out=Object.fromEntries(Object.keys(CARS).map(car=>[car,{}]));
 for(const id of Object.keys(CIRCUITS)){
  const data=load(id),row=[id.padEnd(12)];

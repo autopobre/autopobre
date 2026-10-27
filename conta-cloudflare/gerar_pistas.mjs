@@ -19,10 +19,12 @@ import {createCurveloData} from '../pista_interlagos/teste/curvelo-data.js';
 import {guardrailPresent,guardrailClearance,roamZoneAt} from '../pista_interlagos/teste/physics.js';
 import {pitLane} from '../pista_interlagos/teste/pit-lane.js';
 import {cliffEdge} from '../pista_interlagos/teste/cliff-edge.js';
+import {smoothVerges} from '../pista_interlagos/teste/track-verge.js';
 
 const STEP=5,LANE_STEP=4,ZONE_CELL=8,ZONE_PAD=4;
 const OPEN=250,WALL_SLACK=2,CLIFF_SLACK=4;
-export const load=id=>{const data=id==='curvelo'?createCurveloData():JSON.parse(fs.readFileSync(new URL(`../pista_interlagos/dados/${CIRCUITS[id].data??'pista.json'}`,import.meta.url)));data.meta.id=id;return data;};
+// The track as the game races it: its verges and plan made regular as it loads (track-verge.js smoothVerges, main.js).
+export const load=id=>{const data=id==='curvelo'?createCurveloData():JSON.parse(fs.readFileSync(new URL(`../pista_interlagos/dados/${CIRCUITS[id].data??'pista.json'}`,import.meta.url)));data.meta.id=id;smoothVerges(data);return data;};
 
 const dm=v=>Math.round(v*10);
 // Rows of whole numbers as steps from the row before (the first from zero), zigzag varints, base64.
