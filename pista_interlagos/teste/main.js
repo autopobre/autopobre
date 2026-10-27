@@ -1037,7 +1037,7 @@ function drawMap(){
  if(arenaMode){arenaMode.drawMap(ctx,projectMap,car);return;}
  const xy=p=>projectMap(p[1],p[2]);
  ctx.drawImage(mapOutline(w,h),0,0);
- if(immersive&&(!immersive.active||['starting','grid','race'].includes(immersive.state.phase))){for(const [i,r] of immersive.rivals.entries()){const [x,y]=projectMap(r.car.x,r.car.y);ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);ctx.fillStyle=cssColor(r.entry.mark);ctx.fill();ctx.strokeStyle='#0c1c17';ctx.lineWidth=1.2;ctx.stroke();}}
+ if(immersive&&(!immersive.active||['starting','grid','race'].includes(immersive.state.phase))){for(const [i,r] of immersive.rivals.entries()){if(r.spectator)continue;const [x,y]=projectMap(r.car.x,r.car.y);ctx.beginPath();ctx.arc(x,y,3.5,0,Math.PI*2);ctx.fillStyle=cssColor(r.entry.mark);ctx.fill();ctx.strokeStyle='#0c1c17';ctx.lineWidth=1.2;ctx.stroke();}}
  if(pitstop){ctx.beginPath();let started=false;const nodes=data.samples.filter(p=>pitLane(data,p[0])).sort((a,b)=>pitLane(data,a[0]).u-pitLane(data,b[0]).u);for(const p of nodes){const d=pitLane(data,p[0]).offset,[x,y]=projectMap(p[1]-p[8]*d,p[2]+p[7]*d);if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);}ctx.strokeStyle='#55e0db';ctx.lineWidth=2;ctx.stroke();const [px,py]=projectMap(pitstop.anchor.x,-pitstop.anchor.z);ctx.fillStyle='#114e43';ctx.fillRect(px-9,py-21,18,16);ctx.fillStyle='#fff5a1';ctx.font='bold 13px sans-serif';ctx.textAlign='center';ctx.fillText('P',px,py-9);}
  if(data.pit){const c=data.pit.columns,x=c.indexOf('x'),y=c.indexOf('y');ctx.beginPath();data.pit.samples.forEach((p,i)=>{const [px,py]=projectMap(p[x],p[y]);i?ctx.lineTo(px,py):ctx.moveTo(px,py);});ctx.lineWidth=1.5;ctx.strokeStyle=car.surface.pit?'#55e0db':'#7fa7a0';ctx.stroke();}
  const [sx,sy]=xy(data.samples[0]);ctx.fillStyle='#ffffff';ctx.fillRect(sx-3,sy-3,6,6);
@@ -1240,7 +1240,9 @@ function watchedRival(){
 }
 function watchNext(step=1){
  if(!ready||!watchingOthers()||immersive.active)return;
- const n=immersive.visual.rivals.length+1;watched=((watched+step)%n+n)%n;
+ // (past a car out of sight: a room's host who only watches, its own or, on a guest's screen, that host's: spectator)
+ const n=immersive.visual.rivals.length+1,shown=k=>k?!immersive.rivals[k-1]?.spectator:!immersive.visual.hideOwn;
+ for(let i=0;i<n;i++){watched=((watched+step)%n+n)%n;if(shown(watched))break;}
  followInitialized=false;tvCamera?.reset();headLook.yaw=headLook.pitch=0;lookBack.reset();
  const rival=watchedRival();if(rival)watchForward.set(1,0,0).applyQuaternion(rival.obj.quaternion);
  cabinVisibility();hud();

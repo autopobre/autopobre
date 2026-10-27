@@ -205,7 +205,7 @@ export class Multiplayer {
   this.accountSeen=game.accountName?.()??null;
   this.room.start();
   // Enter gives the start too (the mouse may be captured by the track).
-  addEventListener('keydown',e=>{if(e.code==='Enter'&&this.canStart()&&!e.target.closest?.('input,select,textarea,dialog')){e.preventDefault();this.room.lightsOut();}});
+  addEventListener('keydown',e=>{if(e.code==='Enter'&&this.canStart()&&!this.startBlocked()&&!e.target.closest?.('input,select,textarea,dialog')){e.preventDefault();this.room.lightsOut();}});
   addEventListener('pagehide',()=>this.room.leave());
   // dropLine, for the checks: the line drops as a network drops it (no goodbye; net-link.js connects
   // again, after 15 s when slow).
@@ -385,6 +385,9 @@ export class Multiplayer {
  }
  // The host may give the start while its race waits (the Largar button, or Enter).
  canStart(){return this.room.role==='host'&&this.phase==='waiting'&&this.room.race?.state==='waiting';}
+ // A host who only watches waits for a pilot ready to race (the team's try, 10-27: started with the other window still on
+ // its first screen, the host raced instead, its car standing there); unticking Só assistir lets it race alone.
+ startBlocked(){return this.room.role==='host'&&!!this.room.race?.assiste&&this.readiness().ready===0;}
  go(race){
   if(!this.race||race.id!==this.race.id)return;
   this.race=race;const immersive=this.immersive;
@@ -825,7 +828,7 @@ export class Multiplayer {
   this.panel={root,role,status,list:add('ol','mp-players')};
   // The host's start, shown while its race waits (Enter does the same).
   const start=this.panel.start=add('button','mp-start');start.type='button';start.id='mpStart';start.hidden=true;
-  start.onclick=()=>{this.room.lightsOut();start.blur();};
+  start.onclick=()=>{if(!this.startBlocked())this.room.lightsOut();start.blur();};
   root.insertBefore(start,this.panel.list);
   // The host's end of the race for everyone (raceEnd), asked twice: whoever still races gets the result now.
   const end=this.panel.end=add('button','mp-end');end.type='button';end.id='mpEnd';end.hidden=true;end.onclick=()=>{this.askEnd();end.blur();};
@@ -984,8 +987,10 @@ export class Multiplayer {
   if(!p.start.hidden){
    const {guests,ready}=this.readiness(),loading=guests-ready,choosing=this.choosing(),late=loading+choosing;
    const call=this.game.meeting?.()?'Todos para os carros':'Largar';
-   p.start.textContent=!guests&&!choosing?`${call==='Largar'?'Largar sozinho':call} ↵`:late?`${call} já · ${[loading&&`${loading} carregando`,choosing&&`${choosing} escolhendo o carro`].filter(Boolean).join(', ')} ↵`:`${call} ↵`;
-   p.start.classList.toggle('mp-go',!!guests&&!late);
+   // (a host who only watches, nobody ready yet: it says what it waits for, and waits, startBlocked)
+   const blocked=this.startBlocked();p.start.disabled=blocked;
+   p.start.textContent=blocked?'Só assistir · esperando um piloto pronto':!guests&&!choosing?`${call==='Largar'?'Largar sozinho':call} ↵`:late?`${call} já · ${[loading&&`${loading} carregando`,choosing&&`${choosing} escolhendo o carro`].filter(Boolean).join(', ')} ↵`:`${call} ↵`;
+   p.start.classList.toggle('mp-go',!!guests&&!late&&!blocked);
   }
   // The held 3 says what it waits for.
   if(this.holding){const caption=document.getElementById('countdownCaption');if(caption&&caption.textContent!=='AGUARDANDO A LARGADA')caption.textContent='AGUARDANDO A LARGADA';}
@@ -1198,7 +1203,7 @@ export class Multiplayer {
   field.rivals.forEach((r,k)=>{
    const number=r.seat??r.entry.number;let ghost=false;
    // (the host's car when the host only watches: parked, out of sight and touching nothing)
-   {const away=!!this.race.assiste&&number===this.race.car,obj=immersive.visual?.rivals[k];if(obj)obj.userData.hidden=away;if(away){r.car.netGhost=true;return;}}
+   {const away=!!this.race.assiste&&number===this.race.car,obj=immersive.visual?.rivals[k];if(obj)obj.userData.hidden=away;r.spectator=away;if(away){r.car.netGhost=true;return;}}
    if(humans.has(number)&&number!==me){
     const remote=this.remotes.get(number),st=states.get(number)??{on:false,calm:null,here:false,hereCalm:null};states.set(number,st);
     if(host){
@@ -1231,7 +1236,7 @@ export class Multiplayer {
  clearGhosts(){
   for(const obj of this.immersive?.visual.rivals??[])obj.userData.hidden=false;if(this.immersive)this.immersive.visual.hideOwn=false;
   for(const [obj,g] of this.ghostCopies??[]){g.dispose();obj.userData.seeThrough=false;}this.ghostCopies?.clear();this.ghostState?.clear();this.hostGhosts?.clear();
-  for(const r of this.immersive?.field.rivals??[])r.car.netGhost=false;if(this.immersive)this.immersive.car.netGhost=false;
+  for(const r of this.immersive?.field.rivals??[]){r.car.netGhost=false;r.spectator=false;}if(this.immersive)this.immersive.car.netGhost=false;
  }
  clearPeople(){
   this.clearGhosts();

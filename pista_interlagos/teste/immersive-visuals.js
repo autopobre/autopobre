@@ -25,6 +25,8 @@ import {createFlyingParts} from './flying-parts.js';
 const HIDDEN_ON_RIVALS=['Motor_CONJUNTO','Tanque_combustivel_CONJUNTO','Interior_do_jogo'];
 // The plate over a supporter who laughed (size and colours): showDonation writes on it the gift that came in.
 const REACTION=[2.4,.45,'#203823','#c7ed9c'];
+// A rival's name tag closer to the camera than this (m) is off (updateFree): at 5 m its 2.7 m already spans half the view.
+const TAG_NEAR=5;
 // The 99's livery (by material): sponsors, logos, drivers' names (Branco: with the tail's 99), its numbers, the
 // hood, roof and trunk lid decals and the window stickers. The other cars carry none of it, only their own number.
 export const LIVERY_99=/^(Adesivo|Decal_|Pilotos_99_parabrisa|Invent_parabrisa|Jesus_|Logo_frontal|Stickers_vigia_|Branco$)/;
@@ -675,7 +677,9 @@ export class ImmersiveVisuals {
  }
  // Everything back in the graph (the paddock, the close models out of it): before the circuit's disposal walks it.
  restoreGraph(){this.park(false);for(const o of new Set([...this.rivals,...(this.rosterCars??[]),...(this.fuscaCars??[]),this.opala99,this.fusca99]))if(o?.userData.detail&&!o.userData.detail.parent)o.add(o.userData.detail);}
- updateFree(rivals,dt){this.time+=dt;this.dress('proprio');this.leoDoor?.scale.setScalar(1);this.root.visible=true;this.damage.visible=false;this.carRoot.visible=!this.hideOwn;this.park(true);for(const child of this.root.children)child.visible=this.rivals.includes(child);const focus=this.focus??this.carRoot.position,short=rivals.length<this.rivals.length;this.rivals.forEach((obj,i)=>{const r=short?rivals.find(r=>r.rosterIndex===i):rivals[i];if(!r||obj.userData.hidden){obj.visible=false;return;}const c=r.car;if(obj.userData.nameLabel)obj.userData.nameLabel.visible=Math.hypot(c.x-focus.x,c.y+focus.z)<45;this.setCarPose(obj,c);this.lean(obj,c);this.detailLevel(obj);if(obj.userData.seeThrough)this.seeThrough(obj);obj.userData.brake?.(r.input?.brake??0);obj.userData.driver?.update(c,dt,obj.userData.detail.visible);if(obj.userData.detail?.visible!==false)for(const w of obj.userData.wheels||[])w.obj.quaternion.copy(w.base).multiply(wheelSpin.setFromAxisAngle(SPIN_AXIS,-c.spin));if(!obj.userData.seeThrough)this.groundContact(obj,c);});}
+ // A name tag right at the camera (a watched car's chase view on the grid, the car behind it) would fill the screen: off
+ // within TAG_NEAR metres of it.
+ updateFree(rivals,dt,camera=null){this.time+=dt;this.dress('proprio');this.leoDoor?.scale.setScalar(1);this.root.visible=true;this.damage.visible=false;this.carRoot.visible=!this.hideOwn;this.park(true);for(const child of this.root.children)child.visible=this.rivals.includes(child);const focus=this.focus??this.carRoot.position,short=rivals.length<this.rivals.length;this.rivals.forEach((obj,i)=>{const r=short?rivals.find(r=>r.rosterIndex===i):rivals[i];if(!r||obj.userData.hidden){obj.visible=false;return;}const c=r.car;if(obj.userData.nameLabel)obj.userData.nameLabel.visible=Math.hypot(c.x-focus.x,c.y+focus.z)<45&&!(camera&&Math.hypot(c.x-camera.position.x,c.y+camera.position.z)<TAG_NEAR);this.setCarPose(obj,c);this.lean(obj,c);this.detailLevel(obj);if(obj.userData.seeThrough)this.seeThrough(obj);obj.userData.brake?.(r.input?.brake??0);obj.userData.driver?.update(c,dt,obj.userData.detail.visible);if(obj.userData.detail?.visible!==false)for(const w of obj.userData.wheels||[])w.obj.quaternion.copy(w.base).multiply(wheelSpin.setFromAxisAngle(SPIN_AXIS,-c.spin));if(!obj.userData.seeThrough)this.groundContact(obj,c);});}
  // A car drawn see-through in a multiplayer room (multiplayer.js linkGhosts puts its copy of the ghost's shell on it):
  // its own levels of detail hidden, its name over it still.
  seeThrough(obj){const u=obj.userData;for(const level of [u.detail,u.mid,u.far])if(level)level.visible=false;}

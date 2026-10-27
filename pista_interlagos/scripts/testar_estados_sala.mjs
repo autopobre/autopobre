@@ -295,4 +295,13 @@ function setup(laps=2){
  }finally{if(real)Object.defineProperty(performance,'now',real);else delete performance.now;}
 }
 
+// A host who only watches never starts with nobody ready to race (the team's try, 10-27: the other window still on its
+// first screen, the host raced instead of watching, its car standing there); racing itself, it may start alone.
+{
+ const q=setup(1);q.race.state='waiting';q.room.ready=new Set([q.room.id]);
+ assert.equal(q.mp.startBlocked(),false,'racing itself: never held');
+ q.race.assiste=true;assert.equal(q.mp.startBlocked(),true,'only watching, nobody ready: it waits');
+ q.room.ready.add(q.guest);assert.equal(q.mp.startBlocked(),false,'a pilot ready: the start is free');
+}
+
 console.log('testar_estados_sala: ok');

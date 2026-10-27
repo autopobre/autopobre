@@ -1,7 +1,7 @@
 """A multiplayer race's humans' standings and what comes past the flag (two windows of one browser, &local=1, both on
 the automatic pilot, one lap of Interlagos): every window shows the humans only, on the right, at their places in the
 whole field, its own pilot marked; the first human in has the car taken to the pit lane at once (parked, on its brakes)
-and the cameras on the other human still racing, N going round the other cars; the result sheet waits for the other
+and the cameras on the other human still racing (held short of the line meanwhile), N going round the other cars; the result sheet waits for the other
 human. Usage: verificar_sala_placar.py [porta] (a game server there, servidor.py). Screens in the shots folder
 (INTERLAGOS_SHOTS, else the temp folder)."""
 import json
@@ -20,6 +20,7 @@ SHOTS = Path(os.environ.get('INTERLAGOS_SHOTS') or tempfile.gettempdir()) / 'ver
 SHOTS.mkdir(parents=True, exist_ok=True)
 errors, report = [], {}
 ROWS = "interlagosSala.info().standings"
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 def watch(page, name):
@@ -56,6 +57,13 @@ with sync_playwright() as p:
     pages = {'host': host, 'guest': guest}
     for page in pages.values():
         wait_js(page, "interlagosSala.info().phase==='racing'&&window.interlagos?.ready&&document.querySelector('#raceCountdown').hidden", timeout=90000)
+    # The humans kept apart at the flag: the room's race ends for everyone once both are in, and closer than the flag's
+    # fade nobody would be parked yet (it failed now and then, the two automatic pilots in a few seconds apart). The
+    # host's automatic pilot off for its first 12 s.
+    host.evaluate("document.getElementById('mpAuto').click()")
+    host.wait_for_timeout(12000)
+    host.evaluate("document.getElementById('mpAuto').click()")
+    assert host.evaluate("document.getElementById('mpAuto').checked")
 
     # The humans only, at their places in the whole field, this window's own marked.
     for name, page in pages.items():
@@ -70,19 +78,33 @@ with sync_playwright() as p:
         page.screenshot(path=str(SHOTS / f'1_{name}_placar.png'))
     report['placar'] = page_rows
 
-    # The first human in: parked in the pit lane at once, the cameras on the other human, N going round.
+    # The first human in: parked in the pit lane at once, the cameras on the other human, N going round. The other is held
+    # short of the line meanwhile (its automatic pilot off, braking): two humans in within the flag's fade end the room's
+    # race for everyone before anyone is parked, and a slow window's clock makes their gap at the line anything.
     first = None
-    for _ in range(600):
+    for _ in range(3000):
         for name, page in pages.items():
-            if page.evaluate("!!window.interlagosSala?.info().parked"):
+            if page.evaluate("interlagos.immersiveInfo?.().freeFinished??false"):
                 first = name
                 break
         if first:
             break
-        host.wait_for_timeout(500)
-    assert first, 'nobody parked past the flag'
+        host.wait_for_timeout(100)
+    assert first, 'no human in'
     other = 'guest' if first == 'host' else 'host'
+    held = pages[other]
+    if held.evaluate("document.getElementById('mpAuto').checked"):
+        held.evaluate("document.getElementById('mpAuto').click()")
+    held.keyboard.down('KeyS')
     done = pages[first]
+    try:
+        wait_js(done, "!!interlagosSala.info().parked", timeout=60000)
+    except Exception:
+        # (what each window was doing, for the failure's report)
+        for name, page in pages.items():
+            print(name, json.dumps(page.evaluate("(()=>{const i=interlagosSala.info(),m=interlagos.immersiveInfo?.()??{};return {phase:i.phase,ended:i.ended,ff:m.freeFinished??null,laps:interlagos.car.laps,speed:Math.hypot(interlagos.car.vx,interlagos.car.vy),cut:i.cut,lost:i.lost,stops:i.stops,status:document.querySelector('#mpRoom .mp-status')?.textContent,results:!document.querySelector('#raceResults').hidden};})()"), ensure_ascii=False))
+        print('page errors', errors[:5])
+        raise
     done.wait_for_timeout(1500)
     state = done.evaluate("(()=>{const c=interlagos.car;return {speed:Math.hypot(c.vx,c.vy),pit:!!c.surface.pit,watch:interlagos.watchInfo(),me:interlagosSala.info().number};})()")
     other_number = pages[other].evaluate('interlagosSala.info().number')
@@ -97,7 +119,9 @@ with sync_playwright() as p:
     done.screenshot(path=str(SHOTS / f'2_{first}_assistindo.png'))
     report['no_box'] = {'quem': first, 'parado_kmh': round(state['speed'] * 3.6, 1), 'pit_lane': state['pit'], 'assistia': state['watch']['number'], 'N_trocou_para': after['number']}
 
-    # The result sheets come once the other human is in too.
+    # The result sheets come once the other human is in too (let go, on its automatic pilot again).
+    held.keyboard.up('KeyS')
+    held.evaluate("document.getElementById('mpAuto').click()")
     for page in pages.values():
         wait_js(page, "!document.querySelector('#raceResults').hidden", timeout=480000)
     for name, page in pages.items():

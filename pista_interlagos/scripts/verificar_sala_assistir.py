@@ -1,7 +1,7 @@
 """A host who only watches its room's race (Só assistir; the team's wish, 10-26). Two windows of one browser (&local=1),
 one lap of Interlagos: the host picks Só assiste on the track screen (its room line's box ticked while the race waits),
-the guest races on the automatic pilot. From the
-start the host's car is parked in the pit lane, out of sight and touching nothing on both screens, and the host's
+the guest races on the automatic pilot. While she still picks her car the host's start waits, saying so (Enter too). From
+the start the host's car is parked in the pit lane, out of sight and touching nothing on both screens, and the host's
 cameras follow the guest; its room line says it watches, with Encerrar corrida at hand, nothing of its own car shows
 (lap, place, fuel, its tools) and its keys move nothing (W held: still on its spot, no lap of its own). The guest in, the race is over for everyone: the host's sheet says it watched (no row of
 its own) and has her own time, never an estimate; the guest's has no row for the host's car. Usage:
@@ -50,8 +50,7 @@ with sync_playwright() as p:
     watch(guest, 'guest')
     guest.wait_for_load_state('load')
     wait_js(guest, "window.interlagosSala?.info().number==='64'&&!document.querySelector('#cars').classList.contains('hidden')", timeout=90000)
-    guest.click('#carsNext')
-    wait_js(host, "interlagosSala.info().members.some(m=>m.name==='Bia'&&m.wait)", timeout=20000)
+    wait_js(host, "interlagosSala.info().members.some(m=>m.name==='Bia')", timeout=20000)
     host.click('#start')
     wait_js(host, "!document.querySelector('#cars').classList.contains('hidden')", timeout=20000)
     host.click('#carsNext')
@@ -61,9 +60,18 @@ with sync_playwright() as p:
     start_race(host, '#singleRace')
     wait_js(host, "interlagosSala.info().phase==='waiting'&&!document.querySelector('#mpStart').hidden", timeout=240000)
     wait_js(host, "document.getElementById('mpWatch').checked&&!document.getElementById('mpWatch').closest('label').hidden", timeout=5000)
-    wait_js(guest, "interlagosSala.info().race?.assiste===true", timeout=10000)
+    # Nobody ready to race yet (she still picks her car): the start waits, saying so, Enter as well (the team's try, 10-27:
+    # started like that, the host raced instead of watching, its car standing there).
+    wait_js(host, "document.getElementById('mpStart').disabled&&document.getElementById('mpStart').textContent.includes('esperando um piloto')", timeout=10000)
+    host.keyboard.press('Enter')
+    host.wait_for_timeout(1000)
+    assert host.evaluate("interlagosSala.info().phase") == 'waiting', 'Enter started a race with nobody to watch'
+    host.screenshot(path=str(SHOTS / '0_anfitriao_esperando_piloto.png'))
+    guest.click('#carsNext')
     gid = guest.evaluate('interlagosSala.info().id')
     wait_js(host, f"interlagosSala.info().ready.includes({gid!r})", timeout=240000)
+    wait_js(guest, "interlagosSala.info().race?.assiste===true", timeout=10000)
+    wait_js(host, "!document.getElementById('mpStart').disabled", timeout=5000)
     host.click('#mpStart')
     for page in (host, guest):
         wait_js(page, "interlagosSala.info().phase==='racing'&&window.interlagos?.ready&&document.querySelector('#raceCountdown').hidden", timeout=90000)
@@ -90,6 +98,9 @@ with sync_playwright() as p:
     assert host.evaluate("interlagos.watchInfo()?.number") == '64', 'its cameras still on her after W'
     seen = guest.evaluate("interlagosSala.info().cars.find(c=>c.number==='99')")
     assert seen['hidden'] and seen['netGhost'], f'her screen: the host\'s car out of sight, touching nothing: {seen}'
+    # ...nor in her place: a field of 14 racing (the team's try, 10-27: last, she read 14º / 15).
+    place = guest.evaluate("document.getElementById('racePosition').textContent")
+    assert place.endswith('/ 14'), f'her place counts the host\'s parked car: {place}'
     assert not host.evaluate("interlagosSala.info().standings.some(r=>r.number==='99')"), 'no tower row for the host'
     shown = host.evaluate("['#timing','#fuelGauge','#skinButton','#ghostButton','#mpAuto'].filter(q=>document.querySelector(q)?.getClientRects().length)")
     assert not shown, f'none of its own car on the host\'s screen: {shown}'
@@ -106,6 +117,7 @@ with sync_playwright() as p:
     assert hers and '≈' not in hers[0] and '—' not in hers[0], f'her own time and lap on the host\'s sheet, not an estimate: {hers}'
     rows = guest.evaluate(ROWS)
     assert not any(r.strip().startswith(('15º99', '99')) or 'Ana' in r for r in rows), f'no row for the host\'s car: {rows}'
+    assert guest.inner_text('#resultsPlace').endswith('/ 14'), guest.inner_text('#resultsPlace')
     report['resultado'] = {'anfitriao': host.inner_text('#resultsPlace'), 'linhas_convidada': len(rows)}
     host.screenshot(path=str(SHOTS / '2_anfitriao_resultado.png'))
     guest.screenshot(path=str(SHOTS / '2_convidada_resultado.png'))

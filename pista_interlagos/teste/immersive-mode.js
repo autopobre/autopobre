@@ -587,7 +587,7 @@ export class ImmersiveMode {
  stepPit(dt){
   this.car.clock+=dt;this.contacts(this.field.step(this.car,dt,this.active?this.storyLaps:this.freeTotalLaps));
   if(this.active){this.state.raceTime+=dt;this.state.position=1+this.rivals.filter(r=>r.progress>this.raceProgress).length;this.state.alertTime=Math.max(0,this.state.alertTime-dt);}
-  else this.freePosition=1+this.rivals.filter(r=>r.progress>this.freePlayerProgress).length;
+  else this.freePosition=1+this.racingRivals.filter(r=>r.progress>this.freePlayerProgress).length;
  }
  damageAt(speed,point){const c=this.car,dx=point[0]-c.x,dy=point[1]-c.y;c.condition?.impact(speed,dx*Math.cos(c.heading)+dy*Math.sin(c.heading),-dx*Math.sin(c.heading)+dy*Math.cos(c.heading),this.active?this.state.damageScale():1);}
  hazards(dt){
@@ -631,7 +631,10 @@ export class ImmersiveMode {
  // What the race under way needs in the tank (fuel.js); the Box 99's Completar fills back to it.
  get fuelTarget(){return Math.min(this.tank,recommendedFuel(circuitId(this.data.meta.id),this.active?this.storyLaps:this.freeTotalLaps));}
  // Cars racing: the whole grid in the story; the free race's may be short (practice, 1x1).
- get fieldSize(){return this.rivals.length+1;}
+ // The rivals in the race: a room's host who only watches keeps its car parked out of it (multiplayer.js linkGhosts:
+ // spectator), never in a place or the field's size.
+ get racingRivals(){return this.rivals.filter(r=>!r.spectator);}
+ get fieldSize(){return this.racingRivals.length+1;}
  // Race times reach the record boards only from the whole grid: a practice or a 1x1 starts at the front.
  get fullGrid(){return this.active||!this.freeLineup;}
  wallImpact(speed){const c=this.car,side=Math.sign(c.surface.d);this.knock=Math.max(this.knock??0,speed);this.damageAt(speed,[c.x+c.surface.lx*side,c.y+c.surface.ly*side]);this.parts.burst({speed,point:[this.car.x+Math.cos(this.car.heading)*2,this.car.y+Math.sin(this.car.heading)*2]},this.car);}
@@ -642,8 +645,8 @@ export class ImmersiveMode {
  stepFree(dt,input={}){if(this.freeFinished)return;const previous=this.freeFuel;this.freeFuel=Math.max(0,this.freeFuel-dt*(burnRate(Math.hypot(this.car.vx,this.car.vy),input.throttle||0,this.car.rearSlipSpeed||0)*this.freeBurn+(this.car.condition?.factors.leak??0)));if(previous>=1&&this.freeFuel<1)this.state.emitSound('reserve');if(previous>0&&this.freeFuel===0)this.state.emitSound('fuelEmpty');this.contacts(this.field.step(this.car,dt,this.freeTotalLaps));
   const L=this.data.meta.reconstructed_xy_m;this.freePlayerProgress+=lapTravel(this.freeLastS??0,this.car.surface.s,L);this.freeLastS=this.car.surface.s;
   const progress=Math.min(this.freePlayerProgress,this.car.laps*L+this.car.surface.s+this.field.gridLeadIn);
-  this.freePosition=1+this.rivals.filter(r=>r.progress>progress).length;
-  if(this.car.laps>=this.freeTotalLaps&&!this.freeFinished){this.freeFinished=true;this.freePosition=1+this.rivals.filter(r=>r.finished).length;this.beginFinish(this.freePosition);}
+  this.freePosition=1+this.racingRivals.filter(r=>r.progress>progress).length;
+  if(this.car.laps>=this.freeTotalLaps&&!this.freeFinished){this.freeFinished=true;this.freePosition=1+this.racingRivals.filter(r=>r.finished).length;this.beginFinish(this.freePosition);}
  }
  // listener: the car the sound is heard from (a rival watched in the recon lap hears the
  // player's car among the others).
@@ -652,7 +655,7 @@ export class ImmersiveMode {
  rivalSound(car){const i=this.rivals.findIndex(r=>r.car===car);return {command:this.rivals[i]?.input??{},skid:(this.rivalTrails[i]?.wheels.reduce((sum,w)=>sum+w.strength,0)??0)/4};}
  // held: the car waits for the start (the story's grid, Modo Corrida's countdown), so the throttle revs it free (car-audio.js).
  audioCommand(input){if(this.finishing)return {...input,throttle:0,reverse:0,handbrake:0,engineOff:false};return this.active?{...input,throttle:['race','grid'].includes(this.state.phase)?input.throttle:0,engineOff:!['race','grid','inspection'].includes(this.state.phase)||!!this.state.reason,held:this.state.phase==='grid'}:{...input,engineOff:this.freeFuel<=0,held:this.freeCountdown>0};}
- update(dt,camera){this.camera=camera;this.parts.update(dt,this.car);if(!this.active){this.visual.storyScene?.sync(null);this.visual.updateFree(this.rivals,dt);return;}this.sync();this.visual.storyScene?.sync(this.state.sceneCard());this.visual.update(this.state,this.car,dt,this.rivals,this.projectile,this.towOrigin);if(this.state.phase==='crowd')showSnacks(this.snackHands,this.visual.hero,this.cafe);this.visual.camera(camera,this.state,dt);if(this.state.phase==='starting')this.startSwitches(dt);this.ui();this.positionDialogue();}
+ update(dt,camera){this.camera=camera;this.parts.update(dt,this.car);if(!this.active){this.visual.storyScene?.sync(null);this.visual.updateFree(this.rivals,dt,camera);return;}this.sync();this.visual.storyScene?.sync(this.state.sceneCard());this.visual.update(this.state,this.car,dt,this.rivals,this.projectile,this.towOrigin);if(this.state.phase==='crowd')showSnacks(this.snackHands,this.visual.hero,this.cafe);this.visual.camera(camera,this.state,dt);if(this.state.phase==='starting')this.startSwitches(dt);this.ui();this.positionDialogue();}
  button(action,label,primary=false,disabled=false){return `<button type="button" data-action="${action}" ${disabled?'disabled':''} class="${primary?'imm-primary':''}">${label}</button>`;}
  ui(){
   const s=this.state;if(!s.active)return;const talking=s.phase==='crowd'&&(s.fan!==null||s.desk||!!s.leo||!!s.cafe);this.panel.classList.toggle('social-dialogue',talking);this.panel.classList.toggle('desk-dialogue',s.phase==='crowd'&&s.desk);this.panel.classList.toggle('leo-dialogue',s.phase==='crowd'&&!!s.leo);this.panel.classList.toggle('cafe-dialogue',s.phase==='crowd'&&!!s.cafe);this.panel.classList.toggle('start-panel',s.phase==='starting');const cutscene=s.sceneCard()?.type==='line';this.panel.classList.toggle('career-scene',!!s.scene&&!cutscene);this.panel.classList.toggle('career-cutscene',cutscene);document.body.classList.toggle('story-cutscene',cutscene);document.body.classList.toggle('story-paddock',s.phase==='crowd'&&!cutscene);this.panel.classList.toggle('social-explore',s.phase==='crowd'&&!talking&&!s.scene);if(s.phase!=='crowd'||s.fan===null&&!s.leo){this.panel.style.removeProperty('left');this.panel.style.removeProperty('top');this.panel.style.removeProperty('bottom');}this.hud.classList.remove('hidden');

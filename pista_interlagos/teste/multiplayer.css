@@ -14,6 +14,7 @@
 #mpRoom .mp-start{display:block;width:100%;margin:0 0 8px;padding:8px 10px;border:1px solid #fff4;border-radius:6px;background:#ffffff14;color:#f5f6ed;font:700 12px Inter,"Segoe UI",Arial,sans-serif;cursor:pointer}
 #mpRoom .mp-start.mp-go{background:var(--lime);border-color:var(--lime);color:var(--ink)}
 #mpRoom .mp-start[hidden]{display:none}
+#mpRoom .mp-start:disabled{opacity:.7;cursor:default}
 /* Online: the group key, the knocks at the host's door, the kick next to each guest. */
 #mpRoom .mp-key{display:flex;gap:6px;margin:0 0 8px}
 #mpRoom .mp-key[hidden],#mpRoom .mp-knocks[hidden]{display:none}
