@@ -6,7 +6,8 @@ export const formatTime=value=>Number.isFinite(value)&&value>0?`${String(Math.fl
 export function resultRows(mode){
  const rows=(mode.freeOrder??[]).map(entry=>({...entry})),me=mode.playerEntry??PLAYER_ENTRY;
  // (a multiplayer room's race ended by its host before this car was in: its time estimated, immersive-mode.js endFreeRace)
- rows.splice(Math.max(0,(mode.finishPosition??mode.freePosition)-1),0,{...me,name:mode.pilotName||me.name,bestLap:mode.finishBest,totalTime:mode.finishTime,finished:!mode.finishEstimated,...(mode.finishEstimated&&{estimated:true}),player:true});
+ // (a race its host watched: no row of its own, multiplayer.js Só assistir)
+ if(!mode.finishWatched)rows.splice(Math.max(0,(mode.finishPosition??mode.freePosition)-1),0,{...me,name:mode.pilotName||me.name,bestLap:mode.finishBest,totalTime:mode.finishTime,finished:!mode.finishEstimated,...(mode.finishEstimated&&{estimated:true}),player:true});
  return rows.map((row,index)=>({...row,position:index+1}));
 }
 export class RaceResults {
@@ -30,8 +31,8 @@ export class RaceResults {
   const $=id=>this.root.querySelector('#'+id);
   $('resultsCircuit').textContent=CIRCUITS[circuitId(mode.data?.meta.id)].name.toUpperCase();
   const laps=(mode.active?mode.storyLaps:mode.freeTotalLaps)??3;$('resultsMode').textContent=`/ ${mode.active?'IMERSIVA':mode.freeLineup?.length===1?'CORRIDA 1x1':'CORRIDA'} · ${laps} VOLTA${laps>1?'S':''}`;
-  $('resultsPlace').textContent=mode.finishEstimated?`CORRIDA ENCERRADA · VOCÊ FICOU EM ${mode.finishPosition}º / ${rows.length} (ESTIMADO)`:`VOCÊ CHEGOU EM ${mode.finishPosition}º / ${rows.length}`;
-  $('resultsTime').textContent=`TOTAL ${mode.finishEstimated?'≈ ':''}${formatTime(mode.finishTime)}`;
+  $('resultsPlace').textContent=mode.finishWatched?'VOCÊ ASSISTIU À CORRIDA':mode.finishEstimated?`CORRIDA ENCERRADA · VOCÊ FICOU EM ${mode.finishPosition}º / ${rows.length} (ESTIMADO)`:`VOCÊ CHEGOU EM ${mode.finishPosition}º / ${rows.length}`;
+  $('resultsTime').textContent=mode.finishWatched?'':`TOTAL ${mode.finishEstimated?'≈ ':''}${formatTime(mode.finishTime)}`;
   $('resultsFastest').textContent=best?`VOLTA MAIS RÁPIDA · #${best.number} · ${formatTime(best.bestLap)}`:'VOLTA MAIS RÁPIDA · —';
   // A championship round: its points, the standings and the next round instead of a rerun
   // (in Modo História the podium comes first, as in any story race).

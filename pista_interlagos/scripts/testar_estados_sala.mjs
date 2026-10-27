@@ -281,6 +281,17 @@ function setup(laps=2){
   g.room.lobby={race:null};g.mp.raceEnd();assert.equal(g.mp.ended,true,'its host gone from the race: over here too');
   const next=race(setup(1));next.room.role='guest';next.room.lobby={race:{id:'0000ffff'}};next.room.problem=null;next.room.outdated=false;next.mp.raceEnd();assert.equal(next.mp.ended,true,'a new race of its host: over here too');
   const late=race(setup(1));late.room.role='guest';late.room.lobby={race:null};late.room.outdated=true;late.mp.raceEnd();assert(!late.mp.ended,'not on an outdated word (its line just back)');
+  // A host who only watches (Só assistir): no racer, no flag of its own; the race ends once the humans racing are in,
+  // and they alone are the standings' humans.
+  const w=race(setup(1));w.race.assiste=true;w.mp.raceEnd();assert(!w.mp.ended,'its guest still races');assert.equal(w.mp.firstFlagAt??null,null,'watching starts no countdown');
+  assert.deepEqual(w.mp.racers().map(s=>s.number),[w.rival.entry.number],'the racers: the guest alone');
+  w.rival.finished=true;w.mp.raceEnd();assert.equal(w.mp.ended,true,'its guest in: over for everyone');
+  // The end decided on a pilot's own word (its state past the flag) a frame before the field steps its car over the
+  // line: in the order taken at the end that finish counts, its time and best lap, never an estimate (a car still
+  // waiting for its pilot does not).
+  const c=race(setup(1));Object.assign(c.remote.state,{finished:true,finishTime:130,laps:1,best:129.5});c.remote.waiting=c.rival;
+  c.mp.creditFinishes();assert.equal(c.rival.finished,false,'a car waiting for its pilot: no finish yet');
+  c.remote.waiting=null;c.mp.creditFinishes();assert.deepEqual([c.rival.finished,c.rival.finishTime,c.rival.car.best],[true,130,129.5],'the pilot\'s own finish');
  }finally{if(real)Object.defineProperty(performance,'now',real);else delete performance.now;}
 }
 

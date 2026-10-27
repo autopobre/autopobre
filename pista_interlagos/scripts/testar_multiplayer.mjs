@@ -912,6 +912,17 @@ for(let trial=0;trial<6;trial++){
  A.beacon();await wait();await wait();assert.deepEqual(ends,[race.id],'heard once');
  A.channel.close();B.channel.close();
 }
+// A host who only watches (Só assistir): its race says so (assiste), its guests hear it, a race without it says nothing.
+{
+ let now=0;const clock=()=>now,name='assiste-'+Math.random().toString(36).slice(2,8),advance=(rooms,to)=>{while(now<to-1e-9){now=Math.min(to,now+.1);for(const r of rooms)r.tick();}};
+ const A=new Room({room:name,name:'Ana',clock}),B=new Room({room:name,name:'Bia',want:'19',wait:true,clock});B.on('race',()=>true);
+ A.start();await wait();advance([A],1);B.start();await wait();await wait();
+ assert.equal(A.planRace({circuit:'interlagos',laps:1}).assiste,undefined);
+ const race=A.planRace({circuit:'interlagos',laps:1,watch:true});assert.equal(race.assiste,true);A.openRace(race);await wait();await wait();
+ assert.equal(B.race?.assiste,true,'the guest hears the host only watches');
+ B.sendReady();await wait();await wait();A.lightsOut();await wait();await wait();assert.equal(B.race.state,'racing');assert.equal(B.race.assiste,true,'and still at the start');
+ A.channel.close();B.channel.close();
+}
 // The room server's address is the one the page's content policy allows (scripts/publicacao.py).
 {
  const policy=fs.readFileSync(new URL('./publicacao.py',import.meta.url),'utf8').match(/^ROOM_SERVER = '([^']+)'/m)?.[1];

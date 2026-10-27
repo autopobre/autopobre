@@ -141,7 +141,7 @@ const validStops=v=>v===undefined||Array.isArray(v)&&v.length<=SEATS.length&&v.e
 const sameStops=(a,b)=>a.length===b.length&&a.every((x,i)=>x.number===b[i].number&&x.stage===b[i].stage&&(x.back??true)===(b[i].back??true)&&x.side===b[i].side);
 function validRace(r){
  return r===null||r&&typeof r==='object'&&isId(r.id)&&typeof r.circuit==='string'&&/^[a-z0-9_-]{1,32}$/.test(r.circuit)&&isInt(r.laps,1,50)&&isInt(r.seed,0,4294967295)&&SEATS.includes(r.car)
-  &&typeof r.ace==='boolean'&&typeof r.retirements==='boolean'&&typeof r.ghosts==='boolean'&&(r.level===null||typeof r.level==='string'&&/^[a-z]{1,16}$/.test(r.level))&&validSeats(r.seats)&&['waiting','racing','finished'].includes(r.state)
+  &&typeof r.ace==='boolean'&&typeof r.retirements==='boolean'&&typeof r.ghosts==='boolean'&&(r.level===null||typeof r.level==='string'&&/^[a-z]{1,16}$/.test(r.level))&&validSeats(r.seats)&&['waiting','racing','finished'].includes(r.state)&&(r.assiste===undefined||r.assiste===true)
   // The host's weather (weather.js); a room from before it has none.
   &&(r.time===undefined||TIMES_OF_DAY.some(([v])=>v===r.time))&&(r.rain===undefined||RAIN_LEVELS.some(([v])=>v===r.rain));
 }
@@ -405,7 +405,7 @@ export class Room {
    // The lobby also carries the start, in case the go itself went missing, and the seats taken
    // while the start waits.
    const went=this.race.state==='waiting'&&race.state==='racing',moved=seatKey(this.race.seats)!==seatKey(race.seats),ended=this.race.state==='racing'&&race.state==='finished';
-   this.race={...this.race,state:race.state,seats:race.seats};if(moved)this.emit('seats',this.race);if(went)this.emit('go',this.race);if(ended)this.emit('end',this.race);
+   this.race={...this.race,state:race.state,seats:race.seats,assiste:race.assiste};if(moved)this.emit('seats',this.race);if(went)this.emit('go',this.race);if(ended)this.emit('end',this.race);
   }
   this.emit('change');
  }
@@ -481,7 +481,7 @@ export class Room {
  touch(id,now){const p=this.players.get(id);if(p)p.seen=now;}
  beacon(now=this.clock()){
   if(this.role!=='host')return;this.nextBeacon=now+BEACON;const r=this.race;
-  this.send({t:'lobby',name:this.name,age:Math.round((now-this.hostSince)*100)/100,players:[...this.players.values()].map(({id,name,number,done,wait,look})=>({id,name,number,pick:done,wait:!!wait,look:look??null})),race:r&&{id:r.id,circuit:r.circuit,laps:r.laps,seed:r.seed,car:r.car,ace:r.ace,level:r.level,retirements:r.retirements,ghosts:r.ghosts,seats:r.seats,state:r.state},stops:r?.state==='racing'?this.stops:[]});
+  this.send({t:'lobby',name:this.name,age:Math.round((now-this.hostSince)*100)/100,players:[...this.players.values()].map(({id,name,number,done,wait,look})=>({id,name,number,pick:done,wait:!!wait,look:look??null})),race:r&&{id:r.id,circuit:r.circuit,laps:r.laps,seed:r.seed,car:r.car,ace:r.ace,level:r.level,retirements:r.retirements,ghosts:r.ghosts,seats:r.seats,state:r.state,...(r.assiste&&{assiste:true})},stops:r?.state==='racing'?this.stops:[]});
  }
  // Host (multiplayer.js, every frame): the cars waiting for their pilots; a change is told at once.
  setStops(list){if(this.role!=='host'||sameStops(list,this.stops))return;this.stops=list.map(({number,stage,back=true,side})=>({number,stage,back:!!back,...(side===1||side===-1?{side}:{})}));this.beacon();}
@@ -490,9 +490,10 @@ export class Room {
  // seed, the host's car (car: the one at the back of the grid, whose driver sits out) and RaceField's
  // settings (the ace, the rivals' level, breakdowns) give every window the same grid and field;
  // ghosts, whether its humans pass through each other.
- planRace({circuit,laps,ace=false,level=null,retirements=true,ghosts=false,time='dia',rain='seco'}){
+ // watch: the host watches its race instead of racing it (multiplayer.js: its car parked out of sight, assiste).
+ planRace({circuit,laps,ace=false,level=null,retirements=true,ghosts=false,time='dia',rain='seco',watch=false}){
   const seats=[...this.players.values()].filter(p=>p.number&&p.wait).map(({id,name,number})=>({id,name,number}));
-  return {id:randomId(this.random),circuit,laps,car:this.number,ace:!!ace,level:level??null,retirements:!!retirements,ghosts:!!ghosts,time,rain,seed:Math.floor(this.random()*4294967296),seats,state:'waiting'};
+  return {id:randomId(this.random),circuit,laps,car:this.number,ace:!!ace,level:level??null,retirements:!!retirements,ghosts:!!ghosts,time,rain,seed:Math.floor(this.random()*4294967296),seats,state:'waiting',...(watch&&{assiste:true})};
  }
  openRace(race){if(this.role!=='host')return;this.race=race;this.away.clear();this.stops=[];this.ready=new Set([this.id]);this.grant();this.beacon();this.emit('change');}
  // The host ends its race for everyone (multiplayer.js raceEnd): its lobby says so at once, and every guest shows the result.
