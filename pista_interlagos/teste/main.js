@@ -3,7 +3,7 @@ import {FreeWalk,pilotOutfit} from './free-walk.js';
 import {pitLane} from './pit-lane.js';
 import {createInterlagosPit} from './interlagos-pit.js';
 import {createCurveloPit} from './pit-building.js';
-import {CIRCUITS,selectedCircuit,mapProjection,fixedLaps,raceLaps} from './circuits.js';
+import {CIRCUITS,selectedCircuit,mapProjection,fixedLaps,raceLaps,placeOf} from './circuits.js';
 import {tankFor} from './fuel.js';
 import {createCurveloData} from './curvelo-data.js';
 import {createCurveloScene} from './curvelo-scene.js';
@@ -162,13 +162,27 @@ function showCircuitSelection(){
  $('circuitSource').textContent=circuit.source+' Reconstrução para jogo; física e instalações simplificadas.';
  $('historyStart').hidden=!HISTORIES[circuit.id];
  document.querySelector('#menu article>p').textContent=circuit.intro;
- for(const button of document.querySelectorAll('[data-circuit]'))button.setAttribute('aria-pressed',String(button.dataset.circuit===circuit.id));
+ for(const button of document.querySelectorAll('[data-circuit]'))button.setAttribute('aria-pressed',String(button.dataset.circuit===placeOf(circuit.id)));
+ for(const box of layoutBoxes)showCardLayout(box,placeOf(circuit.id)===CIRCUITS[box.dataset.variant].variantOf?circuit.id===box.dataset.variant:box.checked);
  showHero(circuit.id);
 }
+// Another layout of a card's autódromo (circuits.js variantOf: Chapecó's oval): a box on that card picks it. Ticked, the
+// card shows the layout's outline, name, figures and best lap (data-* on the box; the card's own, kept in data-own, come
+// back unticked), and the card picks the layout until it is unticked, while another circuit is chosen too.
+const layoutBoxes=[...document.querySelectorAll('.track-cards [data-variant]')];
+function showCardLayout(box,on){
+ const card=box.closest('.track-card-group').querySelector('[data-circuit]'),path=card.querySelector('path'),[b,span,small,em]=['b','span','small','em'].map(k=>card.querySelector(k));
+ card.dataset.own??=JSON.stringify({path:path.getAttribute('d'),name:b.textContent,span:span.textContent,small:small.textContent,best:em.dataset.best});
+ const v=on?{...box.dataset,best:box.dataset.variant}:JSON.parse(card.dataset.own);
+ path.setAttribute('d',v.path);b.textContent=v.name;span.textContent=v.span;small.textContent=v.small;
+ if(em.dataset.best!==v.best){em.dataset.best=v.best;em.textContent='';}
+ box.checked=on;
+}
+const cardLayout=id=>layoutBoxes.find(box=>box.checked&&CIRCUITS[box.dataset.variant].variantOf===id)?.dataset.variant??id;
 // The circuit in big beside the list (paddock look): its outline, name, place and figures, as its card has them, and its
 // best lap; round, the season's round it races (Modo História shows the round to come, not a pick).
 function showHero(id,round=''){
- const card=document.querySelector(`.track-cards [data-circuit="${id}"]`);if(!card)return;
+ const card=document.querySelector(`.track-cards [data-circuit="${placeOf(id)}"]`);if(!card)return;
  const [length,...place]=card.querySelector('span').textContent.split(' · ');
  $('trackHeroPath').setAttribute('d',card.querySelector('path').getAttribute('d'));$('trackHeroName').textContent=card.querySelector('b').textContent;$('trackHeroPlace').textContent=place.join(' · ');
  $('trackHeroStats').replaceChildren(...[length,...card.querySelector('small').textContent.split(' · ')].map(text=>Object.assign(document.createElement('li'),{textContent:text})));
@@ -180,7 +194,7 @@ function showHero(id,round=''){
 const CIRCUIT_SCENES=new Set(['interlagos','cascavel','piracicaba','chapeco','brasilia','goiania','guaratiba','velocitta','chapada','floripa','minhocao','pampulha','curvelo']);
 let heroPhoto=null;
 function showCircuitPhoto(id){
- if(heroPhoto===id)return;heroPhoto=id;const layer=$('trackPhoto'),img=new Image();layer.classList.remove('shown');if(!CIRCUIT_SCENES.has(id))return;
+ id=placeOf(id);if(heroPhoto===id)return;heroPhoto=id;const layer=$('trackPhoto'),img=new Image();layer.classList.remove('shown');if(!CIRCUIT_SCENES.has(id))return;
  img.onload=()=>{if(heroPhoto!==id)return;layer.style.backgroundImage=`url("${img.src}")`;layer.classList.add('shown');};img.src=`./assets/circuitos/cenas/${id}.webp`;
 }
 showCircuitSelection();
@@ -188,9 +202,14 @@ function selectCircuit(id){
  if(!Object.hasOwn(CIRCUITS,id))return;
  circuit=CIRCUITS[id];preferences.update({circuit:circuit.id});lapRecords.circuit=circuit.id;
  const url=new URL(window.location.href);url.searchParams.set('circuito',circuit.id);history.replaceState(null,'',url.href);
- showCircuitSelection();updateMenuLabels();
+ showCircuitSelection();updateMenuLabels();fillBestLaps();showHero(circuit.id);
 }
-for(const button of document.querySelectorAll('[data-circuit]'))button.onclick=()=>{if(!sessionStarted&&!loading)selectCircuit(button.dataset.circuit);};
+// A track card picks its circuit, or the layout ticked on it; the records' own button picks just what it says.
+for(const button of document.querySelectorAll('[data-circuit]'))button.onclick=()=>{if(!sessionStarted&&!loading)selectCircuit(button.closest('.track-cards')?cardLayout(button.dataset.circuit):button.dataset.circuit);};
+for(const box of layoutBoxes)box.onchange=()=>{
+ if(sessionStarted||loading){box.checked=circuit.id===box.dataset.variant;return;}
+ selectCircuit(box.checked?box.dataset.variant:CIRCUITS[box.dataset.variant].variantOf);
+};
 let projectMap;
 // The circuit's stands crowd (landscape.js createCrowd): full in Modo Corrida, as full as the supporters' morale in Modo
 // História (story-career.js standsFill: 15% at a career's start), checked every frame, changed only when it differs.
@@ -2003,13 +2022,18 @@ window.interlagosCarros={info:()=>({...carSelect.info(),raceCar,painted:carLiver
  pick:number=>{carSelect.pick(String(number));return carSelect.value;},
  // The car shown, alone on a see-through ground (car-select.js snapshot): the strip's pictures (gerar_miniaturas_carros.py).
  snapshot:options=>renderer?carSelect.studio.snapshot(renderer,options):null};
-// The track screen: the pilot, each circuit's best lap and the championship panel.
-function renderTracks(){
- const pilot=pilotPicker.profiles.selected||'';$('tracksPilot').textContent=pilotLine();
+// Each circuit's best lap on its card (the layout ticked on a card, its own).
+function fillBestLaps(){
+ const pilot=pilotPicker.profiles.selected||'';
  for(const slot of document.querySelectorAll('[data-best]')){
   const lap=trackRecords(pilotStorage(),slot.dataset.best,menuModel(),pilot,8).lap,mine=lap.find(r=>r.me);   // the car chosen (the story's Opala)
   slot.textContent=mine?`Seu recorde · ${mine.time}`:lap[0]?`Recorde · ${lap[0].time}`:'';
  }
+}
+// The track screen: the pilot, each circuit's best lap and the championship panel.
+function renderTracks(){
+ $('tracksPilot').textContent=pilotLine();
+ fillBestLaps();
  // Modo História's season picks the track: the round to come in big (the first before the season starts, the last once it is over).
  const season=menuMode==='historia'?championshipFor():null,rounds=season?.schedule,k=rounds?Math.min(season.round,rounds.length-1):0,next=rounds?.[k];
  const hero=next?.circuit??circuit.id;showHero(hero,next?`Etapa ${k+1} de ${rounds.length}${next.date?` · ${next.date}`:''}`:'');showCircuitPhoto(hero);showRaceMode();
@@ -2516,7 +2540,7 @@ function clearCircuit(){
 async function loadCircuit(){
  const reuse=ready&&loadedCircuit===circuit.id&&sceneryBuilt===graphics.values.scenery;
  loading=true;ready=false;if(window.interlagos)window.interlagos.ready=false;$('start').disabled=true;$('storyStart').disabled=true;$('singleRace').disabled=$('soloRace').disabled=$('duelRace').disabled=true;$('championshipStart').disabled=true;$('tour').disabled=true;$('livery').disabled=true;
- for(const button of document.querySelectorAll('[data-circuit]'))button.disabled=true;
+ for(const button of document.querySelectorAll('[data-circuit],[data-variant]'))button.disabled=true;
  updateMenuLabels();
  try{
  if(reuse){if(activeLivery!==$('livery').value)await setLivery($('livery').value);await fuscaWanted();applyWeather();ready=true;window.interlagos.ready=true;$('skinButton').disabled=false;return true;}
@@ -2824,7 +2848,7 @@ async function loadCircuit(){
  window.interlagos.speedInfo=()=>({...speedFx.info(),particles:tyreSmoke.info().speedFx,kerb:kerbSound(car),kerbWheels:car.kerbWheels??0,kerbTilt:car.kerbTilt??0});
  return true;
  }catch(err){console.error(err);ready=false;clearCircuit();status('Não foi possível carregar a pista. Clique em começar para tentar novamente.');return false;}
- finally{loading=false;pendingMode=null;$('start').disabled=false;$('storyStart').disabled=false;$('singleRace').disabled=$('soloRace').disabled=$('duelRace').disabled=false;$('championshipStart').disabled=false;$('tour').disabled=false;$('livery').disabled=false;for(const button of document.querySelectorAll('[data-circuit]'))button.disabled=false;updateMenuLabels();}
+ finally{loading=false;pendingMode=null;$('start').disabled=false;$('storyStart').disabled=false;$('singleRace').disabled=$('soloRace').disabled=$('duelRace').disabled=false;$('championshipStart').disabled=false;$('tour').disabled=false;$('livery').disabled=false;for(const button of document.querySelectorAll('[data-circuit],[data-variant]'))button.disabled=false;updateMenuLabels();}
 }
 $('start').disabled=false;$('storyStart').disabled=false;$('singleRace').disabled=$('soloRace').disabled=$('duelRace').disabled=false;$('championshipStart').disabled=false;status('');updateMenuLabels();updateScreens();
 window.interlagos={ready:false,audioInfo:()=>carAudio.info()};

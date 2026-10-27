@@ -3,14 +3,16 @@ import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {structureMaterial} from './landscape.js';
 import {TestCar,CLOSURE_HALF} from './physics.js';
 import {branchRoadOffset} from './branch-layout.js';
+import {pitGeometry,locatePit} from './pit-lane.js';
 
 // The asphalt of an autódromo outside the layout raced on (data.closed_roads, gerar_pista.py montar_fechados): Velocitta's
 // original turns 3 and 4 (the loop the Caipirinha replaced, crossing it), its original last corner inside the Ferradura,
 // the links of its short circuits and the museum's road. The cars race the competition layout only (the Stock Car's): the
 // rest is there, closed as on a race weekend.
 // - Its asphalt on the fitted ground (the generator glued the terrain to it; fitGround keeps the lap's planes near the
-//   lap), each station across only where it lies off the lap's asphalt and kerbs: the seam follows the lap's edge, so the
-//   two roads never draw over each other. The lap's road material, with an s of its own past the lap's (no braking zone,
+//   lap), each station across only where it lies off the lap's asphalt and kerbs and off the pit lane's paved band (the
+//   oval of Chapecó's pit entry crosses the closed end of the main straight): the seams follow their edges, so the roads
+//   never draw over each other. The lap's road material, with an s of its own past the lap's (no braking zone,
 //   launch mark or concrete slab of the lap paints on it).
 // - Its edge lines and the kerbs inside its tight bends (kerb_left / kerb_right), off the lap's.
 // - At each mouth a row of water-filled barriers across it, red and white, where the generator put its line (past the
@@ -30,11 +32,13 @@ export function createClosedRoads(data,roadSurface,{textures,ground,mobile=false
  if(!stats.roads)return {root,obstacles,clearings,stats};
  const probe=new TestCar(data),A=data.samples,N=A.length,colors=(data.meta.kerb_colors??['#c8201e','#f1efe8']).map(c=>new THREE.Color(c));
  const gAt=(x,y,z)=>{const g=ground?.(x,y);return Number.isFinite(g)?g:z;};
- // How far (x, y) lies past the lap's asphalt, and past its kerb on that side where it has one (negative on them).
+ // How far (x, y) lies past the lap's asphalt, and past its kerb on that side where it has one, and past the pit lane's
+ // paved band (negative on them).
+ const pitGeo=pitGeometry(data);
  const lapOut=(x,y)=>{
   const q=probe.nearest(x,y,true),a=A[q.i],b=A[(q.i+1)%N],u=q.u,lx=a[9]+(b[9]-a[9])*u,ly=a[10]+(b[10]-a[10])*u,l=Math.hypot(lx,ly)||1;
-  const d=(q.ex*lx+q.ey*ly)/l,w=a[4]+(b[4]-a[4])*u,kerb=(d<0?a[13]||b[13]:a[14]||b[14])?KERB_W:0;
-  return Math.abs(d)-w/2-kerb;
+  const d=(q.ex*lx+q.ey*ly)/l,w=a[4]+(b[4]-a[4])*u,kerb=(d<0?a[13]||b[13]:a[14]||b[14])?KERB_W:0,lane=pitGeo&&locatePit(pitGeo,x,y);
+  return Math.min(Math.abs(d)-w/2-kerb,lane?Math.max(lane.lo-lane.d,lane.d-lane.hi):Infinity);
  };
  const offset=branchRoadOffset(data)+20000,road={pos:[],uv:[],data:[],index:[]},paint={pos:[],index:[]},kerb={pos:[],color:[]},parts=[];
  let asphaltM=0;

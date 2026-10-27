@@ -71,16 +71,15 @@ EXTRA = {
         'pit_sintetico': {'lado': 1, 'inicio': .29, 'entrada': 50, 'saida': 50, 'largura': 7.6},
     },
     'chapeco': {
-        # Numeracao oficial (12 curvas, 7 a direita e 5 a esquerda) casada com a geometria: a dobra
-        # de 26 graus no meio da reta 2 nao conta (a reta tem 634 m ate a curva 2) e a de 22 graus
-        # antes da reta 3 e a curva 4; a varrida longa a esquerda, detectada em dois pedacos, e a
-        # curva 7 ("de alta velocidade, com 517 metros e raio aberto constante"). No projeto de
-        # 2023 (13 curvas) a dobra da reta 2 contava e a varrida era a curva 8.
-        'trechos': {399: 'Curva 1 · grampo', 1131: 'Reta 2', 1206: 'Curva 2', 1412: 'Curva 3', 1603: 'Curva 4',
-                    2124: 'Curva 5 · grampo', 2349: 'Curva 6', 2436: 'Curva 7 · alta, raio constante',
-                    2578: 'Curva 7 · alta, raio constante', 2930: 'Curva 8', 3104: 'Curva 9', 3167: 'Curva 10',
-                    3273: 'Curva 11', 3388: 'Curva 12'},
-        'depois': {399: 'Reta 2', 1603: 'Reta 3', 3388: 'Reta principal'},
+        # Numeracao oficial (12 curvas, 7 a direita e 5 a esquerda, a do diagrama do autodromo) casada com a geometria do
+        # eixo corrigido no editor e retificado (retificar_eixo.py): a Reta 2 e reta (a dobra de 26 graus no meio dela era
+        # leitura errada do eixo medido), a dobra de 24 graus antes da reta 3 e a curva 4, a varrida longa a esquerda e a
+        # curva 7 ("de alta velocidade, com 517 metros e raio aberto constante"). No projeto de 2023 (13 curvas) a dobra
+        # da reta 2 contava e a varrida era a curva 8.
+        'trechos': {404: 'Curva 1 · grampo', 1224: 'Curva 2', 1388: 'Curva 3', 1586: 'Curva 4', 2098: 'Curva 5 · grampo',
+                    2324: 'Curva 6', 2466: 'Curva 7 · alta, raio constante', 2928: 'Curva 8', 3088: 'Curva 9',
+                    3162: 'Curva 10', 3264: 'Curva 11', 3382: 'Curva 12'},
+        'depois': {404: 'Reta 2', 1586: 'Reta 3', 3382: 'Reta principal'},
         'reta': 'Reta principal',
         'caimento_extra': {},
         # 30 mil lugares divulgados, sem planta publicada: arquibancadas do lado de dentro da
@@ -214,7 +213,9 @@ EXTRA = {
 
 def carregar(nome):
     pasta = pasta_fontes(nome)
-    eixo = json.loads((pasta / 'eixo_refinado.json').read_text(encoding='utf-8'))
+    # O eixo refeito em retas e curvas de projeto (retificar_eixo.py), onde o config pede.
+    arquivo = 'eixo_retificado.json' if CIRCUITOS[nome].get('retificar') else 'eixo_refinado.json'
+    eixo = json.loads((pasta / arquivo).read_text(encoding='utf-8'))
     return pasta, eixo
 
 

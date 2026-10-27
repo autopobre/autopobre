@@ -35,8 +35,10 @@ with sync_playwright() as p:
  page.screenshot(path=str(ROOT/'renders/pistas_celular_historia.png'))
  page.click('#tracksBack');page.click('#start');assert page.is_visible('#cars') and not page.is_visible('#tracks')
  page.click('#carsNext');assert page.get_attribute('#tracks','data-mode')=='corrida' and 'MODO CORRIDA' in page.inner_text('#championshipKicker')
- # One card per circuit of circuits.js (a new track brings its card).
- assert page.locator('#tracks [data-circuit]').count()==page.evaluate("import('./circuits.js').then(m=>Object.keys(m.CIRCUITS).length)") and page.is_visible('#singleRace') and page.is_visible('#raceModes [data-race="championship"]') and not page.is_visible('#storyStart')
+ # One card per circuit of circuits.js (a new track brings its card); another layout of a card's autódromo (variantOf:
+ # Chapecó's oval) is a box on that card.
+ assert page.locator('#tracks .track-cards [data-circuit]').count()==page.evaluate("import('./circuits.js').then(m=>Object.values(m.CIRCUITS).filter(c=>!c.variantOf).length)") and page.is_visible('#singleRace') and page.is_visible('#raceModes [data-race="championship"]') and not page.is_visible('#storyStart')
+ assert page.locator('#tracks .track-cards [data-variant]').count()==page.evaluate("import('./circuits.js').then(m=>Object.values(m.CIRCUITS).filter(c=>c.variantOf).length)")
  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
  page.screenshot(path=str(ROOT/'renders/pistas_celular.png'))
  assert not heavy(),heavy();assert page.evaluate('gpuContexts')<=1

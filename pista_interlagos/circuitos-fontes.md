@@ -129,7 +129,37 @@ OSM (`/map`), que `baixar_fontes.py` agora usa quando nenhum Overpass responde.
 **Aproximações declaradas:** pit lane e posição dos boxes dentro do prédio, arquibancadas (8
 blocos do lado de dentro da reta principal, de frente para os boxes: não há planta publicada),
 caimentos, zebras, muros, largura exata e a distribuição do desnível ao longo da volta. Os
-atalhos dos traçados alternativos (visíveis no Sentinel-2) não foram desenhados.
+atalhos S1 e S3 dos traçados alternativos não foram desenhados; o S2 é a ligação do oval (abaixo).
+
+**Correção de 27/10/2026** (pedido do usuário: a curva 2 era uma direita que virava esquerda, e as retas estavam
+tortas). Fontes novas, só para conferir no computador (fora do repositório e do site):
+
+- **Mediana de 5 cenas Sentinel-2** limpas (24/08 a 20/10/2026, `baixar_fontes.py chapeco --mediana`,
+  `sentinel2_mediana.tif`): o meio da faixa de asfalto da Reta 2 é reto a 1,5 m; o eixo medido descia 10 m no meio dela.
+- **Vídeo aéreo da pista pronta**, de um avião (contribuição de usuário no Google Maps, out/2026): quadros a cada
+  0,5 s, cada um ajustado à volta por uma homografia (`fotos_referencia.py`: uns pontos num quadro e o resto pelo
+  encaixe do asfalto escuro) e juntos numa vista de cima a 0,5 m.
+- **Diagrama do autódromo** com as curvas C1 a C12, os atalhos S1, S2 e S3 e as retas de 837, 634 e 422 m (achado pelo
+  usuário, origem não informada), encaixado no asfalto da mediana Sentinel-2 (`diagrama_referencia.py`).
+
+Sobre essas camadas o usuário corrigiu a volta no editor de traçado (o `fontes/chapeco/tracado_chapeco*.json` mais novo): a
+curva 2 é uma esquerda simples e fechada no fim da Reta 2, e a reta que sobe dela fica onde o diagrama a desenha.
+`retificar_eixo.py` refaz essa volta em retas retas e curvas de projeto (curvatura que sobe do zero, fica constante e
+volta ao zero), ajustadas a ela por mínimos quadrados: 0,2 m de diferença média, 1,7 m no pior ponto, 12 curvas (7 à
+direita e 5 à esquerda) na ordem oficial, a curva 7 uma curva só, de raio constante (~280 m), com 543 m. A volta mede
+4.001 m antes da escala (0,05% dos 4.004 publicados); `gerar_pista.py` lê o `eixo_retificado.json` quando a config tem
+`retificar`. A dobra de 26° no meio da reta 2 e o gancho da curva 2 eram leituras erradas do eixo medido.
+
+**Traçado oval** (`chapecooval`, o "Alternativo 2": "percurso oval entre as curvas 1 e 2, com 1.452 metros", horário;
+a NASCAR Brasil corre nele em 31/10 e 01/11/2026). `scripts/circuitos/gerar_variante.py chapecooval` monta o arquivo dele
+sobre o de Chapecó, sem refazer o lugar: a reta principal, a curva 1 e a Reta 2 da volta corrigida, e a ligação S2 da
+Reta 2 para a reta principal, ainda fora do OSM, medida na mediana Sentinel-2 (a borda de dentro contorna o miolo de
+terra, raio de ~38 m, com 0,9 m de erro médio). O oval mede 1.464 m no jogo, 1.457,6 m sem a escala do complexo. O resto
+da volta e a entrada antiga dos boxes viram trechos fechados por barreiras (como os outros traçados de Velocitta). A
+entrada dos boxes do oval é fictícia: a do traçado completo fica no fim da reta principal, que o oval não percorre; a
+faixa sai por fora da ligação, segue reta, cruza o fim da reta principal fechado e entra no pit lane 8 m antes das
+garagens. No jogo é uma caixa "Oval" no cartão de Chapecó, sem cartão nem etapa de campeonato próprios; recordes,
+fantasmas e referências da IA são do oval.
 
 **Nesta máquina:** o controle de aplicativos do Windows bloqueia DLLs do pyproj e de partes do
 scipy no `geo-venv`. `projecao.py` faz as projeções pelo GDAL do rasterio e `compat_scipy.py`
@@ -594,5 +624,11 @@ circuito, a linha, a vista e cada fundo.
   escala das amostras de `dados/pista_<id>.json`. É a entrada dos geradores para corrigir uma pista; com pontos de
   largura leva `largura_m` (uma por ponto do eixo) e `largura_mostrada_m` (a padrão). `eixo_do_editor.py <id>` leva o
   mais novo para `eixo_refinado.json` (a reta entre os pontos refeita a cada 2 m, `largura_do_editor`, que no
-  `gerar_pista.py` passa na frente da `largura_publicada`); por enquanto só Guaratiba (`eixo_do_editor: True`) usa.
+  `gerar_pista.py` passa na frente da `largura_publicada`); Guaratiba (`eixo_do_editor: True`) usa. Chapecó leva o seu
+  pelo `retificar_eixo.py` (`retificar.editor` na config), que o refaz em retas e curvas de projeto.
+- **Fotos e diagramas**: `fontes/<id>/fotos/fotos.json` (quadros de vídeo aéreo: uns pontos num quadro semente, as
+  homografias dos outros pelo encaixe da faixa de asfalto da volta no asfalto escuro de cada quadro) viram camadas em
+  perspectiva e uma vista de cima de 0,5 m (`fotos_referencia.py`); `fontes/<id>/diagramas/diagramas.json` (desenhos do
+  traçado) viram camadas transparentes encaixadas na volta ou, com `encaixe: sentinel2`, no asfalto da mediana
+  Sentinel-2 (`diagrama_referencia.py`). As duas entram pelo `pacote_referencia.py`, com a mediana Sentinel-2.
 - Conferência: `scripts/verificar_editor_tracado.py [porta] [pasta das fotos]`.

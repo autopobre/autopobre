@@ -22,6 +22,13 @@
 .track-cards span{font-size:12px;margin-top:3px;color:#cdd6c6}
 .track-cards small{font-size:11px;margin-top:2px;color:#9fb2a4}
 .track-cards em{font-style:normal;font-size:11px;font-weight:800;color:#f4d055;margin-top:6px;min-height:14px}
+/* Another layout of a card's autódromo (main.js showCardLayout): a box in the card's free corner, beside the button. */
+.track-card-group{position:relative;display:flex;min-width:0}
+.track-card-group>button{flex:1;min-width:0}
+.track-variant{position:absolute;right:10px;bottom:10px;display:flex;align-items:center;gap:5px;margin:0;padding:3px 8px 3px 5px;border:1px solid #88978c66;border-radius:12px;background:#0e211ecc;color:#dce6d7;font-size:11px;font-weight:800;cursor:pointer;user-select:none}
+.track-variant:hover{border-color:#d9b93c99}
+.track-variant:has(input:checked){border-color:#f4ce39;color:#f4ce39}
+.track-variant input{width:14px;height:14px;margin:0;accent-color:#f4ce39;cursor:pointer}
 .track-detail{margin-top:12px;padding:12px 14px;border-left:4px solid #f4ce39;background:#0d1e1bd9;border-radius:0 7px 7px 0}
 .track-detail p{margin:0 0 6px;font-size:13px;line-height:1.5}
 #circuitDescription{color:#f4d77a;font-weight:800}
@@ -148,6 +155,7 @@
  .track-cards button{display:grid;grid-template-columns:52px minmax(0,1fr);grid-template-rows:auto auto auto;column-gap:8px;align-items:center;min-height:0;padding:7px 8px}
  .track-cards svg{grid-row:1/4;width:52px;height:34px;margin:0}
  .track-cards b{font-size:12px;line-height:1.1}.track-cards span{font-size:9px;margin:1px 0 0}.track-cards small{display:none}.track-cards em{font-size:9px;margin:1px 0 0;min-height:0}
+ .track-variant{right:5px;bottom:5px;padding:1px 6px 1px 3px;font-size:9px}.track-variant input{width:11px;height:11px}
  .track-detail{margin-top:6px;padding:6px 9px}.track-detail p{font-size:10px;margin:0 0 3px;line-height:1.35}#circuitIntro,#circuitSource{display:none}
  .tracks-side{gap:6px}.tracks-modes{gap:6px}
  .tracks-modes button,.championship-start{padding:8px 9px;font-size:12px;min-height:44px}.tracks-modes small{font-size:9px}

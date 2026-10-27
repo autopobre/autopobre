@@ -14,7 +14,7 @@ import {TestCar} from '../teste/physics.js';
 import {RaceField} from '../teste/race-field.js';
 const checks={},check=(name,value)=>{checks[name]=!!value;assert(value,name);};
 
-const TABLE={interlagos:10,cascavel:8,piracicaba:6,chapeco:9,brasilia:12,goiania:9,guaratiba:10,velocitta:9,chapada:11,floripa:10,minhocao:9,pampulha:40,curvelo:6};
+const TABLE={interlagos:10,cascavel:8,piracicaba:6,chapeco:9,chapecooval:6,brasilia:12,goiania:9,guaratiba:10,velocitta:9,chapada:11,floripa:10,minhocao:9,pampulha:40,curvelo:6};
 check('every_circuit_has_its_litres',Object.keys(CIRCUITS).every(id=>TABLE[id]===eightLapFuel(id))&&Object.keys(TABLE).length===Object.keys(CIRCUITS).length);
 check('table_up_to_eight_laps',Object.keys(TABLE).every(id=>[1,3,8,Infinity].every(n=>recommendedFuel(id,n)===TABLE[id])));
 check('more_laps_in_proportion',recommendedFuel('interlagos',16)===20&&recommendedFuel('interlagos',12)===15&&recommendedFuel('chapada',20)===28&&recommendedFuel('brasilia',20)===30);

@@ -6,9 +6,9 @@ import {RaceField} from '../teste/race-field.js';
 import {CIRCUITS} from '../teste/circuits.js';
 import {smoothVerges} from '../teste/track-verge.js';
 const rows=[];
-// Cascavel, ECPA, Chapecó, Brasília and Goiânia come from the open-data track files (scripts/circuitos/), the
-// imaginary Chapada dos Sonhos from gerar_chapada.py.
-for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','brasilia','goiania','guaratiba','velocitta','chapada','floripa','minhocao','pampulha']){
+// Cascavel, ECPA, Chapecó (and its oval, gerar_variante.py), Brasília and Goiânia come from the open-data track files
+// (scripts/circuitos/), the imaginary Chapada dos Sonhos from gerar_chapada.py.
+for(const id of ['interlagos','curvelo','cascavel','piracicaba','chapeco','chapecooval','brasilia','goiania','guaratiba','velocitta','chapada','floripa','minhocao','pampulha']){
  const data=id==='curvelo'?createCurveloData():JSON.parse(readFileSync(new URL(id==='interlagos'?'../dados/pista.json':`../dados/pista_${id}.json`,import.meta.url)));data.meta.id=id;smoothVerges(data);
  // Both modes race the standard distance (LAPS.standard in player-preferences.js): 3 laps; a circuit that fixes its race
  // length (circuits.js laps: Pampulha's one lap of 20 km) its own, with the time it takes.

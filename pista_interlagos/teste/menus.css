@@ -260,6 +260,13 @@ html:not(.menus-paddock) .settings-sources{display:none}
 .menus-paddock #tracks .track-cards button:hover{background:none;border-color:var(--mp-rule);color:var(--mp-hot)}
 .menus-paddock #tracks .track-cards button[aria-pressed=true]{background:none;box-shadow:none;border-bottom-color:var(--mp-yellow);color:var(--mp-yellow)}
 .menus-paddock #tracks .track-cards button[aria-pressed=true] b{font-size:22px;font-weight:700}
+/* A layout box on a card (Chapecó's oval): at the end of the row, the name kept clear of it. */
+.menus-paddock #tracks .track-card-group{flex:none}
+.menus-paddock #tracks .track-card-group>button{padding-right:84px}
+.menus-paddock #tracks .track-variant{top:50%;right:2px;bottom:auto;transform:translateY(-50%);padding:5px 9px 5px 6px;border:1px solid var(--mp-rule);border-radius:0;background:none;color:var(--mp-faint);font:500 15px/1 var(--mp-text);transition:color .15s}
+.menus-paddock #tracks .track-variant:hover{color:var(--mp-hot)}
+.menus-paddock #tracks .track-variant:has(input:checked){border-color:var(--mp-yellow);color:var(--mp-yellow)}
+.menus-paddock #tracks .track-variant input{accent-color:var(--mp-yellow)}
 
 /* The chosen circuit in big: its outline across the right, name, place, figures, the best lap, then its story. */
 .menus-paddock #tracks .track-detail{grid-area:hero;position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:0;margin:0;padding:clamp(8px,2vh,24px) clamp(20px,2.6vw,48px) clamp(22px,3.4vh,40px);border:0;border-radius:0;background:none;overflow:hidden}
@@ -510,6 +517,8 @@ html:not(.menus-paddock) .settings-sources{display:none}
  .menus-paddock #tracks .track-cards svg{width:38px;height:22px}
  .menus-paddock #tracks .track-cards b,.menus-paddock #tracks .track-cards button[aria-pressed=true] b{font-size:13px}
  .menus-paddock #tracks .track-cards span{display:none}
+ .menus-paddock #tracks .track-card-group>button{padding-right:58px}
+ .menus-paddock #tracks .track-variant{padding:2px 5px 2px 3px;font-size:11px}
  .menus-paddock #tracks .track-detail{padding:2px 14px 10px}
  .menus-paddock .track-hero svg{width:42%;height:80%}
  .menus-paddock .track-hero h3{font-size:24px}

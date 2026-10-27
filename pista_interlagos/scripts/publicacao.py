@@ -110,6 +110,7 @@ PUBLIC_FILES.update({
     'dados/pista_cascavel.json': 'pista_interlagos/dados/pista_cascavel.json',
     'dados/pista_piracicaba.json': 'pista_interlagos/dados/pista_piracicaba.json',
     'dados/pista_chapeco.json': 'pista_interlagos/dados/pista_chapeco.json',
+    'dados/pista_chapecooval.json': 'pista_interlagos/dados/pista_chapecooval.json',
     'dados/pista_brasilia.json': 'pista_interlagos/dados/pista_brasilia.json',
     'dados/pista_goiania.json': 'pista_interlagos/dados/pista_goiania.json',
     'dados/pista_guaratiba.json': 'pista_interlagos/dados/pista_guaratiba.json',

@@ -15,6 +15,7 @@
 - Mapa Facil da Prefeitura de Goiania (SIGGO), onde o circuito pede: curvas de nivel de 5 m (com o
   ANADEM, viram o modelo do terreno mdt_goiania.tif), equipamentos do autodromo, vegetacao, pavimentos
   do cadastro e os edificios em altura da cidade; `--goiania` baixa so essa parte.
+- --mediana: so a mediana das 5 cenas Sentinel-2 limpas mais recentes (sentinel2_mediana.tif, retificar_eixo.py).
 - --referencia: mosaico de imagem aerea Esri World Imagery, so para conferencia visual
   local (nao entra no jogo nem no pacote publico).
 
@@ -120,6 +121,46 @@ def sentinel2(c, pasta):
         (pasta / 'sentinel2.json').write_text(json.dumps(info, indent=1), encoding='utf-8')
         return info
     raise SystemExit('Nenhuma cena Sentinel-2 limpa encontrada.')
+
+
+def sentinel2_mediana(c, pasta, cenas=5, desde=None):
+    """Mediana, pixel a pixel, das `cenas` cenas Sentinel-2 L2A limpas mais recentes (desde a data `desde`, AAAA-MM-DD):
+    o ruido de cada cena cai e a borda do asfalto fica mais firme (retificar_eixo.py mede nela o meio da faixa). Todas na
+    mesma grade de 10 m do tile (as cenas de um tile coincidem pixel a pixel)."""
+    w, s, e, n = caixa(c)
+    fim = date.today()
+    inicio = desde or (fim - timedelta(days=400)).isoformat()
+    busca = {'collections': ['sentinel-2-l2a'], 'bbox': [w, s, e, n], 'datetime': f'{inicio}T00:00:00Z/{fim}T23:59:59Z',
+             'query': {'eo:cloud_cover': {'lt': 60}}, 'limit': 60,
+             'sortby': [{'field': 'properties.datetime', 'direction': 'desc'}]}
+    r = requests.post('https://earth-search.aws.element84.com/v1/search', json=busca, headers=AGENTE, timeout=120)
+    r.raise_for_status()
+    pilha, usadas, ref = [], [], None
+    for cena in r.json()['features']:
+        try:
+            scl = geo_io.recortar(cena['assets']['scl']['href'], (w, s, e, n), preencher=0).banda(1)
+        except Exception as err:          # noqa: BLE001 - cena indisponivel, tenta a proxima
+            print(f'  {cena["id"]}: SCL indisponivel ({err})')
+            continue
+        validos = scl > 0
+        if validos.mean() < .99 or np.isin(scl, [3, 8, 9, 10])[validos].mean() > .002:
+            continue
+        g = geo_io.recortar(cena['assets']['visual']['href'], (w, s, e, n))
+        if ref is not None and (g.a.shape != ref.a.shape or g.epsg != ref.epsg or g.transform != ref.transform):
+            print(f'  {cena["id"]}: outra grade, fica de fora')
+            continue
+        ref = ref or g
+        pilha.append(g.a)
+        usadas.append({'id': cena['id'], 'datetime': cena['properties']['datetime']})
+        print(f'  {cena["id"]}: limpa ({len(pilha)}/{cenas})')
+        if len(pilha) == cenas:
+            break
+    if not pilha:
+        raise SystemExit('Nenhuma cena Sentinel-2 limpa encontrada.')
+    mediana = np.median(np.stack(pilha), axis=0).round().astype(np.uint8)
+    geo_io.gravar(pasta / 'sentinel2_mediana.tif', mediana, ref.transform, ref.epsg, ref.nodata)
+    print(f'Sentinel-2 mediana de {len(pilha)} cenas: {mediana.shape[2]}x{mediana.shape[1]} px -> sentinel2_mediana.tif')
+    return {'cenas': usadas}
 
 
 def quadkey(lat, lon, z=9):
@@ -873,6 +914,12 @@ def main():
     pasta = pasta_fontes(nome)
     if '--edificios' in sys.argv:
         edificios_microsoft(c, pasta)
+        return
+    if '--mediana' in sys.argv:
+        # So a mediana das cenas Sentinel-2 limpas mais recentes (retificar_eixo.py), gravada na proveniencia ja baixada.
+        prov = json.loads((pasta / 'proveniencia.json').read_text(encoding='utf-8'))
+        prov['sentinel2_mediana'] = sentinel2_mediana(c, pasta)
+        (pasta / 'proveniencia.json').write_text(json.dumps(prov, indent=1, ensure_ascii=False), encoding='utf-8')
         return
     if '--idedf' in sys.argv:
         fontes_idedf(c, pasta)

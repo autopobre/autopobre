@@ -7,8 +7,9 @@ import {rosterOf,PLAYER_ENTRY,carEntry,CAR_MODELS} from './race-roster.js';
 // own, not an official regulation. Progress lives in this browser.
 // Todas as pistas: every circuit in circuits.js, the oval closing the season, so a new track joins
 // by itself. A championship under way gets it as an extra round at the end (one saved before
-// Chapecó opened ran four rounds); a finished one keeps its calendar.
-export const CHAMPIONSHIP_ROUNDS=Object.freeze(Object.keys(CIRCUITS).sort((a,b)=>(a==='curvelo')-(b==='curvelo')));
+// Chapecó opened ran four rounds); a finished one keeps its calendar. Another layout of a circuit
+// already in it (variantOf: Chapecó's oval) is not a round.
+export const CHAMPIONSHIP_ROUNDS=Object.freeze(Object.keys(CIRCUITS).filter(id=>!CIRCUITS[id].variantOf).sort((a,b)=>(a==='curvelo')-(b==='curvelo')));
 const FIRST_CALENDAR=['interlagos','cascavel','piracicaba','curvelo'];
 // The Old Stock Race 2026 season as announced (subject to change): eight rounds with their dates,
 // Interlagos twice in a row. A circuit not built yet shows as coming soon and holds the start.

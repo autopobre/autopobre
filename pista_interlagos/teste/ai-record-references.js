@@ -788,197 +788,393 @@ export const AI_REFERENCE_TIMES=[
   "circuit": "chapeco",
   "mode": "normal",
   "number": "73",
-  "bestLap": 117.15,
-  "bestRace": 359.533
+  "bestLap": 114.542,
+  "bestRace": 352.483
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "00",
-  "bestLap": 122.342,
-  "bestRace": 380.35
+  "bestLap": 120.483,
+  "bestRace": 369.633
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "7",
-  "bestLap": 119.125,
-  "bestRace": 364.625
+  "bestLap": 117.475,
+  "bestRace": 361.35
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "64",
-  "bestLap": 124.092,
-  "bestRace": 387.242
+  "bestLap": 121.55,
+  "bestRace": 377.342
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "2",
-  "bestLap": 116.133,
-  "bestRace": 357.983
+  "bestLap": 115.658,
+  "bestRace": 356.4
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "19",
-  "bestLap": 119.058,
-  "bestRace": 365.158
+  "bestLap": 120.642,
+  "bestRace": 373.058
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "51",
-  "bestLap": 122.425,
-  "bestRace": 379.533
+  "bestLap": 120.775,
+  "bestRace": 371.942
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "93",
-  "bestLap": 117.6,
-  "bestRace": 368.8
+  "bestLap": 117.475,
+  "bestRace": 361.692
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "312",
-  "bestLap": 123.967,
-  "bestRace": 387.9
+  "bestLap": 122.192,
+  "bestRace": 379.458
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "70",
-  "bestLap": 122.517,
-  "bestRace": 380.95
+  "bestLap": 120.65,
+  "bestRace": 372.492
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "9",
-  "bestLap": 124.1,
-  "bestRace": 386.575
+  "bestLap": 122.883,
+  "bestRace": 381.875
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "74",
-  "bestLap": 122.4,
-  "bestRace": 381.525
+  "bestLap": 122.008,
+  "bestRace": 377.933
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "88",
-  "bestLap": 124.067,
-  "bestRace": 388.625
+  "bestLap": 122.008,
+  "bestRace": 376.817
  },
  {
   "circuit": "chapeco",
   "mode": "normal",
   "number": "42",
-  "bestLap": 122.567,
-  "bestRace": 379.058
+  "bestLap": 121.242,
+  "bestRace": 374.6
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "73",
-  "bestLap": 117.15,
-  "bestRace": 359.533
+  "bestLap": 114.542,
+  "bestRace": 352.483
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "00",
-  "bestLap": 122.342,
-  "bestRace": 380.35
+  "bestLap": 120.483,
+  "bestRace": 369.633
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "7",
-  "bestLap": 119.125,
-  "bestRace": 364.625
+  "bestLap": 117.475,
+  "bestRace": 361.35
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "64",
-  "bestLap": 124.092,
-  "bestRace": 387.242
+  "bestLap": 121.55,
+  "bestRace": 377.342
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "2",
-  "bestLap": 116.133,
-  "bestRace": 357.983
+  "bestLap": 115.658,
+  "bestRace": 356.4
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "19",
-  "bestLap": 119.058,
-  "bestRace": 365.158
+  "bestLap": 120.642,
+  "bestRace": 373.058
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "51",
-  "bestLap": 122.425,
-  "bestRace": 379.533
+  "bestLap": 120.775,
+  "bestRace": 371.942
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "93",
-  "bestLap": 117.6,
-  "bestRace": 368.8
+  "bestLap": 117.475,
+  "bestRace": 361.692
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "312",
-  "bestLap": 123.967,
-  "bestRace": 387.9
+  "bestLap": 122.192,
+  "bestRace": 379.458
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "70",
-  "bestLap": 122.517,
-  "bestRace": 380.95
+  "bestLap": 120.65,
+  "bestRace": 372.492
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "9",
-  "bestLap": 124.1,
-  "bestRace": 386.575
+  "bestLap": 122.883,
+  "bestRace": 381.875
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "74",
-  "bestLap": 122.4,
-  "bestRace": 381.525
+  "bestLap": 122.008,
+  "bestRace": 377.933
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "88",
-  "bestLap": 124.067,
-  "bestRace": 388.625
+  "bestLap": 122.008,
+  "bestRace": 376.817
  },
  {
   "circuit": "chapeco",
   "mode": "immersive",
   "number": "42",
-  "bestLap": 122.567,
-  "bestRace": 379.058
+  "bestLap": 121.242,
+  "bestRace": 374.6
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "73",
+  "bestLap": 40.625,
+  "bestRace": 127.258
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "00",
+  "bestLap": 41.275,
+  "bestRace": 131.242
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "7",
+  "bestLap": 41.4,
+  "bestRace": 132.4
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "64",
+  "bestLap": 42.292,
+  "bestRace": 136.95
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "2",
+  "bestLap": 40.733,
+  "bestRace": 129.958
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "19",
+  "bestLap": 41.233,
+  "bestRace": 131.775
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "51",
+  "bestLap": 42.208,
+  "bestRace": 137.95
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "93",
+  "bestLap": 41.933,
+  "bestRace": 134.642
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "312",
+  "bestLap": 42.833,
+  "bestRace": 141.475
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "70",
+  "bestLap": 41.642,
+  "bestRace": 135.367
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "9",
+  "bestLap": 42.883,
+  "bestRace": 140.242
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "74",
+  "bestLap": 42.883,
+  "bestRace": 140.85
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "88",
+  "bestLap": 42.892,
+  "bestRace": 139.6
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "normal",
+  "number": "42",
+  "bestLap": 42.483,
+  "bestRace": 135.325
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "73",
+  "bestLap": 40.625,
+  "bestRace": 127.258
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "00",
+  "bestLap": 41.275,
+  "bestRace": 131.242
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "7",
+  "bestLap": 41.4,
+  "bestRace": 132.4
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "64",
+  "bestLap": 42.292,
+  "bestRace": 136.95
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "2",
+  "bestLap": 40.733,
+  "bestRace": 129.958
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "19",
+  "bestLap": 41.233,
+  "bestRace": 131.775
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "51",
+  "bestLap": 42.208,
+  "bestRace": 137.95
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "93",
+  "bestLap": 41.933,
+  "bestRace": 134.642
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "312",
+  "bestLap": 42.833,
+  "bestRace": 141.475
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "70",
+  "bestLap": 41.642,
+  "bestRace": 135.367
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "9",
+  "bestLap": 42.883,
+  "bestRace": 140.242
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "74",
+  "bestLap": 42.883,
+  "bestRace": 140.85
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "88",
+  "bestLap": 42.892,
+  "bestRace": 139.6
+ },
+ {
+  "circuit": "chapecooval",
+  "mode": "immersive",
+  "number": "42",
+  "bestLap": 42.483,
+  "bestRace": 135.325
  },
  {
   "circuit": "brasilia",

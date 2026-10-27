@@ -4,7 +4,7 @@ import * as THREE from '../teste/node_modules/three/build/three.module.js';
 import {weatherProfile,weatherCaption,timeOfDay,rainLevel,TIMES_OF_DAY,RAIN_LEVELS,TIME_PROFILES,skyDirection,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,timeChoice,rainChoice,drawWeather,chosenWeather,rainOdds,rainFor,raceMonth,PLAIN_RAIN_ODDS,nextTimeOfDay,nextRainLevel,weatherName} from '../teste/weather.js';
 import {SUN_DIRECTION} from '../teste/sky.js';
 import {RAIN_CLIMATE} from '../teste/rain-climate.js';
-import {CIRCUITS} from '../teste/circuits.js';
+import {CIRCUITS,placeOf} from '../teste/circuits.js';
 import {LOOK} from '../teste/cinematic.js';
 import {beamShape,BEAM_LOW,BEAM_HIGH,LAMP_SETS,ROAD_LAMPS,ROAD_LAMPS_MAX,updateRoadLamps,lampPatch,PlayerHeadlights} from '../teste/headlights.js';
 import {Rain,RAIN_DROPS,SPLASH} from '../teste/rain.js';
@@ -66,10 +66,12 @@ assert.deepEqual(rainOdds('nenhum_lugar'),PLAIN_RAIN_ODDS);
 assert.deepEqual([0,.69,.7,.84,.86,.99].map(r=>rainFor(r)),['seco','seco','garoa','garoa','chuva','chuva']);
 assert.deepEqual([rainFor(.5,{seco:.4,garoa:.3,chuva:.3}),rainFor(.5,{seco:1,garoa:0,chuva:0}),rainFor(.01,{seco:0,garoa:0,chuva:1})],['garoa','seco','chuva']);
 assert.deepEqual(['21 e 22 MAR','31 OUT e 01 NOV','19 e 20 DEZ','',null,undefined].map(raceMonth),[2,10,11,null,null,null]);
-// The circuits' cities (rain-climate.js, INMET normals): every circuit has its year; the odds add up; a dated round
-// takes its month (Brasília's dry July never rains, its March does half the days), the year its average.
-{const near=(a,b,e=1e-9)=>Math.abs(a-b)<e,sum=o=>o.seco+o.garoa+o.chuva;
- assert.ok(Object.keys(CIRCUITS).every(id=>RAIN_CLIMATE[id]?.rainDays.length===12&&RAIN_CLIMATE[id].heavyDays.length===12&&RAIN_CLIMATE[id].heavyDays.every((h,m)=>h<=RAIN_CLIMATE[id].rainDays[m])));
+// The circuits' cities (rain-climate.js, INMET normals): every circuit has its year (a layout of another card's autódromo,
+// Chapecó's oval, the place's: placeOf); the odds add up; a dated round takes its month (Brasília's dry July never rains,
+// its March does half the days), the year its average.
+{const near=(a,b,e=1e-9)=>Math.abs(a-b)<e,sum=o=>o.seco+o.garoa+o.chuva,climate=id=>RAIN_CLIMATE[placeOf(id)];
+ assert.ok(Object.keys(CIRCUITS).every(id=>climate(id)?.rainDays.length===12&&climate(id).heavyDays.length===12&&climate(id).heavyDays.every((h,m)=>h<=climate(id).rainDays[m])));
+ assert.deepEqual(rainOdds('chapecooval',9),rainOdds('chapeco',9));
  assert.ok(Object.keys(CIRCUITS).every(id=>[null,...Array.from({length:12},(_,m)=>m)].every(m=>near(sum(rainOdds(id,m)),1)&&Object.values(rainOdds(id,m)).every(p=>p>=0))));
  assert.deepEqual(rainOdds('brasilia',6),{seco:1,garoa:0,chuva:0});
  const march=rainOdds('brasilia',2);assert.ok(near(1-march.seco,15/31)&&near(march.chuva,15/31*7/15),JSON.stringify(march));

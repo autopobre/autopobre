@@ -7,7 +7,7 @@ import {sceneryBands,bandClearance} from './track-clearance.js';
 import {carShadowPatch} from './car-shadow.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {canvasTexture} from './pit-textures.js';
-import {CIRCUITS} from './circuits.js';
+import {CIRCUITS,placeOf} from './circuits.js';
 import {circuitSponsors,circuitSeed,seeded,paintBoard,paintWelcome} from './sponsors.js';
 import {createStreetWalls,barrierLines,barrierAt} from './street-walls.js';
 
@@ -470,7 +470,7 @@ export const ASPHALT_PROFILES=Object.freeze({
  piracicaba:{tone:1.1,tint:[1.02,1,.97],tar:.1,repair:.3},
  curvelo:{tone:1.06,tint:[1.03,1,.96],tar:.04,repair:.24}
 });
-export function asphaltProfile(data){return {...ASPHALT_PROFILES.interlagos,...(ASPHALT_PROFILES[data.meta?.id]??{}),...(data.meta?.asphalt??{})};}
+export function asphaltProfile(data){return {...ASPHALT_PROFILES.interlagos,...(ASPHALT_PROFILES[placeOf(data.meta?.id)]??{}),...(data.meta?.asphalt??{})};}
 const glsl=v=>Number(v).toFixed(4);
 // The grain's eight variants (the shader's grainVariant): cos and sin of i*2.39 rad and an offset.
 const GRAIN_VARIANTS=Array.from({length:8},(_,i)=>{const f=x=>x-Math.floor(x);return `vec4(${[Math.cos(i*2.39),Math.sin(i*2.39),f(Math.sin(3.1*(i+1))*43.7),f(Math.sin(7.3*(i+1))*43.7)].map(glsl).join(',')})`;});function zoneSum(zones,fn,L){

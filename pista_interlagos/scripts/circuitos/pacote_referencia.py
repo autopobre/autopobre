@@ -7,6 +7,11 @@ reprojetadas em UTM do circuito (canto noroeste e metros por pixel). Usa o que j
   referencia_esri.jpg/.json   mosaico Esri World Imagery (baixar_fontes.py --referencia), em Web Mercator
   referencia_orto.jpg/.json   ortofoto local ja em UTM (Goiania, 2016)
   eixo_refinado.json          eixo medido (refinar_eixo.py), como linha de apoio
+  eixo_retificado.json        eixo em retas e curvas de projeto (retificar_eixo.py), como linha de apoio
+  sentinel2_mediana.tif       mediana das cenas Sentinel-2 limpas (baixar_fontes.py --mediana), na caixa da volta a 2 m
+  fotos/fotos.json            fotos aereas obliquas (quadros de video) ajustadas a volta (fotos_referencia.py): cada uma
+                              em perspectiva e todas juntas na vista de cima
+  diagramas/diagramas.json    desenhos do traçado encaixados na volta (diagrama_referencia.py), transparentes
 e, quando a config do circuito traz `ortofotos_wms` (Floripa: GeoFloripa 2016 e 2023), baixa essas ortofotos da
 prefeitura em blocos, na caixa da volta do jogo mais 150 m, no UTM do circuito e na resolucao pedida.
 As imagens servem so para conferir e medir no proprio computador; nao se distribuem.
@@ -127,6 +132,20 @@ def esri_em_utm(pasta, epsg):
     return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)), x0, y1, res
 
 
+def sentinel2_em_utm(pasta, epsg, caixa, res=2.0):
+    """A mediana Sentinel-2 (10 m, UTM WGS 84) na caixa UTM do circuito a `res` m, bicubica."""
+    import geo_io
+    g = geo_io.ler(pasta / 'sentinel2_mediana.tif')
+    x0, y0, x1, y1 = caixa
+    nx, ny = int((x1 - x0) / res), int((y1 - y0) / res)
+    X, Y = np.meshgrid(x0 + (np.arange(nx) + .5) * res, y1 - (np.arange(ny) + .5) * res)
+    u, v = Transformer.from_crs(epsg, g.epsg, always_xy=True).transform(X, Y)
+    col, lin = ~g.transform * (np.asarray(u), np.asarray(v))
+    out = np.stack([map_coordinates(g.banda(b + 1).astype(np.float32), [lin - .5, col - .5], order=3, mode='nearest')
+                    for b in range(3)], -1)
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)), x0, y1, res
+
+
 def montar(nome):
     c = CIRCUITOS[nome]
     pasta = pasta_fontes(nome)
@@ -160,10 +179,31 @@ def montar(nome):
         img.save(destino / 'esri.jpg', quality=86)
         camadas.append({'nome': 'Esri World Imagery', 'arquivo': 'esri.jpg', 'tipo': 'planta', 'x0': x0, 'y1': y1, 'res': res,
                         'visivel': not camadas})
+    if (pasta / 'sentinel2_mediana.tif').exists():
+        img, x0, y1, res = sentinel2_em_utm(pasta, epsg, caixa_da_volta(nome))
+        img.save(destino / 'sentinel2_mediana.jpg', quality=90)
+        prov = json.loads((pasta / 'proveniencia.json').read_text(encoding='utf-8')).get('sentinel2_mediana', {})
+        camadas.append({'nome': f'Sentinel-2, mediana de {len(prov.get("cenas", [])) or "varias"} cenas (10 m)',
+                        'arquivo': 'sentinel2_mediana.jpg', 'tipo': 'planta', 'x0': x0, 'y1': y1, 'res': res, 'visivel': False})
+    # Fotos aereas obliquas ajustadas a volta: a vista de cima delas primeiro (a mais nitida da pista pronta).
+    from fotos_referencia import montar as montar_fotos
+    fotos = montar_fotos(nome, destino, caixa_da_volta(nome))
+    if fotos:
+        for cam in camadas:
+            cam['visivel'] = False
+        fotos[0]['visivel'] = True
+        camadas = fotos[:1] + camadas + fotos[1:]
+    from diagrama_referencia import montar as montar_diagramas
+    camadas += montar_diagramas(nome, destino, caixa_da_volta(nome))
     if (pasta / 'eixo_refinado.json').exists():
         eixo = json.loads((pasta / 'eixo_refinado.json').read_text(encoding='utf-8'))
         pts = np.round(np.array(eixo['eixo'])[::2], 2).tolist()
         linhas.append({'nome': 'Eixo medido (refinar_eixo)', 'pontos': pts, 'fechada': True, 'cor': '#ff4fd8', 'visivel': False})
+    if (pasta / 'eixo_retificado.json').exists():
+        eixo = json.loads((pasta / 'eixo_retificado.json').read_text(encoding='utf-8'))
+        pts = np.round(np.array(eixo['eixo'])[::2], 2).tolist()
+        linhas.append({'nome': 'Eixo retificado (retificar_eixo)', 'pontos': pts, 'fechada': True, 'cor': '#ffd23f',
+                       'visivel': False})
     cfg = {'formato': FORMATO, 'circuito': nome, 'nome': c['nome'], 'sistema': 'utm', 'epsg': epsg,
            'oficial_m': c.get('extensao_m'), 'aviso': 'Imagens so para conferencia local; nao distribuir.',
            'camadas': camadas, 'linhas': linhas}

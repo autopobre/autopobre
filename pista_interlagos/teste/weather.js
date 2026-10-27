@@ -7,6 +7,7 @@
 // The light on what draws its own colour (smoke, spray, dust, falling leaves, splashes: no lights in their shaders),
 // one uniform shared by all of them; main.js applyWeather sets it from weatherProfile().ambient (1 by day).
 import {RAIN_CLIMATE} from './rain-climate.js';
+import {placeOf} from './circuits.js';
 export const EFFECT_LIGHT={value:1};
 // The grandstands' lamps after dark (user, 2026-10-15: "o pessoal das arquibancadas fica no escuro total"): the fixtures
 // under their roofs glow and light the stands and the fans (interlagos-stands.js, landscape.js createCrowd). One uniform
@@ -30,7 +31,7 @@ export const rainChoice=value=>value===RANDOM_WEATHER?value:rainLevel(value);
 export const PLAIN_RAIN_ODDS=Object.freeze({seco:.7,garoa:.15,chuva:.15});
 const MONTH_DAYS=[31,28.25,31,30,31,30,31,31,30,31,30,31];
 export function rainOdds(circuit,month=null){
- const c=RAIN_CLIMATE[circuit];if(!c)return PLAIN_RAIN_ODDS;
+ const c=RAIN_CLIMATE[placeOf(circuit)];if(!c)return PLAIN_RAIN_ODDS;
  const dated=Number.isInteger(month)&&month>=0&&month<12,sum=list=>list.reduce((a,b)=>a+b,0);
  const wet=Math.min(1,dated?c.rainDays[month]/MONTH_DAYS[month]:sum(c.rainDays)/365.25),heavy=dated?c.heavyDays[month]/c.rainDays[month]:sum(c.heavyDays)/sum(c.rainDays);
  const share=Number.isFinite(heavy)?Math.min(1,heavy):0;

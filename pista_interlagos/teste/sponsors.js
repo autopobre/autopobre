@@ -5,6 +5,7 @@
 // Every name must read as an obvious joke (Pastel da Feira, Retífica do Zé), never as a business that
 // could exist (a place name plus a trade), no radio stations (they read as real ones), and nothing carries
 // a phone number: the user asked for that (2026-10-05) because a made-up number can be somebody's real one.
+import {placeOf} from './circuits.js';
 
 // id: [words on the banner, short word, background, text, accent, icon, layout, tagline, region]
 // The real Opala 99's own sponsors stay on the car only (its livery), never on banners or boards (user, 2026-10-05).
@@ -111,7 +112,7 @@ export const SPONSORS=Object.freeze({
 // Each circuit's region (its local sponsors).
 const REGIONS={interlagos:'sp',piracicaba:'sp',cascavel:'pr',chapeco:'sc',brasilia:'df',goiania:'go',curvelo:'mg',chapada:'mt',floripa:'ilha',minhocao:'centro',pampulha:'bh',guaratiba:'rio',velocitta:'mogi'};
 const NATIONAL=['autopobre','oldstock','posto99','tia','retifica','blazer'],EXTRA=['pulapula','pegaprimeira','oleovo','semtranco'];
-export const regionOf=id=>REGIONS[id]??'sp';
+export const regionOf=id=>REGIONS[placeOf(id)]??'sp';
 // A circuit's own seed: the same banners and boards at every load of it, different from the others'.
 export function circuitSeed(id='interlagos'){let h=2166136261;for(const c of String(id))h=Math.imul(h^c.charCodeAt(0),16777619);return (h>>>0)%2147483646+1;}
 export const seeded=seed=>{let x=seed%2147483647||1;return ()=>(x=x*16807%2147483647)/2147483647;};

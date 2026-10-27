@@ -65,9 +65,9 @@ for(const id of ['cascavel','piracicaba','chapeco','brasilia','goiania','guarati
  // sections carry the official numbering (12 curves, curve 7 the long constant-radius sweep).
  if(id==='chapeco'){
   assert(Math.abs(data.meta.elevation_range_m-18.5)<.01,'Chapecó: published 18.5 m of relief');
-  const names=new Set(data.meta.sections.map(([,name])=>name.split(' · ')[0]));
-  for(let k=1;k<=12;k++)assert(names.has(`Curva ${k}`),`Chapecó: curve ${k} named`);
-  assert(!names.has('Curva'),'Chapecó: every detected curve has its official number');
+  const numbers=new Set(data.meta.sections.flatMap(([,name])=>[...name.split(' · ')[0].matchAll(/\d+/g)].map(m=>+m[0])));
+  for(let k=1;k<=12;k++)assert(numbers.has(k),`Chapecó: curve ${k} named`);
+  assert(!data.meta.sections.some(([,name])=>name==='Curva'),'Chapecó: every detected curve has its official number');
  }
  // Brasília (reopened 11/2025): 16 curves, the published widths (15 m on the start straight, 14 m
  // elsewhere), curve 1 banked at 5°, relief from the DF's 1 m terrain model.

@@ -14,8 +14,15 @@ export const CIRCUITS=Object.freeze({
   data:'pista_piracicaba.json',ground:'./assets/circuitos/piracicaba_solo.jpg',track:'ECPA PIRACICABA',boxTitle:'Cuida do Opala, caipira!',weather:'Piracicaba · 16h40 · 27 °C · pista seca',venue:'Esporte Clube Piracicabano de Automobilismo'},
  // Opened in August 2026: no aerial photo of the finished track yet, so the asphalt was measured on
  // Sentinel-2 and the relief of the earthworks calibrated to the published 18.5 m (circuitos-fontes.md).
- chapeco:{id:'chapeco',podium:[0,60],name:'Chapecó',label:'AUTÓDROMO MÁRCIO VACCARO · CHAPECÓ, SC',length:4004,description:'4.004 m · 12 curvas · horário · Chapecó, SC',intro:'O autódromo mais novo do Brasil, no meio do mato: reta de 837 m diante dos boxes, dois grampos e a curva 7, de alta, com 517 m em raio constante. 18,5 m de desnível.',source:'Traçado OSM (mai/2026) refinado sobre Sentinel-2 de set/2026 · relevo ANADEM (ANA/UFRGS) ajustado aos 18,5 m publicados · cobertura ESA WorldCover.',fuel:9,altitude:420,
+ chapeco:{id:'chapeco',podium:[0,60],name:'Chapecó',label:'AUTÓDROMO MÁRCIO VACCARO · CHAPECÓ, SC',length:4004,description:'4.004 m · 12 curvas · horário · Chapecó, SC',intro:'O autódromo mais novo do Brasil, no meio do mato: reta de 837 m diante dos boxes, dois grampos e a curva 7, de alta, com 517 m em raio constante. 18,5 m de desnível.',source:'Traçado OSM (mai/2026) corrigido sobre fotos aéreas de out/2026, a mediana de 5 cenas Sentinel-2 e o diagrama do autódromo, em retas e curvas de projeto · relevo ANADEM (ANA/UFRGS) ajustado aos 18,5 m publicados · cobertura ESA WorldCover.',fuel:9,altitude:420,
   data:'pista_chapeco.json',ground:'./assets/circuitos/chapeco_solo.jpg',track:'CHAPECÓ',boxTitle:'Cuida do Opala, tchê!',weather:'Chapecó · 16h40 · 23 °C · pista seca',venue:'Autódromo Internacional Márcio Vaccaro'},
+ // Chapecó's oval (NASCAR Brasil, 31/10 and 01/11/2026): "the oval between turns 1 and 2, 1,452 m", clockwise, one of the
+ // autódromo's layouts: the main straight, turn 1, Reta 2 and the S2 link back to the straight (scripts/circuitos/
+ // gerar_variante.py: the link measured on Sentinel-2, the rest of the circuit closed by barriers, a pit entry of the
+ // game's off the link's outside). variantOf: a layout of that card's place, picked with a box on its card (main.js),
+ // never a card or a championship round of its own; its climate, sponsors and asphalt are the place's (placeOf).
+ chapecooval:{id:'chapecooval',variantOf:'chapeco',podium:[0,60],name:'Oval de Chapecó',label:'AUTÓDROMO MÁRCIO VACCARO · TRAÇADO OVAL · CHAPECÓ, SC',length:1452,description:'1.452 m · 2 curvas · horário · traçado oval · Chapecó, SC',intro:'O oval da NASCAR Brasil no autódromo novo de Chapecó: a reta de 837 m diante dos boxes, o grampo da curva 1, a Reta 2 e a ligação S2 de volta para a reta. O resto do traçado fica fechado por barreiras.',source:'Traçado oval "entre as curvas 1 e 2, com 1.452 metros" (Prefeitura de Chapecó) · ligação S2 medida na mediana de 5 cenas Sentinel-2 (ago a out/2026) · entrada dos boxes fictícia, por fora da ligação · relevo ANADEM (ANA/UFRGS).',fuel:6,altitude:420,
+  data:'pista_chapecooval.json',ground:'./assets/circuitos/chapeco_solo.jpg',track:'CHAPECÓ OVAL',boxTitle:'Cuida do Opala, tchê!',weather:'Chapecó · 16h40 · 23 °C · pista seca',venue:'Autódromo Internacional Márcio Vaccaro'},
  // Reopened in November 2025 after the BRB renovation, the Old Stock's 2026 opener: the new asphalt
  // measured on 2025 aerial imagery, the relief from the DF's 1 m terrain model and the buildings from
  // its cadastre (circuitos-fontes.md). Clockwise, so its boxes are on the cars' right (data.pit.reversed).
@@ -71,6 +78,9 @@ export const CIRCUITS=Object.freeze({
   data:'pista_pampulha.json',ground:'./assets/circuitos/pampulha_solo.jpg',track:'PAMPULHA',boxTitle:'Cuida do Opala, sô!',weather:'Belo Horizonte · 16h40 · 26 °C · pista seca',venue:'Circuito da Pampulha'}
 });
 export const circuitId=value=>typeof value==='string'&&Object.hasOwn(CIRCUITS,value)?value:'interlagos';
+// The place a circuit is raced at: a layout of another card's autódromo (variantOf) is that autódromo (its card, aerial
+// photo, climate, local sponsors, asphalt); any other circuit is its own.
+export const placeOf=id=>CIRCUITS[id]?.variantOf??id;
 // A circuit may fix its race length (laps, mirrored in its track file as meta.laps: Pampulha's single 20 km lap). Every
 // race there runs that many laps whatever the player's setting, which stays saved for the other circuits; its records'
 // race times are over that distance (lap-records.js, ai-records.js). null: the race runs the laps chosen.
