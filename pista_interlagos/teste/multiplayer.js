@@ -919,8 +919,9 @@ export class Multiplayer {
    // The door waits for the race to end.
    // Someone in: who, and when the race ends for everyone.
    const done=this.finishedNames();if(done.length)return `${done.join(' e ')} ${done.length>1?'terminaram':'terminou'}${this.endText()}`;
-   const humans=this.race?.seats.length??1,door=room.role==='host'&&room.knocks.size?` · ${room.knocks.size} na porta (entra depois da corrida)`:'';
-   return `Corrida com ${humans} piloto${humans>1?'s':''} ${humans>1?'humanos':'humano'}${door}.`;
+   // (the humans racing: a host who only watches is not one of them, and its guests are told it watches)
+   const humans=Math.max(1,this.racers().length),watched=this.race?.assiste&&room.role!=='host'?' · anfitrião assistindo':'',door=room.role==='host'&&room.knocks.size?` · ${room.knocks.size} na porta (entra depois da corrida)`:'';
+   return `Corrida com ${humans} piloto${humans>1?'s':''} ${humans>1?'humanos':'humano'}${watched}${door}.`;
   }
   if(this.phase==='finished')return 'Fim de corrida.';
   if(room.role==='host'){

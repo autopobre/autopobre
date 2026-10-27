@@ -101,6 +101,8 @@ with sync_playwright() as p:
     # ...nor in her place: a field of 14 racing (the team's try, 10-27: last, she read 14º / 15).
     place = guest.evaluate("document.getElementById('racePosition').textContent")
     assert place.endswith('/ 14'), f'her place counts the host\'s parked car: {place}'
+    line = guest.evaluate(STATUS)
+    assert not line.startswith('Corrida com') or 'Corrida com 1 piloto humano · anfitrião assistindo' in line, line
     assert not host.evaluate("interlagosSala.info().standings.some(r=>r.number==='99')"), 'no tower row for the host'
     shown = host.evaluate("['#timing','#fuelGauge','#skinButton','#ghostButton','#mpAuto'].filter(q=>document.querySelector(q)?.getClientRects().length)")
     assert not shown, f'none of its own car on the host\'s screen: {shown}'
@@ -118,6 +120,8 @@ with sync_playwright() as p:
     rows = guest.evaluate(ROWS)
     assert not any(r.strip().startswith(('15º99', '99')) or 'Ana' in r for r in rows), f'no row for the host\'s car: {rows}'
     assert guest.inner_text('#resultsPlace').endswith('/ 14'), guest.inner_text('#resultsPlace')
+    # (the times as they stood: at her own flag for her, at the race's end for the host, who had none)
+    assert host.inner_text('#resultsWhen') == 'no fim da corrida' and guest.inner_text('#resultsWhen') == 'na sua bandeirada'
     report['resultado'] = {'anfitriao': host.inner_text('#resultsPlace'), 'linhas_convidada': len(rows)}
     host.screenshot(path=str(SHOTS / '2_anfitriao_resultado.png'))
     guest.screenshot(path=str(SHOTS / '2_convidada_resultado.png'))
