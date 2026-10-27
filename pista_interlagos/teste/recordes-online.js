@@ -64,6 +64,9 @@ export class OnlineRecords {
  constructor({base=API,now=()=>performance.now()}={}){
   this.base=base;this.now=now;this.account=null;this.run=null;this.pending=null;this.queue=[];this.busy=false;this.importing=false;
   this.inputs=new LapInputs();this.finished=null;
+  // The window or the tab left: the game pauses (main.js hold) and draws no more frames, so the pause's start goes now.
+  globalThis.document?.addEventListener?.('visibilitychange',()=>{if(document.hidden)this.halt('aba');});
+  globalThis.addEventListener?.('blur',()=>this.halt('janela'));
   this.toast=document.createElement('div');this.toast.id='recordeOnline';this.toast.setAttribute('role','status');this.toast.hidden=true;document.body.append(this.toast);
  }
  // The signed-in account; laps go online only with a nickname.
@@ -76,9 +79,16 @@ export class OnlineRecords {
   const key=`${s.circuit}|${s.mode}|${s.car}`,r=this.run;
   if(!r||r.key!==key||s.clock<r.clock-1e-6||(r.failed&&this.now()-r.failed>RETRY)){this.begin(key,s);return;}
   if(!r.ticket)return;
-  const running=s.clock>r.clock;r.clock=s.clock;
-  if(!running)return;
-  const now=this.now();
+  const running=s.clock>r.clock,before=r.clock,now=this.now();r.clock=s.clock;
+  if(!running){
+   // The clock stands: a pause (s.parado: P or a menu, the window or the tab left). Its start goes to the server with
+   // the clock as it stood (a tenth of a second on: a fast screen draws a frame or two with no physics step between).
+   if(s.parado&&r.lapStart!==undefined&&!r.halted&&now-(r.movedAt??now)>=100)this.halt(s.parado);
+   return;
+  }
+  r.movedAt=now;
+  // And its end, the clock still where it stood, before anything else: the server leaves the pause out of the lap's time.
+  if(r.halted){r.halted=false;r.sentAt=now;this.send({relogio:before,pausa:'fim'});}
   if(r.lapStart===undefined){
    // The first chunk: a crossing when the lap has only just begun (the lights out, the line), else plain.
    r.lapStart=s.lapStart;r.sentAt=now;
@@ -92,6 +102,11 @@ export class OnlineRecords {
    return;
   }
   if(now-r.sentAt>=r.every*1000){r.sentAt=now;this.send({relogio:s.clock});}
+ }
+ // A pause starts (why: pausa, janela or aba), on a run under way: once, until the clock moves again (frame says so).
+ halt(why){
+  const r=this.run;if(!this.account||!r?.ticket||r.lapStart===undefined||r.halted)return;
+  r.halted=true;this.send({relogio:r.clock,pausa:'inicio',motivo:why});
  }
  // Each physics step (main.js recordGhost, before the ghost's): the controls, and those of the lap the step finished.
  step(car,command,sources){

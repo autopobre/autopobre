@@ -2,7 +2,7 @@
 // server on this machine (teste/local.mjs), on one clock the test moves for both. A run as main.js feeds it
 // (a frame every tenth of a second): the ticket, the first crossing at the lights, chunks at the server's
 // pace, a best lap with its ghost and controls (checked; the verdict on screen), a slower lap (logged quietly), a lap with
-// a pause (refused, and why), a reset (a new ticket), the Fusca and a signed-out pilot (nothing sent), the
+// a pause (checked, the pause left out and logged), a game slower than the clock (refused, and by how much), a reset (a new ticket), the Fusca and a signed-out pilot (nothing sent), the
 // old records' import (only the pilot's, once), and the board as the records dialog reads it.
 import assert from 'node:assert/strict';
 import {startLocal} from './local.mjs';
@@ -45,15 +45,20 @@ const lapOf=(circuit,time)=>lapAt(aiLaps(circuit)[1].lap,time);
 const race={circuit:'interlagos',mode:'normal',car:'opala',clock:0,lapStart:0,driving:true};
 let steps=0;
 const physics=()=>{steps++;race.clock=steps/120;online.step({clock:race.clock,lapStart:race.lapStart},{throttle:1},()=>1);};
-async function frames(seconds,{running=true}={}){
- for(let i=0;i<Math.round(seconds*10);i++){now+=100;if(running)for(let k=0;k<12;k++)physics();online.frame({...race});await settle();}
+// running false: the clock stands (parado: why, as main.js onlineRun says; none: it just stands). steps: the physics
+// steps in each tenth of a second (10: the game at 83% of the clock, a computer that cannot keep up).
+async function frames(seconds,{running=true,parado=null,steps:per=12}={}){
+ race.parado=running?null:parado;
+ for(let i=0;i<Math.round(seconds*10);i++){now+=100;if(running)for(let k=0;k<per;k++)physics();online.frame({...race});await settle();}
+ race.parado=null;
 }
 // Drives to the line `time` seconds after the lap began; the crossing's step hands the lap's controls and then its
 // ghost over first.
-async function lap(time,{pauseAt=null}={}){
+async function lap(time,{pauseAt=null,slowAt=null}={}){
  const end=Math.round((race.lapStart+time)*120);
  while(steps+12<end){   // up to the last frame before the line: the crossing's frame moves the clock too
-  if(pauseAt!==null&&race.clock>=race.lapStart+pauseAt){pauseAt=null;await frames(20,{running:false});}
+  if(pauseAt!==null&&race.clock>=race.lapStart+pauseAt){pauseAt=null;await frames(20,{running:false,parado:'pausa'});}
+  if(slowAt!==null&&race.clock>=race.lapStart+slowAt){slowAt=null;await frames(30,{steps:10});}
   await frames(.1);
  }
  now+=100;while(steps<end-1)physics();
@@ -74,18 +79,25 @@ await check('a run: the ticket, the start, a best lap checked and shown',async()
  assert.ok(pedacos()>=12&&pedacos()<=15,`a chunk every 10 s and the two crossings (${pedacos()})`);
 });
 
-await check('a slower lap goes to the log quietly; a lap with a pause is refused, and the screen says why',async()=>{
+await check('a slower lap goes to the log quietly; a pause is left out; a game slower than the clock is refused, and the screen says how much',async()=>{
  toast.hidden=true;const before=sent.join('|').length;
  await lap(123);
  assert.equal(toast.hidden,true,'nothing to say');
  const logged=local.DB.sqlite.prepare('SELECT tempo_ms,resultado,aparelho FROM voltas ORDER BY id DESC').get();
  assert.deepEqual({...logged},{tempo_ms:123000,resultado:'conferida',aparelho:'teclado'},'checked, logged, with the keyboard that drove it');
+ // P pressed 40 s in: the clock stands 20 s. A pause is no slow motion: the lap is checked, and logged with its pause.
  await lap(117,{pauseAt:40});
- assert.equal(toast.hidden,false);assert.match(toast.textContent,/Volta de 01:57.000 salva no seu recorde deste navegador, mas não conferida online: a volta teve pausa.*Em Recordes você pode pedir uma revisão/);assert.equal(online.review?.time,117,'the lap stays for the review the records dialog offers');
- assert.equal(local.DB.sqlite.prepare("SELECT volta_ms FROM recordes WHERE selo='conferido'").get().volta_ms,120000);
+ assert.match(toast.textContent,/Recorde online conferido: 01:57.000/,'checked, the pause left out of its time');
+ assert.deepEqual(JSON.parse(local.DB.sqlite.prepare('SELECT sinais FROM voltas ORDER BY id DESC').get().sinais).pausas,{n:1,s:20,motivos:{pausa:1}});
+ // The game slower than the clock for half a minute (a computer that cannot keep up): refused, saying how much; still
+ // this browser's record, and kept for a review.
+ await lap(116,{slowAt:30});
+ assert.equal(toast.hidden,false);assert.match(toast.textContent,/Volta de 01:56.000 salva no seu recorde deste navegador, mas não conferida online: o jogo rodou \d+% mais devagar que o relógio.*Em Recordes você pode pedir uma revisão/);
+ assert.equal(online.review?.time,116,'the lap stays for the review the records dialog offers');
+ assert.equal(local.DB.sqlite.prepare("SELECT volta_ms FROM recordes WHERE selo='conferido'").get().volta_ms,117000);
  assert.ok(sent.join('|').length>before);
- await lap(118);
- assert.match(toast.textContent,/Recorde online conferido: 01:58.000/,'the next clean lap counts again');
+ await lap(116.8);
+ assert.match(toast.textContent,/Recorde online conferido: 01:56.800/,'the next clean lap counts again');
 });
 
 await check('a reset asks for a new ticket; the Fusca gets its own; a signed-out pilot sends nothing',async()=>{
@@ -115,8 +127,8 @@ await check('the old records go up once: the pilot\'s only, then the browser is 
 
 await check('the board and the circuits\' bests, as the records dialog reads them',async()=>{
  const board=await online.board('interlagos','opala');
- assert.deepEqual(board.map(r=>[r.name,r.bestLap,r.badge,r.mine]),[['Fefe Rapida',118,'conferido',true]],'the checked lap, though the old one is quicker');
- assert.equal((await online.bests('opala')).interlagos,118000);
+ assert.deepEqual(board.map(r=>[r.name,r.bestLap,r.badge,r.mine]),[['Fefe Rapida',116.8,'conferido',true]],'the checked lap, though the old one is quicker');
+ assert.equal((await online.bests('opala')).interlagos,116800);
  await assert.rejects(online.board('nada','opala'));
 });
 

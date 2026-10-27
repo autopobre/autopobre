@@ -107,9 +107,9 @@ await check('a clean lap is checked, kept as the best, and on the board',async()
 await check('laps the server refuses',async()=>{
  const b=await pilot('200000000000000000004','Caio Freio');
  const refused=async(options,why,time=120)=>{const r=await run(b),lap=await r.lap(time,options);assert.equal(lap.conferida,undefined,why);assert.match(lap.recusada,why);};
- await refused({gap:30},/pausa|sem sinal/);                          // a pause in the middle
- await refused({pace:1.25},/pausa|devagar/);                        // slow motion: more real time than game time
- await refused({pace:.7},/pausa|devagar/);                          // a clock running ahead
+ await refused({gap:30},/40 s sem falar com o servidor/);           // a silence in the middle, the clock running
+ await refused({pace:1.25},/rodou 20% mais devagar que o relógio/); // slow motion: more real time than game time
+ await refused({pace:.7},/relógio do jogo andou mais rápido/);       // a clock running ahead
  await refused({},/rápida demais/,Math.floor(LINE_TIMES.opala.interlagos*.84)); // far quicker than the driving line
  await refused({fantasma:ghost('interlagos',118)},/fantasma não tem o tempo/);                // another lap's ghost
  await refused({fantasma:ghost('interlagos',120,{time:118})},/não pôde ser lido/);   // a ghost longer than its own time
@@ -124,9 +124,39 @@ await check('laps the server refuses',async()=>{
  await refused({comandos:{...keyboard(120),data:'////'}},/sem os comandos/);                    // unreadable
  assert.equal(rows("SELECT COUNT(*) AS n FROM recordes r JOIN usuarios u ON u.id=r.usuario_id WHERE u.apelido='Caio Freio'")[0].n,0);
  // A lap begun before the ticket (no crossing seen) is not checked either.
- const late=await run(b);await late.send({relogio:30});now+=5000;await late.send({relogio:35});
- now+=85000;const lap=(await late.send({relogio:120,cruzou:true,volta:{fantasma:ghost('interlagos',120)}})).volta;
- assert.match(lap.recusada,/pausa|sem sinal|devagar/);
+ const late=await run(b);await late.send({relogio:30});
+ for(let g=40;g<=110;g+=10){now+=10000;await late.send({relogio:g});}
+ now+=10000;const lap=(await late.send({relogio:120,cruzou:true,volta:{fantasma:ghost('interlagos',120)}})).volta;
+ assert.match(lap.recusada,/a volta começou antes de o servidor acompanhar/);
+});
+
+await check('a pause the game declares is left out of the lap and kept in its log; one whose clock moved, one undeclared, or too many, are not',async()=>{
+ const b=await pilot('200000000000000000040','Pausa Leal');
+ // A lap of 120 s from the line, a chunk every CHUNK_EVERY seconds, with pauses as [the game's second, real seconds,
+ // why]: the start, then the end with the clock as it stood (fim: the clock it says instead; declared false: no start).
+ const lapWith=async(pauses,{fim=g=>g,declared=true}={})=>{
+  const r=await run(b),todo=[...pauses];let g=0;
+  await r.send({relogio:0,cruzou:true});
+  while(g<120){
+   const next=Math.min((Math.floor(g/CHUNK_EVERY)+1)*CHUNK_EVERY,120),p=todo[0];
+   if(p&&p[0]>g&&p[0]<next){
+    todo.shift();now+=(p[0]-g)*1000;g=p[0];
+    if(declared)await r.send({relogio:g,pausa:'inicio',motivo:p[2]});
+    now+=p[1]*1000;await r.send({relogio:fim(g),pausa:'fim'});
+    continue;
+   }
+   now+=(next-g)*1000;g=next;if(g<120)await r.send({relogio:g});
+  }
+  return (await r.send({relogio:120,cruzou:true,volta:{fantasma:ghost('interlagos',120),comandos:keyboard(120)}})).volta;
+ };
+ const ok=await lapWith([[43,60,'janela'],[77,5,'pausa']]);
+ assert.deepEqual(ok,{tempo_ms:120000,conferida:true,recorde:true},'a minute away and a P: the lap\'s own time, checked');
+ const logged=JSON.parse(rows("SELECT sinais FROM voltas v JOIN usuarios u ON u.id=v.usuario_id WHERE u.apelido='Pausa Leal' ORDER BY v.id DESC")[0].sinais);
+ assert.deepEqual(logged.pausas,{n:2,s:65,motivos:{janela:1,pausa:1}},'how many, how long and why');
+ assert.match((await lapWith([[43,60,'pausa']],{fim:g=>g+1})).recusada,/60 s sem falar com o servidor/,'the clock moved in it: no pause');
+ assert.match((await lapWith([[43,60,'pausa']],{declared:false})).recusada,/63 s sem falar com o servidor/,'an end with no start');
+ assert.match((await lapWith(Array.from({length:11},(_,i)=>[5+10*i,2,'aba']))).recusada,/a volta teve 11 pausas/);
+ assert.equal((await lapWith(Array.from({length:10},(_,i)=>[5+10*i,2,'aba']))).conferida,true,'ten count');
 });
 
 await check('tickets: sealed, one way in time, with a life',async()=>{
@@ -220,7 +250,7 @@ await check('a ticket sent again spends no writes: a record once, refusals and r
  const count=tipo=>rows(`SELECT COUNT(*) AS n FROM eventos WHERE usuario_id=${id} AND tipo='${tipo}'`)[0].n;
  // A fresh ticket's first chunk sent with a lap again and again, and fresh tickets too: refused each time, 5 written.
  const fresh=(await run(b)).ticket;
- for(let i=0;i<8;i++)assert.match((await b.post('/api/recordes/pedaco',{bilhete:fresh,relogio:0,cruzou:true,volta:{}})).volta.recusada,/pausa/);
+ for(let i=0;i<8;i++)assert.match((await b.post('/api/recordes/pedaco',{bilhete:fresh,relogio:0,cruzou:true,volta:{}})).volta.recusada,/começou antes/);
  for(let i=0;i<3;i++)await b.post('/api/recordes/pedaco',{bilhete:(await run(b)).ticket,relogio:0,cruzou:true,volta:{}});
  assert.equal(count('recusada'),5);
  now+=3600001;await b.post('/api/recordes/pedaco',{bilhete:fresh,relogio:0,cruzou:true,volta:{}});

@@ -44,6 +44,11 @@ const CHUNK_GAP=25000;        // ms: a longer silence breaks the stretch (a paus
 const JITTER=750;             // ms: the network's say in one chunk's timing
 const SLOWEST=.85;            // the slowest a chunk's game clock may run against the real one
 const STEADY=.97;             // the same over the whole stretch since it began
+// A pause (P, a menu, the window or the tab left): the game says when it stopped and when it went on (pausa: inicio,
+// then fim, the very next chunk), and between them its clock must stand (STILL ms at most: the physics does not step).
+// Then the pause is no slow motion: its time leaves the stretch's and the lap's real time, and the lap log keeps how
+// many, how long and why. Up to PAUSES_PER_LAP in a lap; the ticket's life bounds how long.
+const STILL=20,PAUSES_PER_LAP=10,PAUSE_WHY=new Set(['pausa','janela','aba']);
 const LAP_SLACK=1000;         // ms (plus 1% of the lap): a lap's real time against its game time
 const RUN_HOURS=8;            // a ticket's life
 // Each car a board of its own (an Opala does 217 km/h and a Fusca 170: their times never compare), each with its own
@@ -156,17 +161,30 @@ async function chunk(request,env,body){
  if(s.id!==t.u||s.google_sub!==t.sb)return json({erro:'Bilhete de outra conta: peça outro.'},409);
  if(typeof g!=='number'||!Number.isFinite(g)||g<0||g>86400)return json({erro:'Relógio inválido.'},400);
  if(t.gl!==null&&g<t.gl-1e-6)return json({erro:'O relógio voltou: peça outro bilhete.'},409);
+ // sp: the pauses' time within the clean stretch (ms); lp/ln/lm: the pauses of the lap under way (time, how many, why);
+ // pw: why the game said it stopped, on the chunk before (null: it did not); qb: what broke the stretch last (for the
+ // lap's verdict).
+ t.sp??=0;t.lp??=0;t.ln??=0;t.lm??={};
+ const halted=t.pw??null;t.pw=null;
  let clean=false;
  if(t.gl!==null){
-  const dS=now-t.sl,dG=(g-t.gl)*1000,cS=now-t.ss,cG=(g-t.gs)*1000;
-  clean=dS<=CHUNK_GAP&&dG<=dS+JITTER&&dG>=dS*SLOWEST-JITTER&&cG<=cS+2*JITTER&&cG>=cS*STEADY-2*JITTER;
+  const dS=now-t.sl,dG=(g-t.gl)*1000,still=body.pausa==='fim'&&halted!==null&&Math.abs(dG)<=STILL;
+  if(still&&t.ln<PAUSES_PER_LAP){clean=true;t.sp+=dS;t.lp+=dS;t.ln++;t.lm[halted]=(t.lm[halted]??0)+1;}
+  else{
+   const cS=now-t.ss-t.sp,cG=(g-t.gs)*1000;
+   clean=dS<=CHUNK_GAP&&dG<=dS+JITTER&&dG>=dS*SLOWEST-JITTER&&cG<=cS+2*JITTER&&cG>=cS*STEADY-2*JITTER;
+   if(!clean)t.qb=still?{k:'pausas',v:t.ln+1}:dS>CHUNK_GAP?{k:'silencio',v:Math.round(dS/1000)}:dG>dS+JITTER||cG>cS+2*JITTER?{k:'adiantado'}
+    :{k:'lento',v:Math.round(100*(1-Math.min(dG/Math.max(dS,1),cG/Math.max(cS,1))))};
+  }
  }
- // The lap ending here, when the stretch has been clean since it began (a crossing is forgotten when it breaks).
- const from=clean&&t.xg!==null?{g:t.xg,s:t.xs}:null,out={};
- if(!clean){t.gs=g;t.ss=now;t.xg=t.xs=null;}
+ if(body.pausa==='inicio')t.pw=PAUSE_WHY.has(body.motivo)?body.motivo:'pausa';
+ // The lap ending here, when the stretch has been clean since it began (a crossing is forgotten when it breaks), with the
+ // pauses it had.
+ const from=clean&&t.xg!==null?{g:t.xg,s:t.xs,p:t.lp}:null,out={},pauses={n:t.ln,s:Math.round(t.lp/1000),motivos:t.lm};
+ if(!clean){t.gs=g;t.ss=now;t.sp=0;t.xg=t.xs=null;}
  if(body.cruzou===true){
-  if(body.volta!==undefined)out.volta=await judge(env,t,g,now,from,body.volta,isTrusted(env,s));
-  t.xg=g;t.xs=now;
+  if(body.volta!==undefined)out.volta=await judge(env,t,g,now,from,body.volta,isTrusted(env,s),pauses);
+  t.xg=g;t.xs=now;t.lp=0;t.ln=0;t.lm={};t.qb=null;
  }
  t.gl=g;t.sl=now;t.n++;
  out.bilhete=await seal(env,TICKET,t);
@@ -180,7 +198,7 @@ async function chunk(request,env,body){
 // A trusted pilot's lap (base.js isTrusted) goes in as checked even when the checks would refuse it: the log keeps why
 // they would have (caso), its ghost and its controls, as a case for the admin panel.
 // A record goes to the panel's events, and so does a refusal with its reason, up to LOGGED_REFUSALS an hour.
-async function judge(env,t,g,now,from,lap,trusted=false){
+async function judge(env,t,g,now,from,lap,trusted=false,pauses=null){
  const ghost=readGhost(lap?.fantasma),inputs=readInputs(lap?.comandos);
  let signals=null;
  if(ghost&&inputs)try{
@@ -194,7 +212,7 @@ async function judge(env,t,g,now,from,lap,trusted=false){
    const reviewable=!verdict.conferida&&!!ghost&&!!ms&&(best===null||ms<best),kept=reviewable||!!verdict.caso;
    const r=await env.DB.prepare('INSERT INTO voltas (usuario_id,quando,circuito,modo,carro,versao,tempo_ms,resultado,aparelho,sinais,freios,fantasma,comandos,caso) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .bind(t.u,now,t.c,t.m,t.k,t.v,ms,verdict.recorde?'recorde':verdict.conferida?'conferida':verdict.recusada,
-     signals?.aparelho??null,signals?JSON.stringify({sinais:signals.sinais,medidas:signals.medidas}):null,signals?JSON.stringify(signals.freios):null,
+     signals?.aparelho??null,signals||pauses?.n?JSON.stringify({sinais:signals?.sinais??[],medidas:signals?.medidas??{},...(pauses?.n&&{pausas:pauses})}):null,signals?JSON.stringify(signals.freios):null,
      kept&&ghost?JSON.stringify(ghost.stored):null,verdict.caso&&lap?.comandos?JSON.stringify(lap.comandos):null,verdict.caso??null).run();
    if(reviewable&&r.meta.last_row_id)verdict.revisao=r.meta.last_row_id;
   }
@@ -205,15 +223,25 @@ async function judge(env,t,g,now,from,lap,trusted=false){
  }catch{}
  return verdict;
 }
+// Why the lap could not be timed by the server: what broke its stretch (chunk), in the pilot's words. A pause does
+// not (its time is left out) but past PAUSES_PER_LAP in a lap: the game slower than the clock (a computer that could not keep up), a silence with the
+// clock running (the line down, a tab the browser stopped), the game's clock ahead, or a lap begun before the ticket.
+function brokenBy(q){
+ if(q?.k==='pausas')return `a volta teve ${q.v} pausas (mais de ${PAUSES_PER_LAP} numa volta, ela não é conferida)`;
+ if(q?.k==='lento')return `o jogo rodou ${Math.max(1,q.v)}% mais devagar que o relógio (o computador não acompanhou)`;
+ if(q?.k==='silencio')return `o jogo ficou ${q.v} s sem falar com o servidor com a corrida andando (a internet caiu ou o navegador parou a aba)`;
+ if(q?.k==='adiantado')return 'o relógio do jogo andou mais rápido que o do servidor';
+ return 'a volta começou antes de o servidor acompanhar a corrida';
+}
 // The verdict: refused with the first reason (the clock, the floor, the ghost, the road, the car's physics, the controls),
 // or checked. A trusted pilot's lap with a readable ghost goes in whatever the reason (a pause: its ghost's own time),
 // the reason kept as its case (caso).
 async function check(env,t,g,now,from,ghost,inputs,signals,trusted=false){
  let why=null,time=null;
- if(!from){why='a volta teve pausa, ficou sem sinal ou o jogo rodou mais devagar que o relógio';time=ghost?.time??null;}
+ if(!from){why=brokenBy(t.qb);time=ghost?.time??null;}
  else{
-  time=g-from.g;const real=now-from.s,lap=Math.round(time*1000);
-  if(Math.abs(real-lap)>LAP_SLACK+lap*.01)why='o tempo da volta não bate com o relógio do servidor';
+  time=g-from.g;const real=now-from.s-(from.p??0),lap=Math.round(time*1000);
+  if(Math.abs(real-lap)>LAP_SLACK+lap*.01)why=brokenBy(real>lap?{k:'lento',v:Math.round(100*(1-lap/real))}:{k:'adiantado'});
   else if(lap<fastest(t.c,t.k))why='a volta foi rápida demais para esta pista';
  }
  const ms=time===null?null:Math.round(time*1000);

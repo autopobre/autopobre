@@ -15,6 +15,9 @@ const SIGNALS={sem_aparelho:'sem aparelho',sinteticas:'teclas sintéticas',sem_t
  curtas:'toques curtos demais',simultaneas:'teclas no mesmo instante',repetida:'freadas idênticas a outra volta'};
 const signals=s=>s?.sinais?.length?s.sinais.map(code=>SIGNALS[code]??code).join(' · '):'—';
 const RESULTS={recorde:'✓ recorde',conferida:'✓ conferida'};
+// A lap's pauses (conta-cloudflare/src/recordes.js): how many, how long, why (P or a menu, the window left, the tab hidden).
+const PAUSES={pausa:'pausa',janela:'janela',aba:'aba'};
+const pauses=p=>p?.n?`${p.n}× · ${p.s} s (${Object.entries(p.motivos??{}).map(([k,n])=>`${PAUSES[k]??k}${n>1?' '+n:''}`).join(', ')})`:'—';
 const MODES={normal:'Corrida normal',immersive:'Modo História'};
 const when=ms=>ms?new Date(ms).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):'—';
 const lap=ms=>{if(!Number.isFinite(ms))return '—';const s=ms/1000,m=Math.floor(s/60);return `${m}:${(s-m*60).toFixed(3).padStart(6,'0')}`;};
@@ -77,7 +80,7 @@ async function laps(more=false){
  const q=new URLSearchParams();if($('soSinais').checked)q.set('sinalizadas','1');if(more&&oldestLap)q.set('antes',oldestLap);
  const list=(await get('voltas?'+q)).voltas;
  rows('voltas',list,[[v=>when(v.quando)],[v=>v.apelido??'(apagada)'],[v=>where(v)],[v=>lap(v.tempo_ms),'num'],
-  [v=>RESULTS[v.resultado]??`✗ ${v.resultado}`],[v=>v.aparelho??'—'],[v=>signals(v.sinais),'sinais']],more);
+  [v=>RESULTS[v.resultado]??`✗ ${v.resultado}`],[v=>v.aparelho??'—'],[v=>pauses(v.sinais?.pausas)],[v=>signals(v.sinais),'sinais']],more);
  if(list.length)oldestLap=list[list.length-1].id;
  $('maisVoltas').hidden=list.length<100;
 }

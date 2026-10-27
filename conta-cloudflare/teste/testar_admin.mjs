@@ -71,13 +71,13 @@ await check('the events: accounts, sign-ins, nicknames, sign-outs, imports, laps
  const lap=await cleanLap(ana,121);assert.equal(lap.conferida,true);
  // A run whose laps all break (no clean stretch): every lap refused, at most 5 of them written.
  let ticket=(await ana.post('/api/recordes/bilhete',{circuito:'interlagos',modo:'normal',carro:'opala',versao:'painel'})).bilhete;
- for(let i=0;i<7;i++){now+=60000;const r=await ana.post('/api/recordes/pedaco',{bilhete:ticket,relogio:i*120,cruzou:true,volta:{fantasma:ghost('interlagos',120)}});ticket=r.bilhete;if(i)assert.match(r.volta.recusada,/pausa/);}
+ for(let i=0;i<7;i++){now+=60000;const r=await ana.post('/api/recordes/pedaco',{bilhete:ticket,relogio:i*120,cruzou:true,volta:{fantasma:ghost('interlagos',120)}});ticket=r.bilhete;assert.match(r.volta.recusada,i?/60 s sem falar com o servidor/:/começou antes/);}
  const someone=browser();await signIn(someone,'400000000000000000003');assert.equal((await someone.post('/api/conta/sair',{})).status,200);
  const kinds=sql("SELECT e.tipo,u.apelido,e.detalhe FROM eventos e LEFT JOIN usuarios u ON u.id=e.usuario_id ORDER BY e.id").map(e=>[e.tipo,e.apelido,e.detalhe&&JSON.parse(e.detalhe)]);
  assert.deepEqual(kinds.map(k=>k[0]),['conta_criada','apelido','conta_criada','apelido','entrou','importou','conferida','recusada','recusada','recusada','recusada','recusada','conta_criada','saiu']);
  assert.deepEqual(kinds[3][2],{apelido:'Ana Volta'});assert.deepEqual(kinds[5][2],{recordes:1});
  assert.deepEqual(kinds[6][2],{circuito:'interlagos',modo:'normal',volta_ms:121000});
- assert.match(kinds[8][2].motivo,/pausa/);
+ assert.match(kinds[8][2].motivo,/sem falar com o servidor/);
  assert.ok(!sql('SELECT detalhe FROM eventos').some(e=>/\d{15,}/.test(e.detalhe??'')),'no Google id in any event');
 });
 
@@ -85,7 +85,7 @@ await check('the summary, the accounts, the events page by page, the last record
  const s=await boss.get('/api/admin/resumo');
  assert.deepEqual({contas:s.contas,com_apelido:s.com_apelido,novas_7d:s.novas_7d,entradas_24h:s.entradas_24h,com_sessao:s.com_sessao,conferidos:s.conferidos,antigos:s.antigos,recusadas_7d:s.recusadas_7d},
   {contas:3,com_apelido:2,novas_7d:3,entradas_24h:4,com_sessao:2,conferidos:1,antigos:1,recusadas_7d:5});
- assert.equal(s.recusas_por_motivo[0].n,5);assert.match(s.recusas_por_motivo[0].motivo,/pausa/);assert.equal(s.eventos_por,EVENT_DAYS);
+ assert.equal(s.recusas_por_motivo[0].n,4);assert.match(s.recusas_por_motivo[0].motivo,/60 s sem falar/);assert.equal(s.eventos_por,EVENT_DAYS);
  const users=(await boss.get('/api/admin/usuarios')).usuarios;
  assert.deepEqual(Object.keys(users[0]).sort(),['admin','antigos','apelido','conferidas','conferidos','corridas','criado_em','dias','id','importou_em','pistas','recusadas_7d','ritmo','sessoes','sinalizadas_7d','ultimo_login','voltas'],'no Google id');
  const a=users.find(u=>u.apelido==='Ana Volta');assert.deepEqual([a.conferidos,a.antigos,a.recusadas_7d,a.sessoes,a.admin],[1,1,5,1,false],'one session: her second sign-in ended the first, same browser');
@@ -102,7 +102,7 @@ await check('the laps with their signals, and a record taken off the boards',asy
  const laps=(await boss.get('/api/admin/voltas')).voltas;
  assert.equal(laps.length,8);const clean=laps.find(v=>v.resultado==='recorde');
  assert.deepEqual([clean.apelido,clean.tempo_ms,clean.aparelho,clean.sinais.sinais],['Ana Volta',121000,'teclado',[]]);assert.ok(!('freios' in clean),'brake points stay out');
- assert.match(laps.find(v=>v.resultado!=='recorde').resultado,/pausa/);
+ assert.match(laps.find(v=>v.resultado!=='recorde').resultado,/sem falar com o servidor/);
  assert.equal((await boss.get('/api/admin/voltas?sinalizadas=1')).voltas.length,0,'none flagged');
  assert.equal((await boss.get('/api/admin/recordes')).recordes.find(r=>r.selo==='conferido').sinais.aparelho,'teclado','a record keeps its lap\'s signals');
  const old=(await boss.get('/api/admin/recordes')).recordes.find(r=>r.selo==='nao_verificado');

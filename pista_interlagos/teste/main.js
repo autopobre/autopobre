@@ -860,7 +860,9 @@ function startLobby(){
 // The run as the online records see it: the Opala's clock and laps while the pilot drives a race they count (not
 // the recon lap's autopilot, a run that used it, the Arena, nor a multiplayer room, whose clock the room may move).
 const onlineRun=()=>({circuit:circuit.id,mode:immersive.active?'immersive':'normal',car:raceModel,clock:car.clock,lapStart:car.lapStart,
- driving:sessionStarted&&ready&&!automatic&&!immersive.recordAssisted&&!arenaMode&&!multiplayer});
+ driving:sessionStarted&&ready&&!automatic&&!immersive.recordAssisted&&!arenaMode&&!multiplayer,
+ // Why the clock stands, when the race is paused: the tab hidden, the window left (both pause it: hold), or P / a menu.
+ parado:paused?(document.hidden?'aba':document.hasFocus()?'pausa':'janela'):null});
 // Which devices drive this step, for the online lap log (comandos-volta.js): 1 the keyboard, 2 touch, 4 a controller
 // (its stick and triggers, or a button holding a driving key), 8 a wheel. A program driving the car leaves none.
 const DRIVING_KEYS=Object.freeze(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyQ','Space','KeyN']);
