@@ -9,12 +9,10 @@
 //   server keeps the best, and logs every lap with what its controls look like. The verdict shows on screen for
 //   a lap that would be the pilot's best: a checked record, or why it was not checked.
 // - The records dialog's Online tab reads the board (lap-records.js addOnline).
-// - The old records of the pilot that signs in go up once per account (then this browser is marked), flagged
-//   ⚠️ unchecked, until IMPORT_UNTIL: this address's, and the main link's. A browser keeps records per address,
-//   so the main link's come through its bridge (pista_interlagos/ponte/levar-recordes.html): the page hops there
-//   once and comes back with them in the link's "#" part. The server turns the hop on (/api/conta/eu says where
-//   the bridge is) once the bridge is published. The way back carries a random key this tab keeps: records in a
-//   link someone else made (a key this tab never took) are not this pilot's, and do not go up.
+// - The old records of the pilot that signs in go up once per account and address (then this browser is marked),
+//   flagged ⚠️ unchecked, until IMPORT_UNTIL. A browser keeps records per address, and both addresses have the
+//   accounts (dev.autopobre.com.br and autopobre.com.br, one database): each sends its own, and the server keeps a
+//   mark per site.
 import {CIRCUITS} from './circuits.js';
 import {encodeGhost} from './ghost-lap.js';
 import {LapInputs} from './comandos-volta.js';
@@ -22,33 +20,16 @@ import {readRecords} from './lap-records.js';
 import {formatTime} from './race-results.js';
 
 const API='/api/recordes',CARS=Object.freeze(['opala','fusca']);
-// Per account (its creation date): this browser sent its old records. Never again after that. (v3: with the main
-// link's, through the bridge. v2 went out before the bridge was on, so the accounts that sent this address's alone
-// then send once more; the server's own mark was cleared with it, and it keeps the best.)
+// Per account (its creation date): this browser sent its old records. Never again after that. (v3 since the main
+// link's came to the test version through a bridge, retired on 10-28 when the main link got the accounts.)
 const IMPORTED='autopobre-recordes-importados-v3';
-// The bridge's records in the link back, the key the way back carries, and the hop under way in this tab (its key;
-// a bridge that did not answer is not asked again: this address's records go up alone).
-const BRIDGE_PARAM='recordes-do-principal',BRIDGE_KEY='chave-da-ponte',HOPPING='autopobre-ponte-recordes';
-const newKey=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
-const BRIDGES=/^(?:https:\/\/autopobre\.com\.br|http:\/\/127\.0\.0\.1:\d{2,5})$/;
-const IMPORT_UNTIL=Date.parse('2026-12-01T03:00:00Z');
+// conta-cloudflare/src/recordes.js IMPORT_UNTIL: the end of 31/12/2026 in Brasília.
+const IMPORT_UNTIL=Date.parse('2027-01-01T03:00:00Z');
 // The build (preparar_publicacao.py versions every module); 'local' in the preview.
 const VERSION=new URL(import.meta.url).searchParams.get('v')||'local';
 const RETRY=60000;            // ms before asking again for a ticket the server refused or did not answer
 
 function storage(){try{return globalThis.localStorage;}catch{return null;}}
-function session(){try{return globalThis.sessionStorage;}catch{return null;}}
-// The main link's records from the bridge's packing (levar-recordes.js packRecords), checked again here:
-// [{circuit, mode, name, bestLap, date}] and the pilot chosen there.
-export function unpackBridge(text){
- try{
-  const raw=atob(String(text).replace(/-/g,'+').replace(/_/g,'/')),data=JSON.parse(new TextDecoder().decode(Uint8Array.from(raw,c=>c.charCodeAt(0))));
-  if(data?.v!==1||!Array.isArray(data.r))return null;
-  const records=data.r.filter(x=>Array.isArray(x)&&Object.hasOwn(CIRCUITS,x[0])&&['normal','immersive'].includes(x[1])&&typeof x[2]==='string'&&x[2].trim()&&Number.isFinite(x[3])&&x[3]>0&&x[3]<86400)
-   .slice(0,400).map(x=>({circuit:x[0],mode:x[1],name:x[2].trim().slice(0,32),bestLap:x[3],date:typeof x[4]==='string'?x[4]:''}));
-  return {records,pilot:typeof data.p==='string'?data.p.trim().slice(0,32):''};
- }catch{return null;}
-}
 async function call(base,path,body){
  try{
   const r=await fetch(base+path,body===undefined?{cache:'no-store',credentials:'same-origin'}:{method:'POST',cache:'no-store',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -176,39 +157,20 @@ export class OnlineRecords {
   return r.data.recordes.map(x=>({name:x.apelido,bestLap:x.volta_ms/1000,badge:x.selo,mine:!!x.meu}));
  }
  async bests(car='opala'){const r=await call(this.base,`/melhores?carro=${encodeURIComponent(car)}`);return r.ok?r.data.melhores:{};}
- // The old records of the person signing in, once per account: this browser's, and the main link's through the bridge
- // when the server names one (bridge). Address by address, a browser may hold several pilots (a family's computer):
- // the one named as the account's nickname is the person when there is one (the owner's rule), else the pilot that
- // address's menu had last (names[1] here; the bridge brings the main link's). The browser is marked even when there
- // were none, and never sends again. place: the page's address (a check passes its own).
- async importOld(account,names,bridge=null,place=globalThis.location){
+ // The old records of the person signing in, once per account: this browser's, on this address. A browser may hold
+ // several pilots (a family's computer): the one named as the account's nickname is the person when there is one (the
+ // owner's rule), else the pilot the menu had last (names[1]). The browser is marked even when there were none, and
+ // never sends again.
+ async importOld(account,names){
   const store=storage();
   if(this.importing||!store||!account?.apelido||Date.now()>=IMPORT_UNTIL)return;
   let done;try{done=JSON.parse(store.getItem(IMPORTED)||'{}')||{};}catch{done={};}
   if(done[account.desde])return;
-  // Back from the bridge with this tab's key: its records (none, when it could not read them), and the link cleaned
-  // of them. Records under another key, or none: a link that only looks like the way back, left out. Not yet there:
-  // the hop, once per tab.
-  const hash=new URLSearchParams(place?.hash?.slice(1)??''),packed=hash.get(BRIDGE_PARAM),key=hash.get(BRIDGE_KEY),hops=session(),waiting=hops?.getItem(HOPPING);
-  let main=null,own=place?.hash??'';
-  if(packed!==null||key!==null){
-   if(packed!==null&&/^[0-9a-f]{32}$/.test(waiting??'')&&key===waiting){main=unpackBridge(packed)??{records:[],pilot:''};hops.removeItem(HOPPING);}
-   hash.delete(BRIDGE_PARAM);hash.delete(BRIDGE_KEY);
-   const rest=hash.toString();own=rest?'#'+rest:'';globalThis.history?.replaceState(null,'',place.pathname+place.search+own);
-  }
-  if(!main&&typeof bridge==='string'&&BRIDGES.test(bridge)&&hops&&!waiting){
-   const fresh=newKey();hops.setItem(HOPPING,fresh);
-   const local=bridge.startsWith('http://127.0.0.1:')?`&porta=${encodeURIComponent(place.port)}`:'';
-   const back=place.pathname+place.search+(own.length>1?own+'&':'#')+BRIDGE_KEY+'='+fresh;
-   place.assign(`${bridge}/levar-recordes.html#volta=${encodeURIComponent(back)}${local}`);
-   return;
-  }
   this.importing=true;
   try{
-   const nick=fold(account.apelido);
-   const whose=(records,last)=>{const named=records.filter(r=>fold(r.name)===nick);return named.length?named:last?records.filter(r=>fold(r.name)===fold(last)):[];};
-   const all=[...whose(readRecords(store),names[1]),...whose(main?.records??[],main?.pilot)];
-   // The person's best on each circuit and mode, of both addresses.
+   const nick=fold(account.apelido),records=readRecords(store),last=names[1];
+   const named=records.filter(r=>fold(r.name)===nick),all=named.length?named:last?records.filter(r=>fold(r.name)===fold(last)):[];
+   // The person's best on each circuit and mode.
    const best=new Map();
    for(const r of all){const k=r.circuit+'|'+r.mode,o=best.get(k);if(!o||r.bestLap<o.bestLap)best.set(k,r);}
    const mine=[...best.values()].map(r=>({circuito:r.circuit,modo:r.mode,volta_ms:Math.round(r.bestLap*1000),data:r.date||null}));

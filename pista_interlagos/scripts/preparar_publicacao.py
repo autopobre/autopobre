@@ -2,7 +2,8 @@
 
 By default the build is the main link's: without the multiplayer test room, the sound bench and the track editor.
 Only the /dev/ address is built with --multiplayer, which brings them. --conta adds the accounts (sign in with Google),
-only for dev.autopobre.com.br, whose /api/conta/ is the accounts server."""
+for an address whose /api/conta/ is an accounts server: dev.autopobre.com.br, and autopobre.com.br from the commit
+that sets publicacao.py CONTA_NO_PRINCIPAL."""
 import argparse
 import hashlib
 import json
@@ -39,7 +40,7 @@ def build(multiplayer=False, conta=False):
             raise ValueError('main.js: multiplayer switch not found; the build cannot leave the multiplayer out')
         payload['main.js'] = payload['main.js'].replace(b'const MULTIPLAYER=true;', b'const MULTIPLAYER=false;')
     if not conta:
-        # main.js then never asks for conta.js nor /api/conta/, which only dev.autopobre.com.br has.
+        # main.js then never asks for conta.js nor /api/conta/, which only an address with an accounts server has.
         if payload['main.js'].count(b'const CONTA=true;') != 1:
             raise ValueError('main.js: accounts switch not found; the build cannot leave the accounts out')
         payload['main.js'] = payload['main.js'].replace(b'const CONTA=true;', b'const CONTA=false;')
@@ -109,13 +110,13 @@ def build(multiplayer=False, conta=False):
     (audit / 'publicacao.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(f"dist/: {report['files']} files, {report['bytes'] / 1000000:.1f} MB, "
           f"{'with the multiplayer, the sound bench and the track editor (/dev/ only)' if multiplayer else 'without the multiplayer'}"
-          f"{', with the accounts (dev.autopobre.com.br only)' if conta else ''}. Publish only this directory.")
+          f"{', with the accounts' if conta else ''}. Publish only this directory.")
     return report
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--multiplayer', action='store_true', help='include the multiplayer test room and the sound bench (only for /dev/)')
-    parser.add_argument('--conta', action='store_true', help='include the accounts, sign in with Google (only for dev.autopobre.com.br)')
+    parser.add_argument('--conta', action='store_true', help='include the accounts, sign in with Google (dev.autopobre.com.br, and the main link from CONTA_NO_PRINCIPAL)')
     args = parser.parse_args()
     build(args.multiplayer, args.conta)

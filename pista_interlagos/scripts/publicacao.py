@@ -38,10 +38,15 @@ BANCADA = ('bancada-som.html', 'bancada-som.js')
 # Its reference folders (fontes/<circuito>/referencias/) stay on the user's machine; the page opens them from disk.
 EDITOR = ('editor-tracado.html', 'editor-tracado.js')
 DEV_PAGES = ('bancada-som.html', 'editor-tracado.html', 'admin.html')
-# Accounts (sign in with Google): only the dev.autopobre.com.br build (preparar_publicacao.py --conta), where the
-# accounts server (conta-cloudflare) answers /api/conta/. The main link and the old /dev/ folder leave them out.
-# The admin panel (admin.html) too: it reads the same server, which answers only an admin account.
+# Accounts (sign in with Google): the builds with --conta (preparar_publicacao.py), where an accounts server
+# (conta-cloudflare) answers /api/conta/: dev.autopobre.com.br, and the main link from the commit that says so below.
+# The old /dev/ folder (the museum) leaves them out. The admin panel (admin.html) too: it reads the same server, which
+# answers only an admin account.
 CONTA = ('conta.js', 'conta.css', 'recordes-online.js', 'comandos-volta.js', 'admin.html', 'admin.js', 'admin.css')
+# From here on the main link gets the accounts (its own Worker over the same database: conta-cloudflare/README.md).
+# pages.yml builds the main link with --conta only from a commit that has this line: a version published again from
+# before it (a rollback) stays without them.
+CONTA_NO_PRINCIPAL = True
 ASSETS = (
     'branding/old_stock_preparada_v1.jpg',
     'branding/patrocinio_omp_v1.webp', 'branding/patrocinio_rtj_v1.webp', 'branding/patrocinio_eletric_v1.webp',

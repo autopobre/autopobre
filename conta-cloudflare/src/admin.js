@@ -45,7 +45,7 @@ async function summary(request,env){
 async function users(request,env){
  const {refused}=await admin(request,env);if(refused)return refused;
  const now=Date.now();
- const list=await rows(env.DB.prepare(`SELECT u.id,u.apelido,u.criado_em,u.ultimo_login,u.importou_em,u.admin,
+ const list=await rows(env.DB.prepare(`SELECT u.id,u.apelido,u.criado_em,u.ultimo_login,u.importou_em,u.importou_principal_em,u.admin,
   (SELECT COUNT(*) FROM sessoes s WHERE s.usuario_id=u.id AND s.expira_em>?1) AS sessoes,
   (SELECT COUNT(*) FROM recordes r WHERE r.usuario_id=u.id AND r.selo='conferido') AS conferidos,
   (SELECT COUNT(*) FROM recordes r WHERE r.usuario_id=u.id AND r.selo='nao_verificado') AS antigos,

@@ -17,7 +17,7 @@
 // (HttpOnly, Secure, SameSite=Lax); the database holds only its SHA-256. Every write needs the exact
 // Origin and a JSON body: dev and the main link are the same site to a browser, so SameSite alone
 // would let a page of one post to the other.
-import {SESSION_COOKIE,LOGIN_COOKIE,b64url,fromB64url,random,sha256,hashed,sameText,readCookies,setCookie,json,redirect,seal,unseal,session,signedOut,signedIn,notSignedIn,readPost,isAdmin} from './base.js';
+import {SESSION_COOKIE,LOGIN_COOKIE,b64url,fromB64url,random,sha256,hashed,sameText,readCookies,setCookie,json,redirect,seal,unseal,session,signedOut,signedIn,notSignedIn,readPost,isAdmin,siteOf} from './base.js';
 import {RECORDS_GETS,RECORDS_POSTS,RECORDS_BODY} from './recordes.js';
 import {ADMIN_GETS,ADMIN_POSTS} from './admin.js';
 import {ROOM_POSTS} from './sala.js';
@@ -46,12 +46,11 @@ const redirectUri=env=>env.ORIGEM+'/api/conta/google';
 // The account as its own page sees it (admin: the panel's link shows).
 const account=(row,env)=>({apelido:row.apelido??null,desde:new Date(row.criado_em).toISOString(),...(isAdmin(env,row)&&{admin:true})});
 
-// The account, and where the main link's old records can come from (PONTE_RECORDES: the origin of the bridge page,
-// levar-recordes.html, set once that page is published there; the game hops to it once per account).
+// The account signed in on this site.
 async function me(request,env){
- const s=await session(request,env),bridge=env.PONTE_RECORDES?{ponte:env.PONTE_RECORDES}:{};
- if(!s||s.gone)return json({conta:null,...bridge},200,{cookies:s?.gone?[signedOut()]:[]});
- return json({conta:account(s,env),...bridge});
+ const s=await session(request,env);
+ if(!s||s.gone)return json({conta:null},200,{cookies:s?.gone?[signedOut()]:[]});
+ return json({conta:account(s,env)});
 }
 
 async function signIn(request,env,url){
@@ -88,8 +87,8 @@ async function googleBack(request,env,url){
  const now=Date.now();
  const user=await env.DB.prepare('INSERT INTO usuarios (google_sub,criado_em,ultimo_login) VALUES (?1,?2,?2) ON CONFLICT(google_sub) DO UPDATE SET ultimo_login=?2 RETURNING id,criado_em').bind(claims.sub,now).first();
  const value=b64url(random(32)),steps=[
-  event(env,user.criado_em===now?'conta_criada':'entrou',user.id),...forgetOld(env),
-  env.DB.prepare('INSERT INTO sessoes (id,usuario_id,criada_em,expira_em) VALUES (?,?,?,?)').bind(await hashed(value),user.id,now,now+SESSION_DAYS*86400000),
+  event(env,user.criado_em===now?'conta_criada':'entrou',user.id,{site:siteOf(env)}),...forgetOld(env),
+  env.DB.prepare('INSERT INTO sessoes (id,usuario_id,criada_em,expira_em,site) VALUES (?,?,?,?,?)').bind(await hashed(value),user.id,now,now+SESSION_DAYS*86400000,siteOf(env)),
   env.DB.prepare('DELETE FROM sessoes WHERE expira_em<=?').bind(now),
   env.DB.prepare('DELETE FROM sessoes WHERE usuario_id=?1 AND id NOT IN (SELECT id FROM sessoes WHERE usuario_id=?1 ORDER BY criada_em DESC LIMIT ?2)').bind(user.id,MAX_SESSIONS)];
  // A session this browser had before (another account, or the same) ends here: one per browser.
@@ -133,7 +132,7 @@ async function deleteAccount(request,env,body){
 // Everything kept about the account, as a file (LGPD art. 18: the player's copy of their data).
 async function myData(request,env){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
- const sessions=(await env.DB.prepare('SELECT criada_em,expira_em FROM sessoes WHERE usuario_id=? ORDER BY criada_em').bind(s.id).all()).results;
+ const sessions=(await env.DB.prepare("SELECT criada_em,expira_em,COALESCE(site,'dev') AS site FROM sessoes WHERE usuario_id=? ORDER BY criada_em").bind(s.id).all()).results;
  const records=(await env.DB.prepare('SELECT circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma FROM recordes WHERE usuario_id=? ORDER BY circuito,modo,selo').bind(s.id).all()).results;
  const events=(await env.DB.prepare('SELECT quando,tipo,detalhe FROM eventos WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
  const laps=(await env.DB.prepare('SELECT quando,circuito,modo,carro,tempo_ms,resultado,aparelho,sinais,freios,fantasma,comandos,revisao,revisado_em,caso FROM voltas WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
@@ -144,9 +143,9 @@ async function myData(request,env){
   sobre:'Tudo o que o Auto-Pobre Racing guarda da sua conta.',
   gerado_em:when(Date.now()),
   conta:{identificador_google:s.google_sub,apelido:s.apelido??null,criada_em:when(s.criado_em),ultimo_login:when(s.ultimo_login)},
-  sessoes:sessions.map(r=>({aberta_em:when(r.criada_em),expira_em:when(r.expira_em)})),
+  sessoes:sessions.map(r=>({aberta_em:when(r.criada_em),expira_em:when(r.expira_em),site:r.site})),
   recordes:records.map(r=>({circuito:r.circuito,modo:r.modo,carro:r.carro,selo:r.selo,volta_ms:r.volta_ms,versao_do_jogo:r.versao,feito_em:when(r.feito_em),enviado_em:when(r.enviado_em),fantasma:ghost(r.fantasma)})),
-  subida_dos_recordes_antigos:s.importou_em?when(s.importou_em):null,
+  subida_dos_recordes_antigos:{dev:s.importou_em?when(s.importou_em):null,principal:s.importou_principal_em?when(s.importou_principal_em):null},
   eventos:events.map(e=>({quando:when(e.quando),tipo:e.tipo,detalhe:ghost(e.detalhe)})),
   corridas:races.map(r=>({quando:when(r.quando),circuito:r.circuito,modo:r.modo,carro:r.carro})),
   voltas:laps.map(v=>({quando:when(v.quando),circuito:v.circuito,modo:v.modo,carro:v.carro,tempo_ms:v.tempo_ms,resultado:v.resultado,aparelho:v.aparelho,sinais:ghost(v.sinais),freios:ghost(v.freios),

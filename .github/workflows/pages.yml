@@ -53,16 +53,14 @@ jobs:
           persist-credentials: false
       # migrar.html brings the saves from the old address (pista_interlagos/migracao). It is the same
       # for both versions: it comes from the commit this run started from and lands at the site's root.
-      # The list of checks (scripts/testes_publicacao.txt) comes from the same commit, and so does the records'
-      # bridge to dev.autopobre.com.br (pista_interlagos/ponte: this address's records, sent back in the link).
-      - name: Baixar a pagina que traz os dados do endereco antigo, a ponte dos recordes e a lista de testes
+      # The list of checks (scripts/testes_publicacao.txt) comes from the same commit.
+      - name: Baixar a pagina que traz os dados do endereco antigo e a lista de testes
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: atual
           persist-credentials: false
           sparse-checkout: |
             pista_interlagos/migracao
-            pista_interlagos/ponte
             pista_interlagos/scripts
       - name: Preparar Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -104,10 +102,18 @@ jobs:
             done
             echo "::endgroup::"
           done
-      # The multiplayer test room goes only to /dev/: the main link is built without it.
+      # The multiplayer test room goes only to /dev/: the main link is built without it. The accounts go to the main
+      # link from the commit that says they are ready there (publicacao.py CONTA_NO_PRINCIPAL = True): a version
+      # published again from before it stays without them, and so does /dev/ always.
       - name: Gerar somente os arquivos publicos (/dev/ numa subpasta)
         run: |
-          (cd principal && python pista_interlagos/scripts/preparar_publicacao.py)
+          conta=
+          if grep -qE '^CONTA_NO_PRINCIPAL *= *True' principal/pista_interlagos/scripts/publicacao.py; then
+            conta=--conta
+            echo "CONTA_PRINCIPAL=1" >> "$GITHUB_ENV"
+            echo "::notice::A versao principal vai com as contas (CONTA_NO_PRINCIPAL)."
+          fi
+          (cd principal && python pista_interlagos/scripts/preparar_publicacao.py $conta)
           [ ! -d dev ] || (cd dev && python pista_interlagos/scripts/preparar_publicacao.py --multiplayer)
           mkdir site
           cp -a principal/dist/. site/
@@ -119,12 +125,6 @@ jobs:
             [ ! -e "site/$arquivo" ] || { echo "::error::A versao principal ja tem $arquivo; a pagina de migracao nao pode substitui-lo."; exit 1; }
             cp "atual/pista_interlagos/migracao/$arquivo" site/
           done
-          # The bridge exists only from the commit that brought it (an older running commit publishes none).
-          for arquivo in levar-recordes.html levar-recordes.js; do
-            [ -e "atual/pista_interlagos/ponte/$arquivo" ] || continue
-            [ ! -e "site/$arquivo" ] || { echo "::error::A versao principal ja tem $arquivo; a ponte dos recordes nao pode substitui-lo."; exit 1; }
-            cp "atual/pista_interlagos/ponte/$arquivo" site/
-          done
           # Both versions check, before the game starts, whether this browser still has saves at the
           # old address (migration-check.js). The tags stay as they are: the line goes in at publishing.
           for pagina in site/index.html site/dev/index.html; do
@@ -133,7 +133,7 @@ jobs:
             sed -i '0,/<script type="importmap">/s//<script src="\/migration-check.js"><\/script><script type="importmap">/' "$pagina"
           done
       # A commit from before the build knew --multiplayer always packs it: that one cannot go to the main link.
-      - name: Conferir que o multiplayer e a bancada de som ficaram so em /dev/ e as contas fora deste site
+      - name: Conferir que o multiplayer e a bancada de som ficaram so em /dev/ e as contas so onde tem servidor
         run: |
           for pasta in principal; do
             for arquivo in multiplayer.js multiplayer-chat.js multiplayer-standings.js chat-text.js saguao.js convites.css multiplayer.css net-room.js net-cars.js net-link.js net-verify.js; do
@@ -153,9 +153,17 @@ jobs:
               exit 1
             fi
           done
-          # The accounts go only to dev.autopobre.com.br (autopobre/dev): neither address here has their server.
+          # The accounts: on the main link only when it was built with them (CONTA_PRINCIPAL, its own accounts Worker
+          # on autopobre.com.br/api/), then all of them; never on the /dev/ museum, which has no server.
+          if [ -n "$CONTA_PRINCIPAL" ]; then
+            for arquivo in conta.js recordes-online.js privacidade.html; do
+              [ -e "principal/dist/$arquivo" ] || { echo "::error::A versao principal deveria ir com as contas e nao tem $arquivo."; exit 1; }
+            done
+            grep -q 'const CONTA=true;' principal/dist/main.js || { echo "::error::A versao principal deveria ligar as contas (main.js)."; exit 1; }
+          fi
           for pasta in principal dev; do
             [ -d "$pasta/dist" ] || continue
+            [ "$pasta" = principal ] && [ -n "$CONTA_PRINCIPAL" ] && continue
             for arquivo in conta.js conta.css recordes-online.js comandos-volta.js admin.html admin.js admin.css; do
               if [ -e "$pasta/dist/$arquivo" ]; then
                 echo "::error::A versao de $pasta tem as contas ($arquivo); elas so podem ir para dev.autopobre.com.br."

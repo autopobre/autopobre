@@ -1,7 +1,8 @@
 // The player's account: sign in with Google so the records can say who drove them. The accounts server
-// (conta-cloudflare) answers /api/conta/ on the game's own origin. Only the dev.autopobre.com.br build
-// carries this module (preparar_publicacao.py --conta; main.js asks for it only there). Where
-// /api/conta/ does not answer (the local preview without the accounts server), nothing shows.
+// (conta-cloudflare) answers /api/conta/ on the game's own origin: dev.autopobre.com.br and autopobre.com.br, each
+// its own Worker over one database. Only a build with the accounts carries this module (preparar_publicacao.py
+// --conta; main.js asks for it only there). Where /api/conta/ does not answer (the local preview without the
+// accounts server), nothing shows.
 //
 // Signed out, the menu gets a line under its pilot: "Entrar com Google". Signed in with a nickname, that
 // nickname is the pilot (the menu's Piloto shows it instead of the name field: one name, not two) and the
@@ -40,7 +41,7 @@ export class Conta {
   this.dialog=document.createElement('dialog');this.dialog.id='contaDialog';this.dialog.setAttribute('aria-labelledby','contaTitulo');
   this.dialog.innerHTML=`<div class="records-head"><div><span>AUTO-POBRE RACING</span><h2 id="contaTitulo">SUA CONTA</h2></div><button id="contaFechar" type="button" aria-label="Fechar">✕</button></div>
 <div class="conta-corpo">
- <section id="contaFora"><p>Entre com a sua conta Google para guardar seus recordes em qualquer navegador. Por enquanto é um teste, só para os pilotos convidados.</p><button id="contaEntrar" class="conta-principal" type="button">${SIGN_IN}Entrar com Google</button></section>
+ <section id="contaFora"><p>Entre com a sua conta Google para guardar seus recordes em qualquer navegador.</p><button id="contaEntrar" class="conta-principal" type="button">${SIGN_IN}Entrar com Google</button></section>
  <section id="contaDentro" hidden>
   <form id="contaApelidoForm"><label for="contaApelido">SEU APELIDO NOS RECORDES</label><div class="conta-linha"><input id="contaApelido" maxlength="20" autocomplete="nickname" spellcheck="false" required><button id="contaSalvar" class="conta-principal" type="submit">Salvar</button></div><small>3 a 20 letras ou números. Todo mundo vê este nome.</small></form>
   <div class="conta-acoes"><button id="contaSair" type="button">Sair</button><a id="contaPainel" href="admin.html" hidden>Painel de administração</a><button id="contaMais" class="conta-engrenagem" type="button" aria-expanded="false" aria-controls="contaExtra" aria-label="Mais opções da conta" title="Mais opções da conta">${GEAR}</button></div>
@@ -59,7 +60,7 @@ export class Conta {
    <li><b>Onde fica:</b> num banco Cloudflare D1, no leste dos EUA. Ficam a conta (identificador, apelido, datas), as sessões e os recordes.</li>
    <li><b>Recordes:</b> pista, modo, tempo, versão do jogo, data e o fantasma da volta. Uma volta é <i>conferida</i> quando o servidor acompanha o relógio dela, com pedaços enviados a cada 10 segundos, não deixa passar volta absurdamente mais rápida que a linha ideal do Opala, confere o trajeto dentro da pista, confere se o Opala do jogo consegue fazer aquela volta (motor, freios e pneus) e se os comandos do piloto explicam o movimento. Os recordes antigos (deste navegador e do autopobre.com.br) sobem uma única vez por conta, marcados com ⚠️ (recordes de versões anteriores do Auto Pobre podem conter erros).</li>
    <li><b>Voltas:</b> de cada volta, o tempo, o carro, o resultado da conferência, o aparelho (teclado, controle, volante ou toque) e o ritmo dos comandos (quando cada pedal e tecla mudou), para achar programas pilotando no lugar de pessoas. Uma volta que seria o seu recorde e não foi conferida fica guardada com o fantasma, para você poder pedir revisão. Também fica cada vez que você entrou na pista (a pista, o modo e o carro), para a administração conhecer os pilotos. Tudo isso fica 90 dias e é visto só pela administração do jogo.</li>
-   <li><b>Salas multiplayer:</b> só entra quem está com a conta conectada. O servidor das salas recebe o seu apelido e um código da conta (não o número do Google). Com o jogo aberto, quem abre uma sala vê que você está online, para te convidar. O chat da sala não fica guardado.</li>
+   <li><b>Salas multiplayer (na versão de testes):</b> só entra quem está com a conta conectada. O servidor das salas recebe o seu apelido e um código da conta (não o número do Google). Com o jogo aberto, quem abre uma sala vê que você está online, para te convidar. O chat da sala não fica guardado.</li>
    <li><b>Registro de eventos:</b> quando a conta foi criada, entradas e saídas, troca de apelido, a subida dos recordes antigos, os recordes conferidos e as voltas recusadas (com o motivo). Sem IP, guardado por 90 dias e visto só pela administração do jogo.</li>
    <li><b>Seus direitos (LGPD):</b> "Baixar meus dados" entrega tudo num arquivo JSON, e "Apagar conta" apaga a conta, as sessões e os recordes. As cópias de segurança automáticas do banco somem em até 7 dias.</li>
   </ul>
@@ -83,12 +84,11 @@ export class Conta {
  async start(){
   let data;try{data=await call('eu');}catch{return false;}
   // The menu's pilot before the account takes its place: their old records here are this account's too.
-  // bridge: where the main link's records can come from (null until that bridge is published; recordes-online.js).
-  this.available=true;this.firstPilot=this.pilot();this.bridge=data.ponte??null;this.records?.addOnline(this.online);this.show(data.conta);
+  this.available=true;this.firstPilot=this.pilot();this.records?.addOnline(this.online);this.show(data.conta);
   const store=session();
   if(store?.getItem(SIGNING_IN)){
    store.removeItem(SIGNING_IN);
-   if(!this.account)this.open('Não deu para entrar: o login foi cancelado, ou esta conta Google ainda não está na lista dos pilotos de teste.',true);
+   if(!this.account)this.open('Não deu para entrar: o login foi cancelado, ou o Google não liberou esta conta aqui.',true);
    else if(!this.account.apelido)this.open('Pronto, você entrou. Agora escolha o apelido que vai aparecer nos recordes.');
   }
   return true;
@@ -99,7 +99,7 @@ export class Conta {
   // Only a change reaches the menu: redrawing the name field would drop what someone is typing there.
   if(nickname!==this.pilotGiven){this.pilotGiven=nickname;this.usePilot(nickname||null,()=>this.open());}
   this.online.setAccount(account);
-  if(nickname)this.online.importOld(account,[nickname,this.firstPilot],this.bridge);
+  if(nickname)this.online.importOld(account,[nickname,this.firstPilot]);
   $('contaRotulo').textContent=account?account.apelido||'Escolha seu apelido':'Entrar com Google';
   $('contaFora').hidden=!!account;$('contaDentro').hidden=!account;
   // What is kept: behind the gear once signed in; before it, a closed line under the sign-in button.

@@ -22,8 +22,8 @@
 // no count the server trusts: sent again, an old one would write again, so what an account may write (records, laps,
 // refusals in the panel's events) is counted per hour in the database.
 //
-// nao_verificado: an old record of a browser, from before the account (/importar), once per account (the
-// server keeps when), until IMPORT_UNTIL, and the board shows them flagged ⚠️. A pilot with a checked lap
+// nao_verificado: an old record of a browser, from before the account (/importar), once per account and site (the
+// server keeps when; base.js importedColumn), until IMPORT_UNTIL, and the board shows them flagged ⚠️. A pilot with a checked lap
 // shows by it.
 //
 // What this cannot tell: a ghost and controls made up together with the game's own physics (a program driving the
@@ -32,7 +32,7 @@
 // re-running the lap from the pilot's controls with the game's own physics).
 import {CIRCUITS} from '../../pista_interlagos/teste/circuits.js';
 import {LINE_TIMES} from './pisos.js';
-import {json,seal,unseal,signedIn,notSignedIn,isTrusted} from './base.js';
+import {json,seal,unseal,signedIn,notSignedIn,isTrusted,importedColumn,siteOf} from './base.js';
 import {event,recent,HOUR} from './eventos.js';
 import {readInputs,inputsProblem,inputSignals,INPUT_CHARS} from './comandos.js';
 import {dynamicsProblem} from './dinamica.js';
@@ -56,9 +56,9 @@ const RUN_HOURS=8;            // a ticket's life
 // the mode is kept with each lap, and the boards and the pilot's best look past it.
 const MODES=['normal','immersive'],CARS=['opala','fusca'];
 const VERSION=/^[\w.-]{1,40}$/;
-// The old records come up until the end of 30/11/2026 in Brasília (the owner's deadline), and none is dated
-// before the game was online.
-export const IMPORT_UNTIL=Date.parse('2026-12-01T03:00:00Z');
+// The old records come up until the end of 31/12/2026 in Brasília (the owner's deadline, a month past the first one
+// as the main link got its accounts on 10-28), and none is dated before the game was online.
+export const IMPORT_UNTIL=Date.parse('2027-01-01T03:00:00Z');
 const GAME_START=Date.parse('2026-09-01T00:00:00Z');
 // The quickest a lap may be: this share of the car's driving line's own time, or, on a circuit the table does not know
 // yet, an average no Opala keeps. The line is a model, not a wall: the first checked laps (10-25) beat it by 3.5%
@@ -255,13 +255,14 @@ async function check(env,t,g,now,from,ghost,inputs,signals,trusted=false){
  return {tempo_ms:ms,conferida:true,recorde:record,...(why&&{caso:why})};
 }
 
-// A browser's records from before the account, once per account (the server keeps when: whatever browsers say),
-// the pilot's best of each circuit and mode, flagged unchecked.
+// A browser's records from before the account, once per account and site (the server keeps when: whatever browsers
+// say; each address keeps its own records), the pilot's best of each circuit and mode, flagged unchecked.
 async function importOld(request,env,body){
- if(Date.now()>=IMPORT_UNTIL)return json({erro:'A subida dos recordes antigos terminou em 30/11/2026.'},410);
+ if(Date.now()>=IMPORT_UNTIL)return json({erro:'A subida dos recordes antigos terminou em 31/12/2026.'},410);
  const s=await signedIn(request,env);if(!s)return notSignedIn();
  if(!s.apelido)return json({erro:'Escolha um apelido primeiro.'},409);
- if(s.importou_em)return json({erro:'Os recordes antigos desta conta já subiram.'},409);
+ const column=importedColumn(env);
+ if(s[column])return json({erro:'Os recordes antigos desta conta já subiram.'},409);
  const list=body.recordes;
  if(!Array.isArray(list)||list.length>64)return json({erro:'Lista de recordes inválida.'},400);
  const now=Date.now(),best=new Map();
@@ -271,11 +272,11 @@ async function importOld(request,env,body){
   const key=c+'|'+m;if(!best.has(key)||ms<best.get(key).ms)best.set(key,{c,m,ms,when:Date.parse(r.data)});
  }
  // Once: the mark goes first, and only the request that set it writes.
- if(!(await env.DB.prepare('UPDATE usuarios SET importou_em=? WHERE id=? AND importou_em IS NULL').bind(now,s.id).run()).meta.changes)
+ if(!(await env.DB.prepare(`UPDATE usuarios SET ${column}=? WHERE id=? AND ${column} IS NULL`).bind(now,s.id).run()).meta.changes)
   return json({erro:'Os recordes antigos desta conta já subiram.'},409);
  const made=when=>Number.isFinite(when)&&when>=GAME_START&&when<=now?when:now;
  const steps=[...best.values()].map(r=>env.DB.prepare(UPSERT).bind(s.id,r.c,r.m,'opala','nao_verificado',r.ms,'local',made(r.when),now,null,null));
- await env.DB.batch([...steps,event(env,'importou',s.id,{recordes:steps.length})]);
+ await env.DB.batch([...steps,event(env,'importou',s.id,{recordes:steps.length,site:siteOf(env)})]);
  return json({importados:steps.length});
 }
 

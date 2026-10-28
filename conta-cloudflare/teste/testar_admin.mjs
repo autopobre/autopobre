@@ -75,7 +75,7 @@ await check('the events: accounts, sign-ins, nicknames, sign-outs, imports, laps
  const someone=browser();await signIn(someone,'400000000000000000003');assert.equal((await someone.post('/api/conta/sair',{})).status,200);
  const kinds=sql("SELECT e.tipo,u.apelido,e.detalhe FROM eventos e LEFT JOIN usuarios u ON u.id=e.usuario_id ORDER BY e.id").map(e=>[e.tipo,e.apelido,e.detalhe&&JSON.parse(e.detalhe)]);
  assert.deepEqual(kinds.map(k=>k[0]),['conta_criada','apelido','conta_criada','apelido','entrou','importou','conferida','recusada','recusada','recusada','recusada','recusada','conta_criada','saiu']);
- assert.deepEqual(kinds[3][2],{apelido:'Ana Volta'});assert.deepEqual(kinds[5][2],{recordes:1});
+ assert.deepEqual(kinds[3][2],{apelido:'Ana Volta'});assert.deepEqual(kinds[5][2],{recordes:1,site:'dev'});
  assert.deepEqual(kinds[6][2],{circuito:'interlagos',modo:'normal',volta_ms:121000});
  assert.match(kinds[8][2].motivo,/sem falar com o servidor/);
  assert.ok(!sql('SELECT detalhe FROM eventos').some(e=>/\d{15,}/.test(e.detalhe??'')),'no Google id in any event');
@@ -87,7 +87,7 @@ await check('the summary, the accounts, the events page by page, the last record
   {contas:3,com_apelido:2,novas_7d:3,entradas_24h:4,com_sessao:2,conferidos:1,antigos:1,recusadas_7d:5});
  assert.equal(s.recusas_por_motivo[0].n,4);assert.match(s.recusas_por_motivo[0].motivo,/60 s sem falar/);assert.equal(s.eventos_por,EVENT_DAYS);
  const users=(await boss.get('/api/admin/usuarios')).usuarios;
- assert.deepEqual(Object.keys(users[0]).sort(),['admin','antigos','apelido','conferidas','conferidos','corridas','criado_em','dias','id','importou_em','pistas','recusadas_7d','ritmo','sessoes','sinalizadas_7d','ultimo_login','voltas'],'no Google id');
+ assert.deepEqual(Object.keys(users[0]).sort(),['admin','antigos','apelido','conferidas','conferidos','corridas','criado_em','dias','id','importou_em','importou_principal_em','pistas','recusadas_7d','ritmo','sessoes','sinalizadas_7d','ultimo_login','voltas'],'no Google id');
  const a=users.find(u=>u.apelido==='Ana Volta');assert.deepEqual([a.conferidos,a.antigos,a.recusadas_7d,a.sessoes,a.admin],[1,1,5,1,false],'one session: her second sign-in ended the first, same browser');
  assert.equal(users.find(u=>u.apelido==='Chefe Pista').admin,true);
  const refusals=(await boss.get('/api/admin/eventos?tipo=recusada')).eventos;assert.equal(refusals.length,5);assert.equal(refusals[0].apelido,'Ana Volta');
@@ -151,9 +151,12 @@ await check('a trusted pilot\'s lap the checks would refuse goes in all the same
  assert.deepEqual([rec.selo,rec.sinais.confiavel],['conferido',true]);assert.match(rec.sinais.caso,/sem acelerar/);
  // Not trusted: the same lap is refused (Ana's, the throttle never on).
  assert.ok((await cleanLap(ana,125,{controls:'idle'})).recusada);
- // Trusted by the Worker's CONFIAVEIS secret too, without being an admin.
- assert.equal(isTrusted({CONFIAVEIS:' 1 ,22'},{google_sub:'22',admin:0}),true);assert.equal(isTrusted({CONFIAVEIS:'1'},{google_sub:'22',admin:0}),false);
- assert.equal(isTrusted({},{google_sub:'22',admin:1}),true,'an admin');assert.equal(isTrusted({CONFIAVEIS:'22'},{gone:true}),false);
+ // Trusted by the Worker's CONFIAVEIS secret too, without being an admin; on the test version only (SITE dev).
+ const dev={SITE:'dev'};
+ assert.equal(isTrusted({...dev,CONFIAVEIS:' 1 ,22'},{google_sub:'22',admin:0}),true);assert.equal(isTrusted({...dev,CONFIAVEIS:'1'},{google_sub:'22',admin:0}),false);
+ assert.equal(isTrusted(dev,{google_sub:'22',admin:1}),true,'an admin');assert.equal(isTrusted({...dev,CONFIAVEIS:'22'},{gone:true}),false);
+ for(const env of [{SITE:'principal',CONFIAVEIS:'22'},{CONFIAVEIS:'22'}])
+  assert.equal(isTrusted(env,{google_sub:'22',admin:1}),false,'the main link (or a Worker without SITE) checks every lap');
 });
 
 await check('how much each pilot drives: races (each ticket), laps, days, the circuits, the pace against the driving line',async()=>{

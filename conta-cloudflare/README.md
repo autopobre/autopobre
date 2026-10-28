@@ -1,6 +1,25 @@
 # Servidor das contas (login com Google) e dos recordes online
 
-Um Worker do Cloudflare com um banco D1 (`src/index.js` para as contas, `src/recordes.js` para os recordes, `src/base.js` com o que os dois dividem). Ele responde em `/api/` do próprio endereço do jogo; as páginas continuam no GitHub Pages. Por enquanto só existe no **dev.autopobre.com.br**, para os pilotos de teste.
+Um Worker do Cloudflare com um banco D1 (`src/index.js` para as contas, `src/recordes.js` para os recordes, `src/base.js` com o que os dois dividem). Ele responde em `/api/` do próprio endereço do jogo; as páginas continuam no GitHub Pages.
+
+## Dois sites, um banco
+
+Desde 28/10/2026 são dois Workers com o mesmo código e o **mesmo banco** (`wrangler.jsonc`):
+
+| | dev.autopobre.com.br (versão de testes) | autopobre.com.br (link principal) |
+|---|---|---|
+| Worker | `conta-autopobre-dev` | `conta-autopobre` (`--env principal`) |
+| `SITE` | `dev` | `principal` |
+| Google | cliente do dev no projeto `autopobre-dev` | cliente do principal no mesmo projeto (publicado: qualquer conta Google entra nos dois sites) |
+| Pilotos de confiança | valem (os casos para estudar) | não valem: toda volta é conferida |
+| Salas multiplayer | sim (`SALA_PASSE`) | não |
+
+- **Uma conta Google é um piloto só nos dois sites.** O apelido, os recordes e o placar são os mesmos: uma volta conferida no dev aparece no placar do principal, porque os pilotos de teste jogam com o jogo mais novo e o recorde continua valendo.
+- **Cada site tem a sua sessão.** O cookie é só daquele endereço, e o banco guarda em que site cada sessão foi aberta (`sessoes.site`): uma sessão do dev nunca abre a conta no principal. Quem quer jogar nos dois entra uma vez em cada um. Sair vale para aquele site; apagar a conta apaga nos dois.
+- **Cada Worker confere as voltas com as pistas da sua versão do jogo** (`circuits.js`, `pistas.js`, `pisos.js` e `envelope.js` vão dentro dele). Por isso o do principal é publicado a partir do commit da versão que está no principal, e o do dev a partir do que está no dev.
+- **Mudança no servidor vai primeiro para o dev.** O principal recebe quando ela estiver testada.
+- **As migrações valem na hora para os dois**, que podem estar em versões diferentes: elas só acrescentam (colunas e tabelas), nunca apagam nem mudam o que existe. Antes de cada uma, anote o ponto de restauração do banco (`.\wrangler d1 time-travel info conta-autopobre-dev`): o Cloudflare guarda o histórico e volta o banco a qualquer minuto dele (`.\wrangler d1 time-travel restore conta-autopobre-dev --bookmark=…`).
+- **Os recordes antigos sobem uma vez por conta e por site** (cada endereço guarda os seus no navegador): o dev marca `importou_em` e o principal `importou_principal_em`. A antiga página-ponte, que levava os recordes do principal para o dev, saiu.
 
 O que o servidor garante, seja lá o que o navegador mande:
 
@@ -18,25 +37,23 @@ Cada piloto aparece com a melhor volta por pista e carro. Uma pista tem um recor
 - **✓ conferido:** o servidor acompanhou a volta enquanto ela era pilotada.
   - Ao entrar na pista, o jogo pede um **bilhete** (pista, modo, carro, versão do jogo). Depois manda um **pedaço** do relógio da física a cada 10 segundos e outro a cada passagem pela linha.
   - O bilhete vai e volta selado (AES-GCM) a cada pedaço, então nada é gravado enquanto as voltas passam.
-  - Entre dois pedaços, o relógio do jogo precisa ter andado como o do servidor. Isso pega câmera lenta, relógio adiantado e silêncio de mais de 15 s.
-  - A volta, de linha a linha, precisa durar no relógio do servidor o que durou no jogo. Por isso volta com pausa não é conferida.
+  - Entre dois pedaços, o relógio do jogo precisa ter andado como o do servidor. Isso pega câmera lenta, relógio adiantado e silêncio de mais de 25 s.
+  - A volta, de linha a linha, precisa durar no relógio do servidor o que durou no jogo, tirando as pausas: o jogo avisa quando parou e quando voltou (P ou menu, janela, aba), o relógio dele precisa ter ficado parado nesse intervalo, e o registro guarda quantas, quanto tempo e por quê (até 10 por volta).
   - A volta não pode ser mais rápida que 85% do tempo da **linha ideal** do Opala naquela pista (`src/pisos.js`, gerado por `gerar_pisos.mjs` com o código do jogo).
   - O **fantasma** da volta (a mesma gravação que o jogo guarda) precisa ter o tempo da volta, ter sido gravado nas frequências do jogo, começar na linha e percorrer a pista inteira (o comprimento vem do `circuits.js` do jogo). O carro precisa cobrir de fato a pista, sem passar de 70 m/s, sem acelerar ou virar mais do que um Opala consegue (meio segundo a meio segundo) e sem ganhar pista que não andou.
   - Os **comandos** da volta vão junto com o fantasma (`comandos-volta.js` no jogo, `src/comandos.js` aqui). São o que a física recebeu a cada passo de 1/120 s (acelerador, freio, direção, freio de mão e ré, marcha, embreagem), as teclas como o teclado mandou e qual aparelho pilotou. Eles precisam cobrir a volta inteira e explicá-la: o carro não pode ganhar velocidade sem acelerador nem ré. Sem comandos, a volta não é conferida.
   - O bilhete leva, selada, a conta Google de quem o pediu, e cada pedaço precisa vir com a sessão dessa mesma conta. Depois de **Sair**, de apagar a conta ou de entrar com outra conta no navegador, o bilhete para de valer (e uma conta nova que herdou o número de uma apagada não recebe nada dele).
   - O bilhete não guarda contagem em que o servidor confie: reenviado, um bilhete velho faria tudo de novo. Por isso o que cada conta pode gravar é contado no banco, por hora: 120 recordes, 5 recusas no registro de eventos e 10 trocas de apelido. A mesma passagem pela linha enviada de novo não grava nada.
   - Só a melhor volta de cada piloto fica guardada, com o fantasma.
-- **⚠️ não verificado** ("Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros"): um recorde antigo, de antes da conta. O jogo sobe os recordes do navegador uma única vez por conta (depois marca o navegador) e só até **30/11/2026**. Tempo impossível para a pista é descartado.
+- **⚠️ não verificado** ("Recordes de Versões Anteriores do Auto Pobre Podem Conter Erros"): um recorde antigo, de antes da conta. O jogo sobe os recordes do navegador uma única vez por conta em cada site (depois marca o navegador) e só até **31/12/2026**. Tempo impossível para a pista é descartado.
 
 O que o selo conferido não pega: volta pilotada por um programa, ou alguém deixando o jogo mais lento por um instante dentro de um pedaço. Isso fica para o próximo selo (homologado: o servidor refaz a volta a partir dos comandos do piloto).
 
-**Os recordes do autopobre.com.br:** cada endereço guarda os recordes à parte no navegador, então o dev não enxerga os do site principal. Para a subida pegar também esses, o site principal tem uma página-ponte, `levar-recordes.html` (em `pista_interlagos/ponte/`, publicada na raiz pelo `pages.yml`, sem conta nem servidor). Na primeira vez, o jogo no dev dá um pulo até ela. A ponte lê os recordes e o piloto escolhido lá e devolve o jogador ao dev com eles no pedaço do link depois do `#`, que não vai a servidor nenhum. Ela só sabe voltar para o `dev.autopobre.com.br`. Na ida, o dev põe no caminho de volta uma chave aleatória que só aquela aba conhece, e na volta só aceita os recordes que trazem essa chave: um link montado por outra pessoa, com recordes inventados, é ignorado (a ponte não precisou mudar, porque a chave vai e volta dentro do caminho). O pulo só acontece quando a variável `PONTE_RECORDES` do `wrangler.jsonc` aponta para o site que tem a ponte (`https://autopobre.com.br`): ligue-a depois de a ponte estar no ar.
-
-Pista nova no jogo: rode `node gerar_pisos.mjs` (o piso dela) e publique o Worker de novo (`.\wrangler deploy`), porque ele leva o `circuits.js` e os pisos junto.
+Pista nova no jogo: rode `node gerar_pisos.mjs` (o piso dela) e publique o Worker de novo (`.\wrangler deploy` no dev; `.\wrangler deploy --env principal` quando a versão com a pista for para o principal), porque ele leva o `circuits.js` e os pisos junto.
 
 ## Painel de administração
 
-Em `https://dev.autopobre.com.br/admin.html` (página do pacote do dev, `pista_interlagos/teste/admin.html`). Ele é só para leitura e mostra:
+Em `https://dev.autopobre.com.br/admin.html` e `https://autopobre.com.br/admin.html` (`pista_interlagos/teste/admin.html`, nos pacotes com conta). Os dois mostram os mesmos dados, os do banco único. Ele é só para leitura e mostra:
 - **Resumo:** contas, logins e voltas recusadas por motivo.
 - **Usuários:** cada conta, com sessões e recordes.
 - **Eventos:** o que aconteceu, com filtro por tipo.
@@ -44,11 +61,11 @@ Em `https://dev.autopobre.com.br/admin.html` (página do pacote do dev, `pista_i
 
 Quem decide quem vê é o servidor (`src/admin.js`), a cada pedido. Administrador é a conta cujo **identificador Google** está no segredo **`ADMINS`** do Worker. Para pôr ou tirar alguém:
 1. A pessoa entra no jogo, abre **Sua conta → Baixar meus dados** e copia o valor de `identificador_google`. Nunca use o apelido, que muda e pode passar para outra pessoa.
-2. No painel do Cloudflare: **Workers & Pages → `conta-autopobre-dev` → Settings → Variables and Secrets → `ADMINS`**. Edite o valor (vários identificadores separados por vírgula) e salve. Vale na hora, sem publicar nada. Use o tipo **Secret**: variável de texto fica pública no repositório, e o `wrangler deploy` a sobrescreveria.
+2. No painel do Cloudflare: **Workers & Pages → `conta-autopobre-dev` (e `conta-autopobre`, o do principal) → Settings → Variables and Secrets → `ADMINS`**. Edite o valor (vários identificadores separados por vírgula) e salve. Vale na hora, sem publicar nada. Use o tipo **Secret**: variável de texto fica pública no repositório, e o `wrangler deploy` a sobrescreveria.
 
 Pelo terminal, nesta pasta: `.\wrangler secret put ADMINS`.
 
-Uma conta com `admin=1` no banco também é administradora; essa marca fica para o próprio painel poder promover alguém no futuro.
+Uma conta com `admin=1` no banco também é administradora, nos dois sites (o banco é um só); essa marca fica para o próprio painel poder promover alguém no futuro.
 
 O painel nunca mostra a conta Google de ninguém. Os **eventos** (`src/eventos.js`) não guardam IP e ficam 90 dias:
 - conta criada, entrou, saiu;
@@ -91,7 +108,7 @@ A sala multiplayer (`sala-cloudflare`) só deixa entrar quem está com a conta c
 | `POST /api/conta/passe-sala` `{sala}` | o passe de uma sala multiplayer (ou do saguão, `@saguao`): o apelido, a sala, 5 minutos, assinado com `SALA_PASSE`; só com apelido (409 sem ele); 503 com as salas desligadas (sem `SALA_PASSE` ou curto demais) |
 | `POST /api/recordes/bilhete` `{circuito, modo, carro, versao}` | o bilhete de uma corrida, com o melhor tempo conferido do piloto ali |
 | `POST /api/recordes/pedaco` `{bilhete, relogio, cruzou?, volta?}` | um pedaço do relógio; na linha, a volta com o fantasma; devolve o bilhete novo e o veredito |
-| `POST /api/recordes/importar` `{recordes}` | os recordes antigos do navegador, uma vez, até 30/11/2026 |
+| `POST /api/recordes/importar` `{recordes}` | os recordes antigos do navegador, uma vez por site, até 31/12/2026 |
 | `GET /api/recordes?circuito=&carro=` | a tabela de uma pista num carro (pública; o carro padrão é o Opala) |
 | `GET /api/recordes/melhores?carro=` | a melhor volta de cada pista num carro (pública) |
 | `POST /api/recordes/revisao` `{volta}` | pede a revisão de uma volta própria não conferida que seria o melhor tempo |
@@ -124,6 +141,23 @@ Dentro desta pasta, no cmd ou no PowerShell. Numa cópia nova do projeto, rode a
 
 Para trocar o segredo do Google, rode `.\wrangler secret put GOOGLE_CLIENT_SECRET` de novo. Os logins que estiverem em andamento naquela hora falham, e as sessões continuam valendo.
 
+### O Worker do link principal (`conta-autopobre`)
+
+O banco é o mesmo, então não há banco a criar nem migração a mais.
+
+1. No Google Cloud, no projeto `autopobre-dev` (o mesmo do dev, publicado, com a página inicial `https://autopobre.com.br` e a privacidade `https://autopobre.com.br/privacidade.html`, o domínio verificado no Search Console), crie outro cliente OAuth *Web application* só com o redirect URI `https://autopobre.com.br/api/conta/google`. Ponha o *Client ID* em `env.principal.vars.GOOGLE_CLIENT_ID` no `wrangler.jsonc`.
+2. Os segredos deste Worker (os do dev não passam para ele):
+   ```sh
+   .\wrangler secret put GOOGLE_CLIENT_SECRET --env principal
+   .\wrangler secret put SEAL_KEY --env principal
+   ```
+   O `SEAL_KEY` é outro valor aleatório, diferente do dev. O `ADMINS` é opcional aqui: quem tem `admin=1` no banco já é administrador nos dois sites. O `CONFIAVEIS` e o `SALA_PASSE` não existem no principal.
+3. Publique a partir do commit da versão que vai para o principal (as pistas e os pisos são os dela). O `deploy` cria a rota `autopobre.com.br/api/*`:
+   ```sh
+   .\wrangler deploy --env principal
+   ```
+4. Publique o link principal (autopobre/autopobre → Actions → Publicar Auto-Pobre Racing): a partir do commit com `CONTA_NO_PRINCIPAL` no `publicacao.py`, o `pages.yml` monta o principal com `--conta` (sem o multiplayer).
+
 ## Custos
 
 Plano gratuito do Workers (100 mil requisições por dia) e do D1 (5 milhões de leituras e 100 mil escritas por dia). Abrir o jogo faz uma leitura, e cada pedaço de uma volta faz outra (a sessão). Escrevem: o login, o apelido, sair, apagar, a subida dos recordes antigos, cada recorde novo e até 5 recusas por hora. Os limites por conta acima seguram quem tentar gastar a cota. A regra do Cloudflare (30 pedidos a cada 10 s por IP) segura rajadas, mas não impede alguém insistente de gastar devagar as 100 mil requisições do dia.
@@ -135,6 +169,7 @@ Plano gratuito do Workers (100 mil requisições por dia) e do D1 (5 milhões de
   - `teste/testar_recordes.mjs`: os recordes no servidor, num relógio que o teste controla. Cobre a volta conferida, as recusadas (pausa, câmera lenta, relógio adiantado, rápida demais, fantasmas falsos), o bilhete adulterado ou vencido, a subida dos antigos com prazo, a tabela e os recordes ao apagar a conta.
   - `teste/testar_recordes_jogo.mjs`: o código do próprio jogo (`recordes-online.js`) correndo contra o servidor, quadro a quadro.
   - `teste/testar_admin.mjs`: o painel, as voltas com os sinais e o Remover.
+  - `teste/testar_dois_sites.mjs`: os dois Workers sobre um banco só. A conta é uma, cada site com a sua sessão, a volta do dev no placar do principal, os pilotos de confiança só no dev, os recordes antigos uma vez por site, sair e apagar, e o painel igual nos dois.
   - `teste/testar_comandos.mjs`: os comandos da volta (o formato, as recusas e cada sinal de programa), com voltas da IA do jogo.
   - `teste/testar_dinamica.mjs` e `teste/testar_trajeto.mjs`: a física do Opala e o traçado da pista, com voltas da IA em todas as pistas (com batidas, erros e paradas no box) e voltas forjadas. As voltas reais de pilotos entram quando a variável `FANTASMAS_REAIS` aponta para um arquivo delas, que nunca vai para o repositório.
   - Pista nova ou mudança no arquivo de uma pista: rode `node gerar_pistas.mjs` (o traçado) e `node gerar_pisos.mjs` (o piso). Mudança na física do Opala: `node gerar_envelope.mjs`.

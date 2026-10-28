@@ -4,7 +4,7 @@
 // hands back a code for the account the test picked, checks PKCE, and its ID token is unsigned, which
 // the Worker accepts only because it trusts the token endpoint, as with Google's).
 //
-//   node teste/local.mjs [--porta 8788] [--origem http://127.0.0.1:8799] [--banco arquivo.sqlite] [--ponte http://127.0.0.1:PORTA] [--admins sub1,sub2]
+//   node teste/local.mjs [--porta 8788] [--origem http://127.0.0.1:8799] [--banco arquivo.sqlite] [--site dev|principal] [--admins sub1,sub2]
 //
 // The origin is the page's (servidor.py passes /api/ on to this port), so the cookies and the Origin
 // check work as on dev.autopobre.com.br.
@@ -86,8 +86,10 @@ function fakeGoogle(){
 
 // adminSecret: the Worker's ADMINS secret, as Cloudflare would pass it.
 // salaPasse: the rooms' secret (ROOM_PASS_SECRET; a check may give a short one, or none).
-export async function startLocal({port=8788,origem,banco=':memory:',ponte=null,admins=[],adminSecret=null,salaPasse=ROOM_PASS_SECRET}={}){
- const google=fakeGoogle(),DB=localD1(banco,admins);
+// site: which Worker this is (wrangler.jsonc SITE: dev, the test version, or principal, the main link). DB: another
+// local Worker's database, for the two sites sharing one as on Cloudflare (testar_dois_sites.mjs).
+export async function startLocal({port=8788,origem,banco=':memory:',site='dev',DB=null,admins=[],adminSecret=null,salaPasse=ROOM_PASS_SECRET}={}){
+ const google=fakeGoogle();DB??=localD1(banco,admins);
  const server=http.createServer(async(req,res)=>{
   try{
    const url=new URL(req.url,`http://127.0.0.1:${server.address().port}`);
@@ -95,7 +97,7 @@ export async function startLocal({port=8788,origem,banco=':memory:',ponte=null,a
    const headers=new Headers();for(const [k,v] of Object.entries(req.headers))if(typeof v==='string')headers.set(k,v);
    const request=new Request(url,{method:req.method,headers,body:['GET','HEAD'].includes(req.method)?undefined:Buffer.concat(chunks)});
    const env={DB,ORIGEM:origem??`http://127.0.0.1:${server.address().port}`,GOOGLE_CLIENT_ID:CLIENT_ID,GOOGLE_CLIENT_SECRET:CLIENT_SECRET,
-    GOOGLE_AUTH_URL:`http://127.0.0.1:${server.address().port}/falso-google/auth`,GOOGLE_TOKEN_URL:`http://127.0.0.1:${server.address().port}/falso-google/token`,SALA_PASSE:salaPasse,...(ponte&&{PONTE_RECORDES:ponte}),...(adminSecret&&{ADMINS:adminSecret})};
+    GOOGLE_AUTH_URL:`http://127.0.0.1:${server.address().port}/falso-google/auth`,GOOGLE_TOKEN_URL:`http://127.0.0.1:${server.address().port}/falso-google/token`,SALA_PASSE:salaPasse,SITE:site,...(adminSecret&&{ADMINS:adminSecret})};
    const response=url.pathname.startsWith('/falso-google/')?await google.handle(request,url):await worker.fetch(request,env);
    const out={};for(const [k,v] of response.headers)if(k!=='set-cookie')out[k]=v;
    const cookies=response.headers.getSetCookie();if(cookies.length)out['set-cookie']=cookies;
@@ -108,6 +110,6 @@ export async function startLocal({port=8788,origem,banco=':memory:',ponte=null,a
 
 if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1]){
  const arg=name=>{const i=process.argv.indexOf(name);return i>0?process.argv[i+1]:undefined;};
- const local=await startLocal({port:Number(arg('--porta')??8788),origem:arg('--origem')??'http://127.0.0.1:8799',banco:arg('--banco'),ponte:arg('--ponte'),admins:(arg('--admins')??'').split(',').filter(Boolean)});
+ const local=await startLocal({port:Number(arg('--porta')??8788),origem:arg('--origem')??'http://127.0.0.1:8799',banco:arg('--banco'),site:arg('--site')??'dev',admins:(arg('--admins')??'').split(',').filter(Boolean)});
  console.log(`Contas locais em http://127.0.0.1:${local.port} (origem ${arg('--origem')??'http://127.0.0.1:8799'}). Google de mentira: entra direto.`);
 }

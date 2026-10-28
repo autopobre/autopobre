@@ -39,11 +39,14 @@ function rows(id,list,columns,append=false){
  }
  $(id).parentElement.querySelector('.vazio').hidden=body.children.length>0;
 }
+// Where it happened, for the two sites over one database (conta-cloudflare/README.md): none before 10-28, the dev's.
+const SITES={dev:'no dev',principal:'no principal'};
 function detail(e){
  const d=e.detalhe??{};
  switch(e.tipo){
+  case 'conta_criada':case 'entrou':return SITES[d.site]??'';
   case 'apelido':return (d.apelido??'')+(d.pela_administracao?' (dado pela administração)':'');
-  case 'importou':return `${d.recordes??0} recorde${d.recordes===1?'':'s'}`;
+  case 'importou':return `${d.recordes??0} recorde${d.recordes===1?'':'s'}${d.site?' '+(SITES[d.site]??d.site):''}`;
   case 'conferida':return `${track(d.circuito)} · ${MODES[d.modo]??d.modo} · ${lap(d.volta_ms)}`;
   case 'recusada':return `${track(d.circuito)} · ${lap(d.volta_ms)} · ${d.motivo??''}`;
   case 'removido':return `${track(d.circuito)} · ${MODES[d.modo]??d.modo} · ${lap(d.volta_ms)} · ${d.selo==='conferido'?'✓':'⚠️'}`;
@@ -114,7 +117,7 @@ function drawUsers(){
  const list=[...users].sort(ORDERS[$('ordem').value]??ORDERS.login);
  rows('usuarios',list,[[x=>(x.apelido??'(sem apelido)')+(x.admin?' · admin':'')],[x=>String(x.corridas??0),'num'],[x=>String(x.voltas??0),'num'],[x=>String(x.dias??0),'num'],
   [x=>x.ritmo?`${pace(x.ritmo.valor)} · ${track(x.ritmo.circuito)}`:'—','num'],[tracksCell,'acao'],[x=>when(x.criado_em)],[x=>when(x.ultimo_login)],[x=>String(x.sessoes),'num'],
-  [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>x.importou_em?when(x.importou_em):'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num'],[nicknameButton,'acao']]);
+  [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>[x.importou_em&&'dev '+when(x.importou_em),x.importou_principal_em&&'principal '+when(x.importou_principal_em)].filter(Boolean).join(' · ')||'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num'],[nicknameButton,'acao']]);
 }
 // Trocar apelido: the admin gives a pilot a nickname, a reserved one too (the real Stevan's "Stevan").
 function nicknameButton(user){

@@ -871,8 +871,9 @@ const MULTIPLAYER=true;
 // may the bench's own sets play in the game.
 if(!MULTIPLAYER)carAudio.useDefaultSound();
 $('soundBench').hidden=!MULTIPLAYER;$('soundBenchState').textContent=carAudio.tuningSource==='bancada'?'Os seus ajustes da bancada estão tocando no jogo (desligue lá e recarregue o jogo para voltar ao padrão).':'Ajuste o ronco do Opala e do Fusca, marcha por marcha, e escolha se o jogo toca os seus ajustes.';
-// Accounts (conta.js: sign in with Google, the nickname on the records). Only the dev.autopobre.com.br build carries
-// them (preparar_publicacao.py --conta: the accounts' server answers only there); the others turn this off.
+// Accounts (conta.js: sign in with Google, the nickname on the records). Only the builds of dev.autopobre.com.br and,
+// from apr-3.4, autopobre.com.br carry them (preparar_publicacao.py --conta: the accounts' server answers there); the
+// others (the /dev/ museum, an older version) turn this off.
 const CONTA=true;
 // The online records (recordes-online.js, through conta.js): fed the run every frame (onlineRun) and each lap that counts (recordGhost).
 // contaModule: the module itself, for a multiplayer room's pass (conta.js roomPass); conta: the account's menu line and dialog.
