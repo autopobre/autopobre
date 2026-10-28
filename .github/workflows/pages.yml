@@ -16,7 +16,7 @@ on:
       versao:
         description: 'Link principal (autopobre.com.br): qual versão do jogo vai ali. Tag (apr-X.Y), branch (main) ou commit.'
         required: true
-        default: apr-3.3.2
+        default: apr-3.4
       versao_dev:
         description: 'Endereço autopobre.com.br/dev/ (o museu: a versão de testes antiga, parada na apr-3.3-rc6; a versão de testes agora é dev.autopobre.com.br). Se apagar este campo, o /dev/ sai do ar.'
         required: false
