@@ -1,0 +1,15 @@
+{"circuit": "guaratiba", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "reta_de_largada": {"start": 0.1, "end": 1.261, "say": "Reta de largada"},
+ "curva_1": {"start": 1.661, "end": 2.386, "say": "Curva 1"},
+ "curva_2": {"start": 2.786, "end": 3.933, "say": "Curva 2"},
+ "curva_3": {"start": 4.333, "end": 5.508, "say": "Curva 3"},
+ "curva_4": {"start": 5.908, "end": 6.867, "say": "Curva 4"},
+ "curva_5": {"start": 7.267, "end": 8.208, "say": "Curva 5"},
+ "curvas_6_e_7_o_laco": {"start": 8.608, "end": 10.491, "say": "Curvas 6 e 7, o laço"},
+ "reta_oeste": {"start": 10.891, "end": 12.051, "say": "Reta oeste"},
+ "curva_8": {"start": 12.451, "end": 13.343, "say": "Curva 8"},
+ "reta_sul": {"start": 13.743, "end": 14.581, "say": "Reta sul"},
+ "curva_9": {"start": 14.981, "end": 16.113, "say": "Curva 9"},
+ "reta_paralela": {"start": 16.513, "end": 17.625, "say": "Reta paralela"},
+ "curva_10_grampo": {"start": 18.025, "end": 19.81, "say": "Curva 10, grampo"}
+}}

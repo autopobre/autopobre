@@ -1,0 +1,15 @@
+{"circuit": "velocitta", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "reta_dos_boxes": {"start": 0.1, "end": 1.513, "say": "Reta dos boxes"},
+ "curva_1": {"start": 1.913, "end": 2.638, "say": "Curva 1"},
+ "curva_2": {"start": 3.038, "end": 4.185, "say": "Curva 2"},
+ "caipirinha": {"start": 4.585, "end": 5.466, "say": "Caipirinha"},
+ "curva_5": {"start": 5.866, "end": 6.807, "say": "Curva 5"},
+ "curva_da_mata": {"start": 7.207, "end": 8.227, "say": "Curva da Mata"},
+ "grampo_do_museu": {"start": 8.627, "end": 9.839, "say": "Grampo do Museu"},
+ "reta_oposta": {"start": 10.239, "end": 11.343, "say": "Reta oposta"},
+ "curva_do_guiga": {"start": 11.743, "end": 12.879, "say": "Curva do Guiga"},
+ "curva_10": {"start": 13.279, "end": 14.278, "say": "Curva 10"},
+ "alto_do_guiga": {"start": 14.678, "end": 15.826, "say": "Alto do Guiga"},
+ "curva_11_grampo": {"start": 16.226, "end": 17.814, "say": "Curva 11, grampo"},
+ "ferradura": {"start": 18.214, "end": 19.141, "say": "Ferradura"}
+}}

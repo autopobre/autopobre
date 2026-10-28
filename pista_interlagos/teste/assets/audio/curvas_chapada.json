@@ -1,0 +1,10 @@
+{"circuit": "chapada", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "curva_1": {"start": 0.1, "end": 0.825, "say": "Curva 1"},
+ "paredao_leste": {"start": 1.225, "end": 2.446, "say": "Paredão leste"},
+ "bico": {"start": 2.846, "end": 3.404, "say": "Bico"},
+ "borda_sul": {"start": 3.804, "end": 5.004, "say": "Borda sul"},
+ "s_do_mirante": {"start": 5.404, "end": 6.624, "say": "S do Mirante"},
+ "curva_da_volta": {"start": 7.024, "end": 8.0, "say": "Curva da Volta"},
+ "curva_do_cerrado": {"start": 8.4, "end": 9.541, "say": "Curva do Cerrado"},
+ "reta_principal": {"start": 9.941, "end": 11.115, "say": "Reta principal"}
+}}

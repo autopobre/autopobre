@@ -1,0 +1,17 @@
+{"circuit": "chapeco", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "c1": {"start": 0.1, "end": 1.91, "say": "Curva 1, grampo"},
+ "reta2": {"start": 2.31, "end": 3.314, "say": "Reta 2"},
+ "c2": {"start": 3.714, "end": 4.861, "say": "Curva 2"},
+ "c3": {"start": 5.261, "end": 6.436, "say": "Curva 3"},
+ "c4": {"start": 6.836, "end": 7.795, "say": "Curva 4"},
+ "reta3": {"start": 8.195, "end": 9.398, "say": "Reta 3"},
+ "c5": {"start": 9.798, "end": 11.199, "say": "Curva 5, grampo"},
+ "c6": {"start": 11.599, "end": 12.748, "say": "Curva 6"},
+ "c7": {"start": 13.148, "end": 14.898, "say": "Curva 7, de alta"},
+ "c8": {"start": 15.298, "end": 16.191, "say": "Curva 8"},
+ "c9": {"start": 16.591, "end": 17.723, "say": "Curva 9"},
+ "c10": {"start": 18.123, "end": 19.122, "say": "Curva 10"},
+ "c11": {"start": 19.522, "end": 20.472, "say": "Curva 11"},
+ "c12": {"start": 20.872, "end": 22.045, "say": "Curva 12"},
+ "principal": {"start": 22.445, "end": 23.619, "say": "Reta principal"}
+}}

@@ -1,0 +1,12 @@
+{"circuit": "floripa", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "alameda_adolfo_konder": {"start": 0.1, "end": 1.594, "say": "Alameda Adolfo Konder"},
+ "rua_hoepcke": {"start": 1.994, "end": 3.291, "say": "Rua Hoepcke"},
+ "rua_claudino_bento_da_si": {"start": 3.691, "end": 5.501, "say": "Rua Claudino Bento da Silva"},
+ "av_paulo_fontes": {"start": 5.901, "end": 7.765, "say": "Av. Paulo Fontes"},
+ "rua_pedro_bittencourt": {"start": 8.165, "end": 10.204, "say": "Rua Pedro Bittencourt"},
+ "ponte_colombo_salles": {"start": 10.604, "end": 12.167, "say": "Ponte Colombo Salles"},
+ "estreito": {"start": 12.567, "end": 13.445, "say": "Estreito"},
+ "rua_14_de_julho": {"start": 13.845, "end": 15.412, "say": "Rua 14 de Julho"},
+ "av_gov_ivo_silveira": {"start": 15.812, "end": 17.783, "say": "Av. Gov. Ivo Silveira"},
+ "ponte_hercilio_luz": {"start": 18.183, "end": 19.893, "say": "Ponte Hercílio Luz"}
+}}

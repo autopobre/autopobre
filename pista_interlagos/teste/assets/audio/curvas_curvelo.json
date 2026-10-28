@@ -1,0 +1,6 @@
+{"circuit": "curvelo", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "reta_principal": {"start": 0.1, "end": 1.273, "say": "Reta principal"},
+ "curva_inclinada": {"start": 1.673, "end": 3.159, "say": "Curva inclinada"},
+ "reta_oposta": {"start": 3.559, "end": 4.663, "say": "Reta oposta"},
+ "curva_plana": {"start": 5.063, "end": 5.998, "say": "Curva plana"}
+}}

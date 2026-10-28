@@ -1,0 +1,10 @@
+{"circuit": "piracicaba", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "reta_principal": {"start": 0.1, "end": 1.273, "say": "Reta principal"},
+ "curva_do_paddock": {"start": 1.673, "end": 2.794, "say": "Curva do paddock"},
+ "anel_externo": {"start": 3.194, "end": 4.335, "say": "Anel externo"},
+ "entrada_do_miolo": {"start": 4.735, "end": 5.947, "say": "Entrada do miolo"},
+ "miolo": {"start": 6.347, "end": 7.097, "say": "Miolo"},
+ "grampo_do_miolo": {"start": 7.497, "end": 8.792, "say": "Grampo do miolo"},
+ "grampo_interno": {"start": 9.192, "end": 10.388, "say": "Grampo interno"},
+ "curva_da_reta_principal": {"start": 10.788, "end": 12.271, "say": "Curva da reta principal"}
+}}

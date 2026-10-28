@@ -176,14 +176,20 @@ def load_chatterbox(lang):
 
 
 NUM_LANG = {'pt': 'pt_BR', 'en': 'en'}
-SPOKEN = {'km': 'quilometros'}
+# Words Whisper writes its own way for what the voice said right: "km", Senna spelt as said ("Sena"), the Esse as
+# the letter ("Curva do S"; both sides of the match, so the pronoun matches itself too).
+SPOKEN = {'km': 'quilometros', 'senna': 'sena', 'esse': 's'}
 
 
 # Words the voice reads wrong as written, respelled for it only (the captions keep the script's words). The letter S
 # and the curve called Esse are "ésse": as written, the voice said the pronoun "êsse"; Emerson is "Émerson"; miolo is
-# "miôlo", not "miólo"; the driver Hellé Nice is "Éle Níce", not "Naice" (user, 10-26).
-PRONUNCIATION = {'pt': [(r'\bS\b', 'ésse'), (r'\bum esse\b', 'um ésse'), (r'(?<=[^.!?] )Esse\b', 'Ésse'),
-                        (r'\bEmerson\b', 'Émerson'), (r'\b([Mm])iolo\b', r'\1iôlo'), (r'\bHellé Nice\b', 'Éle Níce')]}
+# "miôlo", not "miólo"; the driver Hellé Nice is "Éle Níce", not "Naice" (user, 10-26); the Mergulho is "Mêrgulho", not
+# "Mérgulho" (user, 10-27). The city circuits' streets (the copilot): Av., Gov., Dr. said in full; Paschoal is "Pascoal",
+# Roosevelt "Rúzvelt", as the cities say them; Chapecó oval's S2 is "ésse dois".
+PRONUNCIATION = {'pt': [(r'\bS\b', 'ésse'), (r'\bS(?=\d)', 'ésse '), (r'\bum esse\b', 'um ésse'), (r'(?<=[^.!?] )Esse\b', 'Ésse'),
+                        (r'\bEmerson\b', 'Émerson'), (r'\b([Mm])iolo\b', r'\1iôlo'), (r'\bHellé Nice\b', 'Éle Níce'),
+                        (r'\b([Mm])ergulho\b', r'\1êrgulho'), (r'\bAv\.', 'Avenida'), (r'\bGov\.', 'Governador'),
+                        (r'\bDr\.', 'Doutor'), (r'\bPaschoal\b', 'Pascoal'), (r'\bRoosevelt\b', 'Rúzvelt')]}
 
 
 def pronounced(text, lang):
@@ -403,11 +409,13 @@ def hear(lines, folder, notes, lang, speed=1.0):
         heard = asr({'raw': pcm, 'sampling_rate': SR}, generate_kwargs={'language': lang, 'task': 'transcribe'})['text']
         secs = len(trim(pcm)) / SR
         # Babbling past the end or stalling shows in the pace too: a line takes 8 to 22 characters a second (times the
-        # speed asked: stretched takes are faster by design).
+        # speed asked: stretched takes are faster by design). A name of a word or two (the copilot's "Café") has no
+        # pace to speak of: there a take longer than 2.5 s is the babble.
         pace = len(line['say']) / secs
+        steady = secs <= 2.5 if len(line['say']) < 20 else 8 * speed <= pace <= 22 * speed
         # Heard against the respelled words ("ésse"), which Whisper writes either way: the better of the two.
         said = max(mark(line['say'], heard, lang), mark(line.get('spoken', line['say']), heard, lang))
-        notes[p.name] = round(said * (1 if 8 * speed <= pace <= 22 * speed else .5), 3)
+        notes[p.name] = round(said * (1 if steady else .5), 3)
     del asr
     release()
     return True

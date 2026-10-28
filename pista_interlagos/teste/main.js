@@ -57,6 +57,7 @@ import {ManualGearbox,AutoShift} from './manual-gearbox.js';
 import {BrakeReverse} from './brake-reverse.js';
 import {setupSettings} from './settings.js';
 import {CarAudio} from './car-audio.js?v=20260913-immersive';
+import {CornerCallouts} from './corner-callouts.js';
 import {PlayerPreferences,CAMERA_MODES,LAPS,LINE_MODES} from './player-preferences.js';
 import {createSky,SUN_DIRECTION} from './sky.js';
 import {weatherProfile,weatherCaption,TIME_CHOICES,RAIN_CHOICES,RANDOM_WEATHER,drawWeather,chosenWeather,rainOdds,raceMonth,rainFor,EFFECT_LIGHT,STAND_LIGHTS,TIMES_OF_DAY,RAIN_LEVELS,nextTimeOfDay,nextRainLevel,weatherName} from './weather.js';
@@ -852,6 +853,15 @@ document.addEventListener('keydown',()=>carAudio.unlock(),{once:true});
 document.addEventListener('click',e=>{if(e.target.closest('button')&&!e.target.closest('button').disabled)carAudio.uiClick();});
 $('volume').oninput=e=>{carAudio.setVolume(Number(e.target.value)/100);audioControls();};
 $('mute').onclick=()=>{carAudio.toggleMute();carAudio.unlock();audioControls();};
+// The copilot names the corner ahead (corner-callouts.js), switched in the Áudio tab, at its own volume (up to 200%):
+// letting go of the slider, or ▶ Ouvir, says one name at the level chosen.
+const callouts=new CornerCallouts(carAudio);
+function calloutsControls(){$('calloutsVolume').value=Math.round(callouts.volume*100);$('calloutsVolumeValue').textContent=`${Math.round(callouts.volume*100)}%`;}
+calloutsControls();
+$('cornerCallouts').checked=callouts.on;$('cornerCallouts').onchange=()=>callouts.setOn($('cornerCallouts').checked);
+$('calloutsVolume').oninput=e=>{callouts.setVolume(Number(e.target.value)/100);calloutsControls();};
+$('calloutsVolume').onchange=$('calloutsHear').onclick=()=>{carAudio.unlock();callouts.preview();};
+window.interlagosCopiloto={info:()=>callouts.info(),setOn:on=>{callouts.setOn(on);$('cornerCallouts').checked=callouts.on;return callouts.info();},setVolume:v=>{callouts.setVolume(v);calloutsControls();return callouts.info();},preview:()=>{carAudio.unlock();return callouts.preview();}};
 let sessionStarted=false,loading=false,loadedCircuit=null;
 // Multiplayer test room (multiplayer.js): loaded only for an address with #desafio=NOME (the old
 // #sala= and #corrida= links open no room); no menu leads there.
@@ -1035,7 +1045,11 @@ function updateOpenings(dt){openings.update(dt);showTrunkInside(trunkInterior,op
 function attachOpenings(){openings.attach(fuscaBody.active?fuscaBody.car:model);}
 // nearest (R key): only the player's car goes back on track; rivals, laps and fuel carry on.
 function reset(nearest=false){walker?.reset();autoShift.cancel();car.fall=null;if(fallMode){setCameraMode(fallMode);fallMode=null;}fallView.stop(camera);if(!nearest)explosions?.reset();action.reset();mobile?.setHandbrake(false);openings.closeAll(true);if(nearest&&arenaMode)arenaMode.spawn(car);else if(nearest)car.recover();else{ghostRecorder.reset();car.resetGrid(playerGridSlot(immersive?.lineup?.length));arenaMode?.spawn(car);if(immersive&&!immersive.active)immersive.resetField();cockpit.resetPhone();}driver?.reset();skidMarks.breakTrails();tyreSmoke.reset();carAudio.reset();automatic=false;followInitialized=false;cameraReturn.reset(performance.now());headLook.yaw=headLook.pitch=0;lookBack.reset();updateCar(1);updateCamera(1);}
-const names=[[0,'Reta dos boxes'],[280,'S do Senna · T1–T2'],[490,'Curva do Sol · T3'],[700,'Reta Oposta'],[1500,'Descida do Lago · T4–T5'],[1810,'Subida para a Ferradura'],[1990,'Ferradura · T6–T7'],[2230,'Laranjinha · T8'],[2430,'Pinheirinho · T9'],[2660,'Bico de Pato · T10'],[2840,'Mergulho · T11'],[3120,'Junção · T12'],[3250,'Subida dos boxes · T13'],[3570,'Café · T14'],[3960,'T15 · Reta dos boxes']];
+// The Descida do Lago begins where T4 turns (1368 m; it began at 1500, after T4, and the HUD said Reta Oposta through it).
+// The Laranjinha is the Ferradura's second bend (T7, from 2140 m), the corner after it the Curva do Esse (T8; the user,
+// 10-27: the HUD called that one Laranjinha). The Reta dos boxes begins out of the Café (3740 m; the copilot names it
+// in its middle), T15 its kink.
+const names=[[0,'Reta dos boxes'],[280,'S do Senna · T1–T2'],[490,'Curva do Sol · T3'],[700,'Reta Oposta'],[1368,'Descida do Lago · T4–T5'],[1810,'Subida para a Ferradura'],[1990,'Ferradura · T6'],[2140,'Laranjinha · T7'],[2230,'Curva do Esse · T8'],[2430,'Pinheirinho · T9'],[2660,'Bico de Pato · T10'],[2840,'Mergulho · T11'],[3120,'Junção · T12'],[3250,'Subida dos boxes · T13'],[3570,'Café · T14'],[3740,'Reta dos boxes'],[3960,'T15 · Reta dos boxes']];
 function location(s){const sections=data.meta.sections||names;let name=sections[0][1];for(const [d,n] of sections)if(s>=d)name=n;return name;}
 const fmt=t=>{if(t===null)return '—';const m=Math.floor(t/60),s=t%60;return `${String(m).padStart(2,'0')}:${s.toFixed(3).padStart(6,'0')}`;};
 // The track's outline, drawn once per circuit and map size into a canvas of its own: the HUD's map copies it and adds
@@ -1682,6 +1696,12 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  const rivalSound=heard!==car?immersive.rivalSound(heard):null;
  const braking=driveCommand.engineOff?0:driveCommand.brake;if(touchDevice)mobile.showPedals(driveCommand.throttle??0,Math.max(driveCommand.brake??0,driveCommand.reverse??0));brakeLamps.userData.set(model?.visible?braking:0,!!model?.visible&&playerLamps.lit);fuscaBody.brake(braking,playerLamps.lit);
  carAudio.update(heard,rivalSound?.command??driveCommand,rivalSound?.skid??skid,paused||frozen,mode);
+ // The copilot speaks while the player's own car runs the lap (the recon lap too): not at a pit stop, the pause, the
+ // opening shots, the countdown, on foot or watching a rival. The pit lane is no reason: surface.pit is also true where
+ // the racing line crosses the lane's paint at a merge (Velocitta's Curva 1 lost its name there), and through the pits
+ // the lap distance keeps counting, so the names still fall in place.
+ const calloutsOk=sessionStarted&&!paused&&!frozen&&!intro.active&&!car.fall&&!watchedRival()&&!gridPreview()&&!pitstop?.opened&&!immersive?.onFoot()&&!walker?.active&&!trackHistory.active&&car.surface?.branch==null&&(immersive?.active?immersive.state.phase==='race':!immersive?.freeCountdown&&!immersive?.freeResultReady);
+ callouts.track(arenaMode?null:circuit.id,data?.meta?.reconstructed_xy_m);callouts.update(car.surface?.s??0,Math.hypot(car.vx,car.vy),calloutsOk);
  // H (the controller's LB / L1, a learnt wheel button, the touch Buzina): the horn, while held, at the wheel of one's own car.
  carAudio.honk(pressed('KeyH')&&!paused&&!frozen&&!intro.active&&heard===car&&!pitstop?.opened&&!immersive?.onFoot()&&!walker?.active,car.mechanics?.name==='fusca'?'fusca':'opala',mode);
  carAudio.updateScene({...immersive?.audioScene(heard),speed:Math.hypot(heard.vx,heard.vy),onRoad:heard.surface.onRoad,rain:weather.drops,wet:weather.wetness,...speedFx?.sound(heard===car?car:null),camera:mode},immersive?.state.takeSounds()??[],dt);

@@ -1,0 +1,17 @@
+{"circuit": "brasilia", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "curva_1_de_alta": {"start": 0.1, "end": 1.82, "say": "Curva 1, de alta"},
+ "reta_longa": {"start": 2.22, "end": 3.125, "say": "Reta longa"},
+ "curvas_2_e_3": {"start": 3.525, "end": 4.87, "say": "Curvas 2 e 3"},
+ "curva_4": {"start": 5.271, "end": 6.229, "say": "Curva 4"},
+ "curvas_5_e_6_o_laco": {"start": 6.629, "end": 8.77, "say": "Curvas 5 e 6, o laço"},
+ "curva_7": {"start": 9.17, "end": 10.187, "say": "Curva 7"},
+ "curva_8": {"start": 10.587, "end": 11.48, "say": "Curva 8"},
+ "curva_9": {"start": 11.88, "end": 13.012, "say": "Curva 9"},
+ "reta_oposta": {"start": 13.412, "end": 14.516, "say": "Reta oposta"},
+ "curvas_10_e_11_grampo": {"start": 14.916, "end": 16.905, "say": "Curvas 10 e 11, grampo"},
+ "curva_12": {"start": 17.305, "end": 18.478, "say": "Curva 12"},
+ "curvas_13_e_14_grampo": {"start": 18.878, "end": 20.922, "say": "Curvas 13 e 14, grampo"},
+ "curva_15": {"start": 21.322, "end": 22.263, "say": "Curva 15"},
+ "curva_16": {"start": 22.663, "end": 23.95, "say": "Curva 16"},
+ "reta_de_largada": {"start": 24.35, "end": 25.511, "say": "Reta de largada"}
+}}

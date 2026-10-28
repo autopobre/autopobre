@@ -1,0 +1,16 @@
+{"circuit": "interlagos", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "senna": {"start": 0.1, "end": 1.288, "say": "S do Senna"},
+ "sol": {"start": 1.688, "end": 2.641, "say": "Curva do Sol"},
+ "oposta": {"start": 3.041, "end": 4.145, "say": "Reta Oposta"},
+ "lago": {"start": 4.545, "end": 5.625, "say": "Descida do Lago"},
+ "ferradura": {"start": 6.025, "end": 6.952, "say": "Ferradura"},
+ "laranjinha": {"start": 7.352, "end": 8.479, "say": "Laranjinha"},
+ "esse": {"start": 8.879, "end": 10.111, "say": "Curva do Esse"},
+ "pinheirinho": {"start": 10.511, "end": 11.658, "say": "Pinheirinho"},
+ "bico": {"start": 12.058, "end": 13.268, "say": "Bico de Pato"},
+ "mergulho": {"start": 13.668, "end": 14.8, "say": "Mergulho"},
+ "juncao": {"start": 15.2, "end": 16.285, "say": "Junção"},
+ "subida": {"start": 16.685, "end": 18.105, "say": "Subida dos Boxes"},
+ "cafe": {"start": 18.505, "end": 19.078, "say": "Café"},
+ "reta": {"start": 19.478, "end": 20.891, "say": "Reta dos Boxes"}
+}}

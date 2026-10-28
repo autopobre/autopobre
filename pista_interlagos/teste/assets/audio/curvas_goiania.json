@@ -1,0 +1,15 @@
+{"circuit": "goiania", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "reta_principal": {"start": 0.1, "end": 1.273, "say": "Reta principal"},
+ "curvas_1_e_2": {"start": 1.673, "end": 2.946, "say": "Curvas 1 e 2"},
+ "reta_de_cima": {"start": 3.346, "end": 4.58, "say": "Reta de cima"},
+ "curva_3": {"start": 4.98, "end": 6.155, "say": "Curva 3"},
+ "curva_4_grampo": {"start": 6.555, "end": 8.686, "say": "Curva 4, grampo"},
+ "curva_5": {"start": 9.086, "end": 10.028, "say": "Curva 5"},
+ "curvas_6_e_7_grampo": {"start": 10.428, "end": 12.307, "say": "Curvas 6 e 7, grampo"},
+ "curva_8": {"start": 12.707, "end": 13.599, "say": "Curva 8"},
+ "curva_9": {"start": 13.999, "end": 15.131, "say": "Curva 9"},
+ "curva_10": {"start": 15.531, "end": 16.53, "say": "Curva 10"},
+ "curvas_11_e_12": {"start": 16.93, "end": 18.371, "say": "Curvas 11 e 12"},
+ "reta_oposta": {"start": 18.771, "end": 19.875, "say": "Reta oposta"},
+ "curvas_13_e_14": {"start": 20.275, "end": 21.755, "say": "Curvas 13 e 14"}
+}}

@@ -1,0 +1,6 @@
+{"circuit": "chapecooval", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "principal": {"start": 0.1, "end": 1.273, "say": "Reta principal"},
+ "c1": {"start": 1.673, "end": 3.483, "say": "Curva 1, grampo"},
+ "reta2": {"start": 3.883, "end": 4.887, "say": "Reta 2"},
+ "s2": {"start": 5.287, "end": 7.464, "say": "S2, ligação do oval"}
+}}

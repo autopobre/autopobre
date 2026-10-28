@@ -1,0 +1,12 @@
+{"circuit": "cascavel", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "reta_dos_boxes": {"start": 0.1, "end": 1.513, "say": "Reta dos boxes"},
+ "baciao": {"start": 1.913, "end": 2.826, "say": "Bacião"},
+ "reta_oposta": {"start": 3.226, "end": 4.33, "say": "Reta oposta"},
+ "dobra_da_reta_oposta": {"start": 4.73, "end": 6.458, "say": "Dobra da reta oposta"},
+ "curva_a_direita_do_topo": {"start": 6.858, "end": 8.275, "say": "Curva à direita do topo"},
+ "tangencia_a_direita": {"start": 8.675, "end": 9.991, "say": "Tangência à direita"},
+ "primeira_das_curvas_geme": {"start": 10.391, "end": 12.146, "say": "Primeira das curvas gêmeas"},
+ "segunda_das_curvas_gemea": {"start": 12.546, "end": 14.265, "say": "Segunda das curvas gêmeas"},
+ "reta_de_tras": {"start": 14.665, "end": 15.837, "say": "Reta de trás"},
+ "curva_para_a_reta_dos_bo": {"start": 16.237, "end": 17.997, "say": "Curva para a reta dos boxes"}
+}}

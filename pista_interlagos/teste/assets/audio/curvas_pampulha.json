@@ -1,0 +1,19 @@
+{"circuit": "pampulha", "voice": "pt-BR-Chatterbox-bob", "label": "Bob", "source": "chatterbox", "model": "v3", "exaggeration": 1.9,"clips":{
+ "igrejinha_da_pampulha": {"start": 0.1, "end": 1.653, "say": "Igrejinha da Pampulha"},
+ "praca_de_iemanja": {"start": 2.053, "end": 3.293, "say": "Praça de Iemanjá"},
+ "parque_ecologico": {"start": 3.693, "end": 5.117, "say": "Parque Ecológico"},
+ "zoologico": {"start": 5.517, "end": 6.611, "say": "Zoológico"},
+ "braco_do_zoologico": {"start": 7.011, "end": 8.347, "say": "Braço do Zoológico"},
+ "mirante_do_sabia": {"start": 8.747, "end": 10.044, "say": "Mirante do Sabiá"},
+ "braco_das_garcas": {"start": 10.444, "end": 11.813, "say": "Braço das Garças"},
+ "reta_dos_boxes": {"start": 12.213, "end": 13.626, "say": "Reta dos boxes"},
+ "iate_tenis_clube": {"start": 14.025, "end": 15.372, "say": "Iate Tênis Clube"},
+ "mirante_bandeirantes": {"start": 15.772, "end": 17.294, "say": "Mirante Bandeirantes"},
+ "barragem_da_pampulha": {"start": 17.694, "end": 19.323, "say": "Barragem da Pampulha"},
+ "casa_do_baile": {"start": 19.723, "end": 20.657, "say": "Casa do Baile"},
+ "av_coronel_oscar_paschoa": {"start": 21.057, "end": 23.081, "say": "Av. Coronel Oscar Paschoal"},
+ "av_antonio_abrahao_caram": {"start": 23.481, "end": 25.259, "say": "Av. Antônio Abrahão Caram"},
+ "av_rei_pele": {"start": 25.659, "end": 26.894, "say": "Av. Rei Pelé"},
+ "av_presidente_carlos_luz": {"start": 27.294, "end": 29.525, "say": "Av. Presidente Carlos Luz"},
+ "av_coronel_oscar_pasch2": {"start": 29.925, "end": 31.949, "say": "Av. Coronel Oscar Paschoal"}
+}}
