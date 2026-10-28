@@ -17,6 +17,8 @@ import worker from '../src/index.js';
 export const CLIENT_ID='cliente-de-teste.apps.googleusercontent.com',CLIENT_SECRET='segredo-de-teste-local';
 // The rooms' pass secret on this machine: sala-cloudflare's .dev.vars (wrangler dev) has the same SALA_PASSE.
 export const ROOM_PASS_SECRET='passe-das-salas-de-teste-local';
+// The palpites' e-mails (src/email.js): the key both Workers share, on this machine.
+export const EMAIL_KEY='chave-dos-emails-de-teste-local';
 
 // D1's API as the Worker uses it: prepare().bind().first()/all()/run(), and batch() in one transaction.
 // admins: Google ids made administrators as their accounts are made (a check driving the admin panel).
@@ -46,9 +48,10 @@ export function localD1(file=':memory:',admins=[]){
 }
 
 // The stand-in Google: /auth sends the browser straight back with a code for `next.sub` (the test
-// sets it, and may spoil the next token on purpose), /token trades it once for an ID token.
+// sets it, and may spoil the next token on purpose), /token trades it once for an ID token, with the account's
+// e-mail when the scope asked for it (`next.email`, or one made from the sub; `next.verified` false: not confirmed).
 function fakeGoogle(){
- const codes=new Map(),next={sub:'100000000000000000001',spoil:null};
+ const codes=new Map(),next={sub:'100000000000000000001',spoil:null,email:null,verified:true};
  const b64url=data=>Buffer.from(typeof data==='string'?data:JSON.stringify(data)).toString('base64url');
  return {
   next,
@@ -56,6 +59,7 @@ function fakeGoogle(){
    // For a check driving a browser: the next account to come back (sub) and what to spoil (spoil).
    if(url.pathname==='/falso-google/proxima'){
     if(url.searchParams.has('sub'))next.sub=url.searchParams.get('sub');
+    if(url.searchParams.has('email'))next.email=url.searchParams.get('email')||null;
     next.spoil=url.searchParams.get('spoil')||null;
     return Response.json(next);
    }
@@ -76,6 +80,7 @@ function fakeGoogle(){
      return Response.json({error:'invalid_grant'},{status:400});
     const now=Math.floor(Date.now()/1000),spoil=next.spoil;next.spoil=null;
     const claims={iss:'https://accounts.google.com',aud:CLIENT_ID,sub:grant.sub,nonce:grant.nonce,iat:now,exp:now+3600,
+     ...(grant.scope?.split(' ').includes('email')&&{email:next.email??`piloto${grant.sub.slice(-4)}@exemplo.com.br`,email_verified:next.verified}),
      ...(spoil==='nonce'&&{nonce:'outro-nonce'}),...(spoil==='aud'&&{aud:'outro-cliente'}),...(spoil==='iss'&&{iss:'https://outro.example'}),...(spoil==='exp'&&{exp:now-600})};
     return Response.json({id_token:`${b64url({alg:'none'})}.${b64url(claims)}.`,scope:grant.scope});
    }
@@ -87,8 +92,9 @@ function fakeGoogle(){
 // adminSecret: the Worker's ADMINS secret, as Cloudflare would pass it.
 // salaPasse: the rooms' secret (ROOM_PASS_SECRET; a check may give a short one, or none).
 // site: which Worker this is (wrangler.jsonc SITE: dev, the test version, or principal, the main link). DB: another
-// local Worker's database, for the two sites sharing one as on Cloudflare (testar_dois_sites.mjs).
-export async function startLocal({port=8788,origem,banco=':memory:',site='dev',DB=null,admins=[],adminSecret=null,salaPasse=ROOM_PASS_SECRET}={}){
+// local Worker's database, for the two sites sharing one as on Cloudflare (testar_dois_sites.mjs). emailKey: the palpites'
+// e-mail key (EMAIL_KEY; null: none, and the palpites stay shut).
+export async function startLocal({port=8788,origem,banco=':memory:',site='dev',DB=null,admins=[],adminSecret=null,salaPasse=ROOM_PASS_SECRET,emailKey=EMAIL_KEY}={}){
  const google=fakeGoogle();DB??=localD1(banco,admins);
  const server=http.createServer(async(req,res)=>{
   try{
@@ -97,7 +103,7 @@ export async function startLocal({port=8788,origem,banco=':memory:',site='dev',D
    const headers=new Headers();for(const [k,v] of Object.entries(req.headers))if(typeof v==='string')headers.set(k,v);
    const request=new Request(url,{method:req.method,headers,body:['GET','HEAD'].includes(req.method)?undefined:Buffer.concat(chunks)});
    const env={DB,ORIGEM:origem??`http://127.0.0.1:${server.address().port}`,GOOGLE_CLIENT_ID:CLIENT_ID,GOOGLE_CLIENT_SECRET:CLIENT_SECRET,
-    GOOGLE_AUTH_URL:`http://127.0.0.1:${server.address().port}/falso-google/auth`,GOOGLE_TOKEN_URL:`http://127.0.0.1:${server.address().port}/falso-google/token`,SALA_PASSE:salaPasse,SITE:site,...(adminSecret&&{ADMINS:adminSecret})};
+    GOOGLE_AUTH_URL:`http://127.0.0.1:${server.address().port}/falso-google/auth`,GOOGLE_TOKEN_URL:`http://127.0.0.1:${server.address().port}/falso-google/token`,SALA_PASSE:salaPasse,SITE:site,...(adminSecret&&{ADMINS:adminSecret}),...(emailKey&&{EMAIL_KEY:emailKey})};
    const response=url.pathname.startsWith('/falso-google/')?await google.handle(request,url):await worker.fetch(request,env);
    const out={};for(const [k,v] of response.headers)if(k!=='set-cookie')out[k]=v;
    const cookies=response.headers.getSetCookie();if(cookies.length)out['set-cookie']=cookies;

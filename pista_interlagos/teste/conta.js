@@ -11,6 +11,8 @@
 // kept): the owner's word, someone come to change their name should not read a page of warnings first.
 import {OnlineRecords} from './recordes-online.js';
 const API='/api/conta/';
+// The palpites page ships with this build (publicacao.py PALPITES): preparar_publicacao.py turns it false where it does not.
+const PALPITES=true;
 // Set just before leaving for Google: back on the page, the player hears how it went.
 const SIGNING_IN='autopobre-conta-entrando';
 // Signing in: an arrow through a door (the pilot's own line already has the person).
@@ -44,18 +46,19 @@ export class Conta {
  <section id="contaFora"><p>Entre com a sua conta Google para guardar seus recordes em qualquer navegador.</p><button id="contaEntrar" class="conta-principal" type="button">${SIGN_IN}Entrar com Google</button></section>
  <section id="contaDentro" hidden>
   <form id="contaApelidoForm"><label for="contaApelido">SEU APELIDO NOS RECORDES</label><div class="conta-linha"><input id="contaApelido" maxlength="20" autocomplete="nickname" spellcheck="false" required><button id="contaSalvar" class="conta-principal" type="submit">Salvar</button></div><small>3 a 20 letras ou números. Todo mundo vê este nome.</small></form>
-  <div class="conta-acoes"><button id="contaSair" type="button">Sair</button><a id="contaPainel" href="admin.html" hidden>Painel de administração</a><button id="contaMais" class="conta-engrenagem" type="button" aria-expanded="false" aria-controls="contaExtra" aria-label="Mais opções da conta" title="Mais opções da conta">${GEAR}</button></div>
+  <div class="conta-acoes"><button id="contaSair" type="button">Sair</button><a id="contaPainel" href="admin.html" hidden>Painel de administração</a><a id="contaPalpites" href="painel-palpites.html" hidden>Painel dos palpites</a><button id="contaMais" class="conta-engrenagem" type="button" aria-expanded="false" aria-controls="contaExtra" aria-label="Mais opções da conta" title="Mais opções da conta">${GEAR}</button></div>
   <div id="contaExtra" hidden>
    <p id="contaDesde"></p>
    <div class="conta-acoes"><a id="contaDados" href="${API}meus-dados" download="autopobre-meus-dados.json">Baixar meus dados</a><button id="contaApagar" class="conta-perigo" type="button">Apagar conta</button></div>
   </div>
  </section>
  <details class="conta-info" id="contaInfo"><summary><span class="conta-i" aria-hidden="true">i</span>O que guardamos</summary>
-  <p>O número que o Google dá à sua conta, o apelido, os seus recordes e voltas. Nada de nome, e-mail ou foto. <a href="privacidade.html" target="_blank" rel="noopener noreferrer">Privacidade ↗</a></p>
+  <p>O número que o Google dá à sua conta, o apelido, os seus recordes e voltas. Nada de nome ou foto; o e-mail, só se você entrar pelos palpites. <a href="privacidade.html" target="_blank" rel="noopener noreferrer">Privacidade ↗</a></p>
   <h3>Como funciona, tecnicamente</h3>
   <ul>
    <li><b>Login:</b> OpenID Connect com o Google, no fluxo <i>authorization code</i> com PKCE, <i>state</i> e <i>nonce</i>, feito pelo servidor do jogo. A página não carrega nenhum script do Google.</li>
    <li><b>O que o Google entrega:</b> o jogo pede só o escopo <code>openid</code>. Chega o identificador da conta (<code>sub</code>), um número que não revela nome, e-mail nem foto. O token do Google é conferido e descartado.</li>
+   <li><b>Palpites:</b> a página dos palpites pede também o escopo <code>email</code>. O e-mail que o Google confirma fica cifrado no banco (AES-GCM), junto com o palpite e a hora dele, para avisar quem ficar no pódio e, só para quem marca a caixa, para as ofertas dos patrocinadores; ninguém mais vê.</li>
    <li><b>Sessão:</b> um cookie <code>__Host-ap_sessao</code> (HttpOnly, Secure, SameSite=Lax) que dura 30 dias. O servidor guarda só o SHA-256 dele, nunca o valor. Sair apaga a sessão também no servidor.</li>
    <li><b>Onde fica:</b> num banco Cloudflare D1, no leste dos EUA. Ficam a conta (identificador, apelido, datas), as sessões e os recordes.</li>
    <li><b>Recordes:</b> pista, modo, tempo, versão do jogo, data e o fantasma da volta. Uma volta é <i>conferida</i> quando o servidor acompanha o relógio dela, com pedaços enviados a cada 10 segundos, não deixa passar volta absurdamente mais rápida que a linha ideal do Opala, confere o trajeto dentro da pista, confere se o Opala do jogo consegue fazer aquela volta (motor, freios e pneus) e se os comandos do piloto explicam o movimento. Os recordes antigos (deste navegador e do autopobre.com.br) sobem uma única vez por conta, marcados com ⚠️ (recordes de versões anteriores do Auto Pobre podem conter erros).</li>
@@ -85,6 +88,7 @@ export class Conta {
   let data;try{data=await call('eu');}catch{return false;}
   // The menu's pilot before the account takes its place: their old records here are this account's too.
   this.available=true;this.firstPilot=this.pilot();this.records?.addOnline(this.online);this.show(data.conta);
+  this.guessesLink();
   const store=session();
   if(store?.getItem(SIGNING_IN)){
    store.removeItem(SIGNING_IN);
@@ -92,6 +96,18 @@ export class Conta {
    else if(!this.account.apelido)this.open('Pronto, você entrou. Agora escolha o apelido que vai aparecer nos recordes.');
   }
   return true;
+ }
+ // Palpites do Opala 99 (palpites.html): a link under the pilot's name, where the page is published (PALPITES: the dev
+ // build only for now) and the accounts server has a weekend of guesses (conta-cloudflare/src/palpites.js).
+ async guessesLink(){
+  if(!PALPITES)return;
+  try{
+   const r=await fetch('/api/palpites',{cache:'no-store',credentials:'same-origin'});
+   if(!r.ok||!(await r.json())?.bolao)return;
+  }catch{return;}
+  const a=document.createElement('a');a.id='palpitesLink';a.href='./palpites.html';
+  a.innerHTML='Palpites do<b>Opala 99</b><span aria-hidden="true">→</span>';
+  this.strip.after(a);
  }
  show(account){
   this.account=account;const $=id=>document.getElementById(id),nickname=account?.apelido||'';
@@ -109,6 +125,8 @@ export class Conta {
    $('contaDesde').textContent=`Conta criada em ${new Date(account.desde).toLocaleDateString('pt-BR')}.`;
    // The panel's link for an admin (the server says so, and checks it again on every request of the panel).
    $('contaPainel').hidden=!account.admin;
+   // The palpites' panel's for who runs them (an admin, or the real Stevan), where the palpites are published.
+   $('contaPalpites').hidden=!(PALPITES&&account.palpites);
   }
   this.disarm();
  }

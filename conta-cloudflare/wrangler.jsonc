@@ -4,6 +4,9 @@
 // Os segredos são de cada Worker (acrescente --env principal para o do principal):
 //   .\wrangler secret put GOOGLE_CLIENT_SECRET   (o do projeto do Google daquele site)
 //   .\wrangler secret put SEAL_KEY               (32 bytes aleatórios; um diferente em cada Worker)
+// Os e-mails dos palpites (src/email.js), cifrados com uma chave que os DOIS Workers dividem (o banco é um só): gere uma vez
+// e ponha o mesmo valor nos dois: .\wrangler secret put EMAIL_KEY  e  .\wrangler secret put EMAIL_KEY --env principal
+// (README.md, "Palpites"). Sem ela os palpites ficam fechados e o login não pede e-mail.
 // Só o do dev: o dos passes das salas multiplayer, igual ao do servidor de salas: .\wrangler secret put SALA_PASSE
 // (16 caracteres ou mais, de preferência 32 bytes aleatórios; faltando ou curto, /passe-sala responde 503).
 // O banco é um só: as migrações (migracoes/) valem na hora para os dois Workers, então só acrescentam (colunas, tabelas).

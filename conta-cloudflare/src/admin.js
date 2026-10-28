@@ -45,7 +45,7 @@ async function summary(request,env){
 async function users(request,env){
  const {refused}=await admin(request,env);if(refused)return refused;
  const now=Date.now();
- const list=await rows(env.DB.prepare(`SELECT u.id,u.apelido,u.criado_em,u.ultimo_login,u.importou_em,u.importou_principal_em,u.admin,
+ const list=await rows(env.DB.prepare(`SELECT u.id,u.apelido,u.criado_em,u.ultimo_login,u.importou_em,u.importou_principal_em,u.admin,u.gerente_palpites,
   (SELECT COUNT(*) FROM sessoes s WHERE s.usuario_id=u.id AND s.expira_em>?1) AS sessoes,
   (SELECT COUNT(*) FROM recordes r WHERE r.usuario_id=u.id AND r.selo='conferido') AS conferidos,
   (SELECT COUNT(*) FROM recordes r WHERE r.usuario_id=u.id AND r.selo='nao_verificado') AS antigos,
@@ -84,7 +84,7 @@ async function pilots(env){
 }
 
 // What happened, newest first, 100 at a time (antes: the oldest id already shown), of one kind or all.
-const KINDS=new Set(['conta_criada','entrou','saiu','apelido','importou','conferida','recusada','removido','revisao_pedida','revisao','conta_apagada']);
+const KINDS=new Set(['conta_criada','entrou','saiu','apelido','importou','conferida','recusada','removido','revisao_pedida','revisao','conta_apagada','palpite','bolao','desclassificado','ofertas','gerente_palpites']);
 async function events(request,env,url){
  const {refused}=await admin(request,env);if(refused)return refused;
  const kind=url.searchParams.get('tipo'),before=Number(url.searchParams.get('antes'));
@@ -137,6 +137,16 @@ async function giveNickname(request,env,body){
  return json({usuario:{id,apelido:nick}});
 }
 
+// The palpites' panel given to an account, or taken back (POST {usuario: the account's id, gerente: true or false}): who runs
+// the palpites without being an admin (base.js runsGuesses; the real Stevan). The pilot's events say so.
+async function guessesManager(request,env,body){
+ const {refused}=await admin(request,env);if(refused)return refused;
+ const id=body.usuario,on=body.gerente;if(!Number.isSafeInteger(id)||id<1||typeof on!=='boolean')return json({erro:'Conta inválida.'},400);
+ if(!await env.DB.prepare('SELECT 1 FROM usuarios WHERE id=?').bind(id).first())return json({erro:'Essa conta não existe.'},404);
+ await env.DB.batch([env.DB.prepare('UPDATE usuarios SET gerente_palpites=? WHERE id=?').bind(on?1:0,id),event(env,'gerente_palpites',id,{gerente:on})]);
+ return json({usuario:{id,gerente_palpites:on}});
+}
+
 // The reviews pilots asked for: those waiting first, oldest first, then the last decided.
 async function reviews(request,env){
  const {refused}=await admin(request,env);if(refused)return refused;
@@ -178,4 +188,4 @@ async function caseFile(request,env,url){
 }
 
 export const ADMIN_GETS={'/api/admin/resumo':summary,'/api/admin/usuarios':users,'/api/admin/eventos':events,'/api/admin/recordes':lastRecords,'/api/admin/voltas':laps,'/api/admin/revisoes':reviews,'/api/admin/casos':cases,'/api/admin/caso':caseFile};
-export const ADMIN_POSTS={'/api/admin/remover':removeRecord,'/api/admin/revisar':decideReview,'/api/admin/apelido':giveNickname};
+export const ADMIN_POSTS={'/api/admin/remover':removeRecord,'/api/admin/revisar':decideReview,'/api/admin/apelido':giveNickname,'/api/admin/gerente-palpites':guessesManager};

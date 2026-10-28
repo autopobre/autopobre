@@ -23,7 +23,7 @@ Desde 28/10/2026 são dois Workers com o mesmo código e o **mesmo banco** (`wra
 
 O que o servidor garante, seja lá o que o navegador mande:
 
-- **Dados mínimos (LGPD):** o login pede ao Google só o escopo `openid`. Chega o número que identifica a conta Google e nada mais: nem nome, nem e-mail, nem foto. O banco guarda esse número, o apelido que o piloto escolhe, a data de criação e do último login, e as sessões.
+- **Dados mínimos (LGPD):** o login do jogo pede ao Google só o escopo `openid`. Chega o número que identifica a conta Google e nada mais: nem nome, nem e-mail, nem foto. O e-mail só vem de quem entra pela página dos palpites (abaixo), e fica cifrado. O banco guarda esse número, o apelido que o piloto escolhe, a data de criação e do último login, e as sessões.
 - **O próprio piloto controla os dados:** "Baixar meus dados" entrega tudo o que existe da conta num arquivo, e "Apagar conta" apaga a conta e as sessões de verdade.
 - **Login pelo servidor:** a página não carrega nenhum script do Google. O fluxo é o *authorization code* com PKCE, `state` e `nonce`. Esses três viajam num cookie criptografado de 10 minutos, então nada é gravado no banco antes de o Google responder. O token do Google é conferido (emissor, cliente, validade e nonce) e descartado.
 - **Sessão:** um valor aleatório no cookie `__Host-ap_sessao` (`HttpOnly; Secure; SameSite=Lax; Path=/`, sem `Domain`), válido por 30 dias. O banco guarda só o SHA-256 desse valor. São no máximo 10 sessões por conta, e um novo login no mesmo navegador encerra a sessão anterior.
@@ -50,6 +50,26 @@ Cada piloto aparece com a melhor volta por pista e carro. Uma pista tem um recor
 O que o selo conferido não pega: volta pilotada por um programa, ou alguém deixando o jogo mais lento por um instante dentro de um pedaço. Isso fica para o próximo selo (homologado: o servidor refaz a volta a partir dos comandos do piloto).
 
 Pista nova no jogo: rode `node gerar_pisos.mjs` (o piso dela) e publique o Worker de novo (`.\wrangler deploy` no dev; `.\wrangler deploy --env principal` quando a versão com a pista for para o principal), porque ele leva o `circuits.js` e os pisos junto.
+
+## Palpites do Opala 99
+
+A página `/palpites` (`pista_interlagos/teste/palpites.html`, por enquanto só no dev: `publicacao.py PALPITES`) e `src/palpites.js`. O piloto entra com a conta Google e palpita em que posição o Opala 99 de verdade termina o treino classificatório e as duas corridas de um fim de semana (1º a 13º, ou 0: sem tempo válido no treino, não completou na corrida). O fim de semana é uma linha da tabela `boloes` (migração 0010): o de Chapecó (31/10 e 01/11/2026) já vem nela.
+
+- **Um palpite por conta, definitivo**, só antes de `fecha_em` (o início do treino classificatório). Precisa de apelido (o pódio aparece por ele) e de e-mail confirmado pelo Google (é por ele que o pódio é avisado).
+- **O e-mail só é pedido pela página dos palpites** (`/api/conta/entrar?email=1` pede o escopo `openid email`; o login do jogo continua só `openid`). Só um endereço que o Google diz verificado é guardado, **cifrado** (AES-GCM) com uma chave tirada do segredo `EMAIL_KEY`, o MESMO nos dois Workers (o banco é um só; o `SEAL_KEY` é de cada um). Um login sem o escopo não apaga o e-mail guardado. Ele aparece inteiro só para o próprio piloto (Baixar meus dados) e, no painel dos palpites, para quem cuida deles (escondido até o botão do olho); na página, mascarado (`b•••@gmail.com`). Apagar a conta apaga o e-mail e os palpites.
+- **Pódio**, calculado pelo servidor quando o resultado oficial é salvo (só depois que os palpites fecharam): o primeiro a acertar as 3 fica em 1º lugar; dos outros, o primeiro com 2 ou mais em 2º; depois, o primeiro com 1 ou mais em 3º. Empate: quem palpitou primeiro (`quando`, depois `id`). Ninguém fica com dois lugares, e um palpite desclassificado pelo admin (contas repetidas da mesma pessoa, por exemplo) não concorre.
+- **Ofertas dos patrocinadores:** a caixa "Aceito receber promoções e ofertas dos patrocinadores do Piloto Pobre", ao lado do botão Palpitar, vem desmarcada e é opcional. Marcada, grava `usuarios.ofertas_em` (quando aceitou); depois, quem aceitou vê no cartão do palpite uma linha "Você aceitou receber ofertas dos patrocinadores. Não quero mais", que desfaz a qualquer hora (`POST /api/palpites/ofertas {aceito}`, até 20 trocas por hora). O painel conta quantos aceitaram e baixa a lista deles (`/api/admin/ofertas`, CSV com apelido, e-mail e data), só deles.
+- **Painel dos palpites** (`painel-palpites.html`, link "Painel dos palpites" em Sua conta): o horário de fechamento (se a programação mudar), o resultado oficial, o pódio e quem palpitou, na ordem, com apelido e e-mail inteiro, acertos, se aceitou ofertas e o botão Desclassificar. É de quem cuida dos palpites (`base.js runsGuesses`): os administradores e quem o banco marca, pelo botão "Dar painel dos palpites" na lista de usuários do painel de administração (o Stevan de verdade). O painel de administração não tem mais a seção.
+
+Para ligar (uma vez): gere uma chave e ponha a mesma nos dois Workers. No PowerShell, em `conta-cloudflare`:
+
+```powershell
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); $k = [Convert]::ToBase64String($b)
+$k | .\wrangler secret put EMAIL_KEY
+$k | .\wrangler secret put EMAIL_KEY --env principal
+```
+
+Sem `EMAIL_KEY` os palpites ficam fechados ("abrem em breve") e o login não pede e-mail. Trocar a chave depois deixa ilegíveis os e-mails já guardados (o piloto confirma de novo entrando pela página).
 
 ## Painel de administração
 

@@ -148,6 +148,13 @@ jobs:
                 exit 1
               fi
             done
+            # The palpites (publicacao.py PALPITES) are tried on dev.autopobre.com.br first.
+            for arquivo in palpites.html palpites.js palpites.css painel-palpites.html painel-palpites.js; do
+              if [ -e "$pasta/dist/$arquivo" ]; then
+                echo "::error::A versao de $pasta tem os palpites ($arquivo); por enquanto eles so vao para dev.autopobre.com.br."
+                exit 1
+              fi
+            done
             if grep -rqE 'sala[.](autopobre|inteligenciamilgrau)[.]com[.]br' --include='*.js' --include='*.html' "$pasta/dist"; then
               echo "::error::A versao de $pasta conecta ao servidor das salas; o multiplayer so pode ir para /dev/."
               exit 1

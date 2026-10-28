@@ -1,0 +1,109 @@
+/* Palpites do Opala 99 (palpites.html): the menus' yellow on black and their type (menus.css). */
+@font-face{font-family:'Roboto Condensed';font-style:normal;font-weight:400 700;font-display:swap;src:url('./assets/fontes/roboto-condensed-400-700.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-style:italic;font-weight:800;font-display:swap;src:url('./assets/fontes/barlow-condensed-800i.woff2') format('woff2')}
+:root{--fundo:#0b0b0b;--cartao:#161616;--cartao2:#1f1f1f;--linha:#2c2c2c;--tinta:#f5f2ed;--apagado:#a8a29b;--destaque:#f8dc38;--destaque-escuro:#8a7a1c;--sobre-destaque:#111;--ganhou:#ffd23f;--erro:#ff8a7a}
+*{box-sizing:border-box}
+html{background:var(--fundo);color-scheme:dark}
+body{margin:0 auto;max-width:760px;padding:12px 16px 32px;font:16px/1.5 'Roboto Condensed',system-ui,sans-serif;color:var(--tinta);background:var(--fundo)}
+a{color:var(--destaque)}
+h1,h2,h3{font-family:'Barlow Condensed','Roboto Condensed',sans-serif;font-style:italic;font-weight:800;text-transform:uppercase;letter-spacing:.01em;line-height:1.05}
+h2{margin:0 0 12px;font-size:24px}
+h3{margin:14px 0 8px;font-size:18px}
+[hidden]{display:none!important}
+.topo a{font-size:14px;font-weight:700;color:var(--apagado);text-decoration:none}
+.topo a:hover{color:var(--tinta)}
+
+.capa{padding:18px 0 8px}
+.chapeu{margin:0;font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--destaque)}
+h1{margin:6px 0 12px;font-size:clamp(34px,8vw,56px)}
+h1 span{display:block}
+h1 em{display:block;margin-top:2px;font-size:1.45em;color:var(--destaque)}
+.lead{margin:0 0 10px;font-size:18px;max-width:36em}
+.prazo{display:inline-block;margin:4px 0 0;padding:6px 12px;border-radius:10px;background:var(--cartao2);font-weight:700;font-variant-numeric:tabular-nums}
+.prazo:empty{display:none}
+.agenda{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0 0;padding:0;list-style:none}
+.agenda li{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-left:3px solid var(--destaque);border-radius:6px;background:var(--cartao)}
+.agenda small{font-size:13px;color:var(--apagado);line-height:1.2}
+.agenda b{font-size:20px;line-height:1.1;font-variant-numeric:tabular-nums}
+.capa .nota{margin:8px 0 0}
+
+.aviso{padding:12px 14px;border-left:4px solid var(--destaque);border-radius:6px;background:var(--cartao);font-weight:700}
+.cartao{margin:16px 0;padding:16px;border:1px solid var(--linha);border-radius:12px;background:var(--cartao)}
+.cartao.destaque{border-color:var(--destaque-escuro)}
+.nota{font-size:14px;color:var(--apagado)}
+.erro{margin:10px 0 0;color:var(--erro);font-weight:700}
+
+/* The positions: 1º to 13º in a grid, the stage's "none" across the row under them. */
+.etapa{margin:0 0 14px;padding:0;border:0;min-width:0}
+.etapa legend{padding:0;margin-bottom:8px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:14px;color:var(--apagado)}
+.posicoes{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.pos{position:relative;display:block;cursor:pointer}
+.pos.nenhuma{grid-column:1/-1}
+.pos input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.pos span{display:flex;align-items:center;justify-content:center;min-height:44px;padding:4px;border:1px solid var(--linha);border-radius:8px;background:var(--cartao2);font-weight:700;font-variant-numeric:tabular-nums;transition:background .12s,border-color .12s}
+.pos:hover span{border-color:#555}
+.pos input:checked+span{background:var(--destaque);border-color:var(--destaque);color:var(--sobre-destaque)}
+.pos input:focus-visible+span{outline:2px solid var(--tinta);outline-offset:2px}
+
+.acao{margin-top:6px}
+.botao{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:48px;padding:10px 18px;border:0;border-radius:10px;background:var(--destaque);color:var(--sobre-destaque);font:inherit;font-size:17px;font-weight:700;text-decoration:none;cursor:pointer}
+.botao:disabled{background:var(--cartao2);color:var(--apagado);cursor:default}
+.botao.enviar{width:100%}
+.ofertas{display:flex;align-items:flex-start;gap:10px;margin:0 0 12px;font-size:15px;cursor:pointer}
+.ofertas input{flex:none;width:22px;height:22px;margin:0;accent-color:var(--destaque);cursor:pointer}
+#seu .ofertas-aceitas{margin:12px 0 0}
+.definitivo{margin:0 0 10px;padding:10px 12px;border-left:4px solid var(--ganhou);border-radius:6px;background:#2a2207;color:var(--ganhou)}
+.botao.google{background:#fff;color:#1f1f1f}
+.botao .g{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--destaque);color:var(--sobre-destaque);font-weight:700;font-size:14px}
+.apelido label{display:block;margin-bottom:6px;font-size:14px;color:var(--apagado)}
+.apelido .linha{display:flex;gap:8px}
+.apelido input{flex:1;min-width:0;min-height:48px;padding:8px 12px;border:1px solid var(--linha);border-radius:10px;background:var(--cartao2);color:var(--tinta);font:inherit}
+.quem{margin:12px 0 0;font-size:14px;color:var(--apagado)}
+.link{padding:0;border:0;background:none;color:var(--destaque);font:inherit;text-decoration:underline;cursor:pointer}
+
+/* A guess or the result in one line of three. */
+.linha-palpite{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0}
+.linha-palpite .item{display:flex;flex-direction:column;gap:2px;padding:10px;border-radius:8px;background:var(--cartao2)}
+.linha-palpite small{font-size:13px;color:var(--apagado)}
+.linha-palpite b{font-size:22px;line-height:1.1}
+.ganhou{margin:12px 0 0;padding:12px;border-radius:8px;background:#2a2207;color:var(--ganhou)}
+.acertos{margin:12px 0 0;font-weight:700}
+.podio-resultado{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.podio-resultado li{display:grid;grid-template-columns:auto 1fr;gap:0 12px;padding:10px;border-radius:8px;background:var(--cartao2)}
+.podio-resultado .lugar-n{grid-row:span 2;align-self:center;font-weight:700;color:var(--destaque)}
+.podio-resultado small{color:var(--apagado)}
+
+/* How the guesses spread: one bar per position, one hue, rounded at the top and sitting on the baseline. */
+.barras{margin:0 0 30px}
+.barras figcaption{margin-bottom:6px;font-size:14px;font-weight:700;color:var(--apagado)}
+.plot{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:2px;height:96px;border-bottom:1px solid #444}
+.col{position:relative;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;outline:none}
+.barra{display:block;width:70%;max-width:22px;border-radius:4px 4px 0 0;background:var(--destaque)}
+.rotulo{position:absolute;top:100%;margin-top:3px;font-size:12px;color:var(--apagado);font-variant-numeric:tabular-nums}
+.col.oficial .barra{outline:2px solid var(--tinta);outline-offset:1px}
+.col.oficial .rotulo{color:var(--tinta);font-weight:700}
+.col:is(:hover,:focus-visible)::after{content:attr(data-dica);position:absolute;bottom:calc(100% + 4px);left:50%;transform:translateX(-50%);z-index:1;padding:4px 8px;border-radius:6px;background:var(--tinta);color:#111;font-size:13px;white-space:nowrap;pointer-events:none}
+.col:first-child:is(:hover,:focus-visible)::after{left:0;transform:none}
+.col:last-child:is(:hover,:focus-visible)::after{left:auto;right:0;transform:none}
+.col:is(:hover,:focus-visible) .barra{background:#fff36a}
+
+.podio{margin:24px 0}
+.podio ol{margin:0;padding:0;list-style:none;display:grid;gap:12px}
+/* The podium's places: the number in its white box. */
+.lugar{display:grid;grid-template-columns:120px 1fr;gap:14px;align-items:center;padding:12px;border:1px solid var(--linha);border-radius:12px;background:var(--cartao)}
+.lugar .numero{display:flex;align-items:center;justify-content:center;aspect-ratio:1;border-radius:8px;background:#fff;font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:800;font-size:64px;line-height:1;color:var(--sobre-destaque)}
+.lugar .faixa{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--destaque);color:var(--sobre-destaque);font-size:13px;letter-spacing:.03em;text-transform:uppercase}
+.lugar h3{margin:8px 0 6px;font-size:22px}
+
+.regras ul{padding-left:20px}
+.regras li{margin-bottom:6px}
+.rodape{margin-top:28px;padding-top:12px;border-top:1px solid var(--linha);font-size:13px;color:var(--apagado)}
+
+@media(max-width:420px){
+ .lugar{grid-template-columns:72px 1fr;gap:10px}
+ .lugar .numero{font-size:44px}
+ .lugar h3{font-size:19px}
+ .lugar .faixa{border-radius:6px;font-size:12px}
+ .linha-palpite b{font-size:18px}
+ .plot{height:80px}
+}

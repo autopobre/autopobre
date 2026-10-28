@@ -6,7 +6,8 @@ import {CIRCUITS} from './circuits.js';
 
 const $=id=>document.getElementById(id);
 const KINDS={conta_criada:'Conta criada',entrou:'Entrou',saiu:'Saiu',apelido:'Trocou o apelido',importou:'Subiu recordes antigos',
- conferida:'Recorde conferido',recusada:'Volta recusada',removido:'Recorde removido',revisao_pedida:'Pediu revisão',revisao:'Revisão respondida',conta_apagada:'Conta apagada'};
+ conferida:'Recorde conferido',recusada:'Volta recusada',removido:'Recorde removido',revisao_pedida:'Pediu revisão',revisao:'Revisão respondida',conta_apagada:'Conta apagada',
+ palpite:'Palpitou',bolao:'Mudou os palpites',desclassificado:'Palpite desclassificado',ofertas:'Ofertas dos patrocinadores',gerente_palpites:'Painel dos palpites'};
 const CARS={opala:'Opala',fusca:'Fusca'};
 const where=x=>`${track(x.circuito)} · ${CARS[x.carro??'opala']??x.carro}`;
 // The signals the server raises on a lap's controls (conta-cloudflare/src/comandos.js inputSignals): never a refusal,
@@ -52,6 +53,11 @@ function detail(e){
   case 'removido':return `${track(d.circuito)} · ${MODES[d.modo]??d.modo} · ${lap(d.volta_ms)} · ${d.selo==='conferido'?'✓':'⚠️'}`;
   case 'revisao_pedida':return `${where(d)} · ${lap(d.volta_ms)} · ${d.motivo??''}`;
   case 'revisao':return `${where(d)} · ${lap(d.volta_ms)} · ${d.aprovada?'aprovada: virou recorde ✓':'recusada'}`;
+  case 'palpite':return guessText(d);
+  case 'bolao':return [d.fecha_em&&'fecham '+when(Date.parse(d.fecha_em)),d.resultado===null?'resultado apagado':d.resultado&&'resultado '+guessText(d.resultado)].filter(Boolean).join(' · ');
+  case 'desclassificado':return d.desclassificado?'tirado da disputa':'devolvido à disputa';
+  case 'ofertas':return d.aceito?'aceitou receber':'não quer mais receber';
+  case 'gerente_palpites':return d.gerente?'ganhou o painel dos palpites':'perdeu o painel dos palpites';
   default:return '';
  }
 }
@@ -76,6 +82,11 @@ async function events(more=false){
  if(list.length)oldest=list[list.length-1].id;
  $('mais').hidden=list.length<100;
 }
+
+// The palpites' events in words (the palpites have their own panel: painel-palpites.html).
+const STAGES=[['treino','Treino','sem tempo'],['corrida1','Corrida 1','não completou'],['corrida2','Corrida 2','não completou']];
+const position=(stage,p)=>p===0?STAGES.find(s=>s[0]===stage)[2]:`${p}º`;
+const guessText=g=>STAGES.map(([stage,name])=>`${name} ${position(stage,g[stage])}`).join(' · ');
 
 // Every lap that came in, with its verdict, the device and its signals (only the flagged ones when ticked).
 let oldestLap=null;
@@ -115,9 +126,15 @@ function tracksCell(x){
 }
 function drawUsers(){
  const list=[...users].sort(ORDERS[$('ordem').value]??ORDERS.login);
- rows('usuarios',list,[[x=>(x.apelido??'(sem apelido)')+(x.admin?' · admin':'')],[x=>String(x.corridas??0),'num'],[x=>String(x.voltas??0),'num'],[x=>String(x.dias??0),'num'],
+ rows('usuarios',list,[[x=>(x.apelido??'(sem apelido)')+(x.admin?' · admin':x.gerente_palpites?' · palpites':'')],[x=>String(x.corridas??0),'num'],[x=>String(x.voltas??0),'num'],[x=>String(x.dias??0),'num'],
   [x=>x.ritmo?`${pace(x.ritmo.valor)} · ${track(x.ritmo.circuito)}`:'—','num'],[tracksCell,'acao'],[x=>when(x.criado_em)],[x=>when(x.ultimo_login)],[x=>String(x.sessoes),'num'],
-  [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>[x.importou_em&&'dev '+when(x.importou_em),x.importou_principal_em&&'principal '+when(x.importou_principal_em)].filter(Boolean).join(' · ')||'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num'],[nicknameButton,'acao']]);
+  [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>[x.importou_em&&'dev '+when(x.importou_em),x.importou_principal_em&&'principal '+when(x.importou_principal_em)].filter(Boolean).join(' · ')||'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num'],[userButtons,'acao']]);
+}
+// A user's buttons: Trocar apelido, and the palpites' panel given or taken (an admin has it anyway).
+function userButtons(user){
+ const box=document.createElement('span');box.className='botoes';box.append(nicknameButton(user));
+ if(!user.admin)box.append(armed(user.gerente_palpites?'Tirar painel dos palpites':'Dar painel dos palpites',()=>get('gerente-palpites',{usuario:user.id,gerente:!user.gerente_palpites})));
+ return box;
 }
 // Trocar apelido: the admin gives a pilot a nickname, a reserved one too (the real Stevan's "Stevan").
 function nicknameButton(user){

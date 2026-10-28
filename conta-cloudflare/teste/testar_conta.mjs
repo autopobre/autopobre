@@ -56,7 +56,8 @@ await check('sign-in: the request to Google and the cookies',async()=>{
  // The database has the subject and the session's hash, never the cookie's value.
  const value=b.jar.get('__Host-ap_sessao');
  assert.ok(rows('SELECT id FROM sessoes').every(r=>r.id!==value));
- assert.deepEqual(Object.keys(rows('SELECT * FROM usuarios')[0]).sort(),['admin','apelido','apelido_chave','criado_em','google_sub','id','importou_em','importou_principal_em','ultimo_login']);
+ assert.deepEqual(Object.keys(rows('SELECT * FROM usuarios')[0]).sort(),['admin','apelido','apelido_chave','criado_em','email','email_em','gerente_palpites','google_sub','id','importou_em','importou_principal_em','ofertas_em','ultimo_login']);
+ assert.equal(rows('SELECT email FROM usuarios')[0].email,null,'the e-mail only from the palpites (testar_palpites.mjs)');
 });
 
 await check('the same Google account comes back to the same account',async()=>{

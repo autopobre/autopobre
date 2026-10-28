@@ -87,7 +87,7 @@ await check('the summary, the accounts, the events page by page, the last record
   {contas:3,com_apelido:2,novas_7d:3,entradas_24h:4,com_sessao:2,conferidos:1,antigos:1,recusadas_7d:5});
  assert.equal(s.recusas_por_motivo[0].n,4);assert.match(s.recusas_por_motivo[0].motivo,/60 s sem falar/);assert.equal(s.eventos_por,EVENT_DAYS);
  const users=(await boss.get('/api/admin/usuarios')).usuarios;
- assert.deepEqual(Object.keys(users[0]).sort(),['admin','antigos','apelido','conferidas','conferidos','corridas','criado_em','dias','id','importou_em','importou_principal_em','pistas','recusadas_7d','ritmo','sessoes','sinalizadas_7d','ultimo_login','voltas'],'no Google id');
+ assert.deepEqual(Object.keys(users[0]).sort(),['admin','antigos','apelido','conferidas','conferidos','corridas','criado_em','dias','gerente_palpites','id','importou_em','importou_principal_em','pistas','recusadas_7d','ritmo','sessoes','sinalizadas_7d','ultimo_login','voltas'],'no Google id');
  const a=users.find(u=>u.apelido==='Ana Volta');assert.deepEqual([a.conferidos,a.antigos,a.recusadas_7d,a.sessoes,a.admin],[1,1,5,1,false],'one session: her second sign-in ended the first, same browser');
  assert.equal(users.find(u=>u.apelido==='Chefe Pista').admin,true);
  const refusals=(await boss.get('/api/admin/eventos?tipo=recusada')).eventos;assert.equal(refusals.length,5);assert.equal(refusals[0].apelido,'Ana Volta');

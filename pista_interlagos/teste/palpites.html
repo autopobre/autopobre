@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="Palpite de graça em que posição o Opala 99 termina o treino e as corridas da Old Stock Race em Chapecó e dispute o pódio.">
+<title>Palpites do Opala 99 · Auto-Pobre Racing</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="palpites.css">
+<script type="module" src="palpites.js"></script>
+</head>
+<body>
+<header class="topo"><a href="./">← Auto-Pobre Racing</a></header>
+<main>
+ <section class="capa">
+  <p class="chapeu" id="titulo">Old Stock Race · Chapecó · 31/10 e 01/11</p>
+  <h1><span>Palpites do</span> <em>Opala 99</em></h1>
+  <p class="lead">Em que posição o <b>Opala 99</b> do Stevan Gaipo termina o treino classificatório e as duas corridas? Palpite de graça com a sua conta Google e dispute o pódio.</p>
+  <p class="prazo" id="prazo"></p>
+  <ul class="agenda" aria-label="Programação">
+   <li><small>Treino classificatório</small><b>7h30</b><small>sábado, 31/10</small></li>
+   <li><small>Corrida 1</small><b>10h45</b><small>sábado, 31/10</small></li>
+   <li><small>Corrida 2</small><b>16h</b><small>domingo, 01/11</small></li>
+  </ul>
+  <p class="nota">Ao vivo no YouTube: <a href="https://www.youtube.com/@OldStockRaceOficial" target="_blank" rel="noopener">@OldStockRaceOficial ↗</a></p>
+ </section>
+
+ <p id="aviso" class="aviso" role="status">Carregando…</p>
+
+ <section id="palpitar" class="cartao" hidden>
+  <h2>Seu palpite</h2>
+  <form id="escolhas" novalidate></form>
+  <div id="acao" class="acao"></div>
+  <p id="erro" class="erro" role="alert" hidden></p>
+  <p id="quem" class="quem" hidden></p>
+ </section>
+
+ <section id="seu" class="cartao destaque" hidden></section>
+ <section id="resultado" class="cartao" hidden></section>
+ <section id="galera" class="cartao" hidden></section>
+
+ <section class="podio" aria-labelledby="podioTitulo">
+  <h2 id="podioTitulo">Pódio</h2>
+  <ol>
+   <li class="lugar"><span class="numero" aria-hidden="true">1</span><div class="texto"><b class="faixa">Acertou as 3 posições</b><h3>1º lugar</h3></div></li>
+   <li class="lugar"><span class="numero" aria-hidden="true">2</span><div class="texto"><b class="faixa">Acertou 2 posições</b><h3>2º lugar</h3></div></li>
+   <li class="lugar"><span class="numero" aria-hidden="true">3</span><div class="texto"><b class="faixa">Acertou 1 posição</b><h3>3º lugar</h3></div></li>
+  </ol>
+ </section>
+
+ <section class="regras">
+  <h2>Como funciona</h2>
+  <ul>
+   <li>Um palpite por pessoa, com a conta Google. Palpitou, não muda mais.</li>
+   <li>Os palpites fecham quando começa o treino classificatório: <span class="prazo-curto">sábado, 31/10, às 7h30</span> (horário de Brasília).</li>
+   <li>No treino vale de 1º a 13º ou “Sem tempo válido”. Nas corridas, de 1º a 13º ou “Não completará”.</li>
+   <li>Acertou as 3 posições, 1º lugar. Acertou 2, 2º lugar. Acertou 1, 3º lugar. É um lugar de cada, e cada pessoa fica no máximo com um (o melhor que alcançou).</li>
+   <li>Se mais de uma pessoa acertar, fica na frente quem palpitou primeiro.</li>
+   <li>Vale o resultado oficial da Old Stock Race. O pódio aparece aqui, pelo apelido, depois da corrida 2.</li>
+   <li>Mais de uma conta da mesma pessoa: os palpites a mais são desclassificados.</li>
+  </ul>
+  <p class="nota">Guardamos o seu palpite, a hora dele e o seu e-mail, cifrado, para avisar quem ficar no pódio e, só se você marcar a caixa, para as ofertas dos patrocinadores. Ninguém mais vê o seu e-mail. <a href="privacidade.html">Privacidade</a></p>
+ </section>
+</main>
+<footer class="rodape">Auto-Pobre Racing · Opala 99 do Stevan Gaipo</footer>
+</body>
+</html>

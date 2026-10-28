@@ -3,6 +3,12 @@
 #contaFaixa[hidden]{display:none}
 /* Mid-race (the pause menu) or on the results, signing in would leave the page and the race: as the pilot field, the line goes. */
 #menu:is(.in-session,.race-finished) #contaFaixa{display:none}
+/* Palpites do Opala 99 (conta.js guessesLink): under the pilot's name, in the menus' yellow; not during a race. */
+#menu #palpitesLink{display:flex;align-items:center;gap:8px;width:fit-content;margin:-4px 0 14px;padding:7px 14px;border-radius:999px;background:#f8dc38;color:#111;font-weight:700;text-decoration:none;box-shadow:0 2px 10px #0006}
+#menu #palpitesLink b{margin-left:-3px;font-weight:900}
+#menu #palpitesLink:hover{background:#fff36a}
+#menu:is(.in-session,.race-finished) #palpitesLink{display:none}
+.menus-paddock #menu #palpitesLink{margin:0 0 clamp(10px,2.4vh,24px);font:600 17px/1.2 var(--mp-text);text-shadow:none}
 /* Signed in with a nickname, the menu's pilot is the account's (pilot-profile.js #pilotAccount): the name, and a click opens the account. */
 #pilotAccount[hidden]{display:none}
 /* Centred as the name field it stands for. */
@@ -28,6 +34,7 @@
  .menus-paddock .touch-device #menu #contaBotao{font-size:12px}
  .menus-paddock .touch-device #menu #contaBotao svg{width:17px;height:17px}
  .menus-paddock #menu #pilotAccount{font-size:16px}
+ .menus-paddock #menu #palpitesLink{margin:0 0 6px;padding:4px 11px;font-size:13px;gap:6px}
 }
 
 #contaDialog{width:min(460px,calc(100vw - 20px));max-height:calc(100dvh - 16px);border:1px solid #d6e0c5;border-radius:10px;padding:14px 20px 16px;background:#f1f3e9;color:#214b3b;box-shadow:0 15px 80px #0009;overflow:auto}

@@ -9,7 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from publicacao import ROOT, PUBLIC_FILES, OPTIONAL_AUDIO, MULTIPLAYER, BANCADA, EDITOR, CONTA, DEV_PAGES, ROOM_SERVER, audio_manifest, contained_file, content_policy, security_headers
+from publicacao import ROOT, PUBLIC_FILES, OPTIONAL_AUDIO, MULTIPLAYER, BANCADA, EDITOR, CONTA, PALPITES, DEV_PAGES, ROOM_SERVER, audio_manifest, contained_file, content_policy, security_headers
 
 
 def build(multiplayer=False, conta=False):
@@ -33,7 +33,8 @@ def build(multiplayer=False, conta=False):
             if p.is_file() and p.relative_to(dist).as_posix() not in expected:
                 raise ValueError('dist contains an unexpected file; inspect it before building')
     payload = {out: contained_file(ROOT, src).read_bytes() for out, src in PUBLIC_FILES.items()
-               if (multiplayer or out not in MULTIPLAYER + BANCADA + EDITOR) and (conta or out not in CONTA)}
+               if (multiplayer or out not in MULTIPLAYER + BANCADA + EDITOR) and (conta or out not in CONTA)
+               and (multiplayer and conta or out not in PALPITES)}
     if not multiplayer:
         # main.js then never reads #desafio=NOME nor asks for multiplayer.js, which is not published.
         if payload['main.js'].count(b'const MULTIPLAYER=true;') != 1:
@@ -44,6 +45,11 @@ def build(multiplayer=False, conta=False):
         if payload['main.js'].count(b'const CONTA=true;') != 1:
             raise ValueError('main.js: accounts switch not found; the build cannot leave the accounts out')
         payload['main.js'] = payload['main.js'].replace(b'const CONTA=true;', b'const CONTA=false;')
+    if conta and not multiplayer:
+        # The accounts without the palpites page (the main link): the menu never links to it.
+        if payload['conta.js'].count(b'const PALPITES=true;') != 1:
+            raise ValueError('conta.js: palpites switch not found; the build cannot leave the palpites link out')
+        payload['conta.js'] = payload['conta.js'].replace(b'const PALPITES=true;', b'const PALPITES=false;')
     tracks = audio_manifest()
     payload['assets/audio/tracks.json'] = json.dumps(tracks).encode('utf-8')
     for name in tracks:
@@ -94,8 +100,8 @@ def build(multiplayer=False, conta=False):
             raise ValueError('Private data candidate in public file: ' + name)
     dist.mkdir(exist_ok=True)
     # Remove only known retired assets, optional songs removed by the owner, or the multiplayer, sound
-    # bench and track editor files of an earlier --multiplayer build, and the accounts of a --conta one.
-    for name in set(OPTIONAL_AUDIO) | retired_files | set(MULTIPLAYER) | set(BANCADA) | set(EDITOR) | set(CONTA):
+    # bench and track editor files of an earlier --multiplayer build, and the accounts (and palpites) of a --conta one.
+    for name in set(OPTIONAL_AUDIO) | retired_files | set(MULTIPLAYER) | set(BANCADA) | set(EDITOR) | set(CONTA) | set(PALPITES):
         if name not in payload and (dist / name).is_file():
             contained_file(dist, name).unlink()
     for name, data in payload.items():

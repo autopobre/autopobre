@@ -4,10 +4,11 @@
 // session is a plain first-party cookie and the game needs no CORS.
 //
 // What it keeps, and nothing else (LGPD: the least that makes an account): the Google account's
-// subject id (`sub`: the scope is openid alone, so no name, picture or e-mail ever arrives), the public
+// subject id (`sub`: the game's scope is openid alone, so no name, picture or e-mail arrives), the public
 // nickname the player picks, when the account was made and last signed in, its sessions, its online records and
-// what it did (eventos.js, 90 days, for the admin panel). Each account can download all of it (/meus-dados) and
-// delete it for good (/apagar).
+// what it did (eventos.js, 90 days, for the admin panel). A pilot who joins the palpites (palpites.js) signs in
+// from that page with the scope email too: their verified e-mail is kept sealed (email.js), to tell the podium.
+// Each account can download all of it (/meus-dados) and delete it for good (/apagar).
 //
 // Sign-in is the authorization code flow, run here (the page loads no Google script): state, nonce and
 // the PKCE verifier travel in a short-lived encrypted cookie, so nothing is written before Google has
@@ -17,12 +18,14 @@
 // (HttpOnly, Secure, SameSite=Lax); the database holds only its SHA-256. Every write needs the exact
 // Origin and a JSON body: dev and the main link are the same site to a browser, so SameSite alone
 // would let a page of one post to the other.
-import {SESSION_COOKIE,LOGIN_COOKIE,b64url,fromB64url,random,sha256,hashed,sameText,readCookies,setCookie,json,redirect,seal,unseal,session,signedOut,signedIn,notSignedIn,readPost,isAdmin,siteOf} from './base.js';
+import {SESSION_COOKIE,LOGIN_COOKIE,b64url,fromB64url,random,sha256,hashed,sameText,readCookies,setCookie,json,redirect,seal,unseal,session,signedOut,signedIn,notSignedIn,readPost,isAdmin,runsGuesses,siteOf} from './base.js';
 import {RECORDS_GETS,RECORDS_POSTS,RECORDS_BODY} from './recordes.js';
 import {ADMIN_GETS,ADMIN_POSTS} from './admin.js';
 import {ROOM_POSTS} from './sala.js';
 import {event,forgetOld,recent,HOUR} from './eventos.js';
 import {cleanNickname,nicknameKey,RESERVED,NICKNAME_RULE} from './apelidos.js';
+import {PALPITES_GETS,PALPITES_POSTS} from './palpites.js';
+import {emailReady,verifiedEmail,sealEmail,openEmail} from './email.js';
 
 const SESSION_DAYS=30;        // a session's life; signing in again makes a new one
 const MAX_SESSIONS=10;        // per account (browsers, phones): the oldest go first
@@ -43,8 +46,8 @@ function google(env,which){
 }
 const redirectUri=env=>env.ORIGEM+'/api/conta/google';
 
-// The account as its own page sees it (admin: the panel's link shows).
-const account=(row,env)=>({apelido:row.apelido??null,desde:new Date(row.criado_em).toISOString(),...(isAdmin(env,row)&&{admin:true})});
+// The account as its own page sees it (admin: the panel's link shows; palpites: the palpites' panel's link).
+const account=(row,env)=>({apelido:row.apelido??null,desde:new Date(row.criado_em).toISOString(),...(isAdmin(env,row)&&{admin:true}),...(runsGuesses(env,row)&&{palpites:true})});
 
 // The account signed in on this site.
 async function me(request,env){
@@ -53,11 +56,13 @@ async function me(request,env){
  return json({conta:account(s,env)});
 }
 
+// ?email=1: the palpites page, which needs the e-mail (only with EMAIL_KEY set: without it, none could be kept).
 async function signIn(request,env,url){
  const state=b64url(random(32)),nonce=b64url(random(32)),verifier=b64url(random(32));
+ const scope=url.searchParams.get('email')==='1'&&emailReady(env)?'openid email':'openid';
  const pending=await seal(env,'cookie-login-v1',{e:state,n:nonce,v:verifier,r:safeReturn(url.searchParams.get('volta')),t:Date.now()});
  const auth=new URL(google(env,'auth'));
- auth.search=new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,redirect_uri:redirectUri(env),response_type:'code',scope:'openid',
+ auth.search=new URLSearchParams({client_id:env.GOOGLE_CLIENT_ID,redirect_uri:redirectUri(env),response_type:'code',scope,
   state,nonce,code_challenge:b64url(await sha256(verifier)),code_challenge_method:'S256',prompt:'select_account'}).toString();
  return redirect(auth.href,[setCookie(LOGIN_COOKIE,pending,LOGIN_MINUTES*60)]);
 }
@@ -91,6 +96,9 @@ async function googleBack(request,env,url){
   env.DB.prepare('INSERT INTO sessoes (id,usuario_id,criada_em,expira_em,site) VALUES (?,?,?,?,?)').bind(await hashed(value),user.id,now,now+SESSION_DAYS*86400000,siteOf(env)),
   env.DB.prepare('DELETE FROM sessoes WHERE expira_em<=?').bind(now),
   env.DB.prepare('DELETE FROM sessoes WHERE usuario_id=?1 AND id NOT IN (SELECT id FROM sessoes WHERE usuario_id=?1 ORDER BY criada_em DESC LIMIT ?2)').bind(user.id,MAX_SESSIONS)];
+ // The e-mail, when the palpites asked for it and Google confirmed it (a sign-in without it keeps the one there).
+ const email=emailReady(env)&&verifiedEmail(claims);
+ if(email)steps.push(env.DB.prepare('UPDATE usuarios SET email=?,email_em=? WHERE id=?').bind(await sealEmail(env,email),now,user.id));
  // A session this browser had before (another account, or the same) ends here: one per browser.
  if(cookies[SESSION_COOKIE])steps.push(env.DB.prepare('DELETE FROM sessoes WHERE id=?').bind(await hashed(cookies[SESSION_COOKIE])));
  await env.DB.batch(steps);
@@ -123,8 +131,9 @@ async function signOut(request,env){
 async function deleteAccount(request,env,body){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
  if(body.confirmar!=='APAGAR')return json({erro:'Confirme para apagar a conta.'},400);
- // Its records, laps, races, sessions and events go with it; the panel keeps only that an account was deleted, by nobody.
- await env.DB.batch(['recordes','voltas','corridas','sessoes','eventos'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE usuario_id=?`).bind(s.id))
+ // Its records, laps, races, guesses, sessions and events go with it (its e-mail with the account's row); the panel
+ // keeps only that an account was deleted, by nobody.
+ await env.DB.batch(['recordes','voltas','corridas','palpites','sessoes','eventos'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE usuario_id=?`).bind(s.id))
   .concat(env.DB.prepare('DELETE FROM usuarios WHERE id=?').bind(s.id),event(env,'conta_apagada')));
  return json({conta:null,apagada:true},200,{cookies:[signedOut()]});
 }
@@ -137,24 +146,29 @@ async function myData(request,env){
  const events=(await env.DB.prepare('SELECT quando,tipo,detalhe FROM eventos WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
  const laps=(await env.DB.prepare('SELECT quando,circuito,modo,carro,tempo_ms,resultado,aparelho,sinais,freios,fantasma,comandos,revisao,revisado_em,caso FROM voltas WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
  const races=(await env.DB.prepare('SELECT quando,circuito,modo,carro FROM corridas WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
+ const guesses=(await env.DB.prepare('SELECT bolao,quando,treino,corrida1,corrida2,desclassificado FROM palpites WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
+ const email=await env.DB.prepare('SELECT email,email_em,ofertas_em FROM usuarios WHERE id=?').bind(s.id).first();
  const ghost=text=>{try{return text?JSON.parse(text):null;}catch{return null;}};
  const when=ms=>new Date(ms).toISOString();
  return json({
   sobre:'Tudo o que o Auto-Pobre Racing guarda da sua conta.',
   gerado_em:when(Date.now()),
-  conta:{identificador_google:s.google_sub,apelido:s.apelido??null,criada_em:when(s.criado_em),ultimo_login:when(s.ultimo_login)},
+  conta:{identificador_google:s.google_sub,apelido:s.apelido??null,criada_em:when(s.criado_em),ultimo_login:when(s.ultimo_login),
+   ...(email?.email&&{email:await openEmail(env,email.email)??'(guardado com uma chave que este servidor não tem)',email_desde:when(email.email_em)}),
+   ...(email?.ofertas_em&&{aceitou_ofertas_dos_patrocinadores_em:when(email.ofertas_em)})},
   sessoes:sessions.map(r=>({aberta_em:when(r.criada_em),expira_em:when(r.expira_em),site:r.site})),
   recordes:records.map(r=>({circuito:r.circuito,modo:r.modo,carro:r.carro,selo:r.selo,volta_ms:r.volta_ms,versao_do_jogo:r.versao,feito_em:when(r.feito_em),enviado_em:when(r.enviado_em),fantasma:ghost(r.fantasma)})),
   subida_dos_recordes_antigos:{dev:s.importou_em?when(s.importou_em):null,principal:s.importou_principal_em?when(s.importou_principal_em):null},
   eventos:events.map(e=>({quando:when(e.quando),tipo:e.tipo,detalhe:ghost(e.detalhe)})),
   corridas:races.map(r=>({quando:when(r.quando),circuito:r.circuito,modo:r.modo,carro:r.carro})),
+  palpites:guesses.map(p=>({fim_de_semana:p.bolao,quando:when(p.quando),treino:p.treino,corrida1:p.corrida1,corrida2:p.corrida2,...(p.desclassificado&&{desclassificado:true})})),
   voltas:laps.map(v=>({quando:when(v.quando),circuito:v.circuito,modo:v.modo,carro:v.carro,tempo_ms:v.tempo_ms,resultado:v.resultado,aparelho:v.aparelho,sinais:ghost(v.sinais),freios:ghost(v.freios),
    ...(v.fantasma&&{fantasma:ghost(v.fantasma)}),...(v.comandos&&{comandos:ghost(v.comandos)}),...(v.caso&&{caso:v.caso}),...(v.revisao&&{revisao:v.revisao,revisada_em:v.revisado_em?when(v.revisado_em):null})})),
  },200,{headers:{'Content-Disposition':'attachment; filename="autopobre-meus-dados.json"'}});
 }
 
-const GETS={'/api/conta/eu':me,'/api/conta/entrar':signIn,'/api/conta/google':googleBack,'/api/conta/meus-dados':myData,...RECORDS_GETS,...ADMIN_GETS};
-const POSTS={'/api/conta/apelido':setNickname,'/api/conta/sair':signOut,'/api/conta/apagar':deleteAccount,...RECORDS_POSTS,...ADMIN_POSTS,...ROOM_POSTS};
+const GETS={'/api/conta/eu':me,'/api/conta/entrar':signIn,'/api/conta/google':googleBack,'/api/conta/meus-dados':myData,...RECORDS_GETS,...ADMIN_GETS,...PALPITES_GETS};
+const POSTS={'/api/conta/apelido':setNickname,'/api/conta/sair':signOut,'/api/conta/apagar':deleteAccount,...RECORDS_POSTS,...ADMIN_POSTS,...ROOM_POSTS,...PALPITES_POSTS};
 
 export default {
  async fetch(request,env){

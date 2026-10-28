@@ -75,7 +75,7 @@ export const importedColumn=env=>siteOf(env)==='principal'?'importou_principal_e
 export async function session(request,env){
  const value=readCookies(request)[SESSION_COOKIE];
  if(!value)return null;
- const row=await env.DB.prepare("SELECT s.id AS sid,u.id,u.google_sub,u.apelido,u.criado_em,u.ultimo_login,u.importou_em,u.importou_principal_em,u.admin FROM sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.id=? AND s.expira_em>? AND COALESCE(s.site,'dev')=?")
+ const row=await env.DB.prepare("SELECT s.id AS sid,u.id,u.google_sub,u.apelido,u.criado_em,u.ultimo_login,u.importou_em,u.importou_principal_em,u.admin,u.gerente_palpites FROM sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.id=? AND s.expira_em>? AND COALESCE(s.site,'dev')=?")
   .bind(await hashed(value),Date.now(),siteOf(env)).first();
  return row??{gone:true};
 }
@@ -84,6 +84,9 @@ export const signedOut=()=>setCookie(SESSION_COOKIE,'',0);
 // dashboard, it takes effect at once and no deploy overwrites it), or marked admin in the database.
 const listed=(text,sub)=>String(text??'').split(',').map(x=>x.trim()).filter(Boolean).includes(sub);
 export const isAdmin=(env,s)=>!!s&&!s.gone&&(!!s.admin||listed(env.ADMINS,s.google_sub));
+// Who runs the palpites (src/palpites.js: its panel, the guesses with their e-mails, the result): an administrator, or an
+// account the database marks (usuarios.gerente_palpites, set by hand).
+export const runsGuesses=(env,s)=>isAdmin(env,s)||!!s&&!s.gone&&!!s.gerente_palpites;
 // A pilot whose laps are true while the detector is being tuned (recordes.js), on the test version only (SITE dev):
 // an administrator, or a Google id in the Worker's CONFIAVEIS secret (comma separated, like ADMINS). A lap of theirs
 // the checks would refuse goes in as checked all the same, and into the admin panel's cases, with its ghost and

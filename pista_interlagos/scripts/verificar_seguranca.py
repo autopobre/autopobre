@@ -99,6 +99,9 @@ def main():
             page.goto(local_url + '/pista_interlagos/teste/', wait_until='networkidle')
             page.wait_for_selector('#start:not([disabled])')
             check('local_game_ready_with_csp', True)
+            # A blank page between the two: a late request of the local game (its accounts, its palpites link) must not
+            # count as the release's.
+            page.goto('about:blank')
             requests = []
             page.on('request', lambda request: requests.append(request.url))
             base = f'http://127.0.0.1:{release.server_port}/preview/'
@@ -139,11 +142,16 @@ def main():
                 page.wait_for_selector('#start:not([disabled])')
                 check('room_address_ignored_without_multiplayer', page.locator('#mpRoom').count() == 0
                       and not any('/multiplayer.' in url or '/net-' in url for url in requests))
-            # The accounts' own API sits at the site's root (/api/conta/), the same origin, only in the --conta build.
-            account_api = f'http://127.0.0.1:{release.server_port}/api/conta/'
+            # The accounts' own API sits at the site's root (/api/conta/, /api/recordes/, /api/palpites), the same origin, only
+            # in the --conta build.
+            account_api = f'http://127.0.0.1:{release.server_port}/api/'
             check('account_api_only_with_accounts', conta or not any('/api/' in url for url in requests))
             check('account_hidden_without_its_server', page.locator('#contaFaixa:not([hidden])').count() == 0)
-            check('no_external_network', all(url.startswith(base) or url.startswith('blob:') or url.startswith('data:') or (conta and url.startswith(account_api)) for url in requests))
+            outside = [url for url in requests if not (url.startswith(base) or url.startswith('blob:') or url.startswith('data:') or (conta and url.startswith(account_api)))]
+            if outside:
+                report['outside_requests'] = outside
+                print('Requests outside the release:', outside, flush=True)
+            check('no_external_network', not outside)
             check('no_unexpected_browser_errors', not report['browser_errors'] and not console_errors)
             page.evaluate("()=>{const s=document.createElement('script');s.textContent='window.inlineInjectionRan=true';document.body.append(s)}")
             check('csp_blocks_inline_script', page.evaluate('window.inlineInjectionRan!==true'))
