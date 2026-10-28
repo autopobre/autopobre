@@ -32,7 +32,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Two commits (the main link and /dev/) take about 10 minutes of checks each (apr-3.3.1 and the museum, 10-28).
+    timeout-minutes: 40
     permissions:
       contents: read
       pages: read
