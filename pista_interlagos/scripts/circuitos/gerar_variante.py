@@ -19,8 +19,9 @@ import sys
 import numpy as np
 from compat_scipy import cKDTree, gaussian_filter1d
 
-from config import DADOS, VARIANTES
+from config import CIRCUITOS, DADOS, VARIANTES
 from gerar_pista import (BARREIRA_M, BARREIRA_SOBRA, DS, completar_pit, curvas, curvatura, main_s_monotono, quadro)
+from ligacoes import curva_suave, fechar_curva, ligacao, rumo_de, suave
 
 # Colunas da volta (as de gerar_pista.py).
 S_, X_, Y_, Z_, W_, BANK_, GRADE_, TX_, TY_, LX_, LY_, RMSE_, PONTOS_, ZD_, ZE_ = range(15)
@@ -30,20 +31,11 @@ FOLGA_PIT_BARREIRA = 3.0
 CHAO_M, RAMPA_CHAO_M = 22.0, 6.0
 
 
-def suave(t):
-    t = np.clip(t, 0, 1)
-    return t * t * (3 - 2 * t)
-
-
 def volta_em(A, L, s, colunas):
     """Valores das colunas da volta em s (interpolados entre as estacoes; s em [0, L))."""
     s = np.asarray(s, float) % L
     ss = np.r_[A[:, S_], L]
     return np.column_stack([np.interp(s, ss, np.r_[A[:, c], A[0, c]]) for c in colunas])
-
-
-def rumo_de(t):
-    return math.atan2(t[1], t[0])
 
 
 def s_de(base, ponto):
@@ -55,48 +47,6 @@ def s_de(base, ponto):
     i = int(np.argmin(np.hypot(A[:, X_] - q[0], A[:, Y_] - q[1])))
     t = A[i, [TX_, TY_]] / np.hypot(A[i, TX_], A[i, TY_])
     return float((A[i, S_] + (q - A[i, [X_, Y_]]) @ t) % m['reconstructed_xy_m'])
-
-
-def curva_suave(p0, rumo0, comprimento, rampa, giro, n=2001):
-    """Curva de curvatura suave: cresce de 0 no primeiro `rampa` do comprimento, fica e volta a 0 no ultimo; o giro total e
-    `giro` (rad, negativo a direita). Devolve pontos, rumos e curvaturas em n estacoes."""
-    u = np.linspace(0, 1, n)
-    forma = np.minimum(suave(u / rampa), suave((1 - u) / rampa)) if rampa > 0 else np.ones(n)
-    area = float(np.sum((forma[1:] + forma[:-1]) / 2 * np.diff(u)))
-    k = forma / area * giro / comprimento
-    rumo = rumo0 + np.r_[0, np.cumsum((k[1:] + k[:-1]) / 2 * np.diff(u) * comprimento)]
-    passo = comprimento / (n - 1)
-    d = np.c_[np.cos(rumo[:-1]) + np.cos(rumo[1:]), np.sin(rumo[:-1]) + np.sin(rumo[1:])] / 2 * passo
-    return np.asarray(p0, float) + np.r_[[[0.0, 0.0]], np.cumsum(d, 0)], rumo, k
-
-
-def fechar_curva(p0, rumo0, destino, rampa, chute, sentido=-1):
-    """Ajusta (comprimento, deslocamento ao longo do destino) para a curva suave sair de p0 no rumo0 e chegar tangente ao
-    destino(desloc) -> (ponto, tangente). sentido: -1 curva a direita."""
-    v = np.array(chute, float)
-
-    def residuo(v):
-        q, t = destino(v[1])
-        giro = (rumo_de(t) - rumo0) % (2 * math.pi)
-        if sentido < 0:
-            giro -= 2 * math.pi
-        P, _, _ = curva_suave(p0, rumo0, v[0], rampa, giro)
-        return P[-1] - q, giro
-
-    for _ in range(40):
-        r, _ = residuo(v)
-        if np.hypot(*r) < 1e-6:
-            break
-        J = np.zeros((2, 2))
-        for j, h in enumerate((1e-3, 1e-3)):
-            dv = np.zeros(2)
-            dv[j] = h
-            J[:, j] = (residuo(v + dv)[0] - r) / h
-        v = v - np.linalg.solve(J, r)
-    r, giro = residuo(v)
-    if np.hypot(*r) > 1e-3:
-        raise SystemExit(f'a curva nao fechou (erro {np.hypot(*r):.3f} m)')
-    return v, giro
 
 
 def reamostrar(P, valores, passo=DS):
@@ -124,22 +74,26 @@ def hermite(z0, g0, z1, g1, comprimento, t):
     return h00 * z0 + h10 * comprimento * g0 + h01 * z1 + h11 * comprimento * g1
 
 
+def atalho_da_ligacao(cfg):
+    """A ligacao do traçado: um dos atalhos da pista base (config 'atalhos', 'ligacao': {'atalho': id}), com o nome que
+    ela tem neste traçado."""
+    lig = cfg['ligacao']
+    return {**CIRCUITOS[cfg['base']]['atalhos'][lig['atalho']], **lig}
+
+
 def montar_volta(base, cfg):
     """A volta do traçado: volta base de 0 a de_s, a ligacao, volta base de ate_s ao fim. Devolve as estacoes (colunas de
     gerar_pista.py), o comprimento, as pontas da ligacao na volta base e na nova, e as curvaturas dela."""
     A = np.array(base['samples'], float)
     Lb = base['meta']['reconstructed_xy_m']
-    lig = cfg['ligacao']
+    lig = atalho_da_ligacao(cfg)
     sA, s_ate = s_de(base, lig['de']), s_de(base, lig['ate'])
-    pA, tA = volta_em(A, Lb, sA, (X_, Y_))[0], volta_em(A, Lb, sA, (TX_, TY_))[0]
 
-    def na_reta(desloc):
-        q = volta_em(A, Lb, s_ate + desloc, (X_, Y_, TX_, TY_))[0]
+    def ponto(sv):
+        q = volta_em(A, Lb, sv, (X_, Y_, TX_, TY_))[0]
         return q[:2], q[2:] / np.hypot(q[2], q[3])
 
-    (comp, desloc), giro = fechar_curva(pA, rumo_de(tA), na_reta, lig['rampa'], (160.0, 0.0))
-    sJ = s_ate + desloc
-    P, rumo, k = curva_suave(pA, rumo_de(tA), comp, lig['rampa'], giro)
+    P, rumo, k, comp, sJ, giro = ligacao(ponto, sA, s_ate, lig['rampa'], lig.get('sentido', -1))
     u_fino = np.linspace(0, 1, len(P))
     ss, Q, (rq, kq, uq) = reamostrar(P, (rumo, k, u_fino))
     print(f'ligacao: {comp:.1f} m, de s={sA:.1f} a s={sJ:.1f} da volta base, giro {math.degrees(giro):.1f} graus, '
@@ -289,10 +243,11 @@ def montar_pit(base, cfg, V, L, superficie, i0, i1):
     return pit, sj, comp
 
 
-def montar_fechados(base, V, L, sA, sJ, superficie, pit, sj_antigo):
-    """O resto do traçado base (de sA a sJ) e a entrada antiga dos boxes (ate sj_antigo do pit lane da base), fechados:
-    barreiras onde cada um sai da volta (regra de gerar_pista.montar_fechados: a barreira inteira a BARREIRA_M da borda),
-    longe tambem da faixa dos boxes nova."""
+def montar_fechados(base, V, L, sA, sJ, superficie, pit, sj_antigo, ligacao_id=None):
+    """O resto do traçado base (de sA a sJ), a entrada antiga dos boxes (ate sj_antigo do pit lane da base) e os trechos
+    fechados da base menos o que virou a ligacao (os atalhos S1 e S3 de Chapeco), fechados: barreiras onde cada um sai da
+    volta (regra de gerar_pista.montar_fechados: a barreira inteira a BARREIRA_M da borda), longe tambem da faixa dos boxes
+    nova; onde um trecho fechado encontra outro, nenhuma."""
     A = np.array(base['samples'], float)
     Lb = base['meta']['reconstructed_xy_m']
     largura = V[:, W_]
@@ -313,6 +268,20 @@ def montar_fechados(base, V, L, sA, sJ, superficie, pit, sj_antigo):
     trechos.append({'id': 'entrada_antiga_boxes', 'nome': 'Entrada dos boxes do traçado completo', 'tipo': 'servico',
                     's': B[:, c['s']], 'P': B[:, [c['x'], c['y']]], 'z': B[:, c['z']], 'w': B[:, c['hi']] - B[:, c['lo']],
                     'E': B[:, [c['lx'], c['ly']]], 'zd': np.zeros(len(B)), 'ze': np.zeros(len(B))})
+    # (Onde um deles entra no resto do traçado, fechado tambem, ele para na borda dele: os dois asfaltos no mesmo plano, um
+    # por cima do outro, piscariam.)
+    resto = trechos[0]
+    rkd = cKDTree(resto['P'])
+    for f in base.get('closed_roads', []):
+        if f['id'] == ligacao_id:
+            continue
+        c = {nome: i for i, nome in enumerate(f['columns'])}
+        F = np.array(f['samples'], float)
+        d, j = rkd.query(F[:, [c['x'], c['y']]])
+        F = F[d > resto['w'][j] / 2 + .5]
+        trechos.append({'id': f['id'], 'nome': f['name'], 'tipo': f['kind'], 's': F[:, c['s']], 'P': F[:, [c['x'], c['y']]],
+                        'z': F[:, c['z']], 'w': F[:, c['width']], 'E': F[:, [c['lx'], c['ly']]], 'zd': F[:, c['kerb_right']],
+                        'ze': F[:, c['kerb_left']]})
     saida = []
     for f in trechos:
         P, E, w = f['P'], f['E'], f['w']
@@ -392,7 +361,7 @@ def main():
     kappa, cv = recompor_perfil(V, L, i0, i1)
     superficie = superficie_de(V, L)
     pit, sj_antigo, comp_entrada = montar_pit(base, cfg, V, L, superficie, i0, i1)
-    fechados = montar_fechados(base, V, L, sA, sJ, superficie, pit, sj_antigo)
+    fechados = montar_fechados(base, V, L, sA, sJ, superficie, pit, sj_antigo, cfg['ligacao']['atalho'])
     s = V[:, S_]
     n = len(V)
     # Trechos: os da volta base antes da ligacao, a ligacao (a curva detectada nela) e a reta principal depois.
@@ -405,12 +374,13 @@ def main():
     trechos = [t for k, t in enumerate(trechos) if not k or t[1] != trechos[k - 1][1]]
     trechos += [[round(ini, 1), cfg['ligacao']['nome']], [round(fim + 15, 1), trechos[0][1]]]
     # Guard-rails: dos dois lados, menos do lado dos boxes (a esquerda) da entrada a saida deles (25 m antes e depois), e
-    # menos onde um trecho fechado sai da volta: o guard-rail para 10 m antes da boca e volta onde o trecho ja passou
+    # menos onde o resto do traçado base sai da volta: o guard-rail para 10 m antes da boca e volta onde o trecho ja passou
     # BARREIRA_M + 5 m da borda (a ponta do guard-rail se abre ate 10 m da pista nos ultimos 24 m: na boca da curva 2 do
     # oval ela ficava atras da barreira do trecho, que o carro achava antes do guard-rail); pedacos de menos de 30 m saem.
+    # Nas bocas dos atalhos o guard-rail passa direto, com a barreira atras dele, como na pista base.
     a, b = (pit['entry_main_s'] - 25) % L, (pit['exit_main_s'] + 25) % L
     rails = {'-1': [[0.0, L]], '1': [[b, a]] if b < a else []}
-    for f in fechados:
+    for f in (f for f in fechados if f['kind'] == 'tracado'):
         F = np.array(f['samples'])
         for ponta in (F, F[::-1]):
             k, sb, lat, _ = superficie(ponta[:, 1:3])

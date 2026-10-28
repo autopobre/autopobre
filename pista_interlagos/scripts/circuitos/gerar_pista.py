@@ -31,6 +31,7 @@ from compat_scipy import (brentq, cKDTree, gaussian_filter, gaussian_filter1d, m
 import geo_io
 from config import ASSETS, CIRCUITOS, DADOS, pasta_fontes
 from muro_barraca import FOLGA_PISTA_M, LARGURA_M, largura_muro, trecho_cheio
+from ligacoes import ligacao, suave as suave_ligacao
 
 PASSO = 4.0          # grade do terreno (m), como Interlagos
 # Modelos locais do terreno, numa grade de 2 m (config 'relevo_local' -> arquivo em fontes/<c>/).
@@ -770,9 +771,11 @@ def main():
             cfg['garagens'] = [v * escala for v in cfg['garagens']]
         pit = pit_sintetico(cfg, [v * escala for v in x['reta_principal']], xy, z, E, T, bank, largura, s, L, superficie)
 
-    # --- Trechos fechados (Velocitta): o resto do asfalto do autodromo, fora do traçado de corrida.
-    fechados = montar_fechados(eixo.get('fechados', []), origem, escala, vias_dem, base, superficie, largura) \
-        if c.get('trechos_fechados') else []
+    # --- Trechos fechados (Velocitta): o resto do asfalto do autodromo, fora do traçado de corrida; e os atalhos dos
+    # traçados alternativos (Chapeco: S1, S2 e S3), que saem da volta e voltam a ela.
+    atalhos = montar_atalhos(c.get('atalhos', {}), s, xy, T, largura, L, origem, escala)
+    fechados = montar_fechados(eixo.get('fechados', []) + atalhos, origem, escala, vias_dem, base, superficie, largura) \
+        if c.get('trechos_fechados') or atalhos else []
 
     # --- Terreno: ANADEM na grade de 4 m; perto das vias segue o plano da pista.
     pontos = [xy] + ([np.array(pit['xy'])] if pit else []) + [np.array(f['samples'])[:, 1:3] for f in fechados]
@@ -1107,6 +1110,39 @@ def montar_fechados(lista, origem, escala, vias_dem, base, superficie, largura):
                       'barriers': {'columns': ['x1', 'y1', 'x2', 'y2', 'z'], 'items': barreiras}})
         print(f'  fechado {f["id"]}: {ss[-1]:.0f} m, largura {w.mean():.1f} m, z {z.min():.1f}-{z.max():.1f}, '
               f'zebras {(zebra_d.sum() + zebra_e.sum()) * DS:.0f} m, {len(barreiras)} barreira(s)')
+    return saida
+
+
+def montar_atalhos(atalhos, s, xy, T, largura, L, origem, escala):
+    """Atalhos dos traçados alternativos (config 'atalhos'), para montar_fechados: cada um uma ligacao de projeto
+    (ligacoes.py) que sai da volta no ponto `de` (UTM) e volta a ela perto do ponto `ate`, tangente nas duas pontas, com a
+    rampa medida; a largura medida, ou a da volta de uma ponta a outra."""
+    ss = np.r_[s, L]
+    kd = cKDTree(xy)
+
+    def em(sv, col):
+        return np.interp(np.asarray(sv, float) % L, ss, np.r_[col, col[0]])
+
+    def ponto(sv):
+        t = np.array([em(sv, T[:, 0]), em(sv, T[:, 1])])
+        return np.array([em(sv, xy[:, 0]), em(sv, xy[:, 1])]), t / np.hypot(*t)
+
+    def s_de(utm):
+        q = (np.asarray(utm, float) - origem[:2]) * escala
+        i = int(kd.query(q)[1])
+        return float((s[i] + (q - xy[i]) @ T[i]) % L)
+    saida = []
+    for nome, a in atalhos.items():
+        de = s_de(a['de'])
+        P, _, k, comp, fim, giro = ligacao(ponto, de, s_de(a['ate']), a['rampa'], a.get('sentido', -1))
+        u = np.linspace(0, 1, len(P))
+        w0, w1 = em(de, largura), em(fim, largura)
+        larg = np.full(len(P), a['largura_m'] * escala) if a.get('largura_m') else w0 + (w1 - w0) * suave_ligacao(u)
+        j = np.unique(np.r_[np.arange(0, len(P), 20), len(P) - 1])
+        print(f'  atalho {nome}: {comp:.0f} m, de s={de:.0f} a s={fim:.0f}, giro {math.degrees(giro):.0f} graus, '
+              f'raio minimo {1 / np.abs(k).max():.0f} m')
+        saida.append({'id': nome, 'nome': a['nome'], 'tipo': 'ligacao', 'via_osm': None,
+                      'eixo': (P[j] / escala + origem[:2]).tolist(), 'largura_m': (larg[j] / escala).tolist()})
     return saida
 
 

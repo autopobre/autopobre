@@ -128,8 +128,16 @@ OSM (`/map`), que `baixar_fontes.py` agora usa quando nenhum Overpass responde.
 
 **Aproximações declaradas:** pit lane e posição dos boxes dentro do prédio, arquibancadas (8
 blocos do lado de dentro da reta principal, de frente para os boxes: não há planta publicada),
-caimentos, zebras, muros, largura exata e a distribuição do desnível ao longo da volta. Os
-atalhos S1 e S3 dos traçados alternativos não foram desenhados; o S2 é a ligação do oval (abaixo).
+caimentos, zebras, muros, largura exata e a distribuição do desnível ao longo da volta.
+
+**Atalhos dos traçados alternativos** (pedido do usuário, 27/10/2026: o piloto se orienta por eles): S1 (entre as curvas
+1 e 5, do anel externo), S2 (a ligação do oval) e S3 (a variante das motos entre as retas 2 e 3), do diagrama do
+autódromo, desenhados e fechados por barreiras na corrida (config `atalhos`, `gerar_pista.montar_atalhos`): cada um uma
+curva de projeto que sai da volta e volta a ela tangente (`ligacoes.py`, a mesma conta da ligação do oval), com as pontas
+em pontos UTM e a rampa da curvatura medidas. S1 e S3 no meio da faixa de asfalto da vista de cima das fotos aéreas
+(0,5 m; o diagrama, encaixado, só diz onde procurar): S1 202 m, 13,8 m de largura, a 0,9 m do meio da faixa em média;
+S3 166 m, 10,5 m, raio de 34 m, a 1,0 m. S2 180 m, medida na mediana Sentinel-2 (abaixo). O asfalto deles fica sobre o
+relevo, colado ao plano da pista junto dela, com zebras do lado de dentro das curvas fechadas (S2 e S3).
 
 **Correção de 27/10/2026** (pedido do usuário: a curva 2 era uma direita que virava esquerda, e as retas estavam
 tortas). Fontes novas, só para conferir no computador (fora do repositório e do site):
@@ -153,9 +161,10 @@ direita e 5 à esquerda) na ordem oficial, a curva 7 uma curva só, de raio cons
 **Traçado oval** (`chapecooval`, o "Alternativo 2": "percurso oval entre as curvas 1 e 2, com 1.452 metros", horário;
 a NASCAR Brasil corre nele em 31/10 e 01/11/2026). `scripts/circuitos/gerar_variante.py chapecooval` monta o arquivo dele
 sobre o de Chapecó, sem refazer o lugar: a reta principal, a curva 1 e a Reta 2 da volta corrigida, e a ligação S2 da
-Reta 2 para a reta principal, ainda fora do OSM, medida na mediana Sentinel-2 (a borda de dentro contorna o miolo de
-terra, raio de ~38 m, com 0,9 m de erro médio). O oval mede 1.464 m no jogo, 1.457,6 m sem a escala do complexo. O resto
-da volta e a entrada antiga dos boxes viram trechos fechados por barreiras (como os outros traçados de Velocitta). A
+Reta 2 para a reta principal (o atalho S2 de Chapecó), ainda fora do OSM, medida na mediana Sentinel-2 (a borda de dentro
+contorna o miolo de terra, raio de ~38 m, com 0,9 m de erro médio). O oval mede 1.464 m no jogo, 1.457,6 m sem a escala do
+complexo. O resto da volta, a entrada antiga dos boxes e os atalhos S1 e S3 (cortados na borda do resto da volta, também
+fechado) viram trechos fechados por barreiras (como os outros traçados de Velocitta). A
 entrada dos boxes do oval é fictícia: a do traçado completo fica no fim da reta principal, que o oval não percorre; a
 faixa sai por fora da ligação, segue reta, cruza o fim da reta principal fechado e entra no pit lane 8 m antes das
 garagens. No jogo é uma caixa "Oval" no cartão de Chapecó, sem cartão nem etapa de campeonato próprios; recordes,

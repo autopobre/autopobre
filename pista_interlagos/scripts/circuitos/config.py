@@ -79,6 +79,22 @@ CIRCUITOS = {
         # pontos UTM): a curva 7, "de raio constante" (Prefeitura), uma curva so.
         'retificar': {'editor': True, 'curvas': [
             {'de': (329967.2, 6988167.6), 'ate': (330392.3, 6988169.1), 'lado': 1}]},
+        # Os atalhos dos traçados alternativos (diagrama do autodromo: S1 "entre as curvas 1 e 5" do anel externo, S2 do
+        # oval, S3 a variante das motos entre as retas 2 e 3), fechados na corrida, desenhados (gerar_pista.montar_atalhos):
+        # cada um uma curva de curvatura suave que sai da volta no ponto `de` e volta a ela perto do ponto `ate` (UTM),
+        # tangente nas duas pontas, com a curvatura crescendo e decrescendo em `rampa` do comprimento; `sentido` -1 vira a
+        # direita. S1 e S3 medidos no meio da faixa de asfalto da vista de cima das fotos aereas do video (0,5 m): S1 a 0,9 m
+        # do meio da faixa em media (13,8 m de largura), S3 a 1,0 m (10,5 m). S2 medida na mediana de 5 cenas Sentinel-2
+        # limpas (24/08 a 20/10/2026, 10 m): a borda de dentro contorna o miolo de terra (raio de ~38 m) com 0,9 m de erro
+        # medio e 3,0 m no pior ponto; sem largura propria, a da volta de uma ponta a outra.
+        'atalhos': {
+            's1': {'nome': 'Atalho S1 · curvas 1 e 5', 'de': (329792.7, 6987873.6), 'ate': (329803.9, 6988063.9),
+                   'rampa': .40, 'sentido': -1, 'largura_m': 13.8},
+            's2': {'nome': 'Ligação S2 · oval', 'de': (330394.2, 6987943.1), 'ate': (330394.2, 6987848.8), 'rampa': .21,
+                   'sentido': -1},
+            's3': {'nome': 'Variante S3 · retas 2 e 3', 'de': (329932.2, 6987954.4), 'ate': (329931.5, 6988024.0),
+                   'rampa': .35, 'sentido': 1, 'largura_m': 10.5},
+        },
     },
     'brasilia': {
         'nome': 'Autódromo Internacional Nelson Piquet',
@@ -349,13 +365,11 @@ VARIANTES = {
         # Prefeitura de Chapeco / Acontecendo Aqui (out/2026): "o percurso oval entre as curvas 1 e 2, com 1.452 metros", em
         # sentido horario, um dos tres traçados alternativos; a NASCAR Brasil corre nele em 31/10 e 01/11/2026.
         'extensao_m': 1452,
-        # A ligacao da Reta 2 com a reta principal antes da curva 2 (ainda fora do OSM): curva a direita que sai da Reta 2 no
-        # ponto `de` e entra na reta principal perto do ponto `ate` (UTM; o ajuste acha onde ela fecha), com a curvatura
-        # crescendo e decrescendo suave em `rampa` do comprimento em cada ponta. Medida na mediana de 5 cenas Sentinel-2
-        # limpas (24/08 a 20/10/2026, 10 m): a borda de dentro contorna o miolo de terra (raio de ~38 m) com 0,9 m de erro
-        # medio e 3,0 m no pior ponto; o oval mede 1.464 m no jogo, 1.457,6 m sem a escala de 0,46% do complexo (a volta
-        # corrigida no editor, 4.001 m, levada aos 4.004 publicados), contra os 1.452 m publicados.
-        'ligacao': {'de': (330394.2, 6987943.1), 'ate': (330394.2, 6987848.8), 'rampa': .21, 'nome': 'S2 · ligação do oval'},
+        # A ligacao da Reta 2 com a reta principal antes da curva 2: o atalho S2 da pista base (CIRCUITOS['chapeco']
+        # ['atalhos'], que la fica fechado), com o nome dela neste traçado. O oval mede 1.464 m no jogo, 1.457,6 m sem a
+        # escala de 0,46% do complexo (a volta corrigida no editor, 4.001 m, levada aos 4.004 publicados), contra os 1.452 m
+        # publicados.
+        'ligacao': {'atalho': 's2', 'nome': 'S2 · ligação do oval'},
         # Entrada dos boxes no oval (ficticia: nao ha publicacao): a do traçado completo fica no fim da reta principal, que o
         # oval nao percorre. A faixa sai por fora da ligacao, `fracao` dela adiante (no apice), segue reto, cruza o fim da
         # reta principal fechado e vira a direita para entrar no pit lane no ponto `ate` (UTM), 12 m antes das garagens; a
