@@ -50,7 +50,7 @@ export class Conta {
   </div>
  </section>
  <details class="conta-info" id="contaInfo"><summary><span class="conta-i" aria-hidden="true">i</span>O que guardamos</summary>
-  <p>Só o número que o Google dá à sua conta, o apelido e as datas em que você entrou. Nada de nome, e-mail ou foto.</p>
+  <p>O número que o Google dá à sua conta, o apelido, os seus recordes e voltas. Nada de nome, e-mail ou foto. <a href="privacidade.html" target="_blank" rel="noopener noreferrer">Privacidade ↗</a></p>
   <h3>Como funciona, tecnicamente</h3>
   <ul>
    <li><b>Login:</b> OpenID Connect com o Google, no fluxo <i>authorization code</i> com PKCE, <i>state</i> e <i>nonce</i>, feito pelo servidor do jogo. A página não carrega nenhum script do Google.</li>
