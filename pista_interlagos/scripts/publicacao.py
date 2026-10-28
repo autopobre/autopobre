@@ -48,9 +48,13 @@ CONTA = ('conta.js', 'conta.css', 'recordes-online.js', 'comandos-volta.js', 'ad
 # before it (a rollback) stays without them.
 CONTA_NO_PRINCIPAL = True
 # Palpites do Opala 99 (/palpites): guesses on the Opala 99's race weekend, for the podium, over the accounts server
-# (conta-cloudflare/src/palpites.js). Being tried on dev.autopobre.com.br first: only in a build with both the accounts
-# and the dev's pages (--conta --multiplayer); pages.yml checks the main link has none of it.
+# (conta-cloudflare/src/palpites.js). They come with the accounts: on dev.autopobre.com.br (--conta --multiplayer), and on
+# the main link (--conta) from the commit that says so below.
 PALPITES = ('palpites.html', 'palpites.js', 'palpites.css', 'painel-palpites.html', 'painel-palpites.js')
+# From here on the main link gets the palpites with its accounts (its Worker deployed from this commit or later, the
+# migration 0010 on the shared database). pages.yml requires them there only from a commit that has this line: a version
+# published again from before it (apr-3.4) stays without them.
+PALPITES_NO_PRINCIPAL = True
 ASSETS = (
     'branding/old_stock_preparada_v1.jpg',
     'branding/patrocinio_omp_v1.webp', 'branding/patrocinio_rtj_v1.webp', 'branding/patrocinio_eletric_v1.webp',

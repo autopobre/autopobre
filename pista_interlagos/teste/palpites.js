@@ -1,4 +1,4 @@
-// Palpites do Opala 99 (palpites.html, the dev build only for now: publicacao.py PALPITES). A pilot signs in with
+// Palpites do Opala 99 (palpites.html, with the accounts: publicacao.py PALPITES). A pilot signs in with
 // Google from here (the sign-in asks for the e-mail too: it is how a winner is reached) and guesses where the real
 // Opala 99 finishes the weekend's qualifying and two races. The accounts server decides everything
 // (conta-cloudflare/src/palpites.js): when the guesses close, one per account and final, the podium. This page shows

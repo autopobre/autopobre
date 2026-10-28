@@ -3,13 +3,14 @@
 By default the build is the main link's: without the multiplayer test room, the sound bench and the track editor.
 Only the /dev/ address is built with --multiplayer, which brings them. --conta adds the accounts (sign in with Google),
 for an address whose /api/conta/ is an accounts server: dev.autopobre.com.br, and autopobre.com.br from the commit
-that sets publicacao.py CONTA_NO_PRINCIPAL."""
+that sets publicacao.py CONTA_NO_PRINCIPAL. The palpites come with the accounts on dev, and on the main link from the
+commit that sets PALPITES_NO_PRINCIPAL."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import re
-from publicacao import ROOT, PUBLIC_FILES, OPTIONAL_AUDIO, MULTIPLAYER, BANCADA, EDITOR, CONTA, PALPITES, DEV_PAGES, ROOM_SERVER, audio_manifest, contained_file, content_policy, security_headers
+from publicacao import ROOT, PUBLIC_FILES, OPTIONAL_AUDIO, MULTIPLAYER, BANCADA, EDITOR, CONTA, PALPITES, PALPITES_NO_PRINCIPAL, DEV_PAGES, ROOM_SERVER, audio_manifest, contained_file, content_policy, security_headers
 
 
 def build(multiplayer=False, conta=False):
@@ -32,9 +33,10 @@ def build(multiplayer=False, conta=False):
                 raise ValueError('dist contains a link')
             if p.is_file() and p.relative_to(dist).as_posix() not in expected:
                 raise ValueError('dist contains an unexpected file; inspect it before building')
+    palpites = conta and (multiplayer or PALPITES_NO_PRINCIPAL)
     payload = {out: contained_file(ROOT, src).read_bytes() for out, src in PUBLIC_FILES.items()
                if (multiplayer or out not in MULTIPLAYER + BANCADA + EDITOR) and (conta or out not in CONTA)
-               and (multiplayer and conta or out not in PALPITES)}
+               and (palpites or out not in PALPITES)}
     if not multiplayer:
         # main.js then never reads #desafio=NOME nor asks for multiplayer.js, which is not published.
         if payload['main.js'].count(b'const MULTIPLAYER=true;') != 1:
@@ -45,8 +47,8 @@ def build(multiplayer=False, conta=False):
         if payload['main.js'].count(b'const CONTA=true;') != 1:
             raise ValueError('main.js: accounts switch not found; the build cannot leave the accounts out')
         payload['main.js'] = payload['main.js'].replace(b'const CONTA=true;', b'const CONTA=false;')
-    if conta and not multiplayer:
-        # The accounts without the palpites page (the main link): the menu never links to it.
+    if conta and not palpites:
+        # The accounts without the palpites page (the main link before PALPITES_NO_PRINCIPAL): the menu never links to it.
         if payload['conta.js'].count(b'const PALPITES=true;') != 1:
             raise ValueError('conta.js: palpites switch not found; the build cannot leave the palpites link out')
         payload['conta.js'] = payload['conta.js'].replace(b'const PALPITES=true;', b'const PALPITES=false;')
@@ -108,7 +110,7 @@ def build(multiplayer=False, conta=False):
         p = dist / name
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(data)
-    report = {'files': len(payload), 'bytes': sum(map(len, payload.values())), 'multiplayer': multiplayer, 'conta': conta, 'artifacts': {
+    report = {'files': len(payload), 'bytes': sum(map(len, payload.values())), 'multiplayer': multiplayer, 'conta': conta, 'palpites': palpites, 'artifacts': {
         name: {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()} for name, data in payload.items()
     }}
     audit = ROOT / '.audit-local'
@@ -116,7 +118,7 @@ def build(multiplayer=False, conta=False):
     (audit / 'publicacao.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(f"dist/: {report['files']} files, {report['bytes'] / 1000000:.1f} MB, "
           f"{'with the multiplayer, the sound bench and the track editor (/dev/ only)' if multiplayer else 'without the multiplayer'}"
-          f"{', with the accounts' if conta else ''}. Publish only this directory.")
+          f"{', with the accounts' if conta else ''}{' and the palpites' if palpites else ''}. Publish only this directory.")
     return report
 
 

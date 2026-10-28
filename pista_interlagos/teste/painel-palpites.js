@@ -1,4 +1,4 @@
-// The palpites' panel (painel-palpites.html, in the dev build only for now: publicacao.py PALPITES). It reads the accounts
+// The palpites' panel (painel-palpites.html, with the accounts: publicacao.py PALPITES). It reads the accounts
 // server's /api/admin/palpites (conta-cloudflare/src/palpites.js), which answers only who runs the palpites (an
 // administrator, or an account the database marks: the real Stevan): this page decides nothing. The weekend's closing
 // time, the official result, the podium, and every guess in line with who sent it (nickname and whole e-mail), its hits

@@ -97,8 +97,8 @@ export class Conta {
   }
   return true;
  }
- // Palpites do Opala 99 (palpites.html): a link under the pilot's name, where the page is published (PALPITES: the dev
- // build only for now) and the accounts server has a weekend of guesses (conta-cloudflare/src/palpites.js).
+ // Palpites do Opala 99 (palpites.html): a link under the pilot's name, where the page is published (PALPITES) and the
+ // accounts server has a weekend of guesses (conta-cloudflare/src/palpites.js).
  async guessesLink(){
   if(!PALPITES)return;
   try{

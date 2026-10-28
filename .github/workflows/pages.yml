@@ -112,6 +112,11 @@ jobs:
             conta=--conta
             echo "CONTA_PRINCIPAL=1" >> "$GITHUB_ENV"
             echo "::notice::A versao principal vai com as contas (CONTA_NO_PRINCIPAL)."
+            # The palpites ride on the accounts, from the commit that says they are ready there too.
+            if grep -qE '^PALPITES_NO_PRINCIPAL *= *True' principal/pista_interlagos/scripts/publicacao.py; then
+              echo "PALPITES_PRINCIPAL=1" >> "$GITHUB_ENV"
+              echo "::notice::A versao principal vai com os palpites (PALPITES_NO_PRINCIPAL)."
+            fi
           fi
           (cd principal && python pista_interlagos/scripts/preparar_publicacao.py $conta)
           [ ! -d dev ] || (cd dev && python pista_interlagos/scripts/preparar_publicacao.py --multiplayer)
@@ -148,13 +153,20 @@ jobs:
                 exit 1
               fi
             done
-            # The palpites (publicacao.py PALPITES) are tried on dev.autopobre.com.br first.
+            # The palpites (publicacao.py PALPITES): on the main link only from the commit that says so
+            # (PALPITES_PRINCIPAL, with the accounts), then all of them with their menu link on.
             for arquivo in palpites.html palpites.js palpites.css painel-palpites.html painel-palpites.js; do
-              if [ -e "$pasta/dist/$arquivo" ]; then
-                echo "::error::A versao de $pasta tem os palpites ($arquivo); por enquanto eles so vao para dev.autopobre.com.br."
+              if [ -n "$PALPITES_PRINCIPAL" ]; then
+                [ -e "$pasta/dist/$arquivo" ] || { echo "::error::A versao de $pasta deveria ir com os palpites e nao tem $arquivo."; exit 1; }
+              elif [ -e "$pasta/dist/$arquivo" ]; then
+                echo "::error::A versao de $pasta tem os palpites ($arquivo); eles so vao para o principal a partir do commit com PALPITES_NO_PRINCIPAL."
                 exit 1
               fi
             done
+            if [ -n "$PALPITES_PRINCIPAL" ] && ! grep -q 'const PALPITES=true;' "$pasta/dist/conta.js"; then
+              echo "::error::A versao de $pasta deveria ligar o link dos palpites (conta.js)."
+              exit 1
+            fi
             if grep -rqE 'sala[.](autopobre|inteligenciamilgrau)[.]com[.]br' --include='*.js' --include='*.html' "$pasta/dist"; then
               echo "::error::A versao de $pasta conecta ao servidor das salas; o multiplayer so pode ir para /dev/."
               exit 1
