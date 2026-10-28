@@ -26,7 +26,7 @@ MODULES = (
     'sun-light.js', 'car-shadow.js',
     'contact-shadows.js', 'car-wheels.js',
     'race-action.js', 'verge-vegetation.js', 'skid-marks.js', 'track-surface.js', 'tyre-smoke.js', 'speed-particles.js', 'kerb-contact.js', 'side-mirrors.js', 'brake-lights.js', 'sky.js', 'weather.js', 'rain-climate.js', 'headlights.js', 'rain.js', 'windscreen-rain.js', 'floodlights.js', 'cinematic.js', 'sponsors.js', 'trackside.js', 'trackside-flags.js', 'tv-camera.js', 'intro-cinematic.js', 'landscape.js', 'lake-contact.js', 'lake-waves.js', 'tree-contact.js',
-    'style.css', 'immersive.css', 'abertura.css', 'menus.css', 'index.html', 'sobre.html',
+    'style.css', 'immersive.css', 'abertura.css', 'menus.css', 'index.html', 'sobre.html', 'privacidade.html',
     'favicon.svg', 'favicon.ico', 'apple-touch-icon.png',
 )
 # The multiplayer test room is published only under /dev/ (preparar_publicacao.py --multiplayer);
@@ -40,9 +40,8 @@ EDITOR = ('editor-tracado.html', 'editor-tracado.js')
 DEV_PAGES = ('bancada-som.html', 'editor-tracado.html', 'admin.html')
 # Accounts (sign in with Google): only the dev.autopobre.com.br build (preparar_publicacao.py --conta), where the
 # accounts server (conta-cloudflare) answers /api/conta/. The main link and the old /dev/ folder leave them out.
-# The admin panel (admin.html) too: it reads the same server, which answers only an admin account. And the privacy
-# page (privacidade.html), which tells what the accounts keep: it goes to the main link with them.
-CONTA = ('conta.js', 'conta.css', 'recordes-online.js', 'comandos-volta.js', 'admin.html', 'admin.js', 'admin.css', 'privacidade.html')
+# The admin panel (admin.html) too: it reads the same server, which answers only an admin account.
+CONTA = ('conta.js', 'conta.css', 'recordes-online.js', 'comandos-volta.js', 'admin.html', 'admin.js', 'admin.css')
 ASSETS = (
     'branding/old_stock_preparada_v1.jpg',
     'branding/patrocinio_omp_v1.webp', 'branding/patrocinio_rtj_v1.webp', 'branding/patrocinio_eletric_v1.webp',
