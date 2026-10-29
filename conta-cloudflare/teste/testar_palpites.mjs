@@ -1,6 +1,7 @@
 // The palpites (src/palpites.js, src/email.js), on a clock the test moves: the e-mail asked from Google only from the
-// palpites page and kept sealed, a guess (signed in, nickname, e-mail, three positions, once, before the close), the
-// close, the result and closing time set by who runs the palpites (an admin, or an account the database marks), the podium (1st place all three, then two or more, then one or more, a tie
+// palpites page and kept sealed, a guess (signed in, nickname, e-mail, three positions, once, before the close, not again
+// after deleting the account), the close, the result and closing time (only while open) set by who runs the palpites (an
+// admin, or an account the database marks), the podium (1st place all three, then two or more, then one or more, a tie
 // to who guessed first, nobody twice, a disqualified guess never), no e-mail in the public view, and the pilot's data
 // and its deletion, the sponsors' offers (optional, ticked with the guess or on their own, undone, listed for the admin
 // only). Without EMAIL_KEY the palpites stay shut and the sign-in asks for nothing more.
@@ -85,6 +86,19 @@ await check('a guess: signed in, nickname, e-mail, three positions, once',async(
  assert.deepEqual(JSON.parse(sql("SELECT detalhe FROM eventos WHERE tipo='palpite'")[0].detalhe),{bolao:'oldstock-chapeco-2026',treino:5,corrida1:4,corrida2:0});
 });
 
+await check('deleting the account makes no room for a second guess: a keyed mark of the Google account until the close',async()=>{
+ const fabi=await pilot('500000000000000000011','Fabi Volta');
+ now+=1000;assert.equal((await fabi.post('/api/palpites',pick(7,7,7))).status,200);
+ assert.equal((await fabi.post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
+ const marks=sql('SELECT bolao,conta FROM palpites_apagados');
+ assert.equal(marks.length,1);assert.equal(marks[0].bolao,'oldstock-chapeco-2026');assert.ok(!marks[0].conta.includes('500000000000000000011'),'never the Google id');
+ await signIn(fabi,'500000000000000000011');assert.equal((await fabi.post('/api/conta/apelido',{apelido:'Fabi Volta'})).status,200);
+ const again=await fabi.post('/api/palpites',pick(1,1,1));assert.equal(again.status,409);assert.match(again.erro,/já palpitou/);
+ assert.equal(sql("SELECT COUNT(*) AS n FROM palpites p JOIN usuarios u ON u.id=p.usuario_id WHERE u.google_sub='500000000000000000011'")[0].n,0);
+ assert.equal((await fabi.post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
+ assert.equal(sql('SELECT COUNT(*) AS n FROM palpites_apagados')[0].n,1,'no guess, no new mark');
+});
+
 // The line, in the order they guess: Ana (5,4,0) above; Bia hits all three later; Caio two; Duda one; Eli none.
 const bia=await pilot('500000000000000000005','Bia Reta'),caio=await pilot('500000000000000000006','Caio Curva'),duda=await pilot('500000000000000000007','Duda Box'),eli=await pilot('500000000000000000008','Eli Zebra');
 const boss=await pilot('500000000000000000009','Chefe Pista');sql("UPDATE usuarios SET admin=1 WHERE google_sub='500000000000000000009'");
@@ -116,19 +130,29 @@ await check('a guess taken out never wins, and the next in line moves up',async(
  assert.deepEqual(out.podio.map(w=>[w.lugar,w.apelido]),[[1,'Bia Reta'],[2,'Caio Curva'],[3,'Duda Box']]);
  const anaView=await ana.get('/api/palpites');assert.equal(anaView.palpite.desclassificado,true);assert.equal(anaView.palpite.lugar,undefined);assert.equal(anaView.total,4);
  assert.equal((await boss.post('/api/admin/palpite',{palpite:id,desclassificar:false})).podio[0].apelido,'Ana Volta','put back');
- assert.deepEqual(sql("SELECT tipo FROM eventos WHERE tipo='desclassificado'").length,2);
+ assert.deepEqual(sql("SELECT detalhe FROM eventos WHERE tipo='desclassificado' ORDER BY id").map(e=>JSON.parse(e.detalhe).por),['Chefe Pista','Chefe Pista'],'and by whom');
 });
 
-await check('the admin moves the closing time and clears the result',async()=>{
+await check('the closing time moves only while open (closed, never again), and the result is cleared and set again',async()=>{
+ const reopen=await boss.post('/api/admin/bolao',{fecha_em:new Date(now+3600000).toISOString()});assert.equal(reopen.status,409);assert.match(reopen.erro,/não muda mais/);
+ assert.equal((await boss.post('/api/admin/bolao',{fecha_em:'amanhã'})).status,409);
+ assert.equal((await boss.post('/api/admin/bolao',{resultado:null,fecha_em:new Date(now+3600000).toISOString()})).status,409);
+ assert.deepEqual(JSON.parse(sql('SELECT resultado FROM boloes')[0].resultado),RESULT,'nothing of it written');
+ const cleared=await boss.post('/api/admin/bolao',{resultado:null});assert.equal(cleared.status,200);
+ assert.equal(cleared.bolao.aberto,false);assert.equal(cleared.bolao.resultado,null);assert.deepEqual(cleared.podio,[]);
+ assert.equal((await browser().get('/api/palpites')).podio,undefined);
+ // Before the close (the clock two hours back): the time moves either way, and a result waits for the close.
+ const at=now;now=CLOSES-2*3600000;
  assert.equal((await boss.post('/api/admin/bolao',{fecha_em:'amanhã'})).status,400);
- const moved=await boss.post('/api/admin/bolao',{resultado:null,fecha_em:new Date(now+3600000).toISOString()});assert.equal(moved.status,200);
- assert.equal(moved.bolao.aberto,true);assert.equal(moved.bolao.resultado,null);assert.deepEqual(moved.podio,[]);
- const view=await browser().get('/api/palpites');assert.equal(view.bolao.aberto,true);assert.equal(view.podio,undefined);
- assert.equal((await boss.post('/api/admin/bolao',{resultado:RESULT})).status,409,'no result while open again');
- const back=await boss.post('/api/admin/bolao',{fecha_em:new Date(CLOSES).toISOString(),resultado:RESULT});assert.equal(back.status,200);assert.equal(back.podio.length,3);
+ const moved=await boss.post('/api/admin/bolao',{fecha_em:new Date(CLOSES+3600000).toISOString()});assert.equal(moved.status,200);assert.equal(moved.bolao.aberto,true);
+ assert.equal((await boss.post('/api/admin/bolao',{resultado:RESULT})).status,409,'no result while open');
+ assert.equal((await boss.post('/api/admin/bolao',{fecha_em:new Date(CLOSES).toISOString()})).status,200);
+ now=at;
+ const back=await boss.post('/api/admin/bolao',{resultado:RESULT});assert.equal(back.status,200);assert.equal(back.podio.length,3);
  const logged=sql("SELECT detalhe FROM eventos WHERE tipo='bolao' ORDER BY id").map(e=>JSON.parse(e.detalhe));
- assert.deepEqual(logged.at(-1),{bolao:'oldstock-chapeco-2026',fecha_em:new Date(CLOSES).toISOString(),resultado:RESULT});
+ assert.deepEqual(logged.at(-2),{bolao:'oldstock-chapeco-2026',fecha_em:new Date(CLOSES).toISOString()});assert.deepEqual(logged.at(-1),{bolao:'oldstock-chapeco-2026',resultado:RESULT});
  const panel=await boss.get('/api/admin/palpites');assert.equal(panel.palpites.length,5);assert.equal(panel.pronto,true);
+ assert.equal(panel.palpites[0].conta_em,new Date(sql("SELECT criado_em FROM usuarios WHERE apelido='Ana Volta'")[0].criado_em).toISOString(),'when each account was made');
  assert.equal((await ana.get('/api/admin/palpites')).status,403);assert.equal((await browser().get('/api/admin/palpites')).status,401);
 });
 
@@ -143,7 +167,8 @@ await check('who runs the palpites: an admin, or an account the database marks, 
  assert.equal((await boss.get('/api/admin/usuarios')).usuarios.find(u=>u.id===id).gerente_palpites,1);
  const me=(await stevan.get('/api/conta/eu')).conta;assert.equal(me.palpites,true);assert.equal(me.admin,undefined,'the palpites only, not the admin panel');
  const panel=await stevan.get('/api/admin/palpites');assert.equal(panel.status,200);assert.equal(panel.palpites[0].email,'ana.volta@exemplo.com.br');
- assert.equal((await stevan.post('/api/admin/bolao',{fecha_em:new Date(CLOSES).toISOString()})).status,200);
+ assert.equal((await stevan.post('/api/admin/bolao',{resultado:RESULT})).status,200);
+ assert.equal((await stevan.post('/api/admin/bolao',{fecha_em:new Date(now+3600000).toISOString()})).status,409,'closed for him too');
  assert.equal((await stevan.go('/api/admin/ofertas')).status,200);
  assert.equal((await stevan.get('/api/admin/resumo')).status,403,'the admin panel stays the admins\'');
  assert.equal((await boss.get('/api/conta/eu')).conta.palpites,true,'an admin runs them too');
@@ -174,13 +199,20 @@ await check("the sponsors' offers: optional, ticked with the guess or on their o
  const panel=await boss.get('/api/admin/palpites');assert.equal(panel.ofertas,1);
  assert.deepEqual(panel.palpites.map(p=>p.ofertas),[false,false,true,false,false]);
  const r=await caio.go('/api/conta/meus-dados');assert.ok((await r.json()).conta.aceitou_ofertas_dos_patrocinadores_em);
+ // An address a spreadsheet would take for a formula goes in as text.
+ const odd=await pilot('500000000000000000013','Gil Planilha',{email:'=1+1@exemplo.com.br'});
+ assert.equal((await odd.post('/api/palpites/ofertas',{aceito:true})).status,200);
+ assert.ok((await csv(boss)).text.includes(`"Gil Planilha","'=1+1@exemplo.com.br","`));
+ assert.equal((await odd.post('/api/palpites/ofertas',{aceito:false})).status,200);
 });
 
 await check("the pilot's data carries the e-mail and the guess, and deleting the account takes both",async()=>{
  const r=await duda.go('/api/conta/meus-dados'),data=await r.json();
  assert.equal(data.conta.email,'piloto0007@exemplo.com.br');
  assert.deepEqual(data.palpites,[{fim_de_semana:'oldstock-chapeco-2026',quando:data.palpites[0].quando,treino:2,corrida1:4,corrida2:9}]);
+ assert.equal(sql('SELECT COUNT(*) AS n FROM palpites_apagados')[0].n,0,'the closed weekend\'s mark went at a sign-in after the close');
  assert.equal((await duda.post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
+ assert.equal(sql('SELECT COUNT(*) AS n FROM palpites_apagados')[0].n,0,'deleted after the close: no mark (no guess can come)');
  assert.equal(sql("SELECT COUNT(*) AS n FROM palpites p LEFT JOIN usuarios u ON u.id=p.usuario_id WHERE u.id IS NULL")[0].n,0);
  assert.equal(sql("SELECT COUNT(*) AS n FROM usuarios WHERE google_sub='500000000000000000007'")[0].n,0);
  assert.equal((await browser().get('/api/palpites')).total,4);

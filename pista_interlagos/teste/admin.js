@@ -56,7 +56,7 @@ function detail(e){
   case 'revisao':return `${where(d)} · ${lap(d.volta_ms)} · ${d.aprovada?'aprovada: virou recorde ✓':'recusada'}`;
   case 'palpite':return guessText(d);
   case 'bolao':return [d.fecha_em&&'fecham '+when(Date.parse(d.fecha_em)),d.resultado===null?'resultado apagado':d.resultado&&'resultado '+guessText(d.resultado)].filter(Boolean).join(' · ');
-  case 'desclassificado':return d.desclassificado?'tirado da disputa':'devolvido à disputa';
+  case 'desclassificado':return (d.desclassificado?'tirado da disputa':'devolvido à disputa')+(d.por?` por ${d.por}`:'');
   case 'ofertas':return d.aceito?'aceitou receber':'não quer mais receber';
   case 'gerente_palpites':return d.gerente?'ganhou o painel dos palpites':'perdeu o painel dos palpites';
   default:return '';

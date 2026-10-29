@@ -1,8 +1,9 @@
 // The palpites' panel (painel-palpites.html, with the accounts: publicacao.py PALPITES). It reads the accounts
 // server's /api/admin/palpites (conta-cloudflare/src/palpites.js), which answers only who runs the palpites (an
 // administrator, or an account the database marks: the real Stevan): this page decides nothing. The weekend's closing
-// time, the official result, the podium, and every guess in line with who sent it (nickname and whole e-mail), its hits
-// and whether they accepted the sponsors' offers, with a button to take a guess out. Everything shown goes in as text.
+// time (while open), the official result, the podium, and every guess in line with who sent it (nickname and whole
+// e-mail, how long before it the account was made), its hits and whether they accepted the sponsors' offers, with a button
+// to take a guess out. Everything shown goes in as text.
 const $=id=>document.getElementById(id);
 const GRID=13,STAGES=[['treino','Treino','sem tempo'],['corrida1','Corrida 1','não completou'],['corrida2','Corrida 2','não completou']];
 const position=(stage,p)=>p===0?STAGES.find(s=>s[0]===stage)[2]:`${p}º`;
@@ -55,6 +56,18 @@ function armed(label,act){
  };
  return b;
 }
+// How long before its guess each account was made, with a warning when it was made on the spot among others also made on
+// the spot minutes apart: one person with several accounts guesses like that (a crowd after a post too: the e-mails tell).
+const FRESH=30*60000,BURST=3*60000;
+function madeBefore(list){
+ const age=p=>Date.parse(p.quando)-Date.parse(p.conta_em),fresh=list.map(p=>age(p)<=FRESH);
+ const near=(i,j)=>j>=0&&j<list.length&&fresh[j]&&Math.abs(Date.parse(list[i].quando)-Date.parse(list[j].quando))<=BURST;
+ return new Map(list.map((p,i)=>{
+  if(!p.conta_em)return [p.id,'—'];
+  const min=Math.round(age(p)/60000),text=min<1?'na hora':min<60?`${min} min antes`:min<2880?`${Math.round(min/60)} h antes`:`${Math.round(min/1440)} dias antes`;
+  return [p.id,fresh[i]&&(near(i,i-1)||near(i,i+1))?`⚠ ${text}, em rajada`:text];
+ }));
+}
 // A summary card; small: a value of words (a date), in a smaller type.
 function card(label,value,note,small_=false){
  const c=document.createElement('div'),span=document.createElement('span'),b=document.createElement('b'),small=document.createElement('small');
@@ -73,6 +86,9 @@ function draw(data){
  $('bolaoTitulo').textContent=b.titulo;
  $('bolaoInfo').textContent=data.pronto?'':'FALTA o segredo EMAIL_KEY no Worker: os palpites não abrem sem ele.';
  $('bolaoFecha').value=toInput(b.fecha_em);
+ // The closing time moves only while the guesses are open (closed, the server never opens them again), on a second click.
+ $('bolaoFecha').disabled=!b.aberto;
+ $('bolaoFechaBotao').replaceChildren(...(b.aberto?[armed('Salvar horário',()=>{const iso=fromInput($('bolaoFecha').value);if(!iso)throw new Error('Escolha o dia e a hora.');return get('bolao',{fecha_em:iso});})]:[]));
  for(const [stage] of STAGES)select(stage).value=String(b.resultado?.[stage]??1);
  const result=()=>Object.fromEntries(STAGES.map(([stage])=>[stage,Number(select(stage).value)]));
  $('bolaoResultadoBotoes').replaceChildren(armed('Salvar resultado',()=>get('bolao',{resultado:result()})),...(b.resultado?[armed('Apagar resultado',()=>get('bolao',{resultado:null}))]:[]));
@@ -80,7 +96,8 @@ function draw(data){
  const offers=document.createElement('a');offers.href='/api/admin/ofertas';offers.download='ofertas-patrocinadores.csv';offers.textContent='Baixar a lista de quem aceitou ofertas (CSV)';
  $('bolaoOfertas').replaceChildren(...(data.ofertas?[offers]:[]));
  rows('podio',data.podio,[[w=>`${w.lugar}º lugar`],[w=>w.apelido??'(sem apelido)'],[w=>email(w.email)??'(sem e-mail)'],[w=>String(w.acertos),'num'],[w=>when(Date.parse(w.quando))]]);
- rows('listaPalpites',data.palpites,[[p=>String(p.ordem),'num'],[p=>(p.apelido??'(sem apelido)')+(p.desclassificado?' · desclassificado':'')],[p=>email(p.email)??'—'],[p=>when(Date.parse(p.quando))],
+ const made=madeBefore(data.palpites);
+ rows('listaPalpites',data.palpites,[[p=>String(p.ordem),'num'],[p=>(p.apelido??'(sem apelido)')+(p.desclassificado?' · desclassificado':'')],[p=>email(p.email)??'—'],[p=>when(Date.parse(p.quando))],[p=>made.get(p.id)],
   [p=>position('treino',p.treino)],[p=>position('corrida1',p.corrida1)],[p=>position('corrida2',p.corrida2)],[p=>p.acertos===undefined?'—':String(p.acertos),'num'],[p=>p.ofertas?'✓':'—','ic'],
   [p=>armed(p.desclassificado?'Devolver':'Desclassificar',()=>get('palpite',{palpite:p.id,desclassificar:!p.desclassificado})),'acao']]);
  $('painel').hidden=false;$('aviso').hidden=true;$('atualizado').textContent=`Atualizado às ${new Date().toLocaleTimeString('pt-BR',{timeStyle:'short'})}`;
@@ -91,10 +108,6 @@ async function load(){
  try{draw(await get('palpites'));}
  catch(error){$('painel').hidden=true;warn(error.status===401?'Entre com a sua conta no jogo primeiro (Entrar com Google) e volte aqui.':error.message);}
 }
-$('bolaoFechaSalvar').onclick=async()=>{
- const iso=fromInput($('bolaoFecha').value);if(!iso)return;
- try{draw(await get('bolao',{fecha_em:iso}));}catch(error){warn(error.message);}
-};
 $('olho').onclick=()=>{showEmails=!showEmails;drawEye();if(last)draw(last);};
 drawEye();
 $('atualizar').onclick=load;

@@ -99,7 +99,8 @@ function drawAction(){
  send.onclick=async()=>{
   send.disabled=true;send.textContent='Enviando…';
   try{state=await call(API,{...picks(),ofertas:wantsOffers});try{sessionStorage.removeItem(DRAFT);}catch{}render();}
-  catch(error){showError(error.message);if(error.falta||error.status===409||error.status===403)await load();else drawAction();}
+  // (the page drawn again first: drawing clears the message)
+  catch(error){if(error.falta||error.status===409||error.status===403)await load();else drawAction();showError(error.message);}
  };
  const final=el('p','definitivo');final.append(el('b',null,'Atenção:'),' o palpite é um só. Depois de palpitar, não dá para mudar.');
  box.append(consent,final,send);

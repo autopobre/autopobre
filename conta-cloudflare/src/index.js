@@ -9,7 +9,8 @@
 // what it did (eventos.js, 90 days, for the admin panel) and how much it raced (recordes.js: the totals, kept as long as
 // the account). A pilot who joins the palpites (palpites.js) signs in from that page with the scope email too: their
 // verified e-mail is kept sealed (email.js), to tell the podium.
-// Each account can download all of it (/meus-dados) and delete it for good (/apagar).
+// Each account can download all of it (/meus-dados) and delete it for good (/apagar); only a guess on a weekend still open
+// leaves, until it closes, a keyed mark of the Google account (palpites.js deletedGuess), so it cannot guess twice.
 //
 // Sign-in is the authorization code flow, run here (the page loads no Google script): state, nonce and
 // the PKCE verifier travel in a short-lived encrypted cookie, so nothing is written before Google has
@@ -25,7 +26,7 @@ import {ADMIN_GETS,ADMIN_POSTS} from './admin.js';
 import {ROOM_POSTS} from './sala.js';
 import {event,forgetOld,recent,HOUR} from './eventos.js';
 import {cleanNickname,nicknameKey,RESERVED,NICKNAME_RULE} from './apelidos.js';
-import {PALPITES_GETS,PALPITES_POSTS} from './palpites.js';
+import {PALPITES_GETS,PALPITES_POSTS,deletedGuess,forgetDeletedGuesses} from './palpites.js';
 import {emailReady,verifiedEmail,sealEmail,openEmail} from './email.js';
 
 const SESSION_DAYS=30;        // a session's life; signing in again makes a new one
@@ -93,7 +94,7 @@ async function googleBack(request,env,url){
  const now=Date.now();
  const user=await env.DB.prepare('INSERT INTO usuarios (google_sub,criado_em,ultimo_login) VALUES (?1,?2,?2) ON CONFLICT(google_sub) DO UPDATE SET ultimo_login=?2 RETURNING id,criado_em').bind(claims.sub,now).first();
  const value=b64url(random(32)),steps=[
-  event(env,user.criado_em===now?'conta_criada':'entrou',user.id,{site:siteOf(env)}),...forgetOld(env),
+  event(env,user.criado_em===now?'conta_criada':'entrou',user.id,{site:siteOf(env)}),...forgetOld(env),forgetDeletedGuesses(env),
   env.DB.prepare('INSERT INTO sessoes (id,usuario_id,criada_em,expira_em,site) VALUES (?,?,?,?,?)').bind(await hashed(value),user.id,now,now+SESSION_DAYS*86400000,siteOf(env)),
   env.DB.prepare('DELETE FROM sessoes WHERE expira_em<=?').bind(now),
   env.DB.prepare('DELETE FROM sessoes WHERE usuario_id=?1 AND id NOT IN (SELECT id FROM sessoes WHERE usuario_id=?1 ORDER BY criada_em DESC LIMIT ?2)').bind(user.id,MAX_SESSIONS)];
@@ -133,9 +134,10 @@ async function deleteAccount(request,env,body){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
  if(body.confirmar!=='APAGAR')return json({erro:'Confirme para apagar a conta.'},400);
  // Its records, laps, races, totals, guesses, sessions and events go with it (its e-mail with the account's row); the
- // panel keeps only that an account was deleted, by nobody.
- await env.DB.batch(['recordes','voltas','corridas','totais','palpites','sessoes','eventos'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE usuario_id=?`).bind(s.id))
-  .concat(env.DB.prepare('DELETE FROM usuarios WHERE id=?').bind(s.id),event(env,'conta_apagada')));
+ // panel keeps only that an account was deleted, by nobody. A guess on a weekend still open leaves a mark of the Google
+ // account until it closes (palpites.js deletedGuess: the guess is final, and coming back must not make a second one).
+ await env.DB.batch([...await deletedGuess(env,s),...['recordes','voltas','corridas','totais','palpites','sessoes','eventos'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE usuario_id=?`).bind(s.id)),
+  env.DB.prepare('DELETE FROM usuarios WHERE id=?').bind(s.id),event(env,'conta_apagada')]);
  return json({conta:null,apagada:true},200,{cookies:[signedOut()]});
 }
 

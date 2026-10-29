@@ -23,7 +23,7 @@
   <p class="nota" id="bolaoInfo"></p>
   <div class="bolao-campos">
    <label>Fecham em (horário de Brasília) <input id="bolaoFecha" type="datetime-local"></label>
-   <button id="bolaoFechaSalvar" type="button">Salvar horário</button>
+   <span id="bolaoFechaBotao" class="botoes"></span>
   </div>
   <div class="bolao-campos">
    <span>Resultado oficial</span>
@@ -32,7 +32,7 @@
    <label>Corrida 2 <select id="resCorrida2"></select></label>
    <span id="bolaoResultadoBotoes" class="botoes"></span>
   </div>
-  <p class="nota">O resultado só pode ser salvo depois que os palpites fecham. Salvar pede um segundo clique para confirmar.</p>
+  <p class="nota">O horário só muda enquanto os palpites estão abertos: depois de fechar, eles não reabrem. O resultado só pode ser salvo depois que fecham. Salvar pede um segundo clique para confirmar.</p>
  </section>
  <section class="bloco">
   <h2>Pódio</h2>
@@ -40,9 +40,9 @@
  </section>
  <section class="bloco">
   <div class="titulo-filtro"><h2>Quem palpitou, na ordem em que chegou</h2><span id="bolaoOfertas" class="nota"></span></div>
-  <div class="rolagem"><table id="listaPalpites"><thead><tr><th class="num">Nº</th><th>Apelido</th><th>E-mail</th><th>Quando</th><th>Treino</th><th>Corrida 1</th><th>Corrida 2</th><th class="num">Acertos</th><th class="ic" title="Aceitou receber ofertas dos patrocinadores">Ofertas</th><th></th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nenhum palpite ainda.</p></div>
+  <div class="rolagem"><table id="listaPalpites"><thead><tr><th class="num">Nº</th><th>Apelido</th><th>E-mail</th><th>Quando</th><th title="Quanto tempo antes do palpite a conta foi criada">Conta feita</th><th>Treino</th><th>Corrida 1</th><th>Corrida 2</th><th class="num">Acertos</th><th class="ic" title="Aceitou receber ofertas dos patrocinadores">Ofertas</th><th></th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nenhum palpite ainda.</p></div>
  </section>
- <p class="nota">Os e-mails aparecem só aqui, para quem cuida dos palpites, escondidos até clicar no olho. Desclassificar tira o palpite da disputa (contas repetidas da mesma pessoa, por exemplo); Devolver o põe de volta.</p>
+ <p class="nota">Os e-mails aparecem só aqui, para quem cuida dos palpites, escondidos até clicar no olho. Desclassificar tira o palpite da disputa (contas repetidas da mesma pessoa, por exemplo); Devolver o põe de volta. “Conta feita” diz quanto tempo antes do palpite a conta foi criada; “⚠ em rajada” é conta feita na hora, colada em outra também feita na hora: pode ser uma pessoa com várias contas, ou só gente chegando junto depois de um post. Os e-mails ajudam a decidir.</p>
 </main>
 </body>
 </html>

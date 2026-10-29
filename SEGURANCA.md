@@ -1,5 +1,30 @@
 # Revisão para publicação — 13/09/2026
 
+## Atualização — 29/10/2026: revisão do login e dos palpites
+
+Procurados: injeção, XSS, CSRF, falhas do login, e jeitos de burlar os palpites. Os achados foram comprovados no servidor de contas local antes de corrigir.
+
+- **Sem achado (conferido):**
+  - SQL só com parâmetros; os nomes de tabela e coluna montados em texto vêm de listas fixas do código.
+  - As páginas escrevem tudo com `textContent`; o `innerHTML` só leva texto fixo; CSP no HTML. Os cabeçalhos (`frame-ancestors 'none'`, `X-Frame-Options`, HSTS, `nosniff`) foram conferidos no ar em autopobre.com.br e dev.autopobre.com.br, nas páginas dos palpites e no `/api/`.
+  - Toda escrita exige a origem exata e JSON.
+  - Login: PKCE, state, nonce, emissor, audiência e validade conferidos; cookie `__Host-` com só o SHA-256 no banco; sessão de cada site; retorno só para um caminho do próprio site.
+  - Os segredos `SEAL_KEY`, `EMAIL_KEY` e `ADMINS` estão nos dois Workers (conferidos só os nomes).
+  - O prazo é o relógio do servidor; um palpite por conta pelo `UNIQUE` do banco, também entre os dois sites; a distribuição dos palpites fica escondida até fechar.
+- **Corrigido:**
+  - **Reabrir depois do fechamento:** quem cuida dos palpites podia pôr o fechamento no futuro depois do treino, e um palpite de quem já sabia o resultado entrava e continuava valendo. Agora o horário só muda enquanto os palpites estão abertos (409 depois). No painel, o campo trava, e salvar pede um segundo clique (um horário errado no passado não tem volta).
+  - **Palpite "definitivo" trocado apagando a conta:** apagar e entrar de novo com a mesma conta Google dava um palpite novo. Agora, com o fim de semana aberto, a conta apagada deixa em `palpites_apagados` (migração 0012) um HMAC do identificador do Google (chave tirada do `EMAIL_KEY`, igual nos dois Workers; nunca o identificador), que recusa outro palpite até o fechamento. O primeiro login depois do fechamento apaga a marca. A privacidade diz isso.
+  - **Várias contas da mesma pessoa:** com 14 contas palpitando cedo, uma por posição do treino, alguma fica no pódio (o empate favorece quem palpitou primeiro). Não há como impedir sem dado pessoal a mais. O painel passa a mostrar quanto tempo antes do palpite a conta foi feita e marca "⚠ em rajada" (conta feita na hora, a menos de 3 min de outra também feita na hora), para a organização olhar os e-mails e desclassificar.
+  - **CSV das ofertas:** uma célula que começa com `=`, `+`, `-`, `@`, tab ou retorno ganha um apóstrofo (fórmula de planilha). O e-mail vem do Google, que dificilmente confirmaria um endereço assim: é só reforço.
+  - **Quem desclassificou:** o evento do piloto passa a guardar quem (são duas pessoas cuidando).
+  - **Texto:** a página dos palpites e o "O que guardamos" da conta diziam "ninguém mais vê" o e-mail; agora dizem que a administração e o Stevan veem, como a privacidade.
+- **Fica como está (decisão do dono ou baixo risco):**
+  - O desempate por quem palpitou primeiro (regra publicada).
+  - O museu em `autopobre.com.br/dev/` divide a origem com o `/api/` do principal: um XSS nele usaria as contas. Nada encontrado; é superfície a mais.
+  - O menu do jogo pergunta `/api/palpites` a cada abertura, e depois do fechamento isso lê todos os palpites (custo do D1, não falha).
+- **Testes:** `conta-cloudflare` `npm test`. O `testar_palpites.mjs` ganhou os casos novos, e o `testar_wrangler.mjs` passou a rodar os palpites com `EMAIL_KEY` no runtime do Cloudflare (e-mail cifrado, marca HMAC). A página e o painel foram conferidos num navegador headless contra o servidor local.
+- **Para valer:** migração 0012 no banco remoto, depois `deploy` dos DOIS Workers (um Worker de antes não deixa a marca nem a confere), e publicação das páginas (painel, página dos palpites, privacidade, `conta.js`).
+
 ## Atualização — 26/10/2026 (noite): salas só com conta, duas senhas, convites e chat
 
 - **Conta obrigatória:** o servidor de salas só deixa entrar quem mostra um passe do servidor de contas (`POST /api/conta/passe-sala`: sessão válida e apelido escolhido). O passe é um HMAC-SHA256 com o segredo `SALA_PASSE`, igual nos dois Workers, vale 5 minutos e uma sala só. A sala conhece a conta só por um HMAC do identificador do Google. Sem passe, nenhuma senha é testada (4014), então quem não tem conta de teste nem chega a tentar senhas.

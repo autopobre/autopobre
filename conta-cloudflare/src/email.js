@@ -34,6 +34,17 @@ export async function openEmail(env,text){
   return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:bytes.slice(0,12)},await key(env),bytes.slice(12)));
  }catch{return null;}
 }
+// A Google account as the palpites remember it after the account is gone (palpites.js deletedGuess): an HMAC of its id
+// under a key from EMAIL_KEY too (both Workers must tell it the same), never the id itself.
+const marks=new Map();
+export async function accountMark(env,sub){
+ const secret=String(env.EMAIL_KEY);
+ if(!marks.has(secret)){
+  const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),'HKDF',false,['deriveKey']);
+  marks.set(secret,await crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:new TextEncoder().encode('autopobre-conta'),info:new TextEncoder().encode('palpite-apagado-v1')},base,{name:'HMAC',hash:'SHA-256',length:256},false,['sign']));
+ }
+ return b64url(await crypto.subtle.sign('HMAC',marks.get(secret),new TextEncoder().encode(sub)));
+}
 // The address as others may see it: its first letter and its domain.
 export const maskEmail=email=>{
  if(typeof email!=='string'||!email.includes('@'))return null;

@@ -1,18 +1,18 @@
 // The same Worker in Cloudflare's own runtime (wrangler dev, local D1 with the migrations applied),
 // signing in through the stand-in Google of local.mjs: the SQL (RETURNING, numbered parameters, batch)
-// and the WebCrypto calls as Cloudflare runs them. Run `.\wrangler d1 migrations apply
+// and the WebCrypto calls as Cloudflare runs them (the palpites' sealed e-mail and account mark too). Run `.\wrangler d1 migrations apply
 // conta-autopobre-dev --local` once before. The page's origin is another port, as with servidor.py
 // passing /api/ on: wrangler dev rewrites an Origin that names its own address into the route's host.
 import assert from 'node:assert/strict';
 import {spawn,execSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {startLocal,CLIENT_ID,CLIENT_SECRET} from './local.mjs';
+import {startLocal,CLIENT_ID,CLIENT_SECRET,EMAIL_KEY} from './local.mjs';
 import {CHUNK_EVERY} from '../src/recordes.js';
 import {packSteps,packKeys} from '../../pista_interlagos/teste/comandos-volta.js';
 import {encodeGhost} from '../../pista_interlagos/teste/ghost-lap.js';
 
 const PORT=8790,API=`http://127.0.0.1:${PORT}`,ORIGIN='http://127.0.0.1:8799',google=await startLocal({port:0}),G=`http://127.0.0.1:${google.port}/falso-google`;
-const vars={ORIGEM:ORIGIN,GOOGLE_CLIENT_ID:CLIENT_ID,GOOGLE_CLIENT_SECRET:CLIENT_SECRET,GOOGLE_AUTH_URL:G+'/auth',GOOGLE_TOKEN_URL:G+'/token'};
+const vars={ORIGEM:ORIGIN,GOOGLE_CLIENT_ID:CLIENT_ID,GOOGLE_CLIENT_SECRET:CLIENT_SECRET,GOOGLE_AUTH_URL:G+'/auth',GOOGLE_TOKEN_URL:G+'/token',EMAIL_KEY};
 const args=[fileURLToPath(new URL('../node_modules/wrangler/bin/wrangler.js',import.meta.url)),'dev','--ip','127.0.0.1','--port',String(PORT),'--show-interactive-dev-session=false'];
 for(const [k,v] of Object.entries(vars))args.push('--var',`${k}:${v}`);
 const dev=spawn(process.execPath,args,{cwd:fileURLToPath(new URL('..',import.meta.url)),env:{...process.env,WRANGLER_SEND_METRICS:'false'}});
@@ -31,8 +31,9 @@ try{
  };
  const post=(path,body)=>go(path,{method:'POST',headers:{Origin:ORIGIN,'Content-Type':'application/json'},body:JSON.stringify(body)});
  google.google.next.sub=String(Date.now());
- const start=await go('/api/conta/entrar?volta=/x');assert.equal(start.status,303);
- const fromGoogle=await go(start.headers.get('Location'));const back=await go(fromGoogle.headers.get('Location'));
+ // From the palpites page (?email=1): the e-mail comes too.
+ const signIn=async()=>{const start=await go('/api/conta/entrar?email=1&volta=/x');assert.equal(start.status,303);const fromGoogle=await go(start.headers.get('Location'));return go(fromGoogle.headers.get('Location'));};
+ const back=await signIn();
  assert.equal(back.headers.get('Location'),ORIGIN+'/x');assert.ok(jar.has('__Host-ap_sessao'),'signed in');
  const nick='Teste '+String(Date.now()).slice(-6);
  assert.equal((await post('/api/conta/apelido',{apelido:nick})).status,200);
@@ -54,7 +55,18 @@ try{
  // The local database keeps what an interrupted run left: this run's own row only.
  assert.deepEqual(board.recordes.filter(r=>r.apelido===nick).map(r=>[r.apelido,r.selo,r.volta_ms,r.meu]),[[nick,'nao_verificado',95000,true]]);
  assert.equal((await (await go('/api/recordes/melhores?modo=normal')).json()).melhores.cascavel,undefined,'the circuit list counts checked laps only');
+ // The palpites (EMAIL_KEY): the e-mail sealed and opened; while a weekend is open, a guess, and after deleting the
+ // account the Google account's mark (its HMAC) refuses a second one.
+ const view=await (await go('/api/palpites')).json();
+ assert.match(view.conta?.email??'',/^p•••@exemplo\.com\.br$/,JSON.stringify(view));
+ const open=view.bolao?.aberto===true;
+ if(open)assert.equal((await post('/api/palpites',{treino:1,corrida1:2,corrida2:3})).status,200);
  assert.equal((await post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
  assert.equal((await (await go('/api/conta/eu')).json()).conta,null);
- console.log('ok: entrar, apelido, meus dados, bilhete, recordes e apagar no runtime do Cloudflare (wrangler dev)');
+ if(open){
+  await signIn();assert.equal((await post('/api/conta/apelido',{apelido:nick})).status,200);
+  assert.equal((await post('/api/palpites',{treino:1,corrida1:1,corrida2:1})).status,409,'deleted with a guess: not a second one');
+  assert.equal((await post('/api/conta/apagar',{confirmar:'APAGAR'})).status,200);
+ }
+ console.log(`ok: entrar, apelido, meus dados, bilhete, recordes, palpites${open?' (com palpite)':''} e apagar no runtime do Cloudflare (wrangler dev)`);
 }finally{stop();await google.close();}
