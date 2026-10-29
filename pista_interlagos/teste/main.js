@@ -2163,8 +2163,9 @@ let championshipRace=null,storyRound=null,scoredChampionship=null,pendingMode=nu
 // Modo Corrida's single races: 'grid' (the whole field), 'solo' (practice alone) or 'duel' (the 1x1).
 let raceKind='grid';
 // The race under way as the pilot's online history takes it on its ticket (onlineRun race): corrida, 1x1, campeonato,
-// historia or treino, fixed as the race begins (a championship round stays one after its flag scored it); and its number
-// (each race begun or begun again another, though its clock never ran: a run of its own).
+// historia or treino, fixed as the race begins (a championship round stays one after its flag scored it), or as the
+// story's end hands its circuit to the free session (onNormal: a race of the whole field, not the story's); and its
+// number (each race begun or begun again another, though its clock never ran: a run of its own).
 let onlineKind='corrida',onlineRaceId=0;
 const lapRecords=new LapRecords(circuit.id),raceResults=new RaceResults({
  // A multiplayer guest does not rerun alone: it goes back to the car screen to wait for the host's next race.
@@ -2770,7 +2771,7 @@ async function loadCircuit(){
   circuitExtras.push(saucer);scene.add(saucer.root);}
  restBodyPose();
  carLivery.clear();
- immersive=new ImmersiveMode({scene,carRoot,car,data,driver,rivalTemplate:model,skidMarks,layout:pitLayout,obstacles:cameraObstacles,setView:setCameraMode,getView:()=>mode,playerView:()=>preferences.values.camera,resetVehicle:()=>reset(),releaseMouse:()=>{keys.clear();mobile?.clear();if(document.pointerLockElement)document.exitPointerLock();},onNormal:()=>{storyRound=null;chooseImmersive(false);reset();menu(true);},
+ immersive=new ImmersiveMode({scene,carRoot,car,data,driver,rivalTemplate:model,skidMarks,layout:pitLayout,obstacles:cameraObstacles,setView:setCameraMode,getView:()=>mode,playerView:()=>preferences.values.camera,resetVehicle:()=>reset(),releaseMouse:()=>{keys.clear();mobile?.clear();if(document.pointerLockElement)document.exitPointerLock();},onNormal:()=>{storyRound=null;onlineKind='corrida';onlineRaceId++;chooseImmersive(false);reset();menu(true);},
   // The start always finds the handbrake down: A (Space) pressed to skip the opening, in the 3-2-1 or in the
   // story paddock pulled it, and the car would sit there at the green light.
   onGo:()=>mobile?.setHandbrake(false)});

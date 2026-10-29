@@ -9,6 +9,8 @@ in with a nickname.
   does, without the laps), the podium and the judge's inspection, which puts the car back by the line with its clock at
   naught, open no other; its result goes once, on that ticket, when the judge is done (refused here, 409: its laps
   were not driven).
+- Voltar à sessão livre, at the story's end: the free session that follows is a race of its own, Modo Corrida's (its
+  ticket says corrida, not the story's historia).
 Usage: verificar_historico.py [porta] (the preview's; the accounts server takes porta+1000). Needs node
 (INTERLAGOS_NODE=node.exe when node is not on the PATH)."""
 import json
@@ -151,6 +153,16 @@ try:
         check('one_story_race_logged', len(story) == 1 and story[0]['tipo'] == 'historia' and story[0]['carros'] == 15 and story[0]['voltas'] == 2, story)
         check('story_result_refused_without_laps', results()[-1][1] == 409 and story[0]['resultado_em'] is None, results())
         report['historia'] = story
+
+        # Voltar à sessão livre: the story's circuit goes on as Modo Corrida's free race, a race of its own.
+        before, rows = len(tickets()), len(races())
+        page.evaluate("()=>fixtureMode.action('normal')")
+        wait_js(page, "!document.getElementById('resume').hidden", timeout=30000)
+        page.evaluate("document.getElementById('resume').click()")
+        check('free_session_opens_one', wait_until(page, lambda: len(tickets()) == before + 1, 60), tickets())
+        free = races()[rows:]
+        check('free_session_is_a_race_not_the_story', len(free) == 1 and free[0]['tipo'] == 'corrida' and free[0]['modo'] == 'normal', free)
+        report['sessao_livre'] = free
         browser.close()
 finally:
     for s in servers:
