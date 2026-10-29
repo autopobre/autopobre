@@ -68,8 +68,8 @@ await check('the same Google account comes back to the same account',async()=>{
 });
 
 await check('nicknames: rules, uniqueness without accents or case',async()=>{
- for(const bad of ['ab','a'.repeat(21),'Jоão','-Bia','Bia_','😀 Piloto','Bia​X','.. ..','<b>x</b>','ᴋʟᴇʙᴇʀ','Steνan','Ana×Bia'])assert.equal(cleanNickname(bad),null,bad);
- assert.equal(cleanNickname('  João   da  Silva  '),'João da Silva');assert.equal(cleanNickname('ＡＢＣ'),'ABC');assert.equal(cleanNickname('Zé_99'),'Zé_99');
+ for(const bad of ['ab','a.b','A-1','x_y','A B','a'.repeat(21),'Jоão','-Bia','Bia_','😀 Piloto','Bia​X','.. ..','<b>x</b>','ᴋʟᴇʙᴇʀ','Steνan','Ana×Bia'])assert.equal(cleanNickname(bad),null,bad);
+ assert.equal(cleanNickname('  João   da  Silva  '),'João da Silva');assert.equal(cleanNickname('ＡＢＣ'),'ABC');assert.equal(cleanNickname('Zé_99'),'Zé_99');assert.equal(cleanNickname('Bob'),'Bob');assert.equal(cleanNickname('A.B.C'),'A.B.C');
  local.google.next.sub='100000000000000000003';
  const b=browser();await b.signIn();
  const r=await b.post('/api/conta/apelido',{apelido:'x'});assert.equal(r.status,400);assert.match((await r.json()).erro,/3 a 20/);

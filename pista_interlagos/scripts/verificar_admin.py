@@ -63,7 +63,7 @@ try:
   cards=admin.evaluate("[...document.querySelectorAll('.cartao')].map(c=>[c.querySelector('span').textContent,c.querySelector('b').textContent])")
   assert dict(cards)['Contas']=='2' and dict(cards)['Recordes ⚠️']=='1',cards
   users=admin.evaluate("[...document.querySelectorAll('#usuarios tbody tr')].map(tr=>tr.children[0].textContent)")
-  assert 'Piloto Dois' in users and '(sem apelido) · admin' in users,users
+  assert 'Piloto Dois' in users and '(ainda sem apelido) · admin' in users,users
   kinds=admin.evaluate("[...document.querySelectorAll('#eventos tbody tr td.tipo')].map(td=>td.textContent)")
   assert {'Conta criada','Trocou o apelido','Subiu recordes antigos'}<=set(kinds),kinds
   records=admin.evaluate("[...document.querySelectorAll('#recordes tbody tr')].map(tr=>tr.textContent)")

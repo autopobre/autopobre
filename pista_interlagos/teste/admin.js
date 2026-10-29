@@ -79,7 +79,7 @@ let kind='',oldest=null;
 async function events(more=false){
  const q=new URLSearchParams();if(kind)q.set('tipo',kind);if(more&&oldest)q.set('antes',oldest);
  const list=(await get('eventos?'+q)).eventos;
- rows('eventos',list,[[e=>when(e.quando)],[e=>e.apelido??(e.tipo==='conta_apagada'?'(apagada)':'(sem apelido)')],[e=>KINDS[e.tipo]??e.tipo,'tipo'],[detail]],more);
+ rows('eventos',list,[[e=>when(e.quando)],[e=>e.apelido??(e.tipo==='conta_apagada'?'(apagada)':'(ainda sem apelido)')],[e=>KINDS[e.tipo]??e.tipo,'tipo'],[detail]],more);
  if(list.length)oldest=list[list.length-1].id;
  $('mais').hidden=list.length<100;
 }
@@ -132,10 +132,11 @@ function drawUsers(){
   [x=>x.ritmo?`${pace(x.ritmo.valor)} · ${track(x.ritmo.circuito)}`:'—','num'],[tracksCell,'acao'],[x=>when(x.criado_em)],[x=>when(x.ultimo_login)],[x=>String(x.sessoes),'num'],
   [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>[x.importou_em&&'dev '+when(x.importou_em),x.importou_principal_em&&'principal '+when(x.importou_principal_em)].filter(Boolean).join(' · ')||'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num'],[userButtons,'acao']]);
 }
-// The nickname opens the pilot's sheet.
+// The nickname opens the pilot's sheet. An account that signed in with Google and has not chosen one yet: "(ainda sem
+// apelido)", never a name typed (apelidos.js: parentheses are not allowed).
 function pilotButton(x){
  const b=document.createElement('button');b.type='button';b.className='nome';
- b.textContent=(x.apelido??'(sem apelido)')+(x.admin?' · admin':x.gerente_palpites?' · palpites':'');
+ b.textContent=(x.apelido??'(ainda sem apelido)')+(x.admin?' · admin':x.gerente_palpites?' · palpites':'');
  b.onclick=()=>sheet(x.id).catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});
  return b;
 }
@@ -150,7 +151,7 @@ let sheetId=null;
 async function sheet(id){
  const s=await get('piloto?id='+id),p=s.piloto,t=s.totais;sheetId=id;
  const sum=k=>t.reduce((n,x)=>n+x[k],0);
- $('fichaNome').textContent=`Ficha · ${p.apelido??'(sem apelido)'}`;
+ $('fichaNome').textContent=`Ficha · ${p.apelido??'(ainda sem apelido)'}`;
  $('fichaDatas').textContent=`Conta criada em ${when(p.criado_em)} · último login em ${when(p.ultimo_login)}`;
  const cards=[['Corridas',sum('corridas'),'desde sempre'],['Voltas',sum('voltas'),`${sum('conferidas')} conferidas`],['Resultados',sum('resultados'),`${sum('resultados')-sum('terminadas')} sem terminar`],
   ['Vitórias',sum('vitorias'),''],['Pódios',sum('podios'),''],['Posição média',average(sum('soma_posicoes'),sum('terminadas')),'nas que terminou']];
@@ -174,7 +175,7 @@ function userButtons(user){
 function nicknameButton(user){
  const b=document.createElement('button');b.type='button';b.textContent='Trocar apelido';
  b.onclick=async()=>{
-  const name=prompt(`Novo apelido para ${user.apelido??'(sem apelido)'}:`,user.apelido??'');if(name===null||!name.trim())return;
+  const name=prompt(`Novo apelido para ${user.apelido??'(ainda sem apelido)'}:`,user.apelido??'');if(name===null||!name.trim())return;
   b.disabled=true;
   try{await get('apelido',{usuario:user.id,apelido:name});await load();}
   catch(error){$('aviso').textContent=error.message;$('aviso').hidden=false;b.disabled=false;}
