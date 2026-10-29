@@ -23,9 +23,21 @@
   <ul id="motivos"></ul>
  </section>
  <section class="bloco">
-  <div class="titulo-filtro"><h2>Usuários</h2><label>Ordenar por <select id="ordem"><option value="login">Último login</option><option value="corridas">Corridas</option><option value="voltas">Voltas</option><option value="ritmo">Ritmo</option></select></label></div>
-  <p class="nota">Corridas: cada vez que o piloto entrou na pista com a conta. Ritmo: a melhor volta conferida comparada com a linha ideal do jogo (100% é a linha; menos que isso, mais rápido que ela). Contados nos últimos 90 dias.</p>
-  <div class="rolagem"><table id="usuarios"><thead><tr><th>Apelido</th><th class="num">Corridas</th><th class="num">Voltas</th><th class="num" title="Dias em que correu">Dias</th><th class="num" title="Melhor volta conferida sobre a linha ideal">Ritmo</th><th>Pistas (corridas)</th><th>Conta criada</th><th>Último login</th><th class="num">Sessões</th><th class="ic" title="Recordes conferidos">✓</th><th class="ic" title="Recordes antigos">⚠️</th><th>Antigos subiram</th><th class="num">Recusas (7 dias)</th><th class="num" title="Voltas com sinais de programa nos últimos 7 dias">Sinais (7 dias)</th><th></th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nenhuma conta ainda.</p></div>
+  <div class="titulo-filtro"><h2>Usuários</h2><label>Ordenar por <select id="ordem"><option value="login">Último login</option><option value="corridas">Corridas</option><option value="voltas">Voltas</option><option value="vitorias">Vitórias</option><option value="ritmo">Ritmo</option></select></label></div>
+  <p class="nota">Corridas: cada vez que o piloto entrou na pista com a conta. Vitórias e pódios: o que o jogo do piloto disse na bandeirada. Ritmo: a melhor volta conferida comparada com a linha ideal do jogo (100% é a linha; menos que isso, mais rápido que ela). Corridas, voltas, vitórias e pódios contam desde sempre; os dias, só os últimos 90. Clique no apelido para ver a ficha do piloto.</p>
+  <div class="rolagem"><table id="usuarios"><thead><tr><th>Apelido</th><th class="num">Corridas</th><th class="num">Voltas</th><th class="num" title="Vitórias declaradas pelo jogo na bandeirada">Vitórias</th><th class="num" title="Pódios declarados pelo jogo na bandeirada">Pódios</th><th class="num" title="Dias em que correu, nos últimos 90">Dias</th><th class="num" title="Melhor volta conferida sobre a linha ideal">Ritmo</th><th>Pistas (corridas)</th><th>Conta criada</th><th>Último login</th><th class="num">Sessões</th><th class="ic" title="Recordes conferidos">✓</th><th class="ic" title="Recordes antigos">⚠️</th><th>Antigos subiram</th><th class="num">Recusas (7 dias)</th><th class="num" title="Voltas com sinais de programa nos últimos 7 dias">Sinais (7 dias)</th><th></th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nenhuma conta ainda.</p></div>
+ </section>
+ <section class="bloco" id="ficha" hidden aria-live="polite">
+  <div class="titulo-filtro"><h2 id="fichaNome">Ficha do piloto</h2><button id="fecharFicha" type="button">Fechar</button></div>
+  <p class="nota" id="fichaDatas"></p>
+  <div id="fichaResumo" class="cartoes"></div>
+  <p class="nota">Vitórias, pódios e posições são o que o jogo do piloto disse na bandeirada: o servidor confere que a corrida chegou ao fim (as voltas passadas e o tempo que levaram), não a posição.</p>
+  <h3>Por pista</h3>
+  <div class="rolagem"><table id="fichaTotais"><thead><tr><th>Pista</th><th>Tipo</th><th>Nível</th><th class="num">Corridas</th><th class="num">Voltas</th><th class="num" title="Voltas conferidas">✓</th><th class="num" title="Corridas com resultado (bandeirada ou guincho)">Resultados</th><th class="num">Vitórias</th><th class="num">Pódios</th><th class="num" title="Posição média nas corridas que terminou">Média</th><th>Primeira</th><th>Última</th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nunca correu com a conta.</p></div>
+  <h3>Recordes</h3>
+  <div class="rolagem"><table id="fichaRecordes"><thead><tr><th>Pista</th><th>Modo</th><th class="num">Volta</th><th>Selo</th><th class="num" title="Sobre a linha ideal">Ritmo</th><th>Feito em</th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nenhum recorde.</p></div>
+  <h3 id="fichaCorridasTitulo">Últimas corridas</h3>
+  <div class="rolagem"><table id="fichaCorridas"><thead><tr><th>Quando</th><th>Pista</th><th>Tipo</th><th>Nível</th><th class="num">Voltas</th><th>Resultado</th></tr></thead><tbody></tbody></table><p class="vazio" hidden>Nenhuma corrida no período.</p></div>
  </section>
  <section class="bloco">
   <div class="titulo-filtro"><h2>Eventos</h2><label>Tipo <select id="tipo"><option value="">Todos</option></select></label></div>

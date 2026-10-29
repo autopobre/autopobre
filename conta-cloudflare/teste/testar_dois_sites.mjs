@@ -2,8 +2,8 @@
 // conta-autopobre on autopobre.com.br, SITE principal): two local Workers over one SQLite. A Google account is one
 // pilot on both, signed in on each site by its own session (a dev session never opens the main link's account); a
 // lap checked on either is on both boards; the trusted pilots' shortcut works on the test version only; the old
-// records come up once per site; signing out is per site, deleting the account ends it on both; the panel reads the
-// same data on both.
+// records come up once per site; signing out is per site, deleting the account ends it on both; a pilot's races on
+// both add up in one total; the panel reads the same data on both.
 import assert from 'node:assert/strict';
 import {encodeGhost} from '../../pista_interlagos/teste/ghost-lap.js';
 import {packSteps,packKeys} from '../../pista_interlagos/teste/comandos-volta.js';
@@ -112,6 +112,16 @@ await check('signing out is per site; deleting the account ends it on both',asyn
  assert.equal((await again.get('/api/conta/eu')).conta,null,'gone on the main link too');
  assert.equal(rows("SELECT COUNT(*) AS n FROM usuarios WHERE google_sub='600000000000000000002'")[0].n,0);
  assert.deepEqual(await board(browser(main)),[['Bia Principal',122000,'conferido'],['Chefe Dois',123000,'conferido']].sort((a,b)=>a[1]-b[1]));
+});
+
+await check('a pilot\'s races on both sites add up in one total, and both panels show it',async()=>{
+ const bia=await signIn(dev,'600000000000000000003'),biaMain=await signIn(main,'600000000000000000003');
+ const race={circuito:'interlagos',modo:'normal',carro:'opala',versao:'dois-sites',tipo:'1x1',nivel:'facil',carros:2,voltas:3};
+ for(const b of [bia,biaMain,bia])assert.equal((await b.post('/api/recordes/bilhete',race)).status,200);
+ assert.deepEqual(rows("SELECT t.tipo,t.nivel,t.corridas FROM totais t JOIN usuarios u ON u.id=t.usuario_id WHERE u.apelido='Bia Principal' AND t.tipo='1x1'").map(r=>({...r})),[{tipo:'1x1',nivel:'facil',corridas:3}]);
+ const bossMain=await signIn(main,BOSS),bossDev=await signIn(dev,BOSS);
+ const races=async b=>(await b.get('/api/admin/usuarios')).usuarios.find(u=>u.apelido==='Bia Principal').corridas;
+ assert.equal(await races(bossMain),await races(bossDev));
 });
 
 await check('the panel reads the same data on both sites',async()=>{

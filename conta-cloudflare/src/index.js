@@ -5,9 +5,10 @@
 //
 // What it keeps, and nothing else (LGPD: the least that makes an account): the Google account's
 // subject id (`sub`: the game's scope is openid alone, so no name, picture or e-mail arrives), the public
-// nickname the player picks, when the account was made and last signed in, its sessions, its online records and
-// what it did (eventos.js, 90 days, for the admin panel). A pilot who joins the palpites (palpites.js) signs in
-// from that page with the scope email too: their verified e-mail is kept sealed (email.js), to tell the podium.
+// nickname the player picks, when the account was made and last signed in, its sessions, its online records,
+// what it did (eventos.js, 90 days, for the admin panel) and how much it raced (recordes.js: the totals, kept as long as
+// the account). A pilot who joins the palpites (palpites.js) signs in from that page with the scope email too: their
+// verified e-mail is kept sealed (email.js), to tell the podium.
 // Each account can download all of it (/meus-dados) and delete it for good (/apagar).
 //
 // Sign-in is the authorization code flow, run here (the page loads no Google script): state, nonce and
@@ -131,13 +132,20 @@ async function signOut(request,env){
 async function deleteAccount(request,env,body){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
  if(body.confirmar!=='APAGAR')return json({erro:'Confirme para apagar a conta.'},400);
- // Its records, laps, races, guesses, sessions and events go with it (its e-mail with the account's row); the panel
- // keeps only that an account was deleted, by nobody.
- await env.DB.batch(['recordes','voltas','corridas','palpites','sessoes','eventos'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE usuario_id=?`).bind(s.id))
+ // Its records, laps, races, totals, guesses, sessions and events go with it (its e-mail with the account's row); the
+ // panel keeps only that an account was deleted, by nobody.
+ await env.DB.batch(['recordes','voltas','corridas','totais','palpites','sessoes','eventos'].map(table=>env.DB.prepare(`DELETE FROM ${table} WHERE usuario_id=?`).bind(s.id))
   .concat(env.DB.prepare('DELETE FROM usuarios WHERE id=?').bind(s.id),event(env,'conta_apagada')));
  return json({conta:null,apagada:true},200,{cookies:[signedOut()]});
 }
 
+// What the game said of a race (migration 0011: its kind, level, cars, laps) and how it ended, the parts it has.
+function raceSaid(r){
+ const out={};
+ for(const k of ['tipo','nivel','carros','voltas','posicao'])if(r[k]!==null&&r[k]!==undefined)out[k]=r[k];
+ if(r.resultado_em)Object.assign(out,{terminou:!!r.terminou,resultado_em:new Date(r.resultado_em).toISOString()});
+ return out;
+}
 // Everything kept about the account, as a file (LGPD art. 18: the player's copy of their data).
 async function myData(request,env){
  const s=await signedIn(request,env);if(!s)return notSignedIn();
@@ -145,7 +153,8 @@ async function myData(request,env){
  const records=(await env.DB.prepare('SELECT circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma FROM recordes WHERE usuario_id=? ORDER BY circuito,modo,selo').bind(s.id).all()).results;
  const events=(await env.DB.prepare('SELECT quando,tipo,detalhe FROM eventos WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
  const laps=(await env.DB.prepare('SELECT quando,circuito,modo,carro,tempo_ms,resultado,aparelho,sinais,freios,fantasma,comandos,revisao,revisado_em,caso FROM voltas WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
- const races=(await env.DB.prepare('SELECT quando,circuito,modo,carro FROM corridas WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
+ const races=(await env.DB.prepare('SELECT quando,circuito,modo,carro,tipo,nivel,carros,voltas,posicao,terminou,resultado_em FROM corridas WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
+ const totals=(await env.DB.prepare('SELECT circuito,carro,tipo,nivel,corridas,voltas,conferidas,resultados,terminadas,vitorias,podios,soma_posicoes,primeira_em,ultima_em FROM totais WHERE usuario_id=? ORDER BY circuito,carro,tipo,nivel').bind(s.id).all()).results;
  const guesses=(await env.DB.prepare('SELECT bolao,quando,treino,corrida1,corrida2,desclassificado FROM palpites WHERE usuario_id=? ORDER BY quando').bind(s.id).all()).results;
  const email=await env.DB.prepare('SELECT email,email_em,ofertas_em FROM usuarios WHERE id=?').bind(s.id).first();
  const ghost=text=>{try{return text?JSON.parse(text):null;}catch{return null;}};
@@ -160,7 +169,9 @@ async function myData(request,env){
   recordes:records.map(r=>({circuito:r.circuito,modo:r.modo,carro:r.carro,selo:r.selo,volta_ms:r.volta_ms,versao_do_jogo:r.versao,feito_em:when(r.feito_em),enviado_em:when(r.enviado_em),fantasma:ghost(r.fantasma)})),
   subida_dos_recordes_antigos:{dev:s.importou_em?when(s.importou_em):null,principal:s.importou_principal_em?when(s.importou_principal_em):null},
   eventos:events.map(e=>({quando:when(e.quando),tipo:e.tipo,detalhe:ghost(e.detalhe)})),
-  corridas:races.map(r=>({quando:when(r.quando),circuito:r.circuito,modo:r.modo,carro:r.carro})),
+  corridas:races.map(r=>({quando:when(r.quando),circuito:r.circuito,modo:r.modo,carro:r.carro,...raceSaid(r)})),
+  totais:totals.map(r=>({circuito:r.circuito,carro:r.carro,tipo:r.tipo||null,nivel:r.nivel||null,corridas:r.corridas,voltas:r.voltas,voltas_conferidas:r.conferidas,
+   resultados:r.resultados,terminadas:r.terminadas,vitorias:r.vitorias,podios:r.podios,soma_das_posicoes:r.soma_posicoes,primeira_vez:when(r.primeira_em),ultima_vez:when(r.ultima_em)})),
   palpites:guesses.map(p=>({fim_de_semana:p.bolao,quando:when(p.quando),treino:p.treino,corrida1:p.corrida1,corrida2:p.corrida2,...(p.desclassificado&&{desclassificado:true})})),
   voltas:laps.map(v=>({quando:when(v.quando),circuito:v.circuito,modo:v.modo,carro:v.carro,tempo_ms:v.tempo_ms,resultado:v.resultado,aparelho:v.aparelho,sinais:ghost(v.sinais),freios:ghost(v.freios),
    ...(v.fantasma&&{fantasma:ghost(v.fantasma)}),...(v.comandos&&{comandos:ghost(v.comandos)}),...(v.caso&&{caso:v.caso}),...(v.revisao&&{revisao:v.revisao,revisada_em:v.revisado_em?when(v.revisado_em):null})})),

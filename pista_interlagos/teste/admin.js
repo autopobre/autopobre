@@ -1,7 +1,8 @@
 // The admin panel (admin.html, in the dev build only: preparar_publicacao.py --conta). It reads the accounts server's
 // /api/admin/ (conta-cloudflare/src/admin.js), which answers only an administrator: this page decides nothing. The
-// numbers, the accounts, what happened (events, kept 90 days), every lap with what its controls look like, and the last
-// records, which an admin can take off the boards (a second click confirms). Everything shown goes in as text.
+// numbers, the accounts with how much each drives (and a pilot's sheet, the nickname clicked), what happened (events,
+// kept 90 days), every lap with what its controls look like, and the last records, which an admin can take off the
+// boards (a second click confirms). Everything shown goes in as text.
 import {CIRCUITS} from './circuits.js';
 
 const $=id=>document.getElementById(id);
@@ -65,7 +66,7 @@ function detail(e){
 function summary(s){
  const cards=[['Contas',s.contas,`${s.com_apelido} com apelido`],['Novas na semana',s.novas_7d,''],['Entradas em 24 h',s.entradas_24h,`${s.entradas_7d} em 7 dias`],
   ['Com sessão aberta',s.com_sessao,'contas'],['Recordes ✓',s.conferidos,'conferidos'],['Recordes ⚠️',s.antigos,'antigos'],['Voltas recusadas',s.recusadas_7d,'em 7 dias'],
-  ['Voltas na semana',s.voltas_7d,`${s.sinalizadas_7d??0} com sinais`],['Revisões',s.revisoes??0,'esperando resposta'],['Casos',s.casos??0,'para estudar']];
+  ['Corridas na semana',s.corridas_7d??0,`${s.pilotos_7d??0} piloto${s.pilotos_7d===1?'':'s'}`],['Voltas na semana',s.voltas_7d,`${s.sinalizadas_7d??0} com sinais`],['Revisões',s.revisoes??0,'esperando resposta'],['Casos',s.casos??0,'para estudar']];
  $('resumo').replaceChildren(...cards.map(([label,value,note])=>{
   const card=document.createElement('div'),b=document.createElement('b'),span=document.createElement('span'),small=document.createElement('small');
   card.className='cartao';span.textContent=label;b.textContent=String(value??0);small.textContent=note;card.append(span,b,small);return card;}));
@@ -116,6 +117,7 @@ const removeButton=record=>armed('Remover',()=>get('remover',{recorde:record.id}
 let users=[];
 const pace=v=>v===null||v===undefined?'—':`${(v*100).toFixed(1).replace('.',',')}%`;
 const ORDERS={login:(a,b)=>b.ultimo_login-a.ultimo_login,corridas:(a,b)=>b.corridas-a.corridas||b.voltas-a.voltas,voltas:(a,b)=>b.voltas-a.voltas||b.corridas-a.corridas,
+ vitorias:(a,b)=>b.vitorias-a.vitorias||b.podios-a.podios||b.corridas-a.corridas,
  ritmo:(a,b)=>(a.ritmo?.valor??Infinity)-(b.ritmo?.valor??Infinity)||b.voltas-a.voltas};
 // A pilot's circuits, most raced first ("Interlagos 12 · Brasília 3"); the title has each one's races, laps and best laps.
 function tracksCell(x){
@@ -126,9 +128,41 @@ function tracksCell(x){
 }
 function drawUsers(){
  const list=[...users].sort(ORDERS[$('ordem').value]??ORDERS.login);
- rows('usuarios',list,[[x=>(x.apelido??'(sem apelido)')+(x.admin?' · admin':x.gerente_palpites?' · palpites':'')],[x=>String(x.corridas??0),'num'],[x=>String(x.voltas??0),'num'],[x=>String(x.dias??0),'num'],
+ rows('usuarios',list,[[pilotButton,'acao'],[x=>String(x.corridas??0),'num'],[x=>String(x.voltas??0),'num'],[x=>String(x.vitorias??0),'num'],[x=>String(x.podios??0),'num'],[x=>String(x.dias??0),'num'],
   [x=>x.ritmo?`${pace(x.ritmo.valor)} · ${track(x.ritmo.circuito)}`:'—','num'],[tracksCell,'acao'],[x=>when(x.criado_em)],[x=>when(x.ultimo_login)],[x=>String(x.sessoes),'num'],
   [x=>String(x.conferidos),'ic'],[x=>String(x.antigos),'ic'],[x=>[x.importou_em&&'dev '+when(x.importou_em),x.importou_principal_em&&'principal '+when(x.importou_principal_em)].filter(Boolean).join(' · ')||'não'],[x=>String(x.recusadas_7d),'num'],[x=>String(x.sinalizadas_7d??0),'num'],[userButtons,'acao']]);
+}
+// The nickname opens the pilot's sheet.
+function pilotButton(x){
+ const b=document.createElement('button');b.type='button';b.className='nome';
+ b.textContent=(x.apelido??'(sem apelido)')+(x.admin?' · admin':x.gerente_palpites?' · palpites':'');
+ b.onclick=()=>sheet(x.id).catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});
+ return b;
+}
+// A pilot's sheet (conta-cloudflare/src/admin.js pilotSheet): their numbers since always, per circuit, car, kind and
+// level, their records with the pace, and their last races with how each ended (the game's word for the place).
+const KINDS_RACE={corrida:'Corrida','1x1':'1x1',campeonato:'Campeonato',historia:'Modo História',treino:'Treino solo'};
+const LEVELS={facil:'Fácil',medio:'Médio',alto:'Alto',impossivel:'Impossível'};
+const kindOf=k=>KINDS_RACE[k]??(k?k:'— (jogo antigo)'),levelOf=l=>LEVELS[l]??(l||'—');
+const average=(sum,n)=>n?(sum/n).toFixed(1).replace('.',','):'—';
+const ended=r=>!r.resultado_em?'—':r.terminou?`${r.posicao}º de ${r.carros}`:'não terminou';
+let sheetId=null;
+async function sheet(id){
+ const s=await get('piloto?id='+id),p=s.piloto,t=s.totais;sheetId=id;
+ const sum=k=>t.reduce((n,x)=>n+x[k],0);
+ $('fichaNome').textContent=`Ficha · ${p.apelido??'(sem apelido)'}`;
+ $('fichaDatas').textContent=`Conta criada em ${when(p.criado_em)} · último login em ${when(p.ultimo_login)}`;
+ const cards=[['Corridas',sum('corridas'),'desde sempre'],['Voltas',sum('voltas'),`${sum('conferidas')} conferidas`],['Resultados',sum('resultados'),`${sum('resultados')-sum('terminadas')} sem terminar`],
+  ['Vitórias',sum('vitorias'),''],['Pódios',sum('podios'),''],['Posição média',average(sum('soma_posicoes'),sum('terminadas')),'nas que terminou']];
+ $('fichaResumo').replaceChildren(...cards.map(([label,value,note])=>{
+  const card=document.createElement('div'),b=document.createElement('b'),span=document.createElement('span'),small=document.createElement('small');
+  card.className='cartao';span.textContent=label;b.textContent=String(value);small.textContent=note;card.append(span,b,small);return card;}));
+ rows('fichaTotais',t,[[x=>where(x)],[x=>kindOf(x.tipo)],[x=>levelOf(x.nivel)],[x=>String(x.corridas),'num'],[x=>String(x.voltas),'num'],[x=>String(x.conferidas),'num'],
+  [x=>String(x.resultados),'num'],[x=>String(x.vitorias),'num'],[x=>String(x.podios),'num'],[x=>average(x.soma_posicoes,x.terminadas),'num'],[x=>when(x.primeira_em)],[x=>when(x.ultima_em)]]);
+ rows('fichaRecordes',s.recordes,[[x=>where(x)],[x=>MODES[x.modo]??x.modo],[x=>lap(x.volta_ms),'num'],[x=>x.selo==='conferido'?'✓ conferido':'⚠️ antigo'],[x=>pace(x.ritmo),'num'],[x=>when(x.feito_em)]]);
+ $('fichaCorridasTitulo').textContent=`Últimas corridas (dos últimos ${s.corridas_por} dias${s.corridas.length>=50?', as 50 mais recentes':''})`;
+ rows('fichaCorridas',s.corridas,[[x=>when(x.quando)],[x=>where(x)],[x=>kindOf(x.tipo)],[x=>levelOf(x.nivel)],[x=>x.voltas?String(x.voltas):'—','num'],[ended]]);
+ $('ficha').hidden=false;$('ficha').scrollIntoView({behavior:'smooth',block:'start'});
 }
 // A user's buttons: Trocar apelido, and the palpites' panel given or taken (an admin has it anyway).
 function userButtons(user){
@@ -165,6 +199,7 @@ async function load(){
   rows('casos',c.casos,[[x=>when(x.quando)],[x=>x.apelido??'(apagada)'],[x=>where(x)],[x=>lap(x.tempo_ms),'num'],[x=>x.caso,'sinais'],[x=>x.aparelho??'—'],[x=>x.versao??'—'],[caseLink,'acao']]);
   rows('revisoes',v.revisoes,[[x=>when(x.quando)],[x=>x.apelido??'(apagada)'],[x=>where(x)],[x=>lap(x.tempo_ms),'num'],[x=>x.resultado],[x=>x.aparelho??'—'],[x=>signals(x.sinais),'sinais'],[reviewButtons,'acao']]);
   users=u.usuarios;drawUsers();
+  if(sheetId!==null&&!$('ficha').hidden)await sheet(sheetId).catch(()=>{$('ficha').hidden=true;});
   rows('recordes',r.recordes,[[x=>when(x.enviado_em)],[x=>x.apelido],[x=>where(x)],[x=>MODES[x.modo]??x.modo],[x=>lap(x.volta_ms),'num'],
    [x=>x.selo!=='conferido'?'⚠️ antigo':x.sinais?.revisada?'✓ revisado':x.sinais?.confiavel?'✓ confiável (caso)':'✓ conferido'],[x=>x.versao],[x=>x.selo==='conferido'?signals(x.sinais):'—','sinais'],[removeButton,'acao']]);
   oldest=null;oldestLap=null;await Promise.all([events(),laps()]);
@@ -182,4 +217,5 @@ $('ordem').onchange=drawUsers;
 $('soSinais').onchange=()=>{oldestLap=null;laps().catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});};
 $('maisVoltas').onclick=()=>laps(true).catch(e=>{$('aviso').textContent=e.message;$('aviso').hidden=false;});
 $('atualizar').onclick=load;
+$('fecharFicha').onclick=()=>{$('ficha').hidden=true;sheetId=null;};
 load();

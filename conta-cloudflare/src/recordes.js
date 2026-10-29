@@ -22,6 +22,11 @@
 // no count the server trusts: sent again, an old one would write again, so what an account may write (records, laps,
 // refusals in the panel's events) is counted per hour in the database.
 //
+// The pilot's history (migration 0011): the ticket is a race in the races' log, with what the game says of it (its kind,
+// the rivals' level, the cars, the laps), and the race's end comes as the game declares it at the flag (/resultado: once
+// a race, checked only for being possible). Races, laps and results add up in the pilot's totals, kept as long as the
+// account; the logs themselves go after EVENT_DAYS.
+//
 // nao_verificado: an old record of a browser, from before the account (/importar), once per account and site (the
 // server keeps when; base.js importedColumn), until IMPORT_UNTIL, and the board shows them flagged ⚠️. A pilot with a checked lap
 // shows by it.
@@ -37,6 +42,7 @@ import {event,recent,HOUR} from './eventos.js';
 import {readInputs,inputsProblem,inputSignals,INPUT_CHARS} from './comandos.js';
 import {dynamicsProblem} from './dinamica.js';
 import {trackProblem} from './trajeto.js';
+import {addTotals} from './totais.js';
 
 const TICKET='bilhete-v1';
 export const CHUNK_EVERY=10;  // seconds of the game's clock between chunks (the game keeps this pace)
@@ -73,6 +79,15 @@ const PREVIOUS_LAPS=10;       // earlier laps a lap's brakes are compared with (
 const RACES_PER_HOUR=30;      // races (tickets) an account writes to the races' log in an hour
 export const RECORDS_BODY={'/api/recordes/pedaco':GHOST_BYTES+INPUT_CHARS+4096,'/api/recordes/importar':16384};
 const known=(c,m,k)=>typeof c==='string'&&Object.hasOwn(CIRCUITS,c)&&MODES.includes(m)&&CARS.includes(k);
+// A race as the game declares it on its ticket, each part optional (an older game says none): its kind (corrida: Modo
+// Corrida's whole grid; 1x1; campeonato: a championship round; historia: Modo História; treino: practice alone, no flag),
+// the rivals' level, the cars in it and its laps. Null when a part is not one of these.
+const KINDS=['corrida','1x1','campeonato','historia','treino'],LEVELS=['facil','medio','alto','impossivel'],MAX_CARS=40,MAX_LAPS=200;
+const upTo=(x,most)=>x===null||Number.isInteger(x)&&x>=1&&x<=most;
+function raceOf({tipo=null,nivel=null,carros=null,voltas=null}){
+ if(tipo!==null&&!KINDS.includes(tipo)||nivel!==null&&!LEVELS.includes(nivel)||!upTo(carros,MAX_CARS)||!upTo(voltas,MAX_LAPS))return null;
+ return {tipo,nivel,carros,voltas};
+}
 const UPSERT=`INSERT INTO recordes (usuario_id,circuito,modo,carro,selo,volta_ms,versao,feito_em,enviado_em,fantasma,sinais) VALUES (?,?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(usuario_id,circuito,modo,carro,selo) DO UPDATE SET volta_ms=excluded.volta_ms,versao=excluded.versao,feito_em=excluded.feito_em,
  enviado_em=excluded.enviado_em,fantasma=excluded.fantasma,sinais=excluded.sinais WHERE excluded.volta_ms<recordes.volta_ms`;
@@ -141,16 +156,22 @@ async function ticket(request,env,body){
  if(!s.apelido)return json({erro:'Escolha um apelido primeiro.'},409);
  const {circuito:c,modo:m,carro:k}=body,v=typeof body.versao==='string'?body.versao:'';
  if(!known(c,m,k)||!VERSION.test(v))return json({erro:'Pista, modo, carro ou versão inválidos.'},400);
+ const race=raceOf(body);if(!race)return json({erro:'Tipo, nível, carros ou voltas da corrida inválidos.'},400);
  const best=await bestOf(env,s.id,c,k);
- // A ticket is the pilot going on track: one race (or practice, or story race) for the admin panel's pilots, up to
- // RACES_PER_HOUR an hour (a ticket writes nothing else; past that, it is answered all the same).
- try{
-  if(await env.DB.prepare('SELECT COUNT(*) AS n FROM corridas WHERE usuario_id=? AND quando>?').bind(s.id,Date.now()-HOUR).first('n')<RACES_PER_HOUR)
-   await env.DB.prepare('INSERT INTO corridas (usuario_id,quando,circuito,modo,carro) VALUES (?,?,?,?,?)').bind(s.id,Date.now(),c,m,k).run();
- }catch{}
  // u/sb: the account and its Google account (a lap goes only to that same one); s0: issued; sl/gl: the last
- // chunk (server ms, game s); ss/gs: the clean stretch's start; xs/xg: the last crossing within it.
- const t={u:s.id,sb:s.google_sub,c,m,k,v,s0:Date.now(),sl:null,gl:null,ss:null,gs:null,xs:null,xg:null,n:0};
+ // chunk (server ms, game s); ss/gs: the clean stretch's start; xs/xg: the last crossing within it. t/l: the race's
+ // kind and level (the totals'); r: its row in the races' log; x: the laps crossed (the crossings after the first chunk,
+ // which is the start's when it is one); g0: the first chunk's game clock.
+ const t={u:s.id,sb:s.google_sub,c,m,k,v,s0:Date.now(),sl:null,gl:null,ss:null,gs:null,xs:null,xg:null,n:0,t:race.tipo,l:race.nivel,r:null,x:0,g0:null};
+ // A ticket is the pilot going on track: one race (or practice, or story race) for the admin panel's pilots and their
+ // totals, up to RACES_PER_HOUR an hour (a ticket writes nothing else; past that, it is answered all the same).
+ try{
+  if(await env.DB.prepare('SELECT COUNT(*) AS n FROM corridas WHERE usuario_id=? AND quando>?').bind(s.id,Date.now()-HOUR).first('n')<RACES_PER_HOUR){
+   const [logged]=await env.DB.batch([env.DB.prepare('INSERT INTO corridas (usuario_id,quando,circuito,modo,carro,tipo,nivel,carros,voltas,somada) VALUES (?,?,?,?,?,?,?,?,?,1)')
+    .bind(s.id,t.s0,c,m,k,race.tipo,race.nivel,race.carros,race.voltas),addTotals(env,t,{corridas:1},t.s0)]);
+   t.r=logged.meta.last_row_id||null;
+  }
+ }catch{}
  return json({bilhete:await seal(env,TICKET,t),intervalo:CHUNK_EVERY,melhor:best??null});
 }
 
@@ -161,6 +182,7 @@ async function chunk(request,env,body){
  if(s.id!==t.u||s.google_sub!==t.sb)return json({erro:'Bilhete de outra conta: peça outro.'},409);
  if(typeof g!=='number'||!Number.isFinite(g)||g<0||g>86400)return json({erro:'Relógio inválido.'},400);
  if(t.gl!==null&&g<t.gl-1e-6)return json({erro:'O relógio voltou: peça outro bilhete.'},409);
+ t.g0??=g;
  // sp: the pauses' time within the clean stretch (ms); lp/ln/lm: the pauses of the lap under way (time, how many, why);
  // pw: why the game said it stopped, on the chunk before (null: it did not); qb: what broke the stretch last (for the
  // lap's verdict).
@@ -184,7 +206,7 @@ async function chunk(request,env,body){
  if(!clean){t.gs=g;t.ss=now;t.sp=0;t.xg=t.xs=null;}
  if(body.cruzou===true){
   if(body.volta!==undefined)out.volta=await judge(env,t,g,now,from,body.volta,isTrusted(env,s),pauses);
-  t.xg=g;t.xs=now;t.lp=0;t.ln=0;t.lm={};t.qb=null;
+  t.xg=g;t.xs=now;t.lp=0;t.ln=0;t.lm={};t.qb=null;if(t.n)t.x=(t.x??0)+1;
  }
  t.gl=g;t.sl=now;t.n++;
  out.bilhete=await seal(env,TICKET,t);
@@ -198,6 +220,7 @@ async function chunk(request,env,body){
 // A trusted pilot's lap (base.js isTrusted) goes in as checked even when the checks would refuse it: the log keeps why
 // they would have (caso), its ghost and its controls, as a case for the admin panel.
 // A record goes to the panel's events, and so does a refusal with its reason, up to LOGGED_REFUSALS an hour.
+// A lap logged adds to the pilot's totals with it (checked or not).
 async function judge(env,t,g,now,from,lap,trusted=false,pauses=null){
  const ghost=readGhost(lap?.fantasma),inputs=readInputs(lap?.comandos);
  let signals=null;
@@ -210,10 +233,11 @@ async function judge(env,t,g,now,from,lap,trusted=false,pauses=null){
   if((await env.DB.prepare('SELECT COUNT(*) AS n FROM voltas WHERE usuario_id=? AND quando>?').bind(t.u,now-HOUR).first('n'))<LOGGED_LAPS){
    const ms=verdict.tempo_ms??(ghost?Math.round(ghost.time*1000):null),best=!verdict.conferida&&ghost&&ms?await bestOf(env,t.u,t.c,t.k):null;
    const reviewable=!verdict.conferida&&!!ghost&&!!ms&&(best===null||ms<best),kept=reviewable||!!verdict.caso;
-   const r=await env.DB.prepare('INSERT INTO voltas (usuario_id,quando,circuito,modo,carro,versao,tempo_ms,resultado,aparelho,sinais,freios,fantasma,comandos,caso) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+   const [r]=await env.DB.batch([env.DB.prepare('INSERT INTO voltas (usuario_id,quando,circuito,modo,carro,versao,tempo_ms,resultado,aparelho,sinais,freios,fantasma,comandos,caso,somada) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)')
     .bind(t.u,now,t.c,t.m,t.k,t.v,ms,verdict.recorde?'recorde':verdict.conferida?'conferida':verdict.recusada,
      signals?.aparelho??null,signals||pauses?.n?JSON.stringify({sinais:signals?.sinais??[],medidas:signals?.medidas??{},...(pauses?.n&&{pausas:pauses})}):null,signals?JSON.stringify(signals.freios):null,
-     kept&&ghost?JSON.stringify(ghost.stored):null,verdict.caso&&lap?.comandos?JSON.stringify(lap.comandos):null,verdict.caso??null).run();
+     kept&&ghost?JSON.stringify(ghost.stored):null,verdict.caso&&lap?.comandos?JSON.stringify(lap.comandos):null,verdict.caso??null),
+    addTotals(env,t,{voltas:1,conferidas:verdict.conferida?1:0},now)]);
    if(reviewable&&r.meta.last_row_id)verdict.revisao=r.meta.last_row_id;
   }
  }catch{}
@@ -321,7 +345,33 @@ async function askReview(request,env,body){
  return json({revisao:'pedida'});
 }
 
+// How a race ended, as the game declares it (POST {bilhete, carros, terminou, posicao}), after the chunk of its last
+// crossing: once a race (the ticket's row in the races' log, one with a flag: not practice, nor a race from an older game
+// that did not say its kind, cars and laps), the cars the ones its ticket declared. Finished, its place among them, and
+// only when it was possible: the ticket saw its laps crossed, and both the game's clock and the real one ran at least its
+// laps but the first (from the grid) at the circuit's floor. Towed in (Modo História): no place, no laps to see. The place
+// itself cannot be checked here (the rivals race in the pilot's game): the panel shows it as the game's word. Into the
+// totals: a result, and finished, its place (a win, a podium).
+async function result(request,env,body){
+ const t=await unseal(env,TICKET,body.bilhete),now=Date.now();
+ if(!t||now-t.s0>RUN_HOURS*3600000)return json({erro:'Bilhete vencido ou inválido.'},409);
+ const s=await signedIn(request,env);if(!s)return notSignedIn();
+ if(s.id!==t.u||s.google_sub!==t.sb)return json({erro:'Bilhete de outra conta.'},409);
+ const race=t.r?await env.DB.prepare('SELECT tipo,nivel,carros,voltas,resultado_em FROM corridas WHERE id=? AND usuario_id=?').bind(t.r,t.u).first():null;
+ if(!race)return json({erro:'Esta corrida não está registrada.'},404);
+ if(!race.tipo||race.tipo==='treino'||!race.carros||!race.voltas)return json({erro:'Esta corrida não tem resultado.'},409);
+ if(race.resultado_em!==null)return json({erro:'O resultado desta corrida já foi registrado.'},409);
+ const finished=body.terminou,place=finished?body.posicao:null;
+ if(typeof finished!=='boolean'||body.carros!==race.carros||finished&&!(Number.isInteger(place)&&place>=1&&place<=race.carros))return json({erro:'Resultado inválido.'},400);
+ const least=(race.voltas-1)*fastest(t.c,t.k);
+ if(finished&&((t.x??0)<race.voltas||t.g0===null||t.g0===undefined||(t.gl-t.g0)*1000<least||now-t.s0<least))return json({erro:'O servidor não viu esta corrida chegar ao fim.'},409);
+ if(!(await env.DB.prepare('UPDATE corridas SET posicao=?,terminou=?,resultado_em=? WHERE id=? AND usuario_id=? AND resultado_em IS NULL').bind(place,finished?1:0,now,t.r,t.u).run()).meta.changes)
+  return json({erro:'O resultado desta corrida já foi registrado.'},409);
+ await addTotals(env,{...t,t:race.tipo,l:race.nivel},{resultados:1,...(finished&&{terminadas:1,vitorias:place===1?1:0,podios:place<=3?1:0,soma_posicoes:place})},now).run();
+ return json({resultado:finished?{posicao:place,carros:race.carros}:{terminou:false}});
+}
+
 export const RECORDS_GETS={'/api/recordes':board,'/api/recordes/melhores':bests};
-export const RECORDS_POSTS={'/api/recordes/bilhete':ticket,'/api/recordes/pedaco':chunk,'/api/recordes/importar':importOld,'/api/recordes/revisao':askReview};
+export const RECORDS_POSTS={'/api/recordes/bilhete':ticket,'/api/recordes/pedaco':chunk,'/api/recordes/importar':importOld,'/api/recordes/revisao':askReview,'/api/recordes/resultado':result};
 // For the admin's approval (admin.js): a reviewed lap written as the pilot's checked record when it beats it.
 export {UPSERT};

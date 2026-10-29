@@ -2,8 +2,9 @@
 // server on this machine (teste/local.mjs), on one clock the test moves for both. A run as main.js feeds it
 // (a frame every tenth of a second): the ticket, the first crossing at the lights, chunks at the server's
 // pace, a best lap with its ghost and controls (checked; the verdict on screen), a slower lap (logged quietly), a lap with
-// a pause (checked, the pause left out and logged), a game slower than the clock (refused, and by how much), a reset (a new ticket), the Fusca and a signed-out pilot (nothing sent), the
-// old records' import (only the pilot's, once), and the board as the records dialog reads it.
+// a pause (checked, the pause left out and logged), a game slower than the clock (refused, and by how much), a reset (a new ticket), the Fusca and a signed-out pilot (nothing sent), a
+// race said on its ticket and its place sent once (none for a practice), the old records' import (only the pilot's,
+// once), and the board as the records dialog reads it.
 import assert from 'node:assert/strict';
 import {startLocal} from './local.mjs';
 import {aiLaps,lapAt} from './voltas_ia.mjs';
@@ -109,6 +110,22 @@ await check('a reset asks for a new ticket; the Fusca gets its own; a signed-out
  assert.equal(tickets(),t0+2,'the Fusca: a ticket of its own (its own board)');race.car='opala';
  const m=sent.length;online.setAccount(null);await frames(12);
  assert.ok(sent.slice(m).every(u=>!u.includes('/pedaco')&&!u.endsWith('/bilhete')),'nothing signed out');
+});
+
+await check('a race says what it is on its ticket, and its place goes once, after its last crossing; a practice sends none',async()=>{
+ const results=()=>sent.filter(u=>u.endsWith('/resultado')).length,last=()=>({...local.DB.sqlite.prepare('SELECT tipo,nivel,carros,voltas,posicao,terminou FROM corridas ORDER BY id DESC').get()});
+ online.setAccount(account);
+ race.race={tipo:'corrida',nivel:'medio',carros:15,voltas:2};race.clock=race.lapStart=steps=0;
+ await frames(1,{running:false});                                   // the lights: a new run, its ticket
+ assert.deepEqual(last(),{tipo:'corrida',nivel:'medio',carros:15,voltas:2,posicao:null,terminou:null});
+ await lap(121);await lap(122);
+ online.result({position:2,finished:true});online.result({position:1,finished:true});await settle();
+ assert.equal(results(),1,'once a run');assert.deepEqual(last(),{...race.race,posicao:2,terminou:1});
+ race.race={tipo:'treino',nivel:'medio',carros:1};race.clock=race.lapStart=steps=0;
+ await frames(1,{running:false});await lap(121);
+ online.result({position:1,finished:true});await settle();
+ assert.equal(results(),1,'a practice has no flag');assert.deepEqual(last(),{...race.race,voltas:null,posicao:null,terminou:null});
+ delete race.race;
 });
 
 await check('the old records go up once: the pilot\'s only, then the browser is marked',async()=>{

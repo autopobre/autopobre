@@ -19,7 +19,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {TestCar,clamp,wrap,recognitionInput,RIGHTING_DELAY,OPALA_BODY,FUSCA_BODY,addRoamSolids} from './physics.js';
-import {PLAYER_ENTRY,ACE_NUMBER,playerGridSlot,carEntry,fieldRoster,duelRivalFor,cssColor,MODEL_NAMES,LUIZAO_CARS} from './race-roster.js';
+import {PLAYER_ENTRY,ACE_NUMBER,GRID_SIZE,playerGridSlot,carEntry,fieldRoster,duelRivalFor,cssColor,MODEL_NAMES,LUIZAO_CARS} from './race-roster.js';
 import {CarSelect} from './car-select.js';
 import {LookSelect} from './look-select.js';
 import {LookStore} from './pilot-look.js';
@@ -889,10 +889,31 @@ function startLobby(){
 }
 // The run as the online records see it: the Opala's clock and laps while the pilot drives a race they count (not
 // the recon lap's autopilot, a run that used it, the Arena, nor a multiplayer room, whose clock the room may move).
+// Modo História's race, to the online run: from the grid to the flag (or the tow). Not the paddock before it (sitting in
+// the Opala in Box 99, the engine's start), nor what follows the flag (the podium, the judge's inspection, which puts the
+// car back by the line with its clock at naught, the end): each puts the car back, and the run would take it for a new
+// race. Its result goes from there (reportOnlineResult) on the race's own ticket.
+const STORY_RACE=Object.freeze(['grid','race','broken','tow','snag']);
 const onlineRun=()=>({circuit:circuit.id,mode:immersive.active?'immersive':'normal',car:raceModel,clock:car.clock,lapStart:car.lapStart,
- driving:sessionStarted&&ready&&!automatic&&!immersive.recordAssisted&&!arenaMode&&!multiplayer,
+ driving:sessionStarted&&ready&&!automatic&&!immersive.recordAssisted&&!arenaMode&&!multiplayer&&(!immersive.active||STORY_RACE.includes(immersive.state.phase)),
  // Why the clock stands, when the race is paused: the tab hidden, the window left (both pause it: hold), or P / a menu.
- parado:paused?(document.hidden?'aba':document.hasFocus()?'pausa':'janela'):null});
+ parado:paused?(document.hidden?'aba':document.hasFocus()?'pausa':'janela'):null,
+ // What race it is, for its ticket (the pilot's online history): its kind, the rivals' level, the cars (the story's whole
+ // grid, whatever field the paddock still holds) and the laps (a practice none: it has no flag).
+ race:{tipo:onlineKind,nivel:immersive.field.level??preferences.values.aiLevel,carros:immersive.active?GRID_SIZE:immersive.fieldSize,
+  ...(!immersive.practice&&{voltas:immersive.active?immersive.storyLaps:immersive.freeTotalLaps})},raceId:onlineRaceId});
+// How the race ended, for the pilot's online history (recordes-online.js result, which sends it once a run): Modo Corrida
+// at the flag, its place among the cars; Modo História once the judge has looked (complete), its place, or none when
+// towed in or disqualified (the car taken to the box before the inspection). A practice has no flag; a room's race
+// ended by its host is not the pilot's own (no online run there).
+function reportOnlineResult(){
+ if(!contaOnline||immersive.practice)return;
+ if(immersive.active){
+  if(!['complete','disqualified'].includes(immersive.state.phase))return;
+  const r=immersive.state.result,finished=r?.status==='Terminou'&&Number.isInteger(r.position);
+  contaOnline.result({position:finished?r.position:null,finished});
+ }else if(immersive.freeResultReady&&!immersive.finishEstimated&&!immersive.finishWatched)contaOnline.result({position:immersive.finishPosition,finished:true});
+}
 // Which devices drive this step, for the online lap log (comandos-volta.js): 1 the keyboard, 2 touch, 4 a controller
 // (its stick and triggers, or a button holding a driving key), 8 a wheel. A program driving the car leaves none.
 const DRIVING_KEYS=Object.freeze(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyQ','Space','KeyN']);
@@ -1731,8 +1752,9 @@ function runFrame(){scene.matrixWorldAutoUpdate=true;const rawDt=clock.update().
  updatePeople(paused?0:dt,camera,[carRoot,...(immersive?.visual?.rivals??[])]);
  // The flags' whoosh follows the car heard (N watching a rival); the player's car still stirs the cloth.
  flags?.update(paused?0:dt,camera,heard,heard===car?immersive?.rivals:[{car},...(immersive?.rivals??[]).filter(r=>r.car!==heard)]);
- // A championship round is scored before its result sheet is first drawn, paused or not.
- recordChampionshipRound();
+ // A championship round is scored before its result sheet is first drawn, paused or not; the race's end goes to the
+ // pilot's online history.
+ recordChampionshipRound();reportOnlineResult();
  // Modo História: going to the box before the judge's inspection takes the round's points away.
  if(storyRound&&immersive.active&&immersive.state.phase==='disqualified')storyRound.championship.disqualify(storyRound.round);
  raceResults.update(immersive,paused,$('settings').open);
@@ -2140,6 +2162,10 @@ const championshipFor=(mode=menuMode,calendar=championshipView)=>Object.assign(c
 let championshipRace=null,storyRound=null,scoredChampionship=null,pendingMode=null;
 // Modo Corrida's single races: 'grid' (the whole field), 'solo' (practice alone) or 'duel' (the 1x1).
 let raceKind='grid';
+// The race under way as the pilot's online history takes it on its ticket (onlineRun race): corrida, 1x1, campeonato,
+// historia or treino, fixed as the race begins (a championship round stays one after its flag scored it); and its number
+// (each race begun or begun again another, though its clock never ran: a run of its own).
+let onlineKind='corrida',onlineRaceId=0;
 const lapRecords=new LapRecords(circuit.id),raceResults=new RaceResults({
  // A multiplayer guest does not rerun alone: it goes back to the car screen to wait for the host's next race.
  onRestart:()=>{if(multiplayer?.guest())returnToMainMenu();else beginRace(true);},rerunLabel:()=>multiplayer?.guest()?'Aguardar a próxima corrida →':null,onSettings:openSettings,onRecords:mode=>lapRecords.open(mode),onMainMenu:returnToMainMenu,
@@ -2311,6 +2337,7 @@ async function beginRace(restart=false,tour=false,story=preferences.values.immer
  // The car: Modo Corrida's choice for that model, or the room's (multiplayer.js); the story and the recon lap race the 99.
  raceCar=preferences.values.immersive||tour?'99':multiplayer?.car()??chosenCar(raceModel);reconLap=tour;
  immersive.lineup=preferences.values.immersive||raceKind==='grid'?null:raceKind==='solo'?[]:[duelRivalFor(raceCar,chosenDuel(raceModel),raceModel)];
+ onlineKind=preferences.values.immersive?'historia':championshipRace?'campeonato':raceKind==='solo'?'treino':raceKind==='duel'?'1x1':'corrida';onlineRaceId++;
  seatCar();
  // On the arena the car meets the arena's floor and items (drift-arena-mode.js attach).
  arenaMode?.attach(car);

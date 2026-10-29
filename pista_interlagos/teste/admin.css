@@ -48,6 +48,10 @@ td button{padding:3px 8px;font-size:12px}
 td button.armado{background:#a32020;border-color:#a32020;color:#fff}
 td .botoes{display:inline-flex;gap:6px;white-space:nowrap}
 td.acao a{font-weight:800;color:var(--azul)}
+/* The nickname opens the pilot's sheet (admin.js sheet). */
+td button.nome{padding:0;border:0;background:none;font-size:13px;font-weight:800;color:var(--azul);text-align:left;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
+#ficha[hidden]{display:none}
+#ficha{border-color:var(--azul);box-shadow:inset 4px 0 var(--azul)}
 .nota{font-size:12px;color:var(--apagado)}
 h3{margin:14px 0 6px;font-size:13px;font-weight:800;color:var(--azul)}
 .bolao-campos{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:8px 0;font-size:13px;font-weight:700}

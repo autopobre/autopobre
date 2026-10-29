@@ -8,6 +8,8 @@
 //   the game keeps) and the pilot's controls on it (comandos-volta.js, fed by main.js each physics step): the
 //   server keeps the best, and logs every lap with what its controls look like. The verdict shows on screen for
 //   a lap that would be the pilot's best: a checked record, or why it was not checked.
+// - The pilot's history: the ticket says what race it is (its kind, the rivals' level, the cars, the laps), and the race's
+//   end goes once, after the chunk of its last crossing (result: the place at the flag, or towed in).
 // - The records dialog's Online tab reads the board (lap-records.js addOnline).
 // - The old records of the pilot that signs in go up once per account and address (then this browser is marked),
 //   flagged ⚠️ unchecked, until IMPORT_UNTIL. A browser keeps records per address, and both addresses have the
@@ -52,13 +54,15 @@ export class OnlineRecords {
  }
  // The signed-in account; laps go online only with a nickname.
  setAccount(account){this.account=account?.apelido?account:null;if(!this.account){this.run=null;this.queue=[];this.pending=null;}}
- // Each frame. s: {circuit, mode, car, clock, lapStart, driving}. driving: the pilot at the wheel of
- // a race the records count (no autopilot, no room race).
+ // Each frame. s: {circuit, mode, car, clock, lapStart, driving, race, raceId}. driving: the pilot at the wheel of
+ // a race the records count (no autopilot, no room race). race: what race it is, for its ticket ({tipo, nivel, carros,
+ // voltas}: conta-cloudflare/src/recordes.js raceOf; no laps for a practice). raceId: the race's number, another for
+ // each race begun (its clock going back says so too).
  frame(s){
   // The Opala's and the Fusca's, each car its own board (conta-cloudflare/src/recordes.js CARS).
   if(!this.account||!s?.driving||!CARS.includes(s.car)||!Object.hasOwn(CIRCUITS,s.circuit))return;
   const key=`${s.circuit}|${s.mode}|${s.car}`,r=this.run;
-  if(!r||r.key!==key||s.clock<r.clock-1e-6||(r.failed&&this.now()-r.failed>RETRY)){this.begin(key,s);return;}
+  if(!r||r.key!==key||r.raceId!==s.raceId||s.clock<r.clock-1e-6||(r.failed&&this.now()-r.failed>RETRY)){this.begin(key,s);return;}
   if(!r.ticket)return;
   const running=s.clock>r.clock,before=r.clock,now=this.now();r.clock=s.clock;
   if(!running){
@@ -102,22 +106,31 @@ export class OnlineRecords {
   const ghost=encodeGhost(lap);
   if(ghost)this.pending={key,end,time:lap.time,ghost,inputs,record:r.best===null||lap.time*1000<r.best};
  }
+ // How the race ended (main.js, each frame once it is final: the flag, or Modo História's podium): its place among the
+ // cars its ticket said, or towed in (finished false, no place). Once a run, after the chunks before it; none for a race
+ // with no flag (practice) or no laps said.
+ result({position,finished}){
+  const r=this.run;if(!this.account||!r?.ticket||r.resultSent||!r.race?.voltas||!r.race.carros||r.race.tipo==='treino')return;
+  r.resultSent=true;
+  this.send({carros:r.race.carros,terminou:!!finished,...(finished&&{posicao:position})},null,'/resultado');
+ }
  async begin(key,s){
   const [circuito,modo,carro]=key.split('|');
-  const r=this.run={key,clock:s.clock,lapStart:undefined,ticket:null,every:5,sentAt:0,best:null,failed:0};this.queue=[];this.pending=null;
-  const t=await call(this.base,'/bilhete',{circuito,modo,carro,versao:VERSION});
+  const r=this.run={key,raceId:s.raceId,clock:s.clock,lapStart:undefined,ticket:null,every:5,sentAt:0,best:null,failed:0,race:s.race??null,resultSent:false};this.queue=[];this.pending=null;
+  const t=await call(this.base,'/bilhete',{circuito,modo,carro,versao:VERSION,...r.race});
   if(this.run!==r)return;
   if(!t.ok){r.failed=this.now();return;}
   r.ticket=t.data.bilhete;r.every=t.data.intervalo||5;r.best=t.data.melhor??null;
  }
- // Chunks go one after another: each carries the ticket the last one brought back.
- send(body,lap=null){this.queue.push({body,lap});this.pump();}
+ // Chunks go one after another: each carries the ticket the last one brought back. path: another of the ticket's
+ // requests in the same line (the race's result), whose answer changes nothing here.
+ send(body,lap=null,path=null){this.queue.push({body,lap,path});this.pump();}
  async pump(){
   if(this.busy)return;this.busy=true;
   try{
    while(this.queue.length&&this.run?.ticket){
-    const r=this.run,{body,lap}=this.queue.shift(),answer=await call(this.base,'/pedaco',{bilhete:r.ticket,...body});
-    if(this.run!==r)continue;
+    const r=this.run,{body,lap,path}=this.queue.shift(),answer=await call(this.base,path??'/pedaco',{bilhete:r.ticket,...body});
+    if(this.run!==r||path)continue;
     if(answer.data.bilhete)r.ticket=answer.data.bilhete;
     // An outdated ticket, a clock that went back or a session that ended: a new ticket on the next frame.
     else if(answer.status===409||answer.status===401){this.run=null;this.queue=[];break;}
