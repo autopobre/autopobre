@@ -135,6 +135,8 @@ export class CarAudio {
  // follows the slider as it plays; the synthesized catch if the recording is missing.
  async previewEffects(){await this.unlock();const t=this.context?.currentTime??0;if(this.muted||!this.focused||!this.volume||!this.effectsLevel)return;if(this.effects?.previewSample('starter'))return;if(t-(this.previewAt??-10)<.35)return;this.previewAt=t;this.effects?.play('engineCatch',{strength:.6},true);}
  updateScene(scene={},events=[],dt=0){
+  // The track's water (weather.js wetness) for the tyres in update(), from the next frame.
+  this.wet=scene.wet??0;
   if(!this.context)return;
   const enabled=this.focused&&!this.muted&&this.volume>0&&this.context.state==='running';
   if(!this.paused)this.hasDriven=true;
@@ -244,7 +246,15 @@ export class CarAudio {
    param(this.rasp.gain,.04+gas*.19);
   }
   this.lastThrottle=throttle;
-  if(this.tyres?.ready){
+  if(this.wet>0){
+   // On a wet track (a drizzle or the rain) a tyre neither sings nor screeches (the pilots, 30/10): a slide, a lock-up
+   // or a spin only scrapes, a dull hiss from the noise bed, and a corner at the limit is silent.
+   this.tyres?.silence();param(this.squealGain.gain,0,.05);
+   this.scrubLevel=this.state.skid*k.scrub*.3*distance*(inside?k.tyresInside:1);
+   param(this.tyreFilter.frequency,(420+speed*2+Math.sin(t*9)*40)*k.tyrePitch);
+   param(this.tyreGain.gain,this.scrubLevel,.06);
+  }else if(this.tyres?.ready){
+   this.scrubLevel=0;
    // Recorded tyres: they sing as the car nears its cornering grip, screech in slides, lock-ups and spins.
    param(this.tyreGain.gain,0,.05);param(this.squealGain.gain,0,.05);
    const grip=12.2*(car.mechanics?.grip??1)*(car.weatherGrip??1);
@@ -253,6 +263,7 @@ export class CarAudio {
    this.tyres.set('canta',level*k.sing*sing*(1-.55*hard),(.93+.1*sing+.025*Math.sin(t*1.7)+.015*Math.sin(t*4.1))*k.tyrePitch);
    this.tyres.set('arrasta',level*k.screech*hard,(.9+.14*hard+.02*Math.sin(t*2.3))*k.tyrePitch);
   }else{
+   this.scrubLevel=0;
    param(this.tyreGain.gain,this.state.skid*.65*distance,.035);
    param(this.tyreFilter.frequency,1500+speed*5+Math.sin(t*13)*130);
    param(this.squeal.frequency,900+speed*4+Math.sin(t*19)*65);
@@ -286,6 +297,6 @@ export class CarAudio {
  }
  info(){
   let rms=0;if(this.analyser){this.analyser.getFloatTimeDomainData(this.meter);rms=Math.sqrt(this.meter.reduce((s,x)=>s+x*x,0)/this.meter.length);}
-  return {...this.state,volume:this.volume,musicVolume:this.musicVolume,effectsVolume:this.effectsVolume,muted:this.muted,musicMuted:!!this.musicMuted,effectsMuted:!!this.effectsMuted,focused:this.focused,paused:this.paused,context:this.context?.state??'locked',shifts:this.shifts,rms,worldGain:this.master?.gain.value??0,music:this.music?.info(),recordings:this.recordings?.info(),effects:this.effects?.info(),synthEngine:!!this.synthEngine,tuning:{source:this.tuningSource,car:this.kind},engine:this.recorded?.info()??null,tyres:this.tyres?.info()??null,horn:this.horn?.info()??null,error:this.error};
+  return {...this.state,volume:this.volume,musicVolume:this.musicVolume,effectsVolume:this.effectsVolume,muted:this.muted,musicMuted:!!this.musicMuted,effectsMuted:!!this.effectsMuted,focused:this.focused,paused:this.paused,context:this.context?.state??'locked',shifts:this.shifts,rms,worldGain:this.master?.gain.value??0,music:this.music?.info(),recordings:this.recordings?.info(),effects:this.effects?.info(),synthEngine:!!this.synthEngine,tuning:{source:this.tuningSource,car:this.kind},engine:this.recorded?.info()??null,tyres:this.tyres?.info()??null,wet:this.wet??0,scrub:+(this.scrubLevel??0).toFixed(3),horn:this.horn?.info()??null,error:this.error};
  }
 }

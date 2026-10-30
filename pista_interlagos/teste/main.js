@@ -741,8 +741,8 @@ function applyWeather(){
  skyFill.color.set(weather.fill.sky);skyFill.groundColor.set(weather.fill.ground);skyFill.intensity=weather.fill.intensity;
  // The tyres on a wet track (physics.js weatherGrip): the player's car and the rivals', and those the next start builds.
  if(car)car.weatherGrip=weather.grip;if(immersive){immersive.field.weatherGrip=weather.grip;for(const r of immersive.rivals??[])r.car.weatherGrip=weather.grip;}
- // A wet kerb throws no grit (tyre-smoke.js kerbFrom).
- if(tyreSmoke)tyreSmoke.wet=weather.wetness;
+ // A wet kerb throws no grit (tyre-smoke.js kerbFrom), a wet tyre lays no rubber (skid-marks.js).
+ if(tyreSmoke)tyreSmoke.wet=weather.wetness;if(skidMarks)skidMarks.wet=weather.wetness;
  if(!renderer)return;
  scene.environmentIntensity=weather.environment;
  // New lighting maps: the cars wearing the sky's old one take the new one (a probe or the grid's picture keep theirs).

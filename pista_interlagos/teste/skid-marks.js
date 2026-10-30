@@ -8,6 +8,9 @@ const WHEELS=[{x:1.55,y:.804,front:true},{x:1.55,y:-.804,front:true},
 export class SkidMarks {
  constructor(capacity=8192){
   this.capacity=capacity;this.count=0;this.total=0;this.cursor=0;this.dirty=false;
+  // The track's wetness (weather.js, main.js applyWeather): a wet tyre lays no rubber, in a drizzle or the rain (the
+  // pilots, 30/10). The slip is still measured: the tyres' sound and smoke follow it.
+  this.wet=0;
   this.wheels=WHEELS.map(w=>({...w,last:null,strength:0,segments:0}));
   this.previous=null;
   this.geometry=new THREE.BufferGeometry();
@@ -78,7 +81,7 @@ export class SkidMarks {
       const ex=x+nx*.105*side+Math.cos(angle)*offset,ey=y+ny*.105*side+Math.sin(angle)*offset;
       return [ex,car.sample(ex,ey).z+.001,-ey];
      })});
-     this.addSegment(patch(-.13),patch(.13));w.segments++;w.stamp=0;
+     if(this.addSegment(patch(-.13),patch(.13)))w.segments++;w.stamp=0;
     }
     continue;
    }
@@ -93,12 +96,13 @@ export class SkidMarks {
    }
    if(!edges.length){w.last=null;continue;}
    const point={x,y,edges,strength:w.strength,v:(w.last?.v??0)+distance};
-   if(w.last&&distance<2){this.addSegment(w.last,point);w.segments++;}
+   if(w.last&&distance<2){if(this.addSegment(w.last,point))w.segments++;}
    else point.strength=0; // Feather the start of each new trail.
    w.last=point;
   }
  }
  addSegment(a,b){
+  if(this.wet>0)return false;
   const i=this.cursor*4,attrs=this.geometry.attributes;
   const vertices=[a.edges[0],a.edges[1],b.edges[0],b.edges[1]];
   for(let j=0;j<4;j++){
@@ -107,6 +111,7 @@ export class SkidMarks {
    attrs.strength.setX(i+j,j<2?a.strength:b.strength);
   }
   this.cursor=(this.cursor+1)%this.capacity;this.count=Math.min(this.count+1,this.capacity);this.total++;this.dirty=true;
+  return true;
  }
  flush(){
   if(!this.dirty)return;

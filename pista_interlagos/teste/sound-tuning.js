@@ -17,7 +17,7 @@ export const GROUPS=Object.freeze([
  ['pefora','Pé fora (freio-motor)','O motor desacelerando, com o acelerador solto.'],
  ['trocas','Arrancada, trocas e corte de giro','O que acontece entre as marchas e no fim do giro.'],
  ['estouros','Estouros do escapamento','Os pipocos ao tirar o pé em giro alto.'],
- ['pneus','Pneus','Pneu cantando na curva e arrastando nas derrapadas e freadas.'],
+ ['pneus','Pneus','Pneu cantando na curva e arrastando nas derrapadas e freadas; raspando na chuva.'],
  ['cabine','Dentro do carro','Como o motor soa na câmera interna.'],
  ['rivais','Adversários','Os motores dos dois carros mais perto de você.'],
 ].map(([id,name,help])=>Object.freeze({id,name,help})));
@@ -56,6 +56,7 @@ export const SETTINGS=Object.freeze([
  S('sing','pneus','Pneu cantando: volume','O volume do pneu cantando no limite da curva.',0,2,.05,.55),
  S('singFrom','pneus','Começa a cantar com','Quanto da aderência lateral o carro precisa usar na curva para o pneu começar a cantar. Menor = canta mais cedo.',.5,.99,.01,.82,'da aderência'),
  S('screech','pneus','Pneu arrastando: volume','O volume do pneu arrastando nas derrapadas, travadas de roda e patinadas.',0,2,.05,.6),
+ S('scrub','pneus','Pneu raspando na chuva: volume','Na pista molhada o pneu não canta nem arrasta: só raspa quando o carro escorrega. Este é o volume dessa raspada.',0,2,.05,1),
  S('tyrePitch','pneus','Tom dos pneus','Afina os pneus: acima de 1 mais agudo (chiado fino), abaixo mais grave.',.5,1.8,.01,1),
  S('tyresInside','pneus','Pneus dentro do carro','O volume dos pneus na câmera interna, em relação à de fora.',0,1.5,.05,.75),
  S('cabinHighs','cabine','Abafamento dentro do carro','O corte de agudos do motor ouvido de dentro. Menor = mais abafado pela lataria.',500,12000,100,2200,'Hz'),

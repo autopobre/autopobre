@@ -83,13 +83,16 @@ addEventListener('keydown',e=>{
  if(['INPUT','TEXTAREA'].includes(e.target.tagName))return;
  if(KEYMAP[e.code]){e.preventDefault();keys[KEYMAP[e.code]](true);return;}
  if(e.repeat)return;
- if(e.code==='KeyN')toggleNeutral();else if(e.code==='KeyC')toggleCamera();else if(e.code==='KeyD')startDemo();
+ if(e.code==='KeyN')toggleNeutral();else if(e.code==='KeyC')toggleCamera();else if(e.code==='KeyM')toggleWet();else if(e.code==='KeyD')startDemo();
  else if(e.code==='Digit1')chooseCar('opala');else if(e.code==='Digit2')chooseCar('fusca');
 });
 addEventListener('keyup',e=>{if(KEYMAP[e.code])keys[KEYMAP[e.code]](false);});
 const toggleNeutral=()=>{car.neutral=!car.neutral;if(!car.neutral)car.gear=1;$('neutral').classList.toggle('on',car.neutral);};
 const toggleCamera=()=>{mode=mode==='chase'?'cockpit':'chase';$('camera').textContent=`Câmera: ${mode==='chase'?'fora':'dentro'}`;};
-$('neutral').onclick=toggleNeutral;$('camera').onclick=toggleCamera;
+// A wet track, as the game's rain has it: the tyres only scrape (car-audio.js), and the rain and the spray are heard.
+let wet=false;
+const toggleWet=()=>{wet=!wet;$('wet').textContent=`Pista: ${wet?'molhada':'seca'}`;$('wet').classList.toggle('on',wet);};
+$('neutral').onclick=toggleNeutral;$('camera').onclick=toggleCamera;$('wet').onclick=toggleWet;
 $('synth').onclick=()=>{synth=!synth;$('synth').classList.toggle('on',synth);audio?.setSynthEngine(synth,false);};
 function startDemo(){Object.assign(car,{vx:0,gear:1,rpm:IDLE,neutral:false,shiftTimer:0});$('neutral').classList.remove('on');demo={t:0,label:''};}
 $('demo').onclick=startDemo;
@@ -181,12 +184,12 @@ function frame(now){
  accumulator+=dt;while(accumulator>=1/120){skid=step(input,1/120);accumulator-=1/120;}
  if(audio){
   audio.update(car,{throttle:input.throttle,brake:input.brake,reverse:input.reverse},skid,false,mode);
-  audio.updateScene({driving:true,phase:'race',speed:car.vx,onRoad:true,camera:mode},[],dt);
+  audio.updateScene({driving:true,phase:'race',speed:car.vx,onRoad:true,camera:mode,rain:wet?1:0,wet:wet?1:0},[],dt);
   const info=audio.info(),gear=String(info.gear);
   $('rpm').textContent=Math.round(info.rpm);$('gear').textContent=info.gear;$('kmh').textContent=Math.round(car.vx*3.6);
   $('rpmBar').style.width=`${clamp(info.rpm/7400,0,1)*100}%`;
   $('mLoad').textContent=`${Math.round(Math.max(input.throttle,input.reverse)*100)}%`;$('mRms').textContent=(20*Math.log10(Math.max(info.rms,1e-5))).toFixed(0)+' dB';
-  $('mSing').textContent=info.tyres?.loops?.canta?.toFixed(2)??'-';$('mScreech').textContent=info.tyres?.loops?.arrasta?.toFixed(2)??'-';$('mPops').textContent=info.tyres?.pops??0;
+  $('mSing').textContent=info.tyres?.loops?.canta?.toFixed(2)??'-';$('mScreech').textContent=info.tyres?.loops?.arrasta?.toFixed(2)??'-';$('mScrub').textContent=info.scrub.toFixed(2);$('mPops').textContent=info.tyres?.pops??0;
   $('mPlaying').textContent=synth?'som antigo (sintetizado)':info.engine?.ready?`${info.engine.playing.map(p=>p.replace('on','acel.').replace('off','pé fora')).join(' + ')||'—'}${info.engine.idleLevel>.01?' + lenta':''}`:info.engine?.error?`erro: ${info.engine.error}`:'carregando…';
   if(gear!==liveGear){liveGear=gear;for(const b of document.querySelectorAll('#gearChips button'))b.classList.toggle('live',b.dataset.gear===gear);if($('followGear').checked&&GEAR_KEYS.includes(gear))selectGear(gear);}
  }
